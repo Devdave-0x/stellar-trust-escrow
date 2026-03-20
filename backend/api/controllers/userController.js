@@ -37,7 +37,9 @@ const getUserEscrows = async (req, res) => {
     const { address } = req.params;
     const { role = 'all', status, page = 1, limit = 20 } = req.query;
     // TODO: implement
-    res.status(501).json({ error: 'Not implemented — see Issue #24' });
+    res
+      .status(501)
+      .json({ error: 'Not implemented — see Issue #24', address, role, status, page, limit });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -59,4 +61,4 @@ const getUserStats = async (req, res) => {
   }
 };
 
-module.exports = { getUserProfile, getUserEscrows, getUserStats };
+export default { getUserProfile, getUserEscrows, getUserStats };

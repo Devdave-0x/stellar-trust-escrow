@@ -21,6 +21,8 @@
  * - On success: redirect to /escrow/[id]
  */
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 'use client';
 
 import { useState } from 'react';
@@ -68,7 +70,7 @@ export default function CreateEscrowPage() {
     // TODO (contributor): append empty milestone to formData.milestones
   };
 
-  const removeMilestone = (index) => {
+  const removeMilestone = (_index) => {
     // TODO (contributor): remove milestone at index
   };
 
@@ -211,7 +213,7 @@ function StepCounterparty({ formData, setFormData }) {
  * Step 2: Define milestones.
  * TODO (contributor — Issue #33): implement add/remove and validate amounts
  */
-function StepMilestones({ formData, setFormData, onAdd, onRemove }) {
+function StepMilestones({ formData, setFormData: _setFormData, onAdd, onRemove }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -241,7 +243,7 @@ function StepMilestones({ formData, setFormData, onAdd, onRemove }) {
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                        text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500"
             value={m.title}
-            onChange={(e) => {
+            onChange={(_e) => {
               // TODO (contributor): update milestone at index i
             }}
           />
@@ -252,7 +254,7 @@ function StepMilestones({ formData, setFormData, onAdd, onRemove }) {
               className="w-32 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                          text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500"
               value={m.amount}
-              onChange={(e) => {
+              onChange={(_e) => {
                 // TODO (contributor): update amount at index i
               }}
             />
@@ -304,7 +306,7 @@ function StepReview({ formData }) {
  * Step 4: Sign with Freighter.
  * TODO (contributor — Issue #33): build and sign the Soroban transaction
  */
-function StepSign({ onSubmit, isSubmitting, error }) {
+function StepSign({ onSubmit: _onSubmit, isSubmitting: _isSubmitting, error }) {
   return (
     <div className="space-y-4 text-center">
       <h2 className="text-lg font-semibold text-white">Sign & Submit</h2>

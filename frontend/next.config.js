@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // TODO (contributor): add image domains if using next/image with external URLs
@@ -15,4 +16,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;

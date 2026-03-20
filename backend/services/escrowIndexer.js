@@ -24,6 +24,9 @@
  * @module escrowIndexer
  */
 
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 // TODO (contributor): uncomment when dependencies are installed
 // const { SorobanRpc, xdr, StrKey } = require('@stellar/stellar-sdk');
 // const { PrismaClient } = require('@prisma/client');
@@ -80,7 +83,7 @@ const startIndexer = async () => {
  * 3. Update lastProcessedLedger = latestLedger
  * 4. Persist lastProcessedLedger to DB
  */
-const fetchAndProcessEvents = async (server) => {
+const fetchAndProcessEvents = async (_server) => {
   // TODO: implement
   throw new Error('fetchAndProcessEvents not implemented — see Issue #27');
 };
@@ -94,7 +97,7 @@ const fetchAndProcessEvents = async (server) => {
  * Parse event.topic[0] to determine event type, then call the
  * appropriate handler (handleEscrowCreated, handleMilestoneAdded, etc.)
  */
-const dispatchEvent = async (event) => {
+const dispatchEvent = async (_event) => {
   // TODO: implement event routing
   // const eventName = parseEventName(event.topic);
   // switch (eventName) {
@@ -118,7 +121,7 @@ const dispatchEvent = async (event) => {
  * 2. Parse client, freelancer, amount from data
  * 3. prisma.escrow.create({ data: { ... } })
  */
-const handleEscrowCreated = async (event) => {
+const handleEscrowCreated = async (_event) => {
   // TODO: implement
   console.log('[Indexer] handleEscrowCreated not implemented');
 };
@@ -128,7 +131,7 @@ const handleEscrowCreated = async (event) => {
  *
  * TODO (contributor — medium, Issue #27)
  */
-const handleMilestoneAdded = async (event) => {
+const handleMilestoneAdded = async (_event) => {
   // TODO: implement
 };
 
@@ -137,7 +140,7 @@ const handleMilestoneAdded = async (event) => {
  *
  * TODO (contributor — medium, Issue #27)
  */
-const handleMilestoneApproved = async (event) => {
+const handleMilestoneApproved = async (_event) => {
   // TODO: implement
 };
 
@@ -146,7 +149,7 @@ const handleMilestoneApproved = async (event) => {
  *
  * TODO (contributor — medium, Issue #27)
  */
-const handleFundsReleased = async (event) => {
+const handleFundsReleased = async (_event) => {
   // TODO: implement
 };
 
@@ -155,7 +158,7 @@ const handleFundsReleased = async (event) => {
  *
  * TODO (contributor — medium, Issue #27)
  */
-const handleDisputeRaised = async (event) => {
+const handleDisputeRaised = async (_event) => {
   // TODO: implement
 };
 
@@ -164,7 +167,7 @@ const handleDisputeRaised = async (event) => {
  *
  * TODO (contributor — medium, Issue #27)
  */
-const handleDisputeResolved = async (event) => {
+const handleDisputeResolved = async (_event) => {
   // TODO: implement
 };
 
@@ -173,7 +176,7 @@ const handleDisputeResolved = async (event) => {
  *
  * TODO (contributor — medium, Issue #27)
  */
-const handleReputationUpdated = async (event) => {
+const handleReputationUpdated = async (_event) => {
   // TODO: implement
 };
 
@@ -182,11 +185,11 @@ const handleReputationUpdated = async (event) => {
  *
  * TODO (contributor — easy, Issue #27)
  */
-const handleEscrowCancelled = async (event) => {
+const handleEscrowCancelled = async (_event) => {
   // TODO: implement
 };
 
-module.exports = {
+export {
   startIndexer,
   fetchAndProcessEvents,
   dispatchEvent,

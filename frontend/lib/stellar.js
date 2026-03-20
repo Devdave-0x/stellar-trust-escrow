@@ -10,6 +10,9 @@
  * @module stellar
  */
 
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 // TODO (contributor — hard, Issue #35): uncomment and implement
 // import {
 //   SorobanRpc,
@@ -20,13 +23,13 @@
 //   xdr,
 // } from '@stellar/stellar-sdk';
 
-const NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '';
-const SOROBAN_RPC_URL =
+const _NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+const _CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '';
+const _SOROBAN_RPC_URL =
   process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
 
-const NETWORK_PASSPHRASE =
-  NETWORK === 'mainnet'
+const _NETWORK_PASSPHRASE =
+  _NETWORK === 'mainnet'
     ? 'Public Global Stellar Network ; September 2015'
     : 'Test SDF Network ; September 2015';
 
@@ -52,13 +55,13 @@ const NETWORK_PASSPHRASE =
  * 6. Return tx.toXDR('base64')
  */
 export async function buildCreateEscrowTx({
-  sourceAddress,
-  freelancerAddress,
-  tokenAddress,
-  amount,
-  briefHash,
-  arbiter = null,
-  deadline = null,
+  sourceAddress: _sourceAddress,
+  freelancerAddress: _freelancerAddress,
+  tokenAddress: _tokenAddress,
+  amount: _amount,
+  briefHash: _briefHash,
+  arbiter: _arbiter = null,
+  deadline: _deadline = null,
 }) {
   // TODO (contributor — Issue #35): implement
   throw new Error('buildCreateEscrowTx not implemented — see Issue #35');
@@ -78,11 +81,11 @@ export async function buildCreateEscrowTx({
  * TODO (contributor — Issue #35)
  */
 export async function buildAddMilestoneTx({
-  sourceAddress,
-  escrowId,
-  title,
-  descriptionHash,
-  amount,
+  sourceAddress: _sourceAddress,
+  escrowId: _escrowId,
+  title: _title,
+  descriptionHash: _descriptionHash,
+  amount: _amount,
 }) {
   throw new Error('buildAddMilestoneTx not implemented — see Issue #35');
 }
@@ -98,7 +101,11 @@ export async function buildAddMilestoneTx({
  *
  * TODO (contributor — Issue #35)
  */
-export async function buildApproveMilestoneTx({ sourceAddress, escrowId, milestoneId }) {
+export async function buildApproveMilestoneTx({
+  sourceAddress: _sourceAddress,
+  escrowId: _escrowId,
+  milestoneId: _milestoneId,
+}) {
   throw new Error('buildApproveMilestoneTx not implemented — see Issue #35');
 }
 
@@ -113,7 +120,11 @@ export async function buildApproveMilestoneTx({ sourceAddress, escrowId, milesto
  *
  * TODO (contributor — Issue #35)
  */
-export async function buildSubmitMilestoneTx({ sourceAddress, escrowId, milestoneId }) {
+export async function buildSubmitMilestoneTx({
+  sourceAddress: _sourceAddress,
+  escrowId: _escrowId,
+  milestoneId: _milestoneId,
+}) {
   throw new Error('buildSubmitMilestoneTx not implemented — see Issue #35');
 }
 
@@ -122,7 +133,7 @@ export async function buildSubmitMilestoneTx({ sourceAddress, escrowId, mileston
  *
  * TODO (contributor — Issue #35)
  */
-export async function buildRaiseDisputeTx({ sourceAddress, escrowId }) {
+export async function buildRaiseDisputeTx({ sourceAddress: _sourceAddress, escrowId: _escrowId }) {
   throw new Error('buildRaiseDisputeTx not implemented — see Issue #35');
 }
 

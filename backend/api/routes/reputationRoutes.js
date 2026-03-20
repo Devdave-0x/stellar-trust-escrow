@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const reputationController = require('../controllers/reputationController');
+import reputationController from '../controllers/reputationController';
 
 /**
  * @route  GET /api/reputation/:address
@@ -16,4 +16,4 @@ router.get('/:address', reputationController.getReputation);
  */
 router.get('/leaderboard', reputationController.getLeaderboard);
 
-module.exports = router;
+export default router;

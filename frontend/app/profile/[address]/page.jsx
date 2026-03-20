@@ -14,7 +14,6 @@
  */
 
 import ReputationBadge from '../../../components/ui/ReputationBadge';
-import EscrowCard from '../../../components/escrow/EscrowCard';
 import Badge from '../../../components/ui/Badge';
 
 // TODO (contributor): replace with SWR fetch

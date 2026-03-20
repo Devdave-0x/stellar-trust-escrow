@@ -55,10 +55,13 @@ const getLeaderboard = async (req, res) => {
   try {
     const { limit = 20, page = 1 } = req.query;
     // TODO: implement
-    res.status(501).json({ error: 'Not implemented — see Issue #22' });
+    res.status(501).json({ error: 'Not implemented — see Issue #22', limit, page });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-module.exports = { getReputation, getLeaderboard };
+export default {
+  getReputation,
+  getLeaderboard,
+};

@@ -8,6 +8,9 @@
  * @module reputationService
  */
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable no-undef */
+
 // TODO (contributor): uncomment when Prisma is set up
 // const { PrismaClient } = require('@prisma/client');
 // const prisma = new PrismaClient();
@@ -37,7 +40,7 @@ const BADGE_THRESHOLDS = {
  * 2. If not found, return default zero-score record
  * 3. Compute and attach: badge, rank, completion_rate
  */
-const getReputationByAddress = async (address) => {
+const getReputationByAddress = async (_address) => {
   // TODO: implement
   throw new Error('getReputationByAddress not implemented — see Issue #25');
 };
@@ -50,7 +53,7 @@ const getReputationByAddress = async (address) => {
  *
  * TODO (contributor — easy, Issue #28)
  */
-const getBadge = (score) => {
+const getBadge = (_score) => {
   // TODO: implement badge lookup
   return 'NEW';
 };
@@ -66,7 +69,7 @@ const getBadge = (score) => {
  * Formula: completed / (completed + disputed) * 100
  * Handle the divide-by-zero case (no escrows yet → return 0)
  */
-const computeCompletionRate = (completed, disputed) => {
+const computeCompletionRate = (_completed, _disputed) => {
   // TODO: implement
   return 0;
 };
@@ -84,7 +87,7 @@ const computeCompletionRate = (completed, disputed) => {
  * 3. Truncate address for display (e.g. "GABCD...XYZ1")
  * 4. Attach badge via getBadge()
  */
-const getLeaderboard = async (limit = 20, page = 1) => {
+const getLeaderboard = async (_limit = 20, _page = 1) => {
   // TODO: implement
   throw new Error('getLeaderboard not implemented — see Issue #22');
 };
@@ -98,7 +101,7 @@ const getLeaderboard = async (limit = 20, page = 1) => {
  * TODO (contributor — medium, Issue #28):
  * SELECT COUNT(*) WHERE total_score <= userScore, divide by total users
  */
-const getPercentileRank = async (address) => {
+const getPercentileRank = async (_address) => {
   // TODO: implement
   throw new Error('getPercentileRank not implemented — see Issue #28');
 };

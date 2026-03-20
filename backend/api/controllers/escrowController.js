@@ -86,7 +86,7 @@ const broadcastCreateEscrow = async (req, res) => {
   try {
     const { signedXdr } = req.body;
     // TODO: implement
-    res.status(501).json({ error: 'Not implemented — see Issue #20' });
+    res.status(501).json({ error: 'Not implemented — see Issue #20', signedXdr });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -116,7 +116,7 @@ const getMilestone = async (req, res) => {
   }
 };
 
-module.exports = {
+export default {
   listEscrows,
   getEscrow,
   broadcastCreateEscrow,

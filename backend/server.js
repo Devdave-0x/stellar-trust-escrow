@@ -7,17 +7,20 @@
  * @module server
  */
 
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
-const escrowRoutes = require('./api/routes/escrowRoutes');
-const userRoutes = require('./api/routes/userRoutes');
-const reputationRoutes = require('./api/routes/reputationRoutes');
-const disputeRoutes = require('./api/routes/disputeRoutes');
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+
+import escrowRoutes from './api/routes/escrowRoutes.js';
+import userRoutes from './api/routes/userRoutes.js';
+import reputationRoutes from './api/routes/reputationRoutes.js';
+import disputeRoutes from './api/routes/disputeRoutes.js';
 
 // TODO (contributor — easy, Issue #17): Import and start the escrow indexer
 // const { startIndexer } = require('./services/escrowIndexer');
@@ -77,7 +80,7 @@ app.use((req, res) => {
  * TODO (contributor — easy, Issue #18): Improve error responses with
  * structured error codes matching the Soroban contract's EscrowError enum.
  */
-app.use((err, req, res, next) => {
+app.use((err, _req, res, _next) => {
   console.error(err.stack);
   res.status(err.statusCode || 500).json({
     error: err.message || 'Internal server error',
@@ -100,4 +103,4 @@ app.listen(PORT, async () => {
   // }
 });
 
-module.exports = app; // for testing
+export default app; // for testing

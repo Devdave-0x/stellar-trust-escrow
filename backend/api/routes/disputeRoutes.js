@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const disputeController = require('../controllers/disputeController');
+import disputeController from '../controllers/disputeController';
 
 /**
  * @route  GET /api/disputes
@@ -15,4 +15,4 @@ router.get('/', disputeController.listDisputes);
  */
 router.get('/:escrowId', disputeController.getDispute);
 
-module.exports = router;
+export default router;

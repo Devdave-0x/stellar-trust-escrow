@@ -22,9 +22,12 @@
  * }
  */
 
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 'use client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const _API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 /**
  * Fetch a single escrow by ID.
@@ -34,7 +37,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
  *
  * TODO (contributor — Issue #39): implement with SWR
  */
-export function useEscrow(id) {
+export function useEscrow(_id) {
   // TODO: replace with SWR
   return {
     escrow: null,
@@ -53,7 +56,7 @@ export function useEscrow(id) {
  *
  * TODO (contributor — Issue #39)
  */
-export function useUserEscrows(address, role = 'all') {
+export function useUserEscrows(_address, _role = 'all') {
   // TODO: implement with SWR
   return { escrows: [], isLoading: false, error: null };
 }
@@ -65,7 +68,7 @@ export function useUserEscrows(address, role = 'all') {
  *
  * TODO (contributor — Issue #39)
  */
-export function useEscrowList({ page = 1, limit = 20, status = '' } = {}) {
+export function useEscrowList({ page: _page = 1, limit: _limit = 20, status: _status = '' } = {}) {
   // TODO: implement with SWR
   return { escrows: [], total: 0, isLoading: false, error: null };
 }

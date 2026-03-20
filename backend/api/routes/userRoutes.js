@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const userController = require('../controllers/userController');
+import userController from '../controllers/userController';
 
 /**
  * @route  GET /api/users/:address
@@ -23,4 +23,4 @@ router.get('/:address/escrows', userController.getUserEscrows);
  */
 router.get('/:address/stats', userController.getUserStats);
 
-module.exports = router;
+export default router;

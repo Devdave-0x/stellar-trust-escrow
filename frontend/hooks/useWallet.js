@@ -49,6 +49,8 @@
 
 'use client';
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { useState, useCallback, useEffect } from 'react';
 
 export function useWallet() {
@@ -120,12 +122,12 @@ export function useWallet() {
    * return signedXdr;
    */
   const signTx = useCallback(
-    async (unsignedXdr) => {
+    async (_unsignedXdr) => {
       if (!isConnected) throw new Error('Wallet not connected');
       // TODO (contributor — Issue #35): implement
       throw new Error('signTx not implemented — see Issue #35');
     },
-    [isConnected, address, network],
+    [isConnected],
   );
 
   return {

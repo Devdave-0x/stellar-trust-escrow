@@ -11,7 +11,12 @@
  * the corresponding controllers.
  */
 
-const request = require('supertest');
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-require-imports */
+
+// Using CommonJS for Jest compatibility
+const { request } = require('supertest');
 // const app = require("../server");
 
 // TODO (contributor): mock Prisma

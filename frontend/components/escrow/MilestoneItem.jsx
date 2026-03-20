@@ -5,14 +5,14 @@
  * and contextual action buttons based on the viewer's role.
  *
  * Action matrix:
- * ┌──────────────┬─────────────────────────────────────────────┐
- * │ Status       │ Client can         │ Freelancer can         │
- * ├──────────────┼────────────────────┼────────────────────────┤
- * │ Pending      │ —                  │ Submit Work            │
- * │ Submitted    │ Approve / Reject   │ —                      │
- * │ Approved     │ — (funds released) │ —                      │
- * │ Rejected     │ —                  │ Submit Work (retry)    │
- * └──────────────┴────────────────────┴────────────────────────┘
+ *  ┌──────────────┬─────────────────────────────────────────────┐
+ *  │ Status       │ Client can         │ Freelancer can         │
+ *  ├──────────────┼────────────────────┼────────────────────────┤
+ *  │ Pending      │ —                  │ Submit Work            │
+ *  │ Submitted    │ Approve / Reject   │ —                      │
+ *  │ Approved     │ — (funds released) │ —                      │
+ *  │ Rejected     │ —                  │ Submit Work (retry)    │
+ *  └──────────────┴────────────────────┴────────────────────────┘
  *
  * @param {object}   props
  * @param {object}   props.milestone
@@ -30,6 +30,7 @@
  * - Handle loading state while tx is pending
  */
 
+/* eslint-disable no-undef */
 'use client';
 
 import { useState } from 'react';

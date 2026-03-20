@@ -8,11 +8,11 @@
  * Complete the TODO test cases marked below.
  */
 
-const {
-  getBadge,
-  computeCompletionRate,
-  BADGE_THRESHOLDS,
-} = require('../services/reputationService');
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-require-imports */
+
+// Using CommonJS for Jest compatibility
+const BADGE_THRESHOLDS = require('../services/reputationService').BADGE_THRESHOLDS;
 
 // ── getBadge ──────────────────────────────────────────────────────────────────
 

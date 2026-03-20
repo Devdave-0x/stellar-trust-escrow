@@ -6,9 +6,9 @@
  * transactions from the frontend — the backend only broadcasts them.
  */
 
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const escrowController = require('../controllers/escrowController');
+import escrowController from '../controllers/escrowController';
 
 // TODO (contributor — easy, Issue #19): Add input validation middleware
 // const { validateEscrowId, validatePagination } = require('../middleware/validators');
@@ -47,4 +47,4 @@ router.get('/:id/milestones', escrowController.getMilestones);
  */
 router.get('/:id/milestones/:milestoneId', escrowController.getMilestone);
 
-module.exports = router;
+export default router;
