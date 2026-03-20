@@ -15,7 +15,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "test": "npm run test -w frontend && npm run test -w backend",
-    "prepare": "husky install",
+    "prepare": "husky",
     "fix": "npm run lint:fix && npm run format"
   },
   "devDependencies": {
