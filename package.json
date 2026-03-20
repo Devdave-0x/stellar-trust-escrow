@@ -33,7 +33,8 @@
     "prettier": "^3.8.1",
     "prettier-plugin-solidity": "^2.3.1",
     "solhint": "^6.1.0",
-    "typescript-eslint": "^8.57.1"
+    "typescript-eslint": "^8.57.1",
+    "validate-branch-name": "^1.3.2"
   },
   "lint-staged": {
     "*.{js,ts,tsx,json,md}": [
@@ -42,5 +43,9 @@
     "*.{js,ts,tsx}": [
       "eslint --fix"
     ]
+  },
+  "validate-branch-name": {
+    "pattern": "^(main|develop|live){1}$|^(feature|fix|refactor|hotfix|release|conflict)/NV-[0-9]{1,5}.*$",
+    "errorMsg": "Branch name structure: feature/NV-1234-new-feature\nAllowed prefixes: feature, fix, refactor, hotfix, release, conflict"
   }
 }
