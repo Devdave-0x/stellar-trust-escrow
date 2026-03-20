@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "npm run dev -w frontend & npm run dev -w backend",
     "build": "npm run lint-staged && npm run build -w frontend",
+    "install": "npm run -w backend && npm run  -w frontend",
     "lint": "eslint .",
     "lint:sol": "solhint \"contracts/**/*.sol\"",
     "lint-staged": "npm run lint-staged",
