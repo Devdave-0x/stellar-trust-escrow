@@ -1,10 +1,6 @@
 import express from 'express';
 const router = express.Router();
-<<<<<<< HEAD
-import reputationController from '../controllers/reputationController';
-=======
 import reputationController from '../controllers/reputationController.js';
->>>>>>> 233e2dd (fix: fixing husky dev)
 
 /**
  * @route  GET /api/reputation/:address

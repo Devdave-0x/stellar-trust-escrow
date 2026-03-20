@@ -1,10 +1,6 @@
 import express from 'express';
 const router = express.Router();
-<<<<<<< HEAD
-import userController from '../controllers/userController';
-=======
 import userController from '../controllers/userController.js';
->>>>>>> 233e2dd (fix: fixing husky dev)
 
 /**
  * @route  GET /api/users/:address

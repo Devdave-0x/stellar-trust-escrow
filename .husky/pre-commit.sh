@@ -1,14 +1,28 @@
 #!/usr/bin/env sh
 . "$(dirname "$0")/_/husky.sh"
 
-# 1️⃣ Fix linting & format staged files
-echo "Running lint-staged..."
-npx lint-staged
+echo "💅 Fixing lint & formatting staged files..."
+npm run lint-staged
+npm run format
 
-# 2️⃣ Run tests
-echo "🏗 Running local CI build..."
+# npm run lint-staged || {
+#   echo "❌ Lint-staged failed!"
+#   exit 1
+# }
 
-# echo "🧪 Running tests..."
+echo "💅 Building all files..."
+npm run build
+
+# npm run build || {
+#   echo "❌ Lint-staged failed!"
+#   exit 1
+# }
+
+echo "🧪 Running all tests before commit..."
 npm run test
+# npm run test || {
+#   echo "❌ Tests failed! Commit aborted."
+#   exit 1
+# }
 
-# If any step fails, commit is aborted automatically
+echo "✅ Pre-commit checks passed."

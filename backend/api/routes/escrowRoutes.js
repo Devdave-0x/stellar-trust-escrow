@@ -8,11 +8,7 @@
 
 import express from 'express';
 const router = express.Router();
-<<<<<<< HEAD
-import escrowController from '../controllers/escrowController';
-=======
 import escrowController from '../controllers/escrowController.js';
->>>>>>> 233e2dd (fix: fixing husky dev)
 
 // TODO (contributor — easy, Issue #19): Add input validation middleware
 // const { validateEscrowId, validatePagination } = require('../middleware/validators');
