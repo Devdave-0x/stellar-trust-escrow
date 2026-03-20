@@ -11,7 +11,7 @@
  * the corresponding controllers.
  */
 
-const request = require("supertest");
+const request = require('supertest');
 // const app = require("../server");
 
 // TODO (contributor): mock Prisma
@@ -24,8 +24,8 @@ const request = require("supertest");
 //   })),
 // }));
 
-describe("GET /api/escrows", () => {
-  it("returns 200 with paginated escrow list", async () => {
+describe('GET /api/escrows', () => {
+  it('returns 200 with paginated escrow list', async () => {
     // TODO (contributor — Issue #47):
     // const res = await request(app).get('/api/escrows');
     // expect(res.status).toBe(200);
@@ -34,14 +34,14 @@ describe("GET /api/escrows", () => {
     expect(true).toBe(true); // placeholder
   });
 
-  it("returns 501 when not yet implemented", async () => {
+  it('returns 501 when not yet implemented', async () => {
     // TODO (contributor): remove this test once controller is implemented
     // const res = await request(app).get('/api/escrows');
     // expect(res.status).toBe(501);
     expect(true).toBe(true);
   });
 
-  it("filters by status when provided", async () => {
+  it('filters by status when provided', async () => {
     // TODO (contributor — Issue #47):
     // const res = await request(app).get('/api/escrows?status=Active');
     // expect(res.status).toBe(200);
@@ -49,30 +49,30 @@ describe("GET /api/escrows", () => {
   });
 });
 
-describe("GET /api/escrows/:id", () => {
-  it("returns 200 with escrow details for valid ID", async () => {
+describe('GET /api/escrows/:id', () => {
+  it('returns 200 with escrow details for valid ID', async () => {
     // TODO (contributor — Issue #47)
     expect(true).toBe(true);
   });
 
-  it("returns 404 for non-existent escrow ID", async () => {
+  it('returns 404 for non-existent escrow ID', async () => {
     // TODO (contributor — Issue #47)
     expect(true).toBe(true);
   });
 
-  it("returns 400 for invalid (non-numeric) ID", async () => {
+  it('returns 400 for invalid (non-numeric) ID', async () => {
     // TODO (contributor — Issue #47)
     expect(true).toBe(true);
   });
 });
 
-describe("POST /api/escrows/broadcast", () => {
-  it("returns 400 when signedXdr is missing", async () => {
+describe('POST /api/escrows/broadcast', () => {
+  it('returns 400 when signedXdr is missing', async () => {
     // TODO (contributor — Issue #47)
     expect(true).toBe(true);
   });
 
-  it("returns 400 when signedXdr is not valid base64", async () => {
+  it('returns 400 when signedXdr is not valid base64', async () => {
     // TODO (contributor — Issue #47)
     expect(true).toBe(true);
   });

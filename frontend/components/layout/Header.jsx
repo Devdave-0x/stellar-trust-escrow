@@ -15,16 +15,16 @@
  * - Highlight active nav link
  */
 
-"use client";
+'use client';
 
-import Link from "next/link";
-import Button from "../ui/Button";
+import Link from 'next/link';
+import Button from '../ui/Button';
 
 // TODO (contributor — Issue #37): replace with real wallet state
 const PLACEHOLDER_WALLET = {
   isConnected: false,
   address: null,
-  network: "testnet",
+  network: 'testnet',
 };
 
 export default function Header() {
@@ -36,12 +36,12 @@ export default function Header() {
     // 2. Call freighter.requestAccess()
     // 3. Get public key: freighter.getPublicKey()
     // 4. Store in wallet context
-    console.log("TODO: connect Freighter — see Issue #37");
+    console.log('TODO: connect Freighter — see Issue #37');
   };
 
   const handleDisconnect = () => {
     // TODO (contributor — Issue #37)
-    console.log("TODO: disconnect wallet");
+    console.log('TODO: disconnect wallet');
   };
 
   return (

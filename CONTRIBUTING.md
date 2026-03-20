@@ -20,18 +20,18 @@ Thank you for your interest! This project is designed to be contributor-friendly
 
 Browse by difficulty:
 
-| Label | Description | Time Estimate |
-|-------|-------------|--------------|
-| `good-first-issue` | No prior blockchain knowledge needed | 1–3 hours |
-| `easy` | Small, well-defined tasks | 2–5 hours |
-| `medium` | Feature work, requires reading the codebase | 1–2 days |
-| `hard` | Complex features, architecture decisions | 2–5 days |
-| `smart-contract` | Soroban / Rust work | Varies |
-| `backend` | Node.js / Express / DB work | Varies |
-| `frontend` | Next.js / React / Tailwind | Varies |
-| `documentation` | Docs, comments, guides | 1–3 hours |
-| `testing` | Write or improve tests | 2–4 hours |
-| `security` | Security review / hardening | Varies |
+| Label              | Description                                 | Time Estimate |
+| ------------------ | ------------------------------------------- | ------------- |
+| `good-first-issue` | No prior blockchain knowledge needed        | 1–3 hours     |
+| `easy`             | Small, well-defined tasks                   | 2–5 hours     |
+| `medium`           | Feature work, requires reading the codebase | 1–2 days      |
+| `hard`             | Complex features, architecture decisions    | 2–5 days      |
+| `smart-contract`   | Soroban / Rust work                         | Varies        |
+| `backend`          | Node.js / Express / DB work                 | Varies        |
+| `frontend`         | Next.js / React / Tailwind                  | Varies        |
+| `documentation`    | Docs, comments, guides                      | 1–3 hours     |
+| `testing`          | Write or improve tests                      | 2–4 hours     |
+| `security`         | Security review / hardening                 | Varies        |
 
 **New to the project?** Start with [`good-first-issue`](../../issues?q=label%3Agood-first-issue) or [`documentation`](../../issues?q=label%3Adocumentation).
 
@@ -100,18 +100,21 @@ git push origin feat/escrow-milestone-approval
 ## Code Style
 
 ### Rust (Smart Contracts)
+
 - Run `cargo fmt` before committing
 - Run `cargo clippy -- -D warnings` and fix all warnings
 - All public functions must have `///` doc comments
 - Use `#[contracterror]` for all error types — no `panic!` in contract code
 
 ### JavaScript / TypeScript (Backend & Frontend)
+
 - ESLint config is provided — run `npm run lint` before committing
 - Prettier is configured — run `npm run format`
 - Use `async/await` over `.then()` chains
 - All API routes must have JSDoc comments
 
 ### React (Frontend)
+
 - Functional components only
 - Props should be typed with JSDoc `@param` or TypeScript interfaces
 - Keep components small — extract logic into hooks

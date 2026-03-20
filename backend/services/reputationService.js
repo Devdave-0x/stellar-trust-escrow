@@ -39,7 +39,7 @@ const BADGE_THRESHOLDS = {
  */
 const getReputationByAddress = async (address) => {
   // TODO: implement
-  throw new Error("getReputationByAddress not implemented — see Issue #25");
+  throw new Error('getReputationByAddress not implemented — see Issue #25');
 };
 
 /**
@@ -52,7 +52,7 @@ const getReputationByAddress = async (address) => {
  */
 const getBadge = (score) => {
   // TODO: implement badge lookup
-  return "NEW";
+  return 'NEW';
 };
 
 /**
@@ -86,7 +86,7 @@ const computeCompletionRate = (completed, disputed) => {
  */
 const getLeaderboard = async (limit = 20, page = 1) => {
   // TODO: implement
-  throw new Error("getLeaderboard not implemented — see Issue #22");
+  throw new Error('getLeaderboard not implemented — see Issue #22');
 };
 
 /**
@@ -100,7 +100,7 @@ const getLeaderboard = async (limit = 20, page = 1) => {
  */
 const getPercentileRank = async (address) => {
   // TODO: implement
-  throw new Error("getPercentileRank not implemented — see Issue #28");
+  throw new Error('getPercentileRank not implemented — see Issue #28');
 };
 
 module.exports = {

@@ -13,19 +13,19 @@
  * - Add share button (copy profile URL)
  */
 
-import ReputationBadge from "../../../components/ui/ReputationBadge";
-import EscrowCard from "../../../components/escrow/EscrowCard";
-import Badge from "../../../components/ui/Badge";
+import ReputationBadge from '../../../components/ui/ReputationBadge';
+import EscrowCard from '../../../components/escrow/EscrowCard';
+import Badge from '../../../components/ui/Badge';
 
 // TODO (contributor): replace with SWR fetch
 const PLACEHOLDER_USER = {
-  address: "GABCD1234EFGH5678IJKL9012MNOP3456QRST7890UVWX1234YZ56",
+  address: 'GABCD1234EFGH5678IJKL9012MNOP3456QRST7890UVWX1234YZ56',
   reputationScore: 87,
-  badge: "TRUSTED",
+  badge: 'TRUSTED',
   completedEscrows: 12,
   disputedEscrows: 1,
-  totalVolume: "18,450 USDC",
-  memberSince: "January 2025",
+  totalVolume: '18,450 USDC',
+  memberSince: 'January 2025',
   completionRate: 92,
 };
 
@@ -48,9 +48,7 @@ export default function ProfilePage({ params }) {
             </h1>
             <Badge status={user.badge} />
           </div>
-          <p className="text-gray-500 text-sm mt-1">
-            Member since {user.memberSince}
-          </p>
+          <p className="text-gray-500 text-sm mt-1">Member since {user.memberSince}</p>
 
           {/* Stats Row */}
           <div className="flex gap-6 mt-4 text-sm">
@@ -89,9 +87,7 @@ export default function ProfilePage({ params }) {
         This helps users understand their score.
       */}
       <section>
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Reputation Breakdown
-        </h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Reputation Breakdown</h2>
         <div className="card text-sm text-gray-400 text-center py-8">
           🚧 Reputation breakdown chart — see Issue #35
         </div>
@@ -99,9 +95,7 @@ export default function ProfilePage({ params }) {
 
       {/* Completed Escrows */}
       <section>
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Completed Escrows
-        </h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Completed Escrows</h2>
         {/*
           TODO (contributor — Issue #35):
           Fetch and render GET /api/users/:address/escrows?status=Completed

@@ -56,6 +56,7 @@ cargo test test_create_escrow_happy_path
 ## Key Patterns
 
 ### 1. Authorization
+
 Every function that modifies state must call `require_auth()` on the
 appropriate address before touching storage:
 
@@ -65,6 +66,7 @@ let state = load_escrow(&env, escrow_id)?;
 ```
 
 ### 2. Load → Modify → Save
+
 Never read storage twice. Load once, modify in memory, save back:
 
 ```rust
@@ -74,6 +76,7 @@ env.storage().instance().set(&DataKey::Escrow(id), &escrow); // save
 ```
 
 ### 3. State Before Transfer
+
 Always update contract state **before** making token transfers (re-entrancy safety):
 
 ```rust
@@ -85,6 +88,7 @@ token_client.transfer(...); // then do the transfer
 ```
 
 ### 4. Error Returns
+
 Every public function returns `Result<T, EscrowError>`. Never panic:
 
 ```rust
@@ -129,6 +133,7 @@ sac.mint(&client_addr, &10_000_000_000i128); // 1000 USDC (7 decimals)
 ## Testing Checklist
 
 For every function you implement, add:
+
 - [ ] Happy path test
 - [ ] Unauthorized caller test
 - [ ] Wrong state test (e.g. escrow not Active)

@@ -15,15 +15,15 @@
  * - Add redirect to home if wallet not connected
  */
 
-import EscrowCard from "../../components/escrow/EscrowCard";
-import ReputationBadge from "../../components/ui/ReputationBadge";
-import StatCard from "../../components/ui/StatCard";
-import Button from "../../components/ui/Button";
+import EscrowCard from '../../components/escrow/EscrowCard';
+import ReputationBadge from '../../components/ui/ReputationBadge';
+import StatCard from '../../components/ui/StatCard';
+import Button from '../../components/ui/Button';
 
 // TODO (contributor): Replace with real data fetched via SWR
 const PLACEHOLDER_STATS = {
   activeEscrows: 3,
-  totalValueLocked: "4,250 USDC",
+  totalValueLocked: '4,250 USDC',
   reputationScore: 87,
   completedEscrows: 12,
 };
@@ -31,21 +31,21 @@ const PLACEHOLDER_STATS = {
 const PLACEHOLDER_ESCROWS = [
   {
     id: 1,
-    title: "Logo Design Project",
-    counterparty: "GBXYZ...1234",
-    role: "client",
-    status: "Active",
-    totalAmount: "500 USDC",
-    milestoneProgress: "2 / 4",
+    title: 'Logo Design Project',
+    counterparty: 'GBXYZ...1234',
+    role: 'client',
+    status: 'Active',
+    totalAmount: '500 USDC',
+    milestoneProgress: '2 / 4',
   },
   {
     id: 2,
-    title: "Smart Contract Audit",
-    counterparty: "GABC...5678",
-    role: "freelancer",
-    status: "Active",
-    totalAmount: "2,000 USDC",
-    milestoneProgress: "1 / 3",
+    title: 'Smart Contract Audit',
+    counterparty: 'GABC...5678',
+    role: 'freelancer',
+    status: 'Active',
+    totalAmount: '2,000 USDC',
+    milestoneProgress: '1 / 3',
   },
 ];
 
@@ -73,34 +73,18 @@ export default function DashboardPage() {
         and replace PLACEHOLDER_STATS
       */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Active Escrows"
-          value={PLACEHOLDER_STATS.activeEscrows}
-          icon="🔒"
-        />
-        <StatCard
-          label="Total Locked"
-          value={PLACEHOLDER_STATS.totalValueLocked}
-          icon="💰"
-        />
-        <StatCard
-          label="Completed"
-          value={PLACEHOLDER_STATS.completedEscrows}
-          icon="✅"
-        />
+        <StatCard label="Active Escrows" value={PLACEHOLDER_STATS.activeEscrows} icon="🔒" />
+        <StatCard label="Total Locked" value={PLACEHOLDER_STATS.totalValueLocked} icon="💰" />
+        <StatCard label="Completed" value={PLACEHOLDER_STATS.completedEscrows} icon="✅" />
         <div className="card flex flex-col items-center justify-center gap-2">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">
-            Reputation
-          </p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Reputation</p>
           <ReputationBadge score={PLACEHOLDER_STATS.reputationScore} />
         </div>
       </div>
 
       {/* Active Escrows */}
       <section>
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Your Active Escrows
-        </h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Your Active Escrows</h2>
 
         {/*
           TODO (contributor — Issue #32):

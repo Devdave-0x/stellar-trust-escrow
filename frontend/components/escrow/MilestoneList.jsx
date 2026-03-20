@@ -17,23 +17,17 @@
  * - Handle empty milestones array with an informative empty state
  */
 
-import MilestoneItem from "./MilestoneItem";
+import MilestoneItem from './MilestoneItem';
 
-export default function MilestoneList({
-  milestones = [],
-  role,
-  onApprove,
-  onReject,
-  onSubmit,
-}) {
+export default function MilestoneList({ milestones = [], role, onApprove, onReject, onSubmit }) {
   if (milestones.length === 0) {
     return (
       <div className="card text-center py-10 text-gray-500">
         <p className="text-lg mb-1">No milestones yet</p>
         <p className="text-sm">
-          {role === "client"
-            ? "Add milestones to define the project deliverables."
-            : "The client has not added any milestones yet."}
+          {role === 'client'
+            ? 'Add milestones to define the project deliverables.'
+            : 'The client has not added any milestones yet.'}
         </p>
         {/* TODO (contributor — Issue #40): add "Add Milestone" button for client */}
       </div>
@@ -41,7 +35,7 @@ export default function MilestoneList({
   }
 
   // Compute summary stats
-  const approvedCount = milestones.filter((m) => m.status === "Approved").length;
+  const approvedCount = milestones.filter((m) => m.status === 'Approved').length;
   const totalCount = milestones.length;
 
   return (
@@ -54,9 +48,7 @@ export default function MilestoneList({
         <span className="text-gray-400">
           {approvedCount} of {totalCount} milestones complete
         </span>
-        <span className="text-gray-500">
-          {Math.round((approvedCount / totalCount) * 100)}%
-        </span>
+        <span className="text-gray-500">{Math.round((approvedCount / totalCount) * 100)}%</span>
       </div>
 
       {/* Milestone Items */}

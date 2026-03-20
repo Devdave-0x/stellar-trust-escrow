@@ -12,13 +12,13 @@
  * changes infrequently.
  */
 
-"use client";
+'use client';
 
 const BADGE_THRESHOLDS = {
-  ELITE:    1000,
-  EXPERT:   500,
+  ELITE: 1000,
+  EXPERT: 500,
   VERIFIED: 250,
-  TRUSTED:  100,
+  TRUSTED: 100,
 };
 
 /**
@@ -30,11 +30,11 @@ const BADGE_THRESHOLDS = {
  * TODO (contributor — easy, Issue #39): implement thresholds
  */
 export function getBadgeFromScore(score) {
-  if (score >= BADGE_THRESHOLDS.ELITE)    return "ELITE";
-  if (score >= BADGE_THRESHOLDS.EXPERT)   return "EXPERT";
-  if (score >= BADGE_THRESHOLDS.VERIFIED) return "VERIFIED";
-  if (score >= BADGE_THRESHOLDS.TRUSTED)  return "TRUSTED";
-  return "NEW";
+  if (score >= BADGE_THRESHOLDS.ELITE) return 'ELITE';
+  if (score >= BADGE_THRESHOLDS.EXPERT) return 'EXPERT';
+  if (score >= BADGE_THRESHOLDS.VERIFIED) return 'VERIFIED';
+  if (score >= BADGE_THRESHOLDS.TRUSTED) return 'TRUSTED';
+  return 'NEW';
 }
 
 /**
@@ -47,8 +47,8 @@ export function useReputation(address) {
   // TODO: implement
   return {
     reputation: null,
-    badge: "NEW",
+    badge: 'NEW',
     isLoading: false,
-    error: address ? new Error("useReputation not implemented — see Issue #39") : null,
+    error: address ? new Error('useReputation not implemented — see Issue #39') : null,
   };
 }

@@ -6,10 +6,10 @@
 @layer base {
   :root {
     /* TODO (contributor — easy, Issue #31): define a full design token system */
-    --color-accent: #6366f1;   /* indigo-500 */
-    --color-success: #10b981;  /* emerald-500 */
-    --color-warning: #f59e0b;  /* amber-500 */
-    --color-danger: #ef4444;   /* red-500 */
+    --color-accent: #6366f1; /* indigo-500 */
+    --color-success: #10b981; /* emerald-500 */
+    --color-warning: #f59e0b; /* amber-500 */
+    --color-danger: #ef4444; /* red-500 */
   }
 
   body {
@@ -35,8 +35,16 @@
   }
 
   /* Status badge styles — TODO (contributor): ensure these match EscrowStatus enum */
-  .badge-active    { @apply bg-indigo-500/20 text-indigo-400 border border-indigo-500/30; }
-  .badge-completed { @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30; }
-  .badge-disputed  { @apply bg-amber-500/20 text-amber-400 border border-amber-500/30; }
-  .badge-cancelled { @apply bg-red-500/20 text-red-400 border border-red-500/30; }
+  .badge-active {
+    @apply bg-indigo-500/20 text-indigo-400 border border-indigo-500/30;
+  }
+  .badge-completed {
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+  .badge-disputed {
+    @apply bg-amber-500/20 text-amber-400 border border-amber-500/30;
+  }
+  .badge-cancelled {
+    @apply bg-red-500/20 text-red-400 border border-red-500/30;
+  }
 }

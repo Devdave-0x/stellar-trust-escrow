@@ -1,7 +1,7 @@
 ---
 name: Contributor Task
 about: A well-defined implementation task ready for a contributor to pick up
-title: ""
+title: ''
 labels: ''
 assignees: ''
 ---

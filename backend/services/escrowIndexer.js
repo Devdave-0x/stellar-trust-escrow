@@ -36,7 +36,7 @@
  *
  * @type {number}
  */
-let lastProcessedLedger = parseInt(process.env.INDEXER_START_LEDGER || "0");
+let lastProcessedLedger = parseInt(process.env.INDEXER_START_LEDGER || '0');
 
 /**
  * Starts the indexer polling loop.
@@ -53,9 +53,7 @@ let lastProcessedLedger = parseInt(process.env.INDEXER_START_LEDGER || "0");
  * 5. Handle errors gracefully (log + continue, don't crash)
  */
 const startIndexer = async () => {
-  console.log(
-    `[Indexer] Starting from ledger ${lastProcessedLedger}`
-  );
+  console.log(`[Indexer] Starting from ledger ${lastProcessedLedger}`);
 
   // TODO: implement polling loop
   // const server = new SorobanRpc.Server(process.env.SOROBAN_RPC_URL);
@@ -67,7 +65,7 @@ const startIndexer = async () => {
   //   }
   // }, parseInt(process.env.INDEXER_POLL_INTERVAL_MS || '5000'));
 
-  console.log("[Indexer] TODO: implement — see Issue #27");
+  console.log('[Indexer] TODO: implement — see Issue #27');
 };
 
 /**
@@ -84,7 +82,7 @@ const startIndexer = async () => {
  */
 const fetchAndProcessEvents = async (server) => {
   // TODO: implement
-  throw new Error("fetchAndProcessEvents not implemented — see Issue #27");
+  throw new Error('fetchAndProcessEvents not implemented — see Issue #27');
 };
 
 /**
@@ -104,7 +102,7 @@ const dispatchEvent = async (event) => {
   //   case 'mil_add': return handleMilestoneAdded(event);
   //   ...
   // }
-  console.log("[Indexer] dispatchEvent not implemented — see Issue #27");
+  console.log('[Indexer] dispatchEvent not implemented — see Issue #27');
 };
 
 /**
@@ -122,7 +120,7 @@ const dispatchEvent = async (event) => {
  */
 const handleEscrowCreated = async (event) => {
   // TODO: implement
-  console.log("[Indexer] handleEscrowCreated not implemented");
+  console.log('[Indexer] handleEscrowCreated not implemented');
 };
 
 /**

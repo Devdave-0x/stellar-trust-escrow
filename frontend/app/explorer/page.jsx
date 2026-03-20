@@ -12,31 +12,62 @@
  * - Implement URL-based filter state (query params) so filters are shareable
  */
 
-"use client";
+'use client';
 
-import { useState } from "react";
-import EscrowCard from "../../components/escrow/EscrowCard";
-import Button from "../../components/ui/Button";
+import { useState } from 'react';
+import EscrowCard from '../../components/escrow/EscrowCard';
+import Button from '../../components/ui/Button';
 
 // TODO (contributor): replace with SWR-fetched data
 const PLACEHOLDER_ESCROWS = [
-  { id: 1, title: "Website Redesign", status: "Active",    totalAmount: "800 USDC",  milestoneProgress: "1 / 3", counterparty: "GABC...1234", role: "client" },
-  { id: 2, title: "API Development",  status: "Active",    totalAmount: "3,000 USDC", milestoneProgress: "2 / 5", counterparty: "GXYZ...5678", role: "freelancer" },
-  { id: 3, title: "Logo Package",     status: "Completed", totalAmount: "300 USDC",  milestoneProgress: "4 / 4", counterparty: "GDEF...9012", role: "client" },
-  { id: 4, title: "Smart Contract",   status: "Disputed",  totalAmount: "5,000 USDC", milestoneProgress: "2 / 4", counterparty: "GHIJ...3456", role: "client" },
+  {
+    id: 1,
+    title: 'Website Redesign',
+    status: 'Active',
+    totalAmount: '800 USDC',
+    milestoneProgress: '1 / 3',
+    counterparty: 'GABC...1234',
+    role: 'client',
+  },
+  {
+    id: 2,
+    title: 'API Development',
+    status: 'Active',
+    totalAmount: '3,000 USDC',
+    milestoneProgress: '2 / 5',
+    counterparty: 'GXYZ...5678',
+    role: 'freelancer',
+  },
+  {
+    id: 3,
+    title: 'Logo Package',
+    status: 'Completed',
+    totalAmount: '300 USDC',
+    milestoneProgress: '4 / 4',
+    counterparty: 'GDEF...9012',
+    role: 'client',
+  },
+  {
+    id: 4,
+    title: 'Smart Contract',
+    status: 'Disputed',
+    totalAmount: '5,000 USDC',
+    milestoneProgress: '2 / 4',
+    counterparty: 'GHIJ...3456',
+    role: 'client',
+  },
 ];
 
-const STATUS_FILTERS = ["All", "Active", "Completed", "Disputed", "Cancelled"];
+const STATUS_FILTERS = ['All', 'Active', 'Completed', 'Disputed', 'Cancelled'];
 
 export default function ExplorerPage() {
-  const [activeFilter, setActiveFilter] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // TODO (contributor — Issue #36): implement real filtering with URL query params
   const filteredEscrows = PLACEHOLDER_ESCROWS.filter((e) => {
-    if (activeFilter !== "All" && e.status !== activeFilter) return false;
-    if (searchQuery && !e.title.toLowerCase().includes(searchQuery.toLowerCase()))
-      return false;
+    if (activeFilter !== 'All' && e.status !== activeFilter) return false;
+    if (searchQuery && !e.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
@@ -65,9 +96,8 @@ export default function ExplorerPage() {
               key={f}
               onClick={() => setActiveFilter(f)}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors
-                ${activeFilter === f
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-400 hover:text-white"
+                ${
+                  activeFilter === f ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
                 }`}
             >
               {f}
@@ -114,9 +144,13 @@ export default function ExplorerPage() {
         TODO (contributor — Issue #36): implement real pagination
       */}
       <div className="flex justify-center gap-2">
-        <Button variant="secondary" size="sm" disabled>← Prev</Button>
+        <Button variant="secondary" size="sm" disabled>
+          ← Prev
+        </Button>
         <span className="px-4 py-2 text-sm text-gray-400">Page 1 of —</span>
-        <Button variant="secondary" size="sm">Next →</Button>
+        <Button variant="secondary" size="sm">
+          Next →
+        </Button>
       </div>
     </div>
   );

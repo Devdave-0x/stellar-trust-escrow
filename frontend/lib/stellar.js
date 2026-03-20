@@ -20,15 +20,15 @@
 //   xdr,
 // } from '@stellar/stellar-sdk';
 
-const NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet";
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
-const SOROBAN_RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ||
-  "https://soroban-testnet.stellar.org";
+const NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '';
+const SOROBAN_RPC_URL =
+  process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
 
 const NETWORK_PASSPHRASE =
-  NETWORK === "mainnet"
-    ? "Public Global Stellar Network ; September 2015"
-    : "Test SDF Network ; September 2015";
+  NETWORK === 'mainnet'
+    ? 'Public Global Stellar Network ; September 2015'
+    : 'Test SDF Network ; September 2015';
 
 /**
  * Builds an unsigned `create_escrow` Soroban transaction XDR.
@@ -61,7 +61,7 @@ export async function buildCreateEscrowTx({
   deadline = null,
 }) {
   // TODO (contributor — Issue #35): implement
-  throw new Error("buildCreateEscrowTx not implemented — see Issue #35");
+  throw new Error('buildCreateEscrowTx not implemented — see Issue #35');
 }
 
 /**
@@ -84,7 +84,7 @@ export async function buildAddMilestoneTx({
   descriptionHash,
   amount,
 }) {
-  throw new Error("buildAddMilestoneTx not implemented — see Issue #35");
+  throw new Error('buildAddMilestoneTx not implemented — see Issue #35');
 }
 
 /**
@@ -98,12 +98,8 @@ export async function buildAddMilestoneTx({
  *
  * TODO (contributor — Issue #35)
  */
-export async function buildApproveMilestoneTx({
-  sourceAddress,
-  escrowId,
-  milestoneId,
-}) {
-  throw new Error("buildApproveMilestoneTx not implemented — see Issue #35");
+export async function buildApproveMilestoneTx({ sourceAddress, escrowId, milestoneId }) {
+  throw new Error('buildApproveMilestoneTx not implemented — see Issue #35');
 }
 
 /**
@@ -117,12 +113,8 @@ export async function buildApproveMilestoneTx({
  *
  * TODO (contributor — Issue #35)
  */
-export async function buildSubmitMilestoneTx({
-  sourceAddress,
-  escrowId,
-  milestoneId,
-}) {
-  throw new Error("buildSubmitMilestoneTx not implemented — see Issue #35");
+export async function buildSubmitMilestoneTx({ sourceAddress, escrowId, milestoneId }) {
+  throw new Error('buildSubmitMilestoneTx not implemented — see Issue #35');
 }
 
 /**
@@ -131,7 +123,7 @@ export async function buildSubmitMilestoneTx({
  * TODO (contributor — Issue #35)
  */
 export async function buildRaiseDisputeTx({ sourceAddress, escrowId }) {
-  throw new Error("buildRaiseDisputeTx not implemented — see Issue #35");
+  throw new Error('buildRaiseDisputeTx not implemented — see Issue #35');
 }
 
 /**
@@ -146,17 +138,14 @@ export async function buildRaiseDisputeTx({ sourceAddress, escrowId }) {
  * 3. Return { hash, status }
  */
 export async function broadcastTransaction(signedXdr) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/escrows/broadcast`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ signedXdr }),
-    }
-  );
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/escrows/broadcast`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ signedXdr }),
+  });
   if (!res.ok) {
     const err = await res.json();
-    throw new Error(err.error || "Broadcast failed");
+    throw new Error(err.error || 'Broadcast failed');
   }
   return res.json();
 }
@@ -185,7 +174,5 @@ export function truncateAddress(address, head = 6, tail = 4) {
  */
 export function isValidStellarAddress(address) {
   // TODO: use stellar-sdk StrKey validation
-  return typeof address === "string" &&
-    address.startsWith("G") &&
-    address.length === 56;
+  return typeof address === 'string' && address.startsWith('G') && address.length === 56;
 }

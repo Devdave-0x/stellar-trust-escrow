@@ -13,18 +13,23 @@
  * - Add animated ring fill (CSS conic-gradient) proportional to score
  */
 
-export default function ReputationBadge({ score, size = "md" }) {
+export default function ReputationBadge({ score, size = 'md' }) {
   // TODO (contributor — Issue #28): color based on tier
   const color =
-    score >= 500 ? "text-amber-400 ring-amber-400/30" :
-    score >= 250 ? "text-purple-400 ring-purple-400/30" :
-    score >= 100 ? "text-indigo-400 ring-indigo-400/30" :
-    "text-gray-400 ring-gray-600/30";
+    score >= 500
+      ? 'text-amber-400 ring-amber-400/30'
+      : score >= 250
+        ? 'text-purple-400 ring-purple-400/30'
+        : score >= 100
+          ? 'text-indigo-400 ring-indigo-400/30'
+          : 'text-gray-400 ring-gray-600/30';
 
   const sizeClass =
-    size === "sm" ? "w-10 h-10 text-sm" :
-    size === "lg" ? "w-16 h-16 text-xl" :
-    "w-12 h-12 text-base";
+    size === 'sm'
+      ? 'w-10 h-10 text-sm'
+      : size === 'lg'
+        ? 'w-16 h-16 text-xl'
+        : 'w-12 h-12 text-base';
 
   return (
     <div

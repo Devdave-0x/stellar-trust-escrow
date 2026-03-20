@@ -19,7 +19,7 @@ const getUserProfile = async (req, res) => {
     const { address } = req.params;
     // TODO: validate address format
     // TODO: query and return profile
-    res.status(501).json({ error: "Not implemented — see Issue #24", address });
+    res.status(501).json({ error: 'Not implemented — see Issue #24', address });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -35,9 +35,9 @@ const getUserProfile = async (req, res) => {
 const getUserEscrows = async (req, res) => {
   try {
     const { address } = req.params;
-    const { role = "all", status, page = 1, limit = 20 } = req.query;
+    const { role = 'all', status, page = 1, limit = 20 } = req.query;
     // TODO: implement
-    res.status(501).json({ error: "Not implemented — see Issue #24" });
+    res.status(501).json({ error: 'Not implemented — see Issue #24' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -53,7 +53,7 @@ const getUserEscrows = async (req, res) => {
  */
 const getUserStats = async (req, res) => {
   try {
-    res.status(501).json({ error: "Not implemented — see Issue #21" });
+    res.status(501).json({ error: 'Not implemented — see Issue #21' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

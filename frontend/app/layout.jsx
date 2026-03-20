@@ -10,14 +10,14 @@
  * - Add loading skeleton for initial page hydration
  */
 
-import "./globals.css";
-import Header from "../components/layout/Header";
-import Footer from "../components/layout/Footer";
+import './globals.css';
+import Header from '../components/layout/Header';
+import Footer from '../components/layout/Footer';
 
 export const metadata = {
-  title: "StellarTrustEscrow — Decentralized Milestone Escrow",
+  title: 'StellarTrustEscrow — Decentralized Milestone Escrow',
   description:
-    "Trustless, milestone-based escrow with on-chain reputation on the Stellar blockchain.",
+    'Trustless, milestone-based escrow with on-chain reputation on the Stellar blockchain.',
 };
 
 export default function RootLayout({ children }) {
@@ -35,9 +35,7 @@ export default function RootLayout({ children }) {
           </WalletProvider>
         */}
         <Header />
-        <main className="flex-1 container mx-auto px-4 py-8 max-w-7xl">
-          {children}
-        </main>
+        <main className="flex-1 container mx-auto px-4 py-8 max-w-7xl">{children}</main>
         <Footer />
       </body>
     </html>

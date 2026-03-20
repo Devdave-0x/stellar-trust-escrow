@@ -1,7 +1,7 @@
 ---
 name: Bug Report
 about: Report a bug in the contract, backend, or frontend
-title: "[BUG] "
+title: '[BUG] '
 labels: bug
 assignees: ''
 ---

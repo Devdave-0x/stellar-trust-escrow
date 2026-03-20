@@ -14,15 +14,16 @@ List all escrows, paginated.
 
 **Query Parameters:**
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `page` | number | 1 | Page number |
-| `limit` | number | 20 | Items per page (max 100) |
-| `status` | string | — | Filter: Active, Completed, Disputed, Cancelled |
-| `client` | string | — | Filter by client Stellar address |
-| `freelancer` | string | — | Filter by freelancer address |
+| Param        | Type   | Default | Description                                    |
+| ------------ | ------ | ------- | ---------------------------------------------- |
+| `page`       | number | 1       | Page number                                    |
+| `limit`      | number | 20      | Items per page (max 100)                       |
+| `status`     | string | —       | Filter: Active, Completed, Disputed, Cancelled |
+| `client`     | string | —       | Filter by client Stellar address               |
+| `freelancer` | string | —       | Filter by freelancer address                   |
 
 **Response:**
+
 ```json
 {
   "data": [
@@ -51,6 +52,7 @@ List all escrows, paginated.
 Get full escrow details including milestones.
 
 **Response:**
+
 ```json
 {
   "id": 1,
@@ -84,6 +86,7 @@ Get full escrow details including milestones.
 Broadcast a pre-signed Stellar transaction.
 
 **Request Body:**
+
 ```json
 {
   "signedXdr": "AAAAAgAAAA..."
@@ -91,6 +94,7 @@ Broadcast a pre-signed Stellar transaction.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -108,10 +112,10 @@ Get user profile combining reputation + recent escrows.
 
 ### `GET /api/users/:address/escrows`
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `role` | string | `client`, `freelancer`, or `all` |
-| `status` | string | EscrowStatus filter |
+| Param    | Type   | Description                      |
+| -------- | ------ | -------------------------------- |
+| `role`   | string | `client`, `freelancer`, or `all` |
+| `status` | string | EscrowStatus filter              |
 
 ### `GET /api/users/:address/stats`
 

@@ -84,21 +84,22 @@ Milestone: Pending → Submitted → Approved (funds released)
 
 Express.js REST API serving the frontend. All write operations are signed on the client side — the backend is read-heavy.
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/escrows` | GET | List all escrows (paginated) |
-| `/api/escrows/:id` | GET | Get escrow details |
-| `/api/escrows` | POST | Submit a pre-signed create tx |
-| `/api/users/:address` | GET | Get user profile + reputation |
-| `/api/users/:address/escrows` | GET | Get user's escrows |
-| `/api/reputation/:address` | GET | Get reputation score |
-| `/api/disputes` | GET | List active disputes |
+| Route                         | Method | Description                   |
+| ----------------------------- | ------ | ----------------------------- |
+| `/api/escrows`                | GET    | List all escrows (paginated)  |
+| `/api/escrows/:id`            | GET    | Get escrow details            |
+| `/api/escrows`                | POST   | Submit a pre-signed create tx |
+| `/api/users/:address`         | GET    | Get user profile + reputation |
+| `/api/users/:address/escrows` | GET    | Get user's escrows            |
+| `/api/reputation/:address`    | GET    | Get reputation score          |
+| `/api/disputes`               | GET    | List active disputes          |
 
 ### Escrow Indexer (`backend/services/escrowIndexer.js`)
 
 A background service that polls Stellar for contract events and writes them to PostgreSQL. This allows fast reads without hitting the blockchain on every request.
 
 **Events it listens for:**
+
 - `EscrowCreated`
 - `MilestoneAdded`
 - `MilestoneApproved`
@@ -113,6 +114,7 @@ A background service that polls Stellar for contract events and writes them to P
 Computes and caches reputation scores. Raw data lives in the contract; this service aggregates it for display.
 
 **Score formula (TODO — contributor task):**
+
 ```
 reputation_score = (completed * 10) - (disputed * 5) + (avg_rating * 20)
 ```
@@ -123,13 +125,13 @@ reputation_score = (completed * 10) - (disputed * 5) + (avg_rating * 20)
 
 ### Pages (Next.js App Router)
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/` | Dashboard | Overview, active escrows, quick stats |
-| `/escrow/create` | Create Escrow | Form to create a new escrow |
-| `/escrow/[id]` | Escrow Details | Milestone view, approval actions |
-| `/profile/[address]` | User Profile | Reputation, history |
-| `/explorer` | Public Explorer | Browse all escrows |
+| Route                | Page            | Description                           |
+| -------------------- | --------------- | ------------------------------------- |
+| `/`                  | Dashboard       | Overview, active escrows, quick stats |
+| `/escrow/create`     | Create Escrow   | Form to create a new escrow           |
+| `/escrow/[id]`       | Escrow Details  | Milestone view, approval actions      |
+| `/profile/[address]` | User Profile    | Reputation, history                   |
+| `/explorer`          | Public Explorer | Browse all escrows                    |
 
 ### Key Components
 

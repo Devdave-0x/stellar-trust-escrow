@@ -31,7 +31,7 @@ const getReputation = async (req, res) => {
   try {
     const { address } = req.params;
     // TODO: implement DB query
-    res.status(501).json({ error: "Not implemented — see Issue #25", address });
+    res.status(501).json({ error: 'Not implemented — see Issue #25', address });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -55,7 +55,7 @@ const getLeaderboard = async (req, res) => {
   try {
     const { limit = 20, page = 1 } = req.query;
     // TODO: implement
-    res.status(501).json({ error: "Not implemented — see Issue #22" });
+    res.status(501).json({ error: 'Not implemented — see Issue #22' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

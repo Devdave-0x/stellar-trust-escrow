@@ -22,9 +22,9 @@
  * }
  */
 
-"use client";
+'use client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 /**
  * Fetch a single escrow by ID.
@@ -39,7 +39,7 @@ export function useEscrow(id) {
   return {
     escrow: null,
     isLoading: false,
-    error: new Error("useEscrow not implemented — see Issue #39"),
+    error: new Error('useEscrow not implemented — see Issue #39'),
     mutate: () => {},
   };
 }
@@ -53,7 +53,7 @@ export function useEscrow(id) {
  *
  * TODO (contributor — Issue #39)
  */
-export function useUserEscrows(address, role = "all") {
+export function useUserEscrows(address, role = 'all') {
   // TODO: implement with SWR
   return { escrows: [], isLoading: false, error: null };
 }
@@ -65,7 +65,7 @@ export function useUserEscrows(address, role = "all") {
  *
  * TODO (contributor — Issue #39)
  */
-export function useEscrowList({ page = 1, limit = 20, status = "" } = {}) {
+export function useEscrowList({ page = 1, limit = 20, status = '' } = {}) {
   // TODO: implement with SWR
   return { escrows: [], total: 0, isLoading: false, error: null };
 }

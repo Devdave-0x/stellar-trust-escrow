@@ -30,11 +30,11 @@
  * - Handle loading state while tx is pending
  */
 
-"use client";
+'use client';
 
-import { useState } from "react";
-import Badge from "../ui/Badge";
-import Button from "../ui/Button";
+import { useState } from 'react';
+import Badge from '../ui/Badge';
+import Button from '../ui/Button';
 
 export default function MilestoneItem({
   milestone,
@@ -61,19 +61,22 @@ export default function MilestoneItem({
 
   // Determine which status icon to show in the timeline dot
   const dotColor =
-    milestone.status === "Approved"  ? "bg-emerald-500" :
-    milestone.status === "Submitted" ? "bg-blue-500" :
-    milestone.status === "Rejected"  ? "bg-red-500" :
-    "bg-gray-700";
+    milestone.status === 'Approved'
+      ? 'bg-emerald-500'
+      : milestone.status === 'Submitted'
+        ? 'bg-blue-500'
+        : milestone.status === 'Rejected'
+          ? 'bg-red-500'
+          : 'bg-gray-700';
 
   return (
     <div className="relative flex gap-4">
       {/* Timeline dot + connector */}
       <div className="flex flex-col items-center">
-        <div className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ring-2 ring-gray-900 ${dotColor}`} />
-        {!isLast && (
-          <div className="w-px flex-1 bg-gray-800 mt-1 min-h-[24px]" />
-        )}
+        <div
+          className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ring-2 ring-gray-900 ${dotColor}`}
+        />
+        {!isLast && <div className="w-px flex-1 bg-gray-800 mt-1 min-h-[24px]" />}
       </div>
 
       {/* Content */}
@@ -84,20 +87,16 @@ export default function MilestoneItem({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-600 font-mono">
-                  #{String(index + 1).padStart(2, "0")}
+                  #{String(index + 1).padStart(2, '0')}
                 </span>
                 <h4 className="text-white font-medium">{milestone.title}</h4>
               </div>
               {milestone.submittedAt && (
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Submitted: {milestone.submittedAt}
-                </p>
+                <p className="text-xs text-gray-500 mt-0.5">Submitted: {milestone.submittedAt}</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-white font-semibold text-sm">
-                {milestone.amount}
-              </span>
+              <span className="text-white font-semibold text-sm">{milestone.amount}</span>
               <Badge status={milestone.status} size="sm" />
             </div>
           </div>
@@ -109,14 +108,12 @@ export default function MilestoneItem({
             <ActionButtons
               status={milestone.status}
               role={role}
-              onApprove={() => handleAction(onApprove, "approve")}
-              onReject={() => handleAction(onReject, "reject")}
-              onSubmit={() => handleAction(onSubmit, "submit")}
+              onApprove={() => handleAction(onApprove, 'approve')}
+              onReject={() => handleAction(onReject, 'reject')}
+              onSubmit={() => handleAction(onSubmit, 'submit')}
             />
           ) : (
-            <p className="text-xs text-indigo-400 animate-pulse">
-              Waiting for wallet signature…
-            </p>
+            <p className="text-xs text-indigo-400 animate-pulse">Waiting for wallet signature…</p>
           )}
         </div>
       </div>
@@ -128,7 +125,7 @@ export default function MilestoneItem({
  * Renders the correct set of action buttons based on role + status.
  */
 function ActionButtons({ status, role, onApprove, onReject, onSubmit }) {
-  if (role === "client" && status === "Submitted") {
+  if (role === 'client' && status === 'Submitted') {
     return (
       <div className="flex gap-2">
         <Button variant="primary" size="sm" onClick={onApprove}>
@@ -141,7 +138,7 @@ function ActionButtons({ status, role, onApprove, onReject, onSubmit }) {
     );
   }
 
-  if (role === "freelancer" && (status === "Pending" || status === "Rejected")) {
+  if (role === 'freelancer' && (status === 'Pending' || status === 'Rejected')) {
     return (
       <Button variant="secondary" size="sm" onClick={onSubmit}>
         📤 Submit Work
@@ -149,12 +146,8 @@ function ActionButtons({ status, role, onApprove, onReject, onSubmit }) {
     );
   }
 
-  if (status === "Approved") {
-    return (
-      <p className="text-xs text-emerald-400">
-        ✓ Funds released to freelancer
-      </p>
-    );
+  if (status === 'Approved') {
+    return <p className="text-xs text-emerald-400">✓ Funds released to freelancer</p>;
   }
 
   // observer or no action available

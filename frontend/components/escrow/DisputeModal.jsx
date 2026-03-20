@@ -18,13 +18,13 @@
  * - Validate that the caller is client or freelancer of this escrow
  */
 
-"use client";
+'use client';
 
-import { useState } from "react";
-import Button from "../ui/Button";
+import { useState } from 'react';
+import Button from '../ui/Button';
 
 export default function DisputeModal({ isOpen, onClose, escrowId }) {
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -40,7 +40,7 @@ export default function DisputeModal({ isOpen, onClose, escrowId }) {
       // 3. Sign with Freighter
       // 4. Broadcast
       // 5. onClose() + show success toast
-      throw new Error("Not implemented — see Issue #41");
+      throw new Error('Not implemented — see Issue #41');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -51,10 +51,7 @@ export default function DisputeModal({ isOpen, onClose, escrowId }) {
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40" onClick={onClose} />
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -70,16 +67,14 @@ export default function DisputeModal({ isOpen, onClose, escrowId }) {
 
           {/* Warning */}
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-4 text-sm text-amber-300">
-            Raising a dispute will <strong>freeze all funds</strong> in this
-            escrow until the arbiter or contract admin resolves it. This action
-            cannot be undone.
+            Raising a dispute will <strong>freeze all funds</strong> in this escrow until the
+            arbiter or contract admin resolves it. This action cannot be undone.
           </div>
 
           {/* Reason */}
           <div className="mb-4">
             <label className="block text-sm text-gray-400 mb-1">
-              Reason for dispute{" "}
-              <span className="text-gray-600">(recommended)</span>
+              Reason for dispute <span className="text-gray-600">(recommended)</span>
             </label>
             <textarea
               rows={4}
@@ -116,7 +111,7 @@ export default function DisputeModal({ isOpen, onClose, escrowId }) {
               disabled={isSubmitting}
               isLoading={isSubmitting}
             >
-              {isSubmitting ? "Signing…" : "Confirm Dispute"}
+              {isSubmitting ? 'Signing…' : 'Confirm Dispute'}
             </Button>
           </div>
         </div>

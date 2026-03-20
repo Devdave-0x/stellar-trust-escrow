@@ -33,7 +33,7 @@
 const listEscrows = async (req, res) => {
   try {
     // TODO: implement
-    res.status(501).json({ error: "Not implemented — see Issue #23" });
+    res.status(501).json({ error: 'Not implemented — see Issue #23' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -57,7 +57,7 @@ const getEscrow = async (req, res) => {
   try {
     const { id } = req.params;
     // TODO: implement
-    res.status(501).json({ error: "Not implemented — see Issue #23", id });
+    res.status(501).json({ error: 'Not implemented — see Issue #23', id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -86,7 +86,7 @@ const broadcastCreateEscrow = async (req, res) => {
   try {
     const { signedXdr } = req.body;
     // TODO: implement
-    res.status(501).json({ error: "Not implemented — see Issue #20" });
+    res.status(501).json({ error: 'Not implemented — see Issue #20' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -98,7 +98,7 @@ const broadcastCreateEscrow = async (req, res) => {
  */
 const getMilestones = async (req, res) => {
   try {
-    res.status(501).json({ error: "Not implemented — see Issue #23" });
+    res.status(501).json({ error: 'Not implemented — see Issue #23' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -110,7 +110,7 @@ const getMilestones = async (req, res) => {
  */
 const getMilestone = async (req, res) => {
   try {
-    res.status(501).json({ error: "Not implemented — see Issue #23" });
+    res.status(501).json({ error: 'Not implemented — see Issue #23' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

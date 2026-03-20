@@ -16,37 +16,33 @@
  * - Add optional footer slot for action buttons
  */
 
-"use client";
+'use client';
 
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
 const SIZE_CLASSES = {
-  sm: "max-w-sm",
-  md: "max-w-md",
-  lg: "max-w-2xl",
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-2xl',
 };
 
-export default function Modal({
-  isOpen,
-  onClose,
-  title,
-  children,
-  size = "md",
-}) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md' }) {
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === 'Escape') onClose();
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
   // Prevent body scroll while open
   useEffect(() => {
-    document.body.style.overflow = isOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -56,13 +52,10 @@ export default function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? "modal-title" : undefined}
+      aria-labelledby={title ? 'modal-title' : undefined}
     >
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
       <div
@@ -72,10 +65,7 @@ export default function Modal({
         {/* Header */}
         <div className="flex items-start justify-between">
           {title && (
-            <h2
-              id="modal-title"
-              className="text-lg font-semibold text-white"
-            >
+            <h2 id="modal-title" className="text-lg font-semibold text-white">
               {title}
             </h2>
           )}

@@ -19,15 +19,15 @@ Every completed milestone builds an immutable, on-chain **reputation score** for
 
 ## ✨ Features
 
-| Feature | Status |
-|---------|--------|
+| Feature                         | Status         |
+| ------------------------------- | -------------- |
 | Milestone-based escrow contract | 🚧 In Progress |
-| On-chain reputation system | 🚧 In Progress |
-| Dispute resolution mechanism | 🚧 In Progress |
-| REST API + event indexer | 🚧 In Progress |
-| Next.js dashboard | 🚧 In Progress |
-| Wallet connection (Freighter) | 🚧 In Progress |
-| Public escrow explorer | 🚧 In Progress |
+| On-chain reputation system      | 🚧 In Progress |
+| Dispute resolution mechanism    | 🚧 In Progress |
+| REST API + event indexer        | 🚧 In Progress |
+| Next.js dashboard               | 🚧 In Progress |
+| Wallet connection (Freighter)   | 🚧 In Progress |
+| Public escrow explorer          | 🚧 In Progress |
 
 > This project is actively seeking contributors! See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Issues](../../issues) tab.
 
@@ -35,14 +35,14 @@ Every completed milestone builds an immutable, on-chain **reputation score** for
 
 ## 🏗️ Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Smart Contracts | Rust + Soroban SDK |
-| Backend | Node.js + Express |
-| Database | PostgreSQL + Prisma |
-| Frontend | Next.js 14 + Tailwind CSS |
-| Blockchain | Stellar (Testnet / Mainnet) |
-| Wallet | Freighter Browser Extension |
+| Layer           | Technology                  |
+| --------------- | --------------------------- |
+| Smart Contracts | Rust + Soroban SDK          |
+| Backend         | Node.js + Express           |
+| Database        | PostgreSQL + Prisma         |
+| Frontend        | Next.js 14 + Tailwind CSS   |
+| Blockchain      | Stellar (Testnet / Mainnet) |
+| Wallet          | Freighter Browser Extension |
 
 ---
 

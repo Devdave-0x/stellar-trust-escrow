@@ -21,28 +21,28 @@
  * - On success: redirect to /escrow/[id]
  */
 
-"use client";
+'use client';
 
-import { useState } from "react";
-import Button from "../../../components/ui/Button";
+import { useState } from 'react';
+import Button from '../../../components/ui/Button';
 
 const STEPS = [
-  { id: 1, label: "Counterparty" },
-  { id: 2, label: "Milestones" },
-  { id: 3, label: "Review" },
-  { id: 4, label: "Sign" },
+  { id: 1, label: 'Counterparty' },
+  { id: 2, label: 'Milestones' },
+  { id: 3, label: 'Review' },
+  { id: 4, label: 'Sign' },
 ];
 
 export default function CreateEscrowPage() {
   // TODO (contributor): lift this into a useCreateEscrow() custom hook
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
-    freelancerAddress: "",
-    tokenAddress: "",
-    totalAmount: "",
-    briefDescription: "",
-    deadline: "",
-    milestones: [{ title: "", description: "", amount: "" }],
+    freelancerAddress: '',
+    tokenAddress: '',
+    totalAmount: '',
+    briefDescription: '',
+    deadline: '',
+    milestones: [{ title: '', description: '', amount: '' }],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -56,7 +56,7 @@ export default function CreateEscrowPage() {
       // 2. Sign with Freighter
       // 3. Broadcast
       // 4. Redirect
-      throw new Error("Not implemented — see Issue #33");
+      throw new Error('Not implemented — see Issue #33');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -76,9 +76,7 @@ export default function CreateEscrowPage() {
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Create New Escrow</h1>
-        <p className="text-gray-400 mt-1">
-          Lock funds and define milestones for your project.
-        </p>
+        <p className="text-gray-400 mt-1">Lock funds and define milestones for your project.</p>
       </div>
 
       {/* Step Indicator */}
@@ -87,31 +85,26 @@ export default function CreateEscrowPage() {
           <div key={step.id} className="flex items-center gap-2">
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                ${currentStep >= step.id
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-800 text-gray-500"
+                ${
+                  currentStep >= step.id ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-500'
                 }`}
             >
               {step.id}
             </div>
             <span
               className={`text-sm hidden sm:inline
-                ${currentStep >= step.id ? "text-white" : "text-gray-500"}`}
+                ${currentStep >= step.id ? 'text-white' : 'text-gray-500'}`}
             >
               {step.label}
             </span>
-            {i < STEPS.length - 1 && (
-              <div className="w-8 h-px bg-gray-700 mx-1" />
-            )}
+            {i < STEPS.length - 1 && <div className="w-8 h-px bg-gray-700 mx-1" />}
           </div>
         ))}
       </div>
 
       {/* Step Content */}
       <div className="card space-y-6">
-        {currentStep === 1 && (
-          <StepCounterparty formData={formData} setFormData={setFormData} />
-        )}
+        {currentStep === 1 && <StepCounterparty formData={formData} setFormData={setFormData} />}
         {currentStep === 2 && (
           <StepMilestones
             formData={formData}
@@ -120,15 +113,9 @@ export default function CreateEscrowPage() {
             onRemove={removeMilestone}
           />
         )}
-        {currentStep === 3 && (
-          <StepReview formData={formData} />
-        )}
+        {currentStep === 3 && <StepReview formData={formData} />}
         {currentStep === 4 && (
-          <StepSign
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            error={error}
-          />
+          <StepSign onSubmit={handleSubmit} isSubmitting={isSubmitting} error={error} />
         )}
       </div>
 
@@ -142,19 +129,12 @@ export default function CreateEscrowPage() {
           Back
         </Button>
         {currentStep < 4 ? (
-          <Button
-            variant="primary"
-            onClick={() => setCurrentStep((s) => s + 1)}
-          >
+          <Button variant="primary" onClick={() => setCurrentStep((s) => s + 1)}>
             Next →
           </Button>
         ) : (
-          <Button
-            variant="primary"
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Signing…" : "Sign & Create Escrow"}
+          <Button variant="primary" onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting ? 'Signing…' : 'Sign & Create Escrow'}
           </Button>
         )}
       </div>
@@ -174,18 +154,14 @@ function StepCounterparty({ formData, setFormData }) {
       <h2 className="text-lg font-semibold text-white">Counterparty & Funds</h2>
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">
-          Freelancer Stellar Address
-        </label>
+        <label className="block text-sm text-gray-400 mb-1">Freelancer Stellar Address</label>
         <input
           type="text"
           placeholder="GABCD1234..."
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
                      text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
           value={formData.freelancerAddress}
-          onChange={(e) =>
-            setFormData((d) => ({ ...d, freelancerAddress: e.target.value }))
-          }
+          onChange={(e) => setFormData((d) => ({ ...d, freelancerAddress: e.target.value }))}
         />
         {/* TODO (contributor): add validation error display */}
       </div>
@@ -201,18 +177,14 @@ function StepCounterparty({ formData, setFormData }) {
           </select>
         </div>
         <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            Total Amount
-          </label>
+          <label className="block text-sm text-gray-400 mb-1">Total Amount</label>
           <input
             type="number"
             placeholder="0.00"
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
                        text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
             value={formData.totalAmount}
-            onChange={(e) =>
-              setFormData((d) => ({ ...d, totalAmount: e.target.value }))
-            }
+            onChange={(e) => setFormData((d) => ({ ...d, totalAmount: e.target.value }))}
           />
         </div>
       </div>
@@ -227,9 +199,7 @@ function StepCounterparty({ formData, setFormData }) {
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
                      text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none"
           value={formData.briefDescription}
-          onChange={(e) =>
-            setFormData((d) => ({ ...d, briefDescription: e.target.value }))
-          }
+          onChange={(e) => setFormData((d) => ({ ...d, briefDescription: e.target.value }))}
         />
         {/* TODO (contributor): upload to IPFS and store hash */}
       </div>
@@ -247,17 +217,15 @@ function StepMilestones({ formData, setFormData, onAdd, onRemove }) {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-white">Milestones</h2>
         <span className="text-sm text-gray-500">
-          Total: {formData.milestones.reduce((s, m) => s + Number(m.amount || 0), 0)}{" "}
-          / {formData.totalAmount || "—"}
+          Total: {formData.milestones.reduce((s, m) => s + Number(m.amount || 0), 0)} /{' '}
+          {formData.totalAmount || '—'}
         </span>
       </div>
 
       {formData.milestones.map((m, i) => (
         <div key={i} className="bg-gray-800 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-300">
-              Milestone {i + 1}
-            </span>
+            <span className="text-sm font-medium text-gray-300">Milestone {i + 1}</span>
             {formData.milestones.length > 1 && (
               <button
                 onClick={() => onRemove(i)}
@@ -313,14 +281,20 @@ function StepReview({ formData }) {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-white">Review Details</h2>
       <div className="bg-gray-800 rounded-lg p-4 text-sm text-gray-400 space-y-2">
-        <p>Freelancer: <span className="text-white">{formData.freelancerAddress || "—"}</span></p>
-        <p>Total Amount: <span className="text-white">{formData.totalAmount || "—"} USDC</span></p>
-        <p>Milestones: <span className="text-white">{formData.milestones.length}</span></p>
+        <p>
+          Freelancer: <span className="text-white">{formData.freelancerAddress || '—'}</span>
+        </p>
+        <p>
+          Total Amount: <span className="text-white">{formData.totalAmount || '—'} USDC</span>
+        </p>
+        <p>
+          Milestones: <span className="text-white">{formData.milestones.length}</span>
+        </p>
       </div>
       <p className="text-xs text-gray-500">
-        ⚠️ By proceeding, you authorize locking{" "}
-        <strong className="text-white">{formData.totalAmount} USDC</strong> in
-        the escrow contract. This action cannot be undone without mutual agreement.
+        ⚠️ By proceeding, you authorize locking{' '}
+        <strong className="text-white">{formData.totalAmount} USDC</strong> in the escrow contract.
+        This action cannot be undone without mutual agreement.
       </p>
     </div>
   );
@@ -335,8 +309,8 @@ function StepSign({ onSubmit, isSubmitting, error }) {
     <div className="space-y-4 text-center">
       <h2 className="text-lg font-semibold text-white">Sign & Submit</h2>
       <p className="text-gray-400 text-sm">
-        Clicking the button below will open your Freighter wallet to sign the
-        transaction. Your funds will be locked on-chain once confirmed.
+        Clicking the button below will open your Freighter wallet to sign the transaction. Your
+        funds will be locked on-chain once confirmed.
       </p>
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">

@@ -47,17 +47,17 @@
  * - Handle the case where Freighter is not installed: show install prompt.
  */
 
-"use client";
+'use client';
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from 'react';
 
 export function useWallet() {
-  const [address, setAddress]                       = useState(null);
-  const [network, setNetwork]                       = useState(null);
-  const [isConnected, setIsConnected]               = useState(false);
+  const [address, setAddress] = useState(null);
+  const [network, setNetwork] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   const [isFreighterInstalled, setIsFreighterInstalled] = useState(false);
-  const [isConnecting, setIsConnecting]             = useState(false);
-  const [error, setError]                           = useState(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState(null);
 
   // ── Detect Freighter on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -87,7 +87,7 @@ export function useWallet() {
       // setNetwork(networkPassphrase.includes('Test') ? 'testnet' : 'mainnet');
       // setIsConnected(true);
       // localStorage.setItem('wallet_address', publicKey);
-      throw new Error("Freighter integration not yet implemented — see Issue #35");
+      throw new Error('Freighter integration not yet implemented — see Issue #35');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -119,11 +119,14 @@ export function useWallet() {
    * });
    * return signedXdr;
    */
-  const signTx = useCallback(async (unsignedXdr) => {
-    if (!isConnected) throw new Error("Wallet not connected");
-    // TODO (contributor — Issue #35): implement
-    throw new Error("signTx not implemented — see Issue #35");
-  }, [isConnected, address, network]);
+  const signTx = useCallback(
+    async (unsignedXdr) => {
+      if (!isConnected) throw new Error('Wallet not connected');
+      // TODO (contributor — Issue #35): implement
+      throw new Error('signTx not implemented — see Issue #35');
+    },
+    [isConnected, address, network],
+  );
 
   return {
     address,

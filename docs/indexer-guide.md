@@ -55,6 +55,7 @@ startIndexer()
 ### Event Parsing
 
 Each Soroban event has:
+
 - `topics`: array of ScVal — `[event_name_symbol, primary_id, ...]`
 - `data`: ScVal — the event payload
 
@@ -64,24 +65,24 @@ Each Soroban event has:
 // topic[1]: u64 escrow_id
 // data:     tuple (client_address, freelancer_address, amount)
 
-const eventName = scValToNative(event.topic[0]);  // → "esc_crt"
-const escrowId  = scValToNative(event.topic[1]);  // → 42n
+const eventName = scValToNative(event.topic[0]); // → "esc_crt"
+const escrowId = scValToNative(event.topic[1]); // → 42n
 const [client, freelancer, amount] = scValToNative(event.data);
 ```
 
 ### Event → DB Mapping
 
-| Event Symbol | Handler | DB Action |
-|---|---|---|
-| `esc_crt` | `handleEscrowCreated` | `escrow.create()` |
-| `mil_add` | `handleMilestoneAdded` | `milestone.create()` |
-| `mil_sub` | `handleMilestoneSubmitted` | `milestone.update(status: Submitted)` |
-| `mil_apr` | `handleMilestoneApproved` | `milestone.update(status: Approved)` |
-| `funds_rel` | `handleFundsReleased` | `escrow.update(remaining_balance)` |
-| `esc_can` | `handleEscrowCancelled` | `escrow.update(status: Cancelled)` |
-| `dis_rai` | `handleDisputeRaised` | `escrow.update(status: Disputed)`, `dispute.create()` |
-| `dis_res` | `handleDisputeResolved` | `escrow.update(status: Completed)`, `dispute.update()` |
-| `rep_upd` | `handleReputationUpdated` | `reputationRecord.upsert()` |
+| Event Symbol | Handler                    | DB Action                                              |
+| ------------ | -------------------------- | ------------------------------------------------------ |
+| `esc_crt`    | `handleEscrowCreated`      | `escrow.create()`                                      |
+| `mil_add`    | `handleMilestoneAdded`     | `milestone.create()`                                   |
+| `mil_sub`    | `handleMilestoneSubmitted` | `milestone.update(status: Submitted)`                  |
+| `mil_apr`    | `handleMilestoneApproved`  | `milestone.update(status: Approved)`                   |
+| `funds_rel`  | `handleFundsReleased`      | `escrow.update(remaining_balance)`                     |
+| `esc_can`    | `handleEscrowCancelled`    | `escrow.update(status: Cancelled)`                     |
+| `dis_rai`    | `handleDisputeRaised`      | `escrow.update(status: Disputed)`, `dispute.create()`  |
+| `dis_res`    | `handleDisputeResolved`    | `escrow.update(status: Completed)`, `dispute.update()` |
+| `rep_upd`    | `handleReputationUpdated`  | `reputationRecord.upsert()`                            |
 
 ---
 
@@ -153,8 +154,8 @@ it starts from `INDEXER_START_LEDGER` in `.env`.
 
 ## Open Issues
 
-| Issue | Task |
-|---|---|
-| #27 | Implement `startIndexer`, `fetchAndProcessEvents`, `dispatchEvent`, and all event handlers |
-| #43 | Implement `stellarService.getContractEvents` |
-| #42 | This documentation file (you're reading it!) |
+| Issue | Task                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------ |
+| #27   | Implement `startIndexer`, `fetchAndProcessEvents`, `dispatchEvent`, and all event handlers |
+| #43   | Implement `stellarService.getContractEvents`                                               |
+| #42   | This documentation file (you're reading it!)                                               |

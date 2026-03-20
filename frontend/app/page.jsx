@@ -10,40 +10,52 @@
  * - Add testimonials or featured completed escrows
  */
 
-import Button from "../components/ui/Button";
-import Link from "next/link";
+import Button from '../components/ui/Button';
+import Link from 'next/link';
 
 const FEATURES = [
   {
-    icon: "🔒",
-    title: "Milestone-Based Locking",
+    icon: '🔒',
+    title: 'Milestone-Based Locking',
     description:
-      "Funds are locked on-chain and only released when you approve each milestone. No trust required.",
+      'Funds are locked on-chain and only released when you approve each milestone. No trust required.',
   },
   {
-    icon: "⭐",
-    title: "On-Chain Reputation",
+    icon: '⭐',
+    title: 'On-Chain Reputation',
     description:
-      "Every completed escrow builds your permanent, verifiable reputation score on the Stellar blockchain.",
+      'Every completed escrow builds your permanent, verifiable reputation score on the Stellar blockchain.',
   },
   {
-    icon: "⚖️",
-    title: "Dispute Resolution",
+    icon: '⚖️',
+    title: 'Dispute Resolution',
     description:
-      "If issues arise, a trusted arbiter or the contract admin can fairly distribute locked funds.",
+      'If issues arise, a trusted arbiter or the contract admin can fairly distribute locked funds.',
   },
   {
-    icon: "🌐",
-    title: "Fully Decentralized",
+    icon: '🌐',
+    title: 'Fully Decentralized',
     description:
-      "No intermediaries, no custody. All logic lives in a Soroban smart contract — open and auditable.",
+      'No intermediaries, no custody. All logic lives in a Soroban smart contract — open and auditable.',
   },
 ];
 
 const HOW_IT_WORKS = [
-  { step: "01", title: "Create Escrow", desc: "Client locks funds and defines project milestones." },
-  { step: "02", title: "Deliver Work",  desc: "Freelancer works, then submits each milestone for review." },
-  { step: "03", title: "Release Funds", desc: "Client approves, funds release automatically. Reputation updated." },
+  {
+    step: '01',
+    title: 'Create Escrow',
+    desc: 'Client locks funds and defines project milestones.',
+  },
+  {
+    step: '02',
+    title: 'Deliver Work',
+    desc: 'Freelancer works, then submits each milestone for review.',
+  },
+  {
+    step: '03',
+    title: 'Release Funds',
+    desc: 'Client approves, funds release automatically. Reputation updated.',
+  },
 ];
 
 export default function HomePage() {
@@ -56,12 +68,11 @@ export default function HomePage() {
           Built on Stellar · Powered by Soroban
         </div>
         <h1 className="text-5xl sm:text-6xl font-bold text-white leading-tight max-w-3xl mx-auto">
-          Trustless Escrow for the{" "}
-          <span className="text-indigo-400">Decentralized Economy</span>
+          Trustless Escrow for the <span className="text-indigo-400">Decentralized Economy</span>
         </h1>
         <p className="text-gray-400 text-lg max-w-2xl mx-auto leading-relaxed">
-          Lock funds in milestone-based smart contracts. Build your on-chain
-          reputation. Work with anyone, anywhere — trustlessly.
+          Lock funds in milestone-based smart contracts. Build your on-chain reputation. Work with
+          anyone, anywhere — trustlessly.
         </p>
         <div className="flex items-center justify-center gap-4">
           <Button href="/escrow/create" variant="primary" size="lg">
@@ -75,9 +86,9 @@ export default function HomePage() {
         {/* TODO (contributor — Issue #42): add live platform stats here */}
         <div className="flex justify-center gap-12 pt-8 border-t border-gray-800 text-center">
           {[
-            { label: "Escrows Created", value: "—" },
-            { label: "Total Value Locked", value: "—" },
-            { label: "Completed Projects", value: "—" },
+            { label: 'Escrows Created', value: '—' },
+            { label: 'Total Value Locked', value: '—' },
+            { label: 'Completed Projects', value: '—' },
           ].map((s) => (
             <div key={s.label}>
               <p className="text-2xl font-bold text-white">{s.value}</p>
@@ -89,15 +100,11 @@ export default function HomePage() {
 
       {/* How It Works */}
       <section className="space-y-8">
-        <h2 className="text-3xl font-bold text-white text-center">
-          How It Works
-        </h2>
+        <h2 className="text-3xl font-bold text-white text-center">How It Works</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {HOW_IT_WORKS.map((step) => (
             <div key={step.step} className="card text-center space-y-3">
-              <span className="text-4xl font-black text-indigo-500/30">
-                {step.step}
-              </span>
+              <span className="text-4xl font-black text-indigo-500/30">{step.step}</span>
               <h3 className="text-white font-semibold text-lg">{step.title}</h3>
               <p className="text-gray-400 text-sm leading-relaxed">{step.desc}</p>
             </div>
@@ -116,9 +123,7 @@ export default function HomePage() {
               <span className="text-3xl flex-shrink-0">{f.icon}</span>
               <div>
                 <h3 className="text-white font-semibold mb-1">{f.title}</h3>
-                <p className="text-gray-400 text-sm leading-relaxed">
-                  {f.description}
-                </p>
+                <p className="text-gray-400 text-sm leading-relaxed">{f.description}</p>
               </div>
             </div>
           ))}
@@ -127,9 +132,7 @@ export default function HomePage() {
 
       {/* CTA */}
       <section className="text-center card bg-indigo-600/10 border-indigo-500/20 py-12 space-y-4">
-        <h2 className="text-2xl font-bold text-white">
-          Ready to Build Trust On-Chain?
-        </h2>
+        <h2 className="text-2xl font-bold text-white">Ready to Build Trust On-Chain?</h2>
         <p className="text-gray-400">
           Connect your Freighter wallet and create your first escrow in minutes.
         </p>

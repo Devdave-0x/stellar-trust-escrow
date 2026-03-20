@@ -21,21 +21,13 @@
  * - Add "disputed" warning banner if status === Disputed
  */
 
-import Link from "next/link";
-import Badge from "../ui/Badge";
+import Link from 'next/link';
+import Badge from '../ui/Badge';
 
 export default function EscrowCard({ escrow }) {
-  const {
-    id,
-    title,
-    status,
-    totalAmount,
-    milestoneProgress,
-    counterparty,
-    role,
-  } = escrow;
+  const { id, title, status, totalAmount, milestoneProgress, counterparty, role } = escrow;
 
-  const [done, total] = milestoneProgress?.split(" / ").map(Number) ?? [0, 0];
+  const [done, total] = milestoneProgress?.split(' / ').map(Number) ?? [0, 0];
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
@@ -50,7 +42,7 @@ export default function EscrowCard({ escrow }) {
             {title}
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            {role === "client" ? "Freelancer:" : "Client:"}{" "}
+            {role === 'client' ? 'Freelancer:' : 'Client:'}{' '}
             <span className="font-mono">{counterparty}</span>
           </p>
         </div>
@@ -84,7 +76,7 @@ export default function EscrowCard({ escrow }) {
         <span className="text-xs text-gray-600">#{id}</span>
         <span
           className={`text-xs font-medium ${
-            role === "client" ? "text-blue-400" : "text-emerald-400"
+            role === 'client' ? 'text-blue-400' : 'text-emerald-400'
           }`}
         >
           You are {role}

@@ -56,14 +56,10 @@ frontend/
 ```jsx
 import useSWR from 'swr';
 
-const fetcher = (url) => fetch(url).then(r => r.json());
+const fetcher = (url) => fetch(url).then((r) => r.json());
 
 export function useEscrow(id) {
-  return useSWR(
-    id ? `/api/escrows/${id}` : null,
-    fetcher,
-    { refreshInterval: 10_000 }
-  );
+  return useSWR(id ? `/api/escrows/${id}` : null, fetcher, { refreshInterval: 10_000 });
 }
 ```
 
@@ -132,13 +128,13 @@ const handleApprove = async (milestoneId) => {
 
 ## Open Issues
 
-| Issue | Task | Difficulty |
-|-------|------|-----------|
-| #18 | Implement Freighter wallet connection in Header | easy |
-| #29 | Implement `WalletProvider` context | medium |
-| #28 | Implement Create Escrow multi-step form | hard |
-| #30 | Implement User Profile data fetching | medium |
-| #31 | Explorer filters with URL query params | medium |
-| #35 | Full Freighter signing flow | hard |
-| #39 | Implement all SWR hooks | medium |
-| #42 | Add loading skeletons | easy |
+| Issue | Task                                            | Difficulty |
+| ----- | ----------------------------------------------- | ---------- |
+| #18   | Implement Freighter wallet connection in Header | easy       |
+| #29   | Implement `WalletProvider` context              | medium     |
+| #28   | Implement Create Escrow multi-step form         | hard       |
+| #30   | Implement User Profile data fetching            | medium     |
+| #31   | Explorer filters with URL query params          | medium     |
+| #35   | Full Freighter signing flow                     | hard       |
+| #39   | Implement all SWR hooks                         | medium     |
+| #42   | Add loading skeletons                           | easy       |

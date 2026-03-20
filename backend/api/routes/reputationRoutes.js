@@ -1,12 +1,12 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const reputationController = require("../controllers/reputationController");
+const reputationController = require('../controllers/reputationController');
 
 /**
  * @route  GET /api/reputation/:address
  * @desc   Get the full reputation record for an address.
  */
-router.get("/:address", reputationController.getReputation);
+router.get('/:address', reputationController.getReputation);
 
 /**
  * @route  GET /api/reputation/leaderboard
@@ -14,6 +14,6 @@ router.get("/:address", reputationController.getReputation);
  * @query  limit (default 20), page
  * TODO (contributor — medium, Issue #22): Implement leaderboard query
  */
-router.get("/leaderboard", reputationController.getLeaderboard);
+router.get('/leaderboard', reputationController.getLeaderboard);
 
 module.exports = router;

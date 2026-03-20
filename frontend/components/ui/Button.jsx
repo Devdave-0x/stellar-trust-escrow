@@ -14,30 +14,30 @@
  * @param {React.ReactNode} props.children
  */
 
-import Link from "next/link";
+import Link from 'next/link';
 
 const VARIANTS = {
-  primary:   "bg-indigo-600 hover:bg-indigo-500 text-white",
-  secondary: "bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700",
-  danger:    "bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30",
-  ghost:     "hover:bg-gray-800 text-gray-400 hover:text-white",
+  primary: 'bg-indigo-600 hover:bg-indigo-500 text-white',
+  secondary: 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700',
+  danger: 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30',
+  ghost: 'hover:bg-gray-800 text-gray-400 hover:text-white',
 };
 
 const SIZES = {
-  sm: "px-3 py-1.5 text-sm rounded-lg",
-  md: "px-4 py-2.5 text-sm rounded-lg",
-  lg: "px-6 py-3 text-base rounded-xl",
+  sm: 'px-3 py-1.5 text-sm rounded-lg',
+  md: 'px-4 py-2.5 text-sm rounded-lg',
+  lg: 'px-6 py-3 text-base rounded-xl',
 };
 
 export default function Button({
   children,
-  variant = "primary",
-  size = "md",
+  variant = 'primary',
+  size = 'md',
   href,
   disabled,
   isLoading,
   onClick,
-  className = "",
+  className = '',
   ...rest
 }) {
   const base = `inline-flex items-center justify-center gap-2 font-medium
@@ -56,13 +56,8 @@ export default function Button({
   }
 
   return (
-    <button
-      className={classes}
-      disabled={disabled || isLoading}
-      onClick={onClick}
-      {...rest}
-    >
-      {isLoading ? "…" : children}
+    <button className={classes} disabled={disabled || isLoading} onClick={onClick} {...rest}>
+      {isLoading ? '…' : children}
     </button>
   );
 }
