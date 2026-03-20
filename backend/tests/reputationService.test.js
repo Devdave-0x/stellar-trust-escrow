@@ -12,7 +12,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 
 // Using CommonJS for Jest compatibility
-const BADGE_THRESHOLDS = require('../services/reputationService').BADGE_THRESHOLDS;
+const BADGE_THRESHOLDS = require('../services/reputationService.js').BADGE_THRESHOLDS;
 
 // ── getBadge ──────────────────────────────────────────────────────────────────
 

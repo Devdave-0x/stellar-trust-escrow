@@ -9,14 +9,14 @@
   ],
   "scripts": {
     "dev": "npm run dev -w frontend & npm run dev -w backend",
-    "build": "npm run build -w frontend",
+    "build": "npm run lint-staged && npm run build -w frontend",
     "lint": "eslint .",
     "lint:sol": "solhint \"contracts/**/*.sol\"",
-    "lint-staged": "lint-staged",
+    "lint-staged": "npm run lint-staged",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "test": "npm run test -w frontend && npm run test -w backend",
-    "prepare": "husky",
+    "prepare": "husky install",
     "fix": "npm run lint:fix && npm run format"
   },
   "devDependencies": {

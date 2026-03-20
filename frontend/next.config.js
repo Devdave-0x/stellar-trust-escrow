@@ -1,5 +1,7 @@
 /* eslint-disable no-undef */
 /** @type {import('next').NextConfig} */
+
+const API_URL = process.env.NEXT_PUBLIC_API_UR || 'http://localhost:5000';
 const nextConfig = {
   // TODO (contributor): add image domains if using next/image with external URLs
   images: {
@@ -10,7 +12,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
+        destination: `${API_URL}/api/:path*`,
       },
     ];
   },

@@ -1,6 +1,10 @@
 import express from 'express';
 const router = express.Router();
+<<<<<<< HEAD
 import disputeController from '../controllers/disputeController';
+=======
+import disputeController from '../controllers/disputeController.js';
+>>>>>>> 233e2dd (fix: fixing husky dev)
 
 /**
  * @route  GET /api/disputes
