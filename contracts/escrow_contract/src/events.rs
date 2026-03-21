@@ -92,10 +92,8 @@ pub fn emit_funds_released(env: &Env, escrow_id: u64, to: &Address, amount: i128
 /// * `escrow_id`         - The escrow ID
 /// * `returned_amount`   - Amount returned to the client
 pub fn emit_escrow_cancelled(env: &Env, escrow_id: u64, returned_amount: i128) {
-    env.events().publish(
-        (symbol_short!("esc_can"), escrow_id),
-        returned_amount,
-    );
+    env.events()
+        .publish((symbol_short!("esc_can"), escrow_id), returned_amount);
 }
 
 /// Emitted when a dispute is raised on an escrow.
@@ -105,10 +103,8 @@ pub fn emit_escrow_cancelled(env: &Env, escrow_id: u64, returned_amount: i128) {
 /// * `raised_by`   - Address of the party raising the dispute
 /// * `reason_hash` - IPFS hash of the dispute reason document
 pub fn emit_dispute_raised(env: &Env, escrow_id: u64, raised_by: &Address) {
-    env.events().publish(
-        (symbol_short!("dis_rai"), escrow_id),
-        raised_by.clone(),
-    );
+    env.events()
+        .publish((symbol_short!("dis_rai"), escrow_id), raised_by.clone());
 }
 
 /// Emitted when a dispute is resolved and funds are distributed.
@@ -135,8 +131,6 @@ pub fn emit_dispute_resolved(
 /// * `address`   - The user whose reputation changed
 /// * `new_score` - Their updated total reputation score
 pub fn emit_reputation_updated(env: &Env, address: &Address, new_score: u64) {
-    env.events().publish(
-        (symbol_short!("rep_upd"),),
-        (address.clone(), new_score),
-    );
+    env.events()
+        .publish((symbol_short!("rep_upd"),), (address.clone(), new_score));
 }

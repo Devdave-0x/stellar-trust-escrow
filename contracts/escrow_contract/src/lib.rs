@@ -262,11 +262,7 @@ impl EscrowContract {
     /// 2. Transfer milestone.amount from contract to escrow.freelancer
     /// 3. Decrease escrow.remaining_balance
     /// 4. Emit FundsReleased event
-    pub fn release_funds(
-        env: Env,
-        escrow_id: u64,
-        milestone_id: u32,
-    ) -> Result<(), EscrowError> {
+    pub fn release_funds(env: Env, escrow_id: u64, milestone_id: u32) -> Result<(), EscrowError> {
         todo!("implement release_funds — see GitHub Issue #7")
     }
 
