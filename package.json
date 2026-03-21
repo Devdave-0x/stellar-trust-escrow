@@ -21,7 +21,6 @@
     "fix": "npm run lint:fix && npm run format"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "eslint": "^9.39.4",

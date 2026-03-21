@@ -9,8 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest --passWithNoTests",
-    "format": "prettier --write .",
-    "prepare": "husky"
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@stellar/freighter-api": "^2.0.0",

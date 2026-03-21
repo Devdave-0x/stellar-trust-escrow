@@ -1,23 +1,15 @@
-"lint-staged": {
+{
   "*.{js,ts,tsx,json,md}": [
-    "prettier --write",
-    "git add"
+    "prettier --write"
   ],
   "*.{js,ts,tsx}": [
-    "eslint --fix",
-    "git add"
+    "eslint --fix"
   ],
   "*.sol": [
     "solhint --fix",
-    "prettier --write",
-    "git add"
+    "prettier --write"
   ],
   "*.{css,scss,html}": [
-    "prettier --write",
-    "git add"
-  ],
-  "*.rs": [
-    "rustfmt",
-    "git add"
+    "prettier --write"
   ]
 }

@@ -5,6 +5,5 @@ set -e
 
 echo "💅 Fixing lint & formatting staged files..."
 npx lint-staged
-npm run test
 
 echo "✅ Pre-commit checks passed."

@@ -1,0 +1,9 @@
+{
+  "watch": ["."],
+  "ignore": [".git", "node_modules", "frontend", "dist", "coverage", "*.test.js", "*.spec.js"],
+  "ext": "js,json,prisma",
+  "delay": "1000",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
