@@ -22,6 +22,7 @@
 mod errors;
 mod events;
 mod types;
+mod upgrade_tests;
 
 pub use errors::EscrowError;
 pub use types::{DataKey, EscrowState, EscrowStatus, Milestone, MilestoneStatus, ReputationRecord};
@@ -664,6 +665,36 @@ impl EscrowContract {
         _volume: i128,
     ) -> Result<(), EscrowError> {
         todo!("implement update_reputation — see GitHub Issue #11")
+    }
+
+    // ── Upgrade ───────────────────────────────────────────────────────────────
+
+    /// Upgrades the contract WASM while preserving all storage.
+    ///
+    /// Only the admin may call this. All persistent state (escrows, reputation,
+    /// counter) is untouched because Soroban upgrades only replace the
+    /// executable, not the instance storage.
+    ///
+    /// # Arguments
+    /// * `caller`        - Must be the contract admin.
+    /// * `new_wasm_hash` - Hash of the new WASM blob (must be uploaded first).
+    ///
+    /// # Errors
+    /// * `EscrowError::NotInitialized` — contract not set up
+    /// * `EscrowError::AdminOnly`      — caller is not the admin
+    ///
+    /// # TODO (contributor — easy, Issue #17)
+    /// Implement this function:
+    /// 1. Load `DataKey::Admin` from storage; return `NotInitialized` if absent
+    /// 2. Call `caller.require_auth()`
+    /// 3. Assert `caller == admin`, else return `AdminOnly`
+    /// 4. Call `env.deployer().update_current_contract_wasm(new_wasm_hash)`
+    pub fn upgrade(
+        env: Env,
+        caller: Address,
+        new_wasm_hash: BytesN<32>,
+    ) -> Result<(), EscrowError> {
+        todo!("implement upgrade — see GitHub Issue #17")
     }
 
     // ── View Functions ────────────────────────────────────────────────────────
