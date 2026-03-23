@@ -16,11 +16,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
+import responseTime from './middleware/responseTime.js';
 
 import escrowRoutes from './api/routes/escrowRoutes.js';
 import userRoutes from './api/routes/userRoutes.js';
 import reputationRoutes from './api/routes/reputationRoutes.js';
 import disputeRoutes from './api/routes/disputeRoutes.js';
+import cache from './lib/cache.js';
 
 // TODO (contributor — easy, Issue #17): Import and start the escrow indexer
 // const { startIndexer } = require('./services/escrowIndexer');
@@ -31,6 +34,8 @@ const PORT = process.env.PORT || 4000;
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 app.use(helmet());
+app.use(compression()); // gzip responses
+app.use(responseTime);  // X-Response-Time header + slow-request logging
 app.use(
   cors({
     origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
@@ -41,23 +46,30 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting — TODO (contributor — easy): tune limits per route
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+// Rate limiting — tuned per route type
+const defaultLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
   message: 'Too many requests from this IP, please try again later.',
 });
-app.use('/api/', limiter);
+// Leaderboard is expensive — tighter limit
+const leaderboardLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'Too many leaderboard requests, please slow down.',
+});
+app.use('/api/', defaultLimiter);
+app.use('/api/reputation/leaderboard', leaderboardLimiter);
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 
 /**
  * @route GET /health
  * @desc  Basic health check — useful for deployment monitoring
- * @returns {{ status: string, timestamp: string }}
+ * @returns {{ status: string, timestamp: string, cache: { size: number } }}
  */
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), cache: { size: cache.size() } });
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
