@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 
 import disputeRoutes from './api/routes/disputeRoutes.js';
 import escrowRoutes from './api/routes/escrowRoutes.js';
+import eventRoutes from './api/routes/eventRoutes.js';
 import kycRoutes from './api/routes/kycRoutes.js';
 import notificationRoutes from './api/routes/notificationRoutes.js';
 import paymentRoutes from './api/routes/paymentRoutes.js';
@@ -16,6 +17,7 @@ import userRoutes from './api/routes/userRoutes.js';
 import cache from './lib/cache.js';
 import responseTime from './middleware/responseTime.js';
 import emailService from './services/emailService.js';
+import { startIndexer } from './services/eventIndexer.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -57,6 +59,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/reputation', reputationRoutes);
 app.use('/api/disputes', disputeRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/events', eventRoutes);
 app.use('/api/kyc', kycRoutes);
 app.use('/api/payments', paymentRoutes);
 
@@ -76,6 +79,7 @@ app.listen(PORT, async () => {
   console.log(`Network: ${process.env.STELLAR_NETWORK}`);
   await emailService.start();
   console.log('[EmailService] Queue processor started');
+  startIndexer().catch((err) => console.error('[Indexer] Failed to start:', err.message));
 });
 
 export default app;
