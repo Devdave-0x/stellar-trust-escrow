@@ -10,8 +10,9 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
 
+import adminRoutes from './api/routes/adminRoutes.js';
+import auditMiddleware from './api/middleware/audit.js';
 import disputeRoutes from './api/routes/disputeRoutes.js';
 import escrowRoutes from './api/routes/escrowRoutes.js';
 import eventRoutes from './api/routes/eventRoutes.js';
@@ -27,6 +28,7 @@ import cache from './lib/cache.js';
 import { attachPrismaMetrics } from './lib/prismaMetrics.js';
 import prisma from './lib/prisma.js';
 import { errorsTotal } from './lib/metrics.js';
+import { apiRateLimit, leaderboardRateLimit } from './middleware/rateLimit.js';
 import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
 import emailService from './services/emailService.js';
@@ -35,7 +37,6 @@ import { startIndexer } from './services/eventIndexer.js';
 // Attach Prisma query instrumentation
 attachPrismaMetrics(prisma);
 
-const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ── Sentry request handler — must be first middleware ─────────────────────────
