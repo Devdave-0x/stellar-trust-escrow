@@ -461,6 +461,9 @@ impl EscrowContract {
             &amount,
         );
 
+        // O(1) balance update and completion check
+        meta.remaining_balance -= amount;
+
         // STE-04 fix: checked_sub instead of silent underflow
         meta.remaining_balance = meta
             .remaining_balance
@@ -474,7 +477,6 @@ impl EscrowContract {
             // STE-03 fix: emit completion event so the indexer can update DB
             events::emit_escrow_completed(&env, escrow_id);
         }
-
         ContractStorage::save_escrow_meta(&env, &meta);
 
         events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
@@ -517,6 +519,9 @@ impl EscrowContract {
 
     /// Admin-triggered fund release for an already-approved milestone.
     ///
+    /// # Gas notes
+    /// - Validates milestone state before loading meta.
+    pub fn release_funds(env: Env, escrow_id: u64, milestone_id: u32) -> Result<(), EscrowError> {
     /// Admin-only fallback for edge cases. Normal flow uses `approve_milestone`.
     ///
     /// # Security (STE-01, STE-02)
@@ -560,6 +565,7 @@ impl EscrowContract {
             &meta.freelancer,
             &amount,
         );
+        meta.remaining_balance -= amount;
         ContractStorage::save_escrow_meta(&env, &meta);
 
         events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
