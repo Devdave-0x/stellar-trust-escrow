@@ -1,5 +1,5 @@
-/* eslint-disable no-undef */
 /** @type {import('next').NextConfig} */
+import bundleAnalyzer from '@next/bundle-analyzer';
 
 import { withSentryConfig } from '@sentry/nextjs';
 
