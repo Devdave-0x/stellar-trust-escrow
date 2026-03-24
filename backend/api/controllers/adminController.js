@@ -22,9 +22,7 @@ const listUsers = async (req, res) => {
     const { page = 1, limit = 20, search = '' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const where = search
-      ? { address: { contains: search, mode: 'insensitive' } }
-      : {};
+    const where = search ? { address: { contains: search, mode: 'insensitive' } } : {};
 
     const [users, total] = await Promise.all([
       prisma.reputationRecord.findMany({
@@ -213,9 +211,7 @@ const resolveDispute = async (req, res) => {
     const { clientAmount, freelancerAmount, notes = '' } = req.body;
 
     if (clientAmount === undefined || freelancerAmount === undefined) {
-      return res
-        .status(400)
-        .json({ error: 'clientAmount and freelancerAmount are required.' });
+      return res.status(400).json({ error: 'clientAmount and freelancerAmount are required.' });
     }
 
     const dispute = await prisma.dispute.findUnique({
@@ -282,7 +278,12 @@ const getStats = async (req, res) => {
     ]);
 
     res.json({
-      escrows: { total: totalEscrows, active: activeEscrows, completed: completedEscrows, disputed: disputedEscrows },
+      escrows: {
+        total: totalEscrows,
+        active: activeEscrows,
+        completed: completedEscrows,
+        disputed: disputedEscrows,
+      },
       users: { total: totalUsers },
       disputes: { open: openDisputes, resolved: disputedEscrows - openDisputes },
     });

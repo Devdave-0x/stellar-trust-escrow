@@ -1,4 +1,3 @@
-/* eslint-disable no-undef */
 /**
  * Payment Service — Stripe integration
  *

@@ -36,7 +36,10 @@ const listEscrows = async (req, res) => {
 
     // Status filter — supports comma-separated values e.g. status=Active,Completed
     if (status) {
-      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
+      const statuses = status
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
 

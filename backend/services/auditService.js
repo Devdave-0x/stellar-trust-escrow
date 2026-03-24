@@ -135,7 +135,16 @@ export async function search(filters = {}) {
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-const CSV_COLUMNS = ['id', 'category', 'action', 'actor', 'resourceId', 'statusCode', 'ipAddress', 'createdAt'];
+const CSV_COLUMNS = [
+  'id',
+  'category',
+  'action',
+  'actor',
+  'resourceId',
+  'statusCode',
+  'ipAddress',
+  'createdAt',
+];
 
 /**
  * Export audit logs matching the given filters as a CSV string.

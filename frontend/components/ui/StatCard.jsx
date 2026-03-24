@@ -11,6 +11,7 @@
  */
 
 
+
 export default function StatCard({ label, value, icon, trend: _trend }) {
   return (
     <div className="card flex flex-col gap-2">

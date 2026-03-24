@@ -29,7 +29,8 @@ jest.unstable_mockModule('../lib/metrics.js', () => ({
   register: { metrics: jest.fn().mockResolvedValue('') },
 }));
 
-const { default: compressionMiddleware, THRESHOLD } = await import('../middleware/compression.js');
+const { default: compressionMiddleware, THRESHOLD: _THRESHOLD } =
+  await import('../middleware/compression.js');
 
 // ── Minimal Express-like test harness ─────────────────────────────────────────
 
@@ -43,7 +44,9 @@ function buildApp(payloadSize = 4096) {
 
   app.get('/data', (_req, res) => {
     // Generate a compressible JSON payload of roughly `payloadSize` bytes
-    const data = { items: Array.from({ length: payloadSize / 20 }, (_, i) => ({ id: i, value: 'x'.repeat(10) }) ) };
+    const data = {
+      items: Array.from({ length: payloadSize / 20 }, (_, i) => ({ id: i, value: 'x'.repeat(10) })),
+    };
     res.json(data);
   });
 
@@ -62,9 +65,7 @@ describe('Compression middleware', () => {
   const app = buildApp(8192);
 
   it('compresses with gzip when Accept-Encoding: gzip', async () => {
-    const res = await supertest(app)
-      .get('/data')
-      .set('Accept-Encoding', 'gzip');
+    const res = await supertest(app).get('/data').set('Accept-Encoding', 'gzip');
 
     expect(res.headers['content-encoding']).toBe('gzip');
     expect(res.headers['vary']).toMatch(/Accept-Encoding/i);
@@ -109,25 +110,19 @@ describe('Compression middleware', () => {
   });
 
   it('does not compress when Accept-Encoding is absent', async () => {
-    const res = await supertest(app)
-      .get('/data')
-      .set('Accept-Encoding', '');
+    const res = await supertest(app).get('/data').set('Accept-Encoding', '');
 
     expect(res.headers['content-encoding']).toBeUndefined();
   });
 
   it('does not compress the /metrics endpoint', async () => {
-    const res = await supertest(app)
-      .get('/metrics')
-      .set('Accept-Encoding', 'gzip, br');
+    const res = await supertest(app).get('/metrics').set('Accept-Encoding', 'gzip, br');
 
     expect(res.headers['content-encoding']).toBeUndefined();
   });
 
   it('does not compress payloads below the threshold', async () => {
-    const res = await supertest(app)
-      .get('/tiny')
-      .set('Accept-Encoding', 'gzip');
+    const res = await supertest(app).get('/tiny').set('Accept-Encoding', 'gzip');
 
     // Small payload — compression should be skipped
     expect(res.headers['content-encoding']).toBeUndefined();

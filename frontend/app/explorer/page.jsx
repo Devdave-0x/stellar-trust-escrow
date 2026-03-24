@@ -122,7 +122,7 @@ export default function ExplorerPage() {
     }
     if (page > 1) params.set('page', page);
     router.replace(`/explorer?${params.toString()}`, { scroll: false });
-  }, [debouncedSearch, filters, page]);
+  }, [debouncedSearch, filters, page, router]);
 
   // ── Fetch escrows ──────────────────────────────────────────────────────────
   useEffect(() => {

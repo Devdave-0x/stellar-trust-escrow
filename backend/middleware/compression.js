@@ -18,10 +18,13 @@
  *  COMPRESSION_THRESHOLD  min bytes to compress (default: 1024)
  */
 
-/* eslint-disable no-undef */
 import zlib from 'zlib';
 import compression from 'compression';
-import { compressionRatio, compressedResponsesTotal, compressionBytesTotal } from '../lib/metrics.js';
+import {
+  compressionRatio,
+  compressedResponsesTotal,
+  compressionBytesTotal,
+} from '../lib/metrics.js';
 
 const GZIP_LEVEL = parseInt(process.env.COMPRESSION_LEVEL || '6');
 const BROTLI_QUALITY = parseInt(process.env.BROTLI_QUALITY || '4');
