@@ -5,7 +5,7 @@ import * as Sentry from '@sentry/node';
 
 /* eslint-disable no-undef */
 import 'dotenv/config';
-import compression from 'compression';
+import compressionMiddleware from './middleware/compression.js';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -43,7 +43,7 @@ const PORT = process.env.PORT || 4000;
 app.use(Sentry.expressRequestHandler());
 
 app.use(helmet());
-app.use(compression());
+app.use(compressionMiddleware);
 app.use(metricsMiddleware);
 app.use(responseTime);
 app.use(
