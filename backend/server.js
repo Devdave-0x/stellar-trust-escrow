@@ -11,6 +11,7 @@ import disputeRoutes from './api/routes/disputeRoutes.js';
 import escrowRoutes from './api/routes/escrowRoutes.js';
 import eventRoutes from './api/routes/eventRoutes.js';
 import kycRoutes from './api/routes/kycRoutes.js';
+import metricsRoutes from './api/routes/metricsRoutes.js';
 import notificationRoutes from './api/routes/notificationRoutes.js';
 import paymentRoutes from './api/routes/paymentRoutes.js';
 import reputationRoutes from './api/routes/reputationRoutes.js';
@@ -61,8 +62,26 @@ const leaderboardLimiter = rateLimit({
 app.use('/api/', defaultLimiter);
 app.use('/api/reputation/leaderboard', leaderboardLimiter);
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), cache: cache.analytics() });
+app.get('/health', async (_req, res) => {
+  let dbStatus = 'ok';
+  let dbLatencyMs = null;
+
+  try {
+    const t0 = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    dbLatencyMs = Date.now() - t0;
+  } catch {
+    dbStatus = 'error';
+  }
+
+  const status = dbStatus === 'ok' ? 'ok' : 'degraded';
+  res.status(dbStatus === 'ok' ? 200 : 503).json({
+    status,
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    cache: cache.analytics(),
+    db: { status: dbStatus, latencyMs: dbLatencyMs },
+  });
 });
 
 app.use('/api/escrows', escrowRoutes);

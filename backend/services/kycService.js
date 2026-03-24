@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 /**
  * KYC Service — Sumsub integration
  *
@@ -8,8 +9,11 @@
 import crypto from 'crypto';
 import prisma from '../lib/prisma.js';
 
-const { SUMSUB_APP_TOKEN, SUMSUB_SECRET_KEY, SUMSUB_BASE_URL = 'https://api.sumsub.com' } =
-  process.env;
+const {
+  SUMSUB_APP_TOKEN,
+  SUMSUB_SECRET_KEY,
+  SUMSUB_BASE_URL = 'https://api.sumsub.com',
+} = process.env;
 
 const LEVEL_NAME = process.env.SUMSUB_LEVEL_NAME || 'basic-kyc-level';
 
@@ -17,10 +21,7 @@ const LEVEL_NAME = process.env.SUMSUB_LEVEL_NAME || 'basic-kyc-level';
 function buildHeaders(method, path, body = '') {
   const ts = Math.floor(Date.now() / 1000).toString();
   const payload = ts + method.toUpperCase() + path + (body ? body : '');
-  const signature = crypto
-    .createHmac('sha256', SUMSUB_SECRET_KEY)
-    .update(payload)
-    .digest('hex');
+  const signature = crypto.createHmac('sha256', SUMSUB_SECRET_KEY).update(payload).digest('hex');
 
   return {
     'X-App-Token': SUMSUB_APP_TOKEN,
@@ -128,10 +129,7 @@ async function handleWebhook(payload) {
  * Returns true if valid.
  */
 function verifyWebhookSignature(rawBody, signature) {
-  const expected = crypto
-    .createHmac('sha256', SUMSUB_SECRET_KEY)
-    .update(rawBody)
-    .digest('hex');
+  const expected = crypto.createHmac('sha256', SUMSUB_SECRET_KEY).update(rawBody).digest('hex');
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
