@@ -43,6 +43,7 @@ use types::{CancellationRequest, SlashRecord};
 pub use types::{DataKey, EscrowState, EscrowStatus, Milestone, MilestoneStatus, ReputationRecord};
 
 use soroban_sdk::{
+    contract, contractimpl, contracttype, token, Address, BytesN, Env, String, Vec,
     contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, String, Vec,
 };
 
@@ -67,6 +68,46 @@ const RENT_PER_ENTRY_PER_PERIOD: i128 = 1;
 pub enum PackedDataKey {
     EscrowMeta(u64),
     Milestone(u64, u32),
+}
+
+// ── Meta-transaction argument structs ────────────────────────────────────────
+#[allow(dead_code)]
+#[derive(Clone)]
+struct CreateEscrowArgs {
+    client: Address,
+    freelancer: Address,
+    token: Address,
+    total_amount: i128,
+    brief_hash: BytesN<32>,
+    arbiter: Option<Address>,
+    deadline: Option<u64>,
+    lock_time: Option<u64>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+struct AddMilestoneArgs {
+    caller: Address,
+    escrow_id: u64,
+    title: String,
+    description_hash: BytesN<32>,
+    amount: i128,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+struct SubmitMilestoneArgs {
+    caller: Address,
+    escrow_id: u64,
+    milestone_id: u32,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+struct ApproveMilestoneArgs {
+    caller: Address,
+    escrow_id: u64,
+    milestone_id: u32,
 }
 
 // ── EscrowMeta ────────────────────────────────────────────────────────────────
@@ -1439,6 +1480,7 @@ impl EscrowContract {
         caller.require_auth();
 
         let slash_record = ContractStorage::load_slash_record(&env, escrow_id)?;
+        let meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
         // Caller must be arbiter or admin

@@ -74,6 +74,8 @@ jobs:
       - name: Test
         run: cd backend && npm test
 
+      - name: Validate OpenAPI spec
+        run: npx --yes @redocly/cli lint backend/openapi.yaml --format=stylish
       - name: Slack Notification
         if: always() && matrix.node-version == '20'
         uses: rtCamp/action-slack-notify@v2
