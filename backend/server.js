@@ -16,6 +16,7 @@ import searchRoutes from './api/routes/searchRoutes.js';
 import escrowRoutes from './api/routes/escrowRoutes.js';
 import eventRoutes from './api/routes/eventRoutes.js';
 import kycRoutes from './api/routes/kycRoutes.js';
+import adminRoutes from './api/routes/adminRoutes.js';
 import notificationRoutes from './api/routes/notificationRoutes.js';
 import paymentRoutes from './api/routes/paymentRoutes.js';
 import relayerRoutes from './api/routes/relayerRoutes.js';
@@ -129,6 +130,7 @@ app.use('/api/kyc', kycRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/relayer', relayerRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {

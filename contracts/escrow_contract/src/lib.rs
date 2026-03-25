@@ -41,11 +41,10 @@ pub use types::{DataKey, EscrowState, EscrowStatus, Milestone, MilestoneStatus, 
 use types::{CancellationRequest, SlashRecord};
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, crypto, token, Address, BytesN, Env, String, Vec,
+    contract, contractimpl, contracttype, token, Address, BytesN, Env, String, Vec,
 };
 
 // ── TTL constants ─────────────────────────────────────────────────────────────
-// Bump only when remaining TTL falls below threshold, extending to target.
 const INSTANCE_TTL_THRESHOLD: u32 = 5_000;
 const INSTANCE_TTL_EXTEND_TO: u32 = 50_000;
 const PERSISTENT_TTL_THRESHOLD: u32 = 5_000;
@@ -1006,7 +1005,7 @@ impl EscrowContract {
 
         // Check if escrow is in a cancellable state
         if !matches!(meta.status, EscrowStatus::Active) {
-            return Err(EscrowError::InvalidEscrowState);
+            return Err(EscrowError::EscrowNotActive);
         }
 
         // Check if cancellation already exists
@@ -1216,7 +1215,7 @@ impl EscrowContract {
 
         if upheld {
             // Slash is upheld - no changes needed
-            events::emit_slash_dispute_resolved(&env, escrow_id, true, slash_record.amount);
+            events::emit_dispute_resolved(&env, escrow_id, slash_record.amount, 0);
         } else {
             // Reverse the slash - return funds to slashed user
             token.transfer(
@@ -1232,7 +1231,7 @@ impl EscrowContract {
             reputation.total_score += 10; // Restore 10 points
             ContractStorage::save_reputation(&env, &reputation);
 
-            events::emit_slash_dispute_resolved(&env, escrow_id, false, 0);
+            events::emit_dispute_resolved(&env, escrow_id, 0, 0);
         }
 
         // Clean up slash record

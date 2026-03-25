@@ -17,15 +17,16 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useWallet } from '../../hooks/useWallet';
+import { useI18n } from '../../i18n/index.jsx';
 import WalletStatus from '../ui/WalletStatus';
 import ThemeToggle from './ThemeToggle';
 
 export default function Header() {
   const wallet = useWallet();
+  const { t } = useI18n();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Determine network label & style from wallet state
-  const networkLabel = wallet.network === 'mainnet' ? 'Mainnet' : 'Testnet';
+  const networkLabel = wallet.network === 'mainnet' ? t('network.mainnet') : t('network.testnet');
   const networkStyles =
     wallet.network === 'mainnet'
       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
