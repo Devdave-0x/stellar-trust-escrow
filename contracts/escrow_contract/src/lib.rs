@@ -35,9 +35,15 @@ mod types;
 mod upgrade_tests;
 
 pub use errors::EscrowError;
-pub use types::{DataKey, EscrowState, EscrowStatus, Milestone, MilestoneStatus, ReputationRecord};
+pub use types::{
+    DataKey, EscrowState, EscrowStatus, FeeDelegation, MetaTransaction, Milestone, MilestoneStatus,
+    ReputationRecord,
+};
 
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, BytesN, Env, String, Vec};
+use alloc::string::ToString;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, crypto, token, Address, BytesN, Env, String, Vec,
+};
 
 // ── TTL constants ─────────────────────────────────────────────────────────────
 // Bump only when remaining TTL falls below threshold, extending to target.
@@ -54,6 +60,42 @@ const PERSISTENT_TTL_EXTEND_TO: u32 = 50_000;
 enum PackedDataKey {
     EscrowMeta(u64),
     Milestone(u64, u32),
+}
+
+// ── Meta-transaction argument structs ────────────────────────────────────────
+#[derive(Clone)]
+struct CreateEscrowArgs {
+    client: Address,
+    freelancer: Address,
+    token: Address,
+    total_amount: i128,
+    brief_hash: BytesN<32>,
+    arbiter: Option<Address>,
+    deadline: Option<u64>,
+    lock_time: Option<u64>,
+}
+
+#[derive(Clone)]
+struct AddMilestoneArgs {
+    caller: Address,
+    escrow_id: u64,
+    title: String,
+    description_hash: BytesN<32>,
+    amount: i128,
+}
+
+#[derive(Clone)]
+struct SubmitMilestoneArgs {
+    caller: Address,
+    escrow_id: u64,
+    milestone_id: u32,
+}
+
+#[derive(Clone)]
+struct ApproveMilestoneArgs {
+    caller: Address,
+    escrow_id: u64,
+    milestone_id: u32,
 }
 
 // ── EscrowMeta ────────────────────────────────────────────────────────────────
