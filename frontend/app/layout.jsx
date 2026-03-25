@@ -64,6 +64,9 @@ export default function RootLayout({ children }) {
         <Header />
         <main className="flex-1 container mx-auto px-4 py-8 max-w-7xl">{children}</main>
         <Footer />
+
+        {/* Core Web Vitals monitoring — renders nothing to DOM */}
+        <PerformanceMonitor />
         <ServiceWorkerRegistrar />
       </body>
     </html>
