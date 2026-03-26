@@ -79,6 +79,30 @@ app.use(Sentry.expressTracingHandler());
 app.use('/api/', apiRateLimit);
 app.use('/api/reputation/leaderboard', leaderboardRateLimit);
 
+// ── Deprecation registry ───────────────────────────────────────────────────────
+// Register policies for all endpoints that are queued for removal.
+registerDeprecation('unversioned-api', {
+  deprecatedAt: new Date('2025-01-01'),
+  sunsetAt: new Date('2026-07-01'),
+  link: '/docs',
+  successor: '/api/v1/',
+});
+
+// Discovery endpoint — lists all registered deprecation policies.
+app.get('/.well-known/api-deprecations', deprecationDiscovery());
+
+// Attach deprecation headers to all unversioned /api/* routes so clients
+// know to migrate to /api/v1/*.
+app.use(
+  '/api/',
+  deprecate({
+    deprecatedAt: new Date('2025-01-01'),
+    sunsetAt: new Date('2026-07-01'),
+    link: '/docs',
+    successor: '/api/v1/',
+  }),
+);
+
 app.get('/health', async (_req, res) => {
   let dbStatus = 'ok';
   let dbLatencyMs = null;
