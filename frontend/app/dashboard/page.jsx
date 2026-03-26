@@ -24,6 +24,7 @@ import dynamic from 'next/dynamic';
 import EscrowCard from '../../components/escrow/EscrowCard';
 import ReputationBadge from '../../components/ui/ReputationBadge';
 import Button from '../../components/ui/Button';
+import ErrorBoundary from '../../../components/error/ErrorBoundary';
 import { usePerformance } from '../../hooks/usePerformance';
 
 // ── Dynamic imports for heavy components ──────────────────────────────────────
@@ -117,9 +118,10 @@ export default function DashboardPage() {
     ? Math.min(100, Math.round(Number(reputation.totalScore) / 100))
     : null;
 
-  return (
-    <div className="space-y-8">
-      {/* Page Header */}
+return (
+    <ErrorBoundary>
+      <div className="space-y-8">
+        {/* Page Header */
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">{t('nav.dashboard')}</h1>
