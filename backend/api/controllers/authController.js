@@ -3,6 +3,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../../lib/prisma.js';
 
+const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+
+function normalizeWalletAddress(body = {}) {
+  return body.walletAddress || body.stellarAddress || null;
+}
+
 // Helper to generate tokens
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
@@ -33,6 +39,10 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
+    if (walletAddress && !STELLAR_ADDRESS_RE.test(walletAddress)) {
+      return res.status(400).json({ error: 'Invalid Stellar wallet address' });
+    }
+
     // Check if user exists
     const existingUser = await prisma.user.findFirst({
       where: { email, tenantId },
@@ -40,6 +50,17 @@ export const register = async (req, res) => {
 
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
+    }
+
+    if (walletAddress) {
+      const existingWalletUser = await prisma.user.findFirst({
+        where: { tenantId, walletAddress },
+        select: { id: true },
+      });
+
+      if (existingWalletUser) {
+        return res.status(400).json({ error: 'Wallet address is already linked to another user' });
+      }
     }
 
     // Hash password
@@ -51,6 +72,7 @@ export const register = async (req, res) => {
       data: {
         tenantId,
         email,
+        walletAddress,
         password: hashedPassword,
       },
     });
@@ -161,7 +183,7 @@ export const refresh = async (req, res) => {
       data: { refreshToken: tokens.refreshToken },
     });
 
-    res.json(tokens);
+    res.json({ ...tokens, walletAddress: user.walletAddress });
   } catch (error) {
     console.error('[Refresh] Error:', error);
     res.status(500).json({ error: 'Internal server error' });

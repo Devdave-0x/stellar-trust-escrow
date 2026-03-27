@@ -166,7 +166,7 @@ app.use('/api/escrows', authMiddleware, escrowRoutes);
 
 // ── API Documentation ─────────────────────────────────────────────────────────
 setupSwagger(app);
-app.use('/api/users', authMiddleware, userRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/reputation', reputationRoutes);
 app.use('/api/disputes', disputeRoutes);
 app.use('/api/notifications', notificationRoutes);
