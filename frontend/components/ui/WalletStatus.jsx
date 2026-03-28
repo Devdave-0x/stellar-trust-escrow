@@ -149,7 +149,7 @@ export default function WalletStatus({ wallet }) {
   if (isConnected && address) {
     return (
       <div className="flex items-center gap-2">
-        <StatusDot status="connected" />
+        <Avatar address={address} size="sm" className="rounded-full" />
         <AddressWithTooltip address={address} />
         <Button id="wallet-disconnect-btn" variant="secondary" size="sm" onClick={disconnect}>
           {t('wallet.disconnect')}
