@@ -24,8 +24,13 @@ import { ThemeProvider } from '../contexts/ThemeContext';
 import { CurrencyProvider } from '../contexts/CurrencyContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import ServiceWorkerRegistrar from '../components/ServiceWorkerRegistrar';
+
+import OfflineBanner from '../components/ui/offlineBanner';
+import ErrorBoundary from '../components/ui/ErrorBoundary';
+
 import ErrorBoundary from '../components/error/ErrorBoundary';
 import PerformanceMonitor from '../components/performance/PerformanceMonitor';
+
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' });
@@ -85,6 +90,7 @@ export default function RootLayout({ children }) {
             </ToastProvider>
           </CurrencyProvider>
         </ThemeProvider>
+
 
         {/* Core Web Vitals monitoring — renders nothing to DOM */}
         <PerformanceMonitor />
