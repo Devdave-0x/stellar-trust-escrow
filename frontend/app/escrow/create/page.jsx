@@ -24,6 +24,8 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Button from '../../../components/ui/Button';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
+import StellarAddressInput from '../../../components/ui/StellarAddressInput';
+import { isValidStellarAddress } from '../../../lib/validation';
 import templatesData from '../../../data/templates.json';
 import { useToast } from '../../../contexts/ToastContext';
 
@@ -215,7 +217,11 @@ export default function CreateEscrowPage() {
           Back
         </Button>
         {currentStep < 4 ? (
-          <Button variant="primary" onClick={() => setCurrentStep((step) => step + 1)}>
+          <Button
+            variant="primary"
+            onClick={() => setCurrentStep((step) => step + 1)}
+            disabled={currentStep === 1 && !isValidStellarAddress(formData.freelancerAddress)}
+          >
             Next →
           </Button>
         ) : (
@@ -238,20 +244,14 @@ function StepCounterparty({ formData, setFormData }) {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-white">Counterparty & Funds</h2>
 
-      <div>
-        <label className="block text-sm text-gray-400 mb-1">Freelancer Stellar Address</label>
-        <input
-          type="text"
-          placeholder="GABCD1234..."
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
-                     text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
-          value={formData.freelancerAddress}
-          onChange={(event) =>
-            setFormData((data) => ({ ...data, freelancerAddress: event.target.value }))
-          }
-        />
-        {/* TODO (contributor): add validation error display */}
-      </div>
+      <StellarAddressInput
+        id="freelancer-address"
+        label="Freelancer Stellar Address"
+        placeholder="GABCD1234..."
+        value={formData.freelancerAddress}
+        onChange={(val) => setFormData((data) => ({ ...data, freelancerAddress: val }))}
+        required
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
