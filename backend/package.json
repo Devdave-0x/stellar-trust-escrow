@@ -33,6 +33,7 @@
     "bull-board": "^5.3.2",
     "bullmq": "^5.8.2",
     "compression": "^1.7.4",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "csv-stringify": "^6.7.0",
     "dotenv": "^16.0.0",

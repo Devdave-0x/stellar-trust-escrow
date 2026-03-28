@@ -19,6 +19,7 @@
 import './globals.css';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
+import NavigationProgress from '../components/layout/NavigationProgress';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { CurrencyProvider } from '../contexts/CurrencyContext';
 import { ToastProvider } from '../contexts/ToastContext';
@@ -69,6 +70,10 @@ export default function RootLayout({ children }) {
             </SWRConfig>
           </WalletProvider>
         */}
+        <Header />
+        <NavigationProgress />
+        <main className="flex-1 container mx-auto px-4 py-8 max-w-7xl">{children}</main>
+        <Footer />
         <ThemeProvider>
           <CurrencyProvider>
             <ToastProvider>
