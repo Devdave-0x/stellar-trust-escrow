@@ -14,6 +14,8 @@ const log = createModuleLogger('lib.retryUtils');
 
 const log = createModuleLogger('lib.retryUtils');
 
+const log = createModuleLogger('lib.retryUtils');
+
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 const RETRY_BACKOFF_MULTIPLIER = 2;

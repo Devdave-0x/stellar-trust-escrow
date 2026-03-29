@@ -35,6 +35,8 @@ const log = createModuleLogger('eventIndexer');
 
 const log = createModuleLogger('eventIndexer');
 
+const log = createModuleLogger('eventIndexer');
+
 const CONTRACT_ID = process.env.ESCROW_CONTRACT_ID || '';
 const POLL_INTERVAL_MS = parseInt(process.env.INDEXER_POLL_INTERVAL_MS || '5000', 10);
 
