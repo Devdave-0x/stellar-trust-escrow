@@ -1,9 +1,86 @@
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
 import { WebSocketServer } from 'ws';
+import { createModuleLogger } from '../../config/logger.js';
+import prisma from '../../lib/prisma.js';
+
+const log = createModuleLogger('websocket');
 
 const HEARTBEAT_INTERVAL_MS = parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS || '30000', 10);
 const MAX_CONNECTIONS = parseInt(process.env.WS_MAX_CONNECTIONS || '100', 10);
+const REQUIRE_PARTY =
+  String(process.env.WS_ESCROW_SUBSCRIBE_REQUIRE_PARTY || '').toLowerCase() === 'true';
+
+const ESCROW_TOPIC_RE = /^escrow:(\d+)$/;
+
+function parseAllowedOrigins() {
+  const raw = process.env.ALLOWED_ORIGINS || 'http://localhost:3000';
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Reject upgrade if WS_AUTH_TOKEN is set and query ?token= does not match.
+ * Reject if Origin is present and not in ALLOWED_ORIGINS.
+ * @returns {boolean} true if the upgrade may proceed
+ */
+export function assertWebSocketUpgradeAllowed(request, socket) {
+  const wsAuth = process.env.WS_AUTH_TOKEN;
+  if (wsAuth) {
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const token = url.searchParams.get('token');
+    if (token !== wsAuth) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return false;
+    }
+  }
+
+  const allowed = parseAllowedOrigins();
+  const origin = request.headers.origin;
+  if (origin && allowed.length > 0 && !allowed.includes(origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * When REQUIRE_PARTY is true, only client/freelancer on the escrow may join escrow:<id>.
+ * @param {string} topic
+ * @param {string | undefined} address — Stellar public key
+ */
+export async function assertEscrowSubscriptionAllowed(topic, address) {
+  const m = topic.match(ESCROW_TOPIC_RE);
+  if (!m) return true;
+
+  if (!REQUIRE_PARTY) return true;
+
+  if (!address || typeof address !== 'string') {
+    return false;
+  }
+
+  const escrowId = BigInt(m[1]);
+  const escrow = await prisma.escrow.findUnique({
+    where: { id: escrowId },
+    select: { clientAddress: true, freelancerAddress: true },
+  });
+
+  if (!escrow) return false;
+
+  const a = address.trim();
+  return escrow.clientAddress === a || escrow.freelancerAddress === a;
+}
+
+function sendJson(ws, obj) {
+  if (ws.readyState === 1 /* OPEN */) {
+    ws.send(JSON.stringify(obj));
+  }
+}
 
 export const metricsEmitter = new EventEmitter();
 
@@ -20,7 +97,7 @@ class WebSocketPool {
 
   addConnection(ws, req, user = null) {
     if (this.connections.size >= MAX_CONNECTIONS) {
-      console.warn(`[WebSocket] Connection rejected: Max capacity reached (${MAX_CONNECTIONS})`);
+      log.warn({ message: 'ws_max_connections', max: MAX_CONNECTIONS });
       ws.close(1013, 'Try again later. Max capacity reached.');
       return null;
     }
@@ -81,8 +158,55 @@ class WebSocketPool {
     return id;
   }
 
+  async handleIncomingMessage(connectionId, ws, data) {
+    let message;
+    try {
+      message = JSON.parse(data.toString());
+    } catch {
+      log.warn({ message: 'ws_invalid_json', connectionId });
+      return;
+    }
+
+    if (message.type === 'subscribe' && message.topic) {
+      try {
+        const allowed = await assertEscrowSubscriptionAllowed(message.topic, message.address);
+        if (!allowed) {
+          sendJson(ws, {
+            type: 'error',
+            code: 'subscription_denied',
+            topic: message.topic,
+          });
+          return;
+        }
+        this.subscribe(connectionId, message.topic);
+        sendJson(ws, { type: 'subscribed', topic: message.topic });
+      } catch (err) {
+        log.error({
+          message: 'ws_subscribe_failed',
+          connectionId,
+          error: err.message,
+          stack: err.stack,
+        });
+        sendJson(ws, { type: 'error', code: 'subscription_failed', topic: message.topic });
+      }
+      return;
+    }
+
+    if (message.type === 'unsubscribe' && message.topic) {
+      this.unsubscribe(connectionId, message.topic);
+      sendJson(ws, { type: 'unsubscribed', topic: message.topic });
+      return;
+    }
+
+    if (message.type === 'ping') {
+      sendJson(ws, { type: 'pong', t: message.t });
+    }
+  }
+
   removeConnection(id) {
     if (this.connections.has(id)) {
+      const meta = this.connections.get(id);
+      meta.topics.clear();
       this.connections.delete(id);
       this.totalDisconnected++;
 
@@ -195,6 +319,7 @@ class WebSocketPool {
 
   startHeartbeat() {
     this.heartbeatInterval = setInterval(() => {
+      const toTerminate = [];
       for (const [id, conn] of this.connections.entries()) {
         if (!conn.ws.isAlive) {
           console.log(`[WebSocket] Terminating unresponsive connection ${id}`);
