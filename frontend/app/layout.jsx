@@ -24,6 +24,7 @@ import { ThemeProvider } from '../contexts/ThemeContext';
 import { CurrencyProvider } from '../contexts/CurrencyContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import ServiceWorkerRegistrar from '../components/ServiceWorkerRegistrar';
+import ErrorBoundary from '../../components/error
 
 import OfflineBanner from '../components/ui/offlineBanner';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
