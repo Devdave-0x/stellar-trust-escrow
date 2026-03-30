@@ -22,6 +22,7 @@ mod upgrade_tests {
 
     use crate::{
         EscrowContract, EscrowContractClient, EscrowStatus, MilestoneStatus, MultisigConfig,
+        MS_PENDING, MS_SUBMITTED,
     };
 
     fn no_multisig(env: &Env) -> MultisigConfig {
@@ -273,7 +274,7 @@ mod upgrade_tests {
         let milestone = contract.get_milestone(&escrow_id, &m_id);
         assert_eq!(milestone.id, m_id);
         assert_eq!(milestone.amount, 400_000);
-        assert_eq!(milestone.status, MilestoneStatus::Pending);
+        assert_eq!(milestone.status, MS_PENDING);
         assert_eq!(milestone.title, title);
     }
 
@@ -341,7 +342,7 @@ mod upgrade_tests {
 
         // Status must still be Submitted post-upgrade.
         let milestone = contract.get_milestone(&escrow_id, &m_id);
-        assert_eq!(milestone.status, MilestoneStatus::Submitted);
+        assert_eq!(milestone.status, MS_SUBMITTED);
 
         // Client can still approve post-upgrade.
         contract.approve_milestone(&client_addr, &escrow_id, &m_id);
