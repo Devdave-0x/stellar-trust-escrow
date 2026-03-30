@@ -36,13 +36,15 @@ mod oracle;
 mod pause_tests;
 mod types;
 mod upgrade_tests;
+mod bridge;
+mod bridge_tests;
 
 pub use errors::EscrowError;
 use storage::StorageManager;
 use types::{CancellationRequest, RecurringInterval, RecurringPaymentConfig, SlashRecord};
 pub use types::{
     DataKey, EscrowState, EscrowStatus, Milestone, MilestoneStatus, MultisigConfig,
-    ReputationRecord, Timelock,
+    OptionalTimelock, ReputationRecord, Timelock,
 };
 
 use soroban_sdk::{
@@ -143,7 +145,7 @@ pub(crate) struct EscrowMeta {
     /// Optional extension deadline for the lock time.
     pub(crate) lock_time_extension: Option<u64>,
     /// Optional timelock controls release window after approval.
-    pub(crate) timelock: Option<types::Timelock>,
+    pub(crate) timelock: OptionalTimelock,
     pub(crate) brief_hash: BytesN<32>,
     /// Prepaid storage rent reserve held by the contract in the escrow token.
     pub(crate) rent_balance: i128,
@@ -324,7 +326,7 @@ impl ContractStorage {
             deadline: meta.deadline,
             lock_time: meta.lock_time,
             lock_time_extension: meta.lock_time_extension,
-            timelock: meta.timelock,
+            timelock: meta.timelock.into(),
             brief_hash: meta.brief_hash,
             // EscrowMeta uses buyer_signers for multisig; expose via EscrowState view fields
             multisig_approvers: meta.buyer_signers.clone(),
@@ -642,9 +644,9 @@ impl ContractStorage {
     fn check_timelock_expired(
         env: &Env,
         escrow_id: u64,
-        timelock: Option<types::Timelock>,
+        timelock: OptionalTimelock,
     ) -> Result<(), EscrowError> {
-        if let Some(tl) = timelock {
+        if let OptionalTimelock::Some(tl) = timelock {
             let now = env.ledger().timestamp();
             let expiry = tl
                 .start_ledger
@@ -738,6 +740,73 @@ impl EscrowContract {
         oracle::convert_amount(&env, amount, &from_asset, &to_asset)
     }
 
+    // ── Bridge / Cross-Chain ──────────────────────────────────────────────────
+
+    /// Set the Wormhole bridge contract address. Admin only.
+    pub fn set_wormhole_bridge(
+        env: Env,
+        caller: Address,
+        bridge_addr: Address,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        bridge::set_wormhole_bridge(&env, &bridge_addr);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Register a wrapped (bridged) token so it can be used in escrows.
+    /// Admin only. `info.is_approved` controls whether the token is usable.
+    pub fn register_wrapped_token(
+        env: Env,
+        caller: Address,
+        info: bridge::WrappedTokenInfo,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        bridge::register_wrapped_token(&env, &info);
+        bridge::emit_wrapped_token_registered(&env, &info.stellar_address, &info.origin_chain);
+        Ok(())
+    }
+
+    /// Return canonical metadata for a wrapped token, or None if not registered.
+    pub fn get_wrapped_token_info(
+        env: Env,
+        token: Address,
+    ) -> Option<bridge::WrappedTokenInfo> {
+        bridge::get_wrapped_token_info(&env, &token)
+    }
+
+    /// Record or update bridge confirmation state for a cross-chain transfer.
+    /// Anyone may call this; finality is determined by `MIN_BRIDGE_CONFIRMATIONS`.
+    pub fn update_bridge_confirmation(
+        env: Env,
+        transfer_id: String,
+        bridge_protocol: bridge::BridgeProtocol,
+        confirmations: u32,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+        let is_finalized = confirmations >= bridge::MIN_BRIDGE_CONFIRMATIONS;
+        let conf = bridge::BridgeConfirmation {
+            transfer_id: transfer_id.clone(),
+            bridge: bridge_protocol,
+            confirmations,
+            is_finalized,
+            updated_at: env.ledger().timestamp(),
+        };
+        bridge::record_bridge_confirmation(&env, &conf);
+        bridge::emit_bridge_confirmation_updated(&env, &transfer_id, confirmations, is_finalized);
+        Ok(())
+    }
+
+    /// Return bridge confirmation state for a transfer ID.
+    pub fn get_bridge_confirmation(
+        env: Env,
+        transfer_id: String,
+    ) -> Option<bridge::BridgeConfirmation> {
+        bridge::get_bridge_confirmation(&env, &transfer_id)
+    }
+
     // ── Escrow Lifecycle ──────────────────────────────────────────────────────
 
     /// Creates a new escrow and locks funds in the contract.
@@ -756,6 +825,7 @@ impl EscrowContract {
         arbiter: Option<Address>,
         deadline: Option<u64>,
         lock_time: Option<u64>,
+        _timelock: Option<Timelock>,
         _multisig_config: MultisigConfig,
     ) -> Result<u64, EscrowError> {
         Self::create_escrow_internal(
@@ -833,6 +903,9 @@ impl EscrowContract {
             }
         }
 
+        // Reject unapproved wrapped/bridged tokens
+        bridge::validate_escrow_token(&env, &token)?;
+
         let buyer_signers = {
             let mut signers = buyer_signers.unwrap_or_else(|| soroban_sdk::Vec::new(&env));
             if !signers.contains(&client) {
@@ -871,7 +944,7 @@ impl EscrowContract {
                 deadline,
                 lock_time,
                 lock_time_extension: None,
-                timelock: None,
+                timelock: OptionalTimelock::None,
                 brief_hash,
                 rent_balance: rent_reserve,
                 last_rent_collection_at: now,
@@ -947,7 +1020,7 @@ impl EscrowContract {
             deadline: None,
             lock_time: None,
             lock_time_extension: None,
-            timelock: None,
+            timelock: OptionalTimelock::None,
             brief_hash,
             rent_balance: base_rent_reserve,
             last_rent_collection_at: now,
@@ -1450,12 +1523,12 @@ impl EscrowContract {
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::EscrowNotActive);
         }
-        if meta.timelock.is_some() {
+        if meta.timelock != OptionalTimelock::None {
             return Err(EscrowError::TimelockAlreadyActive);
         }
 
         let now = env.ledger().timestamp();
-        meta.timelock = Some(types::Timelock {
+        meta.timelock = OptionalTimelock::Some(types::Timelock {
             duration_ledger,
             start_ledger: now,
         });
@@ -2318,6 +2391,14 @@ mod tests {
         (env, admin, contract_id, client)
     }
 
+    fn no_multisig(env: &Env) -> MultisigConfig {
+        MultisigConfig {
+            approvers: soroban_sdk::Vec::new(env),
+            weights: soroban_sdk::Vec::new(env),
+            threshold: 0,
+        }
+    }
+
     fn advance(env: &Env, seconds: u64) {
         env.ledger().with_mut(|ledger| ledger.timestamp += seconds);
     }
@@ -2517,6 +2598,8 @@ mod tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(&env),
         );
 
         assert_eq!(escrow_id, 0);
@@ -2565,6 +2648,8 @@ mod tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(&env),
         );
 
         let milestone_id = client.add_milestone(
@@ -2622,6 +2707,8 @@ mod tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(&env),
         );
 
         let mid = client.add_milestone(
@@ -2677,6 +2764,8 @@ mod tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(&env),
         );
 
         client.cancel_escrow(&escrow_client, &escrow_id);
@@ -2942,6 +3031,8 @@ mod tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(env),
         );
         (escrow_client, freelancer, token_id, escrow_id)
     }
@@ -3149,6 +3240,7 @@ mod tests {
             &None,
             &None,
             &None,
+            &None,
             &MultisigConfig {
                 approvers: soroban_sdk::Vec::new(&env),
                 weights: soroban_sdk::Vec::new(&env),
@@ -3231,6 +3323,7 @@ mod tests {
             &token_id,
             &100_i128,
             &BytesN::from_array(&env, &[1u8; 32]),
+            &None,
             &None,
             &None,
             &None,
@@ -3337,16 +3430,14 @@ mod tests {
         assert!(client.is_paused());
 
         // Mutation blocked
-        let result = std::panic::catch_unwind(|| {
-            client.add_milestone(
-                &escrow_client,
-                &escrow_id,
-                &String::from_str(&env, "M1"),
-                &BytesN::from_array(&env, &[0u8; 32]),
-                &50_i128,
-            );
-        });
-        assert!(result.is_err(), "add_milestone should panic while paused");
+        let result = client.try_add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "M1"),
+            &BytesN::from_array(&env, &[0u8; 32]),
+            &50_i128,
+        );
+        assert!(result.is_err(), "add_milestone should fail while paused");
 
         client.unpause(&admin);
         assert!(!client.is_paused());
