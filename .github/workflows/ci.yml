@@ -133,7 +133,7 @@ jobs:
           retention-days: 30
 
       - name: Slack Notification on failure
-        if: failure()
+        if: failure() && secrets.SLACK_WEBHOOK != ''
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
@@ -205,7 +205,7 @@ jobs:
           retention-days: 30
 
       - name: Slack Notification on fuzz failure
-        if: failure()
+        if: failure() && secrets.SLACK_WEBHOOK != ''
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
@@ -275,7 +275,7 @@ jobs:
           STELLAR_NETWORK: testnet
 
       - name: Slack Notification
-        if: failure() && matrix.node-version == 20
+        if: failure() && matrix.node-version == 20 && secrets.SLACK_WEBHOOK != ''
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
