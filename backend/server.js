@@ -62,7 +62,6 @@ import { createGateway } from './gateway/index.js';
 
 // Attach Prisma query instrumentation and monitoring
 attachPrismaMetrics(prisma);
-startConnectionMonitoring(prisma);
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -85,7 +84,8 @@ app.use(metricsMiddleware);
 app.use(responseTime);
 app.use(requestLogger);
 app.use((req, res, next) => {
-  const requestId = req.id || req.headers['x-request-id'] || req.headers['x-correlation-id'] || randomUUID();
+  const requestId =
+    req.id || req.headers['x-request-id'] || req.headers['x-correlation-id'] || randomUUID();
   req.id = requestId;
   res.setHeader('X-Request-Id', requestId);
   next();
@@ -218,9 +218,7 @@ app.use((req, res) => {
 
 // ── Sentry error handler — must be before the generic error handler ───────────
 // Captures unhandled Express errors and attaches request context.
-app.use(
-  sentryErrorHandler,
-);
+app.use(sentryErrorHandler);
 
 // ── Generic error handler ─────────────────────────────────────────────────────
 
@@ -259,9 +257,13 @@ async function startServer() {
   return new Promise((resolve, reject) => {
     server.listen(PORT, async () => {
       try {
+        startConnectionMonitoring(prisma);
         // Load secrets first — merges vault/env secrets into process.env
         await initSecrets();
-        logger.info({ secretsBackend: process.env.SECRETS_BACKEND || 'env' }, 'Secrets backend loaded');
+        logger.info(
+          { secretsBackend: process.env.SECRETS_BACKEND || 'env' },
+          'Secrets backend loaded',
+        );
         logger.info({ port: PORT, network: process.env.STELLAR_NETWORK }, 'API server started');
         await emailService.start();
         logger.info('[EmailService] Queue processor started');
@@ -287,7 +289,11 @@ async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== 'test' && process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (
+  process.env.NODE_ENV !== 'test' &&
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
   startServer().catch((error) => {
     logger.error({ err: error }, 'Failed to start API server');
     process.exitCode = 1;

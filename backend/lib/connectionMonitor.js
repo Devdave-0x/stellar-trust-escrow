@@ -58,6 +58,11 @@ export function startConnectionMonitoring(prisma) {
     }
   }, MONITORING_INTERVAL_MS);
 
+  // Allow test runs and short-lived scripts to exit without waiting for the monitor.
+  if (typeof monitoringInterval.unref === 'function') {
+    monitoringInterval.unref();
+  }
+
   log.info({ message: 'db_monitor_started' });
 }
 
