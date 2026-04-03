@@ -4,26 +4,20 @@ import escrowController, {
   validateEscrowId,
   validatePagination,
 } from '../controllers/escrowController.js';
-import escrowController from '../controllers/escrowController.js';
-import { cacheResponse, invalidateOn } from '../middleware/cache.js';
+import { cacheResponse, invalidateOn, TTL } from '../middleware/cache.js';
 import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
 router.use(authMiddleware);
 
-router.get('/', validatePagination, escrowController.listEscrows);
-router.post('/broadcast', validateBroadcast, escrowController.broadcastCreateEscrow);
-router.get('/:id/milestones', validateEscrowId, validatePagination, escrowController.getMilestones);
-router.get('/:id/milestones/:milestoneId', validateEscrowId, escrowController.getMilestone);
-router.get('/:id', validateEscrowId, escrowController.getEscrow);
 /**
  * @route  GET /api/escrows
- * Cache key pattern: escrow:list:{page} (via tag-based invalidation)
  */
 router.get(
   '/',
+  validatePagination,
   cacheResponse({
-    ttl: LIST_TTL,
+    ttl: TTL.LIST,
     tags: (req) => ['escrows', `escrow:list:${req.query.page || '1'}`],
   }),
   escrowController.listEscrows,
@@ -31,10 +25,10 @@ router.get(
 
 /**
  * @route  POST /api/escrows/broadcast
- * Invalidates all list pages on new escrow creation.
  */
 router.post(
   '/broadcast',
+  validateBroadcast,
   invalidateOn({ tags: ['escrows'] }),
   escrowController.broadcastCreateEscrow,
 );
@@ -44,8 +38,10 @@ router.post(
  */
 router.get(
   '/:id/milestones',
+  validateEscrowId,
+  validatePagination,
   cacheResponse({
-    ttl: DETAIL_TTL,
+    ttl: TTL.DETAIL,
     tags: (req) => [`escrow:${req.params.id}`, 'milestones'],
   }),
   escrowController.getMilestones,
@@ -56,8 +52,9 @@ router.get(
  */
 router.get(
   '/:id/milestones/:milestoneId',
+  validateEscrowId,
   cacheResponse({
-    ttl: DETAIL_TTL,
+    ttl: TTL.DETAIL,
     tags: (req) => [
       `escrow:${req.params.id}`,
       `milestone:${req.params.id}:${req.params.milestoneId}`,
@@ -68,12 +65,12 @@ router.get(
 
 /**
  * @route  GET /api/escrows/:id
- * Cache key pattern: escrow:{id}
  */
 router.get(
   '/:id',
+  validateEscrowId,
   cacheResponse({
-    ttl: DETAIL_TTL,
+    ttl: TTL.DETAIL,
     tags: (req) => ['escrows', `escrow:${req.params.id}`],
   }),
   escrowController.getEscrow,

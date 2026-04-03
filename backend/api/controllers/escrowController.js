@@ -46,8 +46,18 @@ function logCacheMetrics() {
   const m = cache.analytics();
   console.log(
     `[Cache] backend=${m.backend} hits=${m.hits} misses=${m.misses} ` +
-    `hitRate=${m.hitRate} sets=${m.sets} invalidations=${m.invalidations}`,
+      `hitRate=${m.hitRate} sets=${m.sets} invalidations=${m.invalidations}`,
   );
+}
+
+/** Triggered after any escrow status transition to evict stale cache entries. */
+async function onEscrowStatusChange(id) {
+  try {
+    await invalidateEscrowCache(id);
+    logCacheMetrics();
+  } catch (err) {
+    console.error('[Cache] invalidateEscrowCache failed:', err.message);
+  }
 }
 
 // ── Read handlers (cached at route level) ─────────────────────────────────────
@@ -71,7 +81,10 @@ const listEscrows = async (req, res) => {
     const where = {};
 
     if (status) {
-      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
+      const statuses = status
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
     if (client) where.clientAddress = client;
@@ -126,15 +139,26 @@ const getEscrow = async (req, res) => {
         milestones: {
           orderBy: { milestoneIndex: 'asc' },
           select: {
-            id: true, milestoneIndex: true, title: true,
-            amount: true, status: true, submittedAt: true, resolvedAt: true,
+            id: true,
+            milestoneIndex: true,
+            title: true,
+            amount: true,
+            status: true,
+            submittedAt: true,
+            resolvedAt: true,
           },
         },
         dispute: {
           select: {
-            id: true, escrowId: true, raisedByAddress: true, raisedAt: true,
-            resolvedAt: true, clientAmount: true, freelancerAmount: true,
-            resolvedBy: true, resolution: true,
+            id: true,
+            escrowId: true,
+            raisedByAddress: true,
+            raisedAt: true,
+            resolvedAt: true,
+            clientAmount: true,
+            freelancerAmount: true,
+            resolvedBy: true,
+            resolution: true,
           },
         },
       },
@@ -176,8 +200,13 @@ const getMilestones = async (req, res) => {
         take: limit,
         orderBy: { milestoneIndex: 'asc' },
         select: {
-          id: true, milestoneIndex: true, title: true,
-          amount: true, status: true, submittedAt: true, resolvedAt: true,
+          id: true,
+          milestoneIndex: true,
+          title: true,
+          amount: true,
+          status: true,
+          submittedAt: true,
+          resolvedAt: true,
         },
       }),
       prisma.milestone.count({ where: { escrowId } }),
@@ -201,8 +230,14 @@ const getMilestone = async (req, res) => {
     const milestone = await prisma.milestone.findUnique({
       where: { escrowId_milestoneIndex: { escrowId, milestoneIndex } },
       select: {
-        id: true, milestoneIndex: true, escrowId: true, title: true,
-        amount: true, status: true, submittedAt: true, resolvedAt: true,
+        id: true,
+        milestoneIndex: true,
+        escrowId: true,
+        title: true,
+        amount: true,
+        status: true,
+        submittedAt: true,
+        resolvedAt: true,
       },
     });
 
@@ -214,7 +249,14 @@ const getMilestone = async (req, res) => {
   }
 };
 
-export default { listEscrows, getEscrow, broadcastCreateEscrow, getMilestones, getMilestone };
+export default {
+  listEscrows,
+  getEscrow,
+  broadcastCreateEscrow,
+  getMilestones,
+  getMilestone,
+  onEscrowStatusChange,
+};
 
 // ── Validation rule sets (used by escrowRoutes) ───────────────────────────────
 export const validateBroadcast = [signedXdrBody, handleValidationErrors];
