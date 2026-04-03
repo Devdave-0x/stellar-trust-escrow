@@ -9,6 +9,7 @@
 
 import prisma from '../../lib/prisma.js';
 import { TIER_LIMITS } from '../../config/rateLimits.js';
+import { logControllerError } from '../../config/logger.js';
 import { getUserUsage } from '../middleware/rateLimiter.js';
 
 // Mutable runtime overrides (resets on server restart)
@@ -37,6 +38,7 @@ const getUserRateLimitUsage = (req, res) => {
   const usage = getUserUsage(userId);
   res.json({ userId, ...usage });
 };
+
 import cache from '../../lib/cache.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 

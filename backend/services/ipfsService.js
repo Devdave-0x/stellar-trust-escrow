@@ -1,5 +1,4 @@
 import sharp from 'sharp';
-import { createHash } from 'crypto';
 
 const GATEWAY = process.env.IPFS_GATEWAY_URL || 'https://ipfs.io';
 const API_URL = process.env.IPFS_API_URL || 'https://api.thegraph.com/ipfs/api/v0';

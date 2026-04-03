@@ -17,7 +17,10 @@
  */
 
 import { createClient } from 'redis';
+import { createModuleLogger } from '../config/logger.js';
 import { scopeCacheKey, scopeCacheTag } from '../lib/tenantContext.js';
+
+const log = createModuleLogger('cacheService');
 
 // ── Analytics counters ────────────────────────────────────────────────────────
 

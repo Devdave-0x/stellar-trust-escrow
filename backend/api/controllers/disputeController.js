@@ -81,12 +81,10 @@ const listDisputes = async (req, res) => {
       prisma.dispute.count({ where })
     ]);
 
-    const response = buildPaginatedResponse({
-      items: disputes,
+    const response = buildPaginatedResponse(disputes, {
       total,
       page,
       limit,
-      request: req
     });
 
     res.json(response);
@@ -292,12 +290,10 @@ const listEvidence = async (req, res) => {
       })
     );
 
-    const response = buildPaginatedResponse({
-      items: evidenceWithUrls,
+    const response = buildPaginatedResponse(evidenceWithUrls, {
       total,
       page,
       limit,
-      request: req
     });
 
     res.json(response);
@@ -309,7 +305,6 @@ const listEvidence = async (req, res) => {
 
 const autoResolve = async (req, res) => {
   try {
-    const { id } = req.params;
     const dispute = req.dispute;
 
     const resolution = await prisma.dispute.update({
@@ -342,7 +337,6 @@ const autoResolve = async (req, res) => {
 
 const getRecommendation = async (req, res) => {
   try {
-    const { id } = req.params;
     const dispute = req.dispute;
 
     const evidence = await prisma.disputeEvidence.findMany({
@@ -369,7 +363,6 @@ const getRecommendation = async (req, res) => {
 
 const postAppeal = async (req, res) => {
   try {
-    const { id } = req.params;
     const { reason } = req.body;
     const userAddress = req.user?.walletAddress ?? req.userAddress;
 

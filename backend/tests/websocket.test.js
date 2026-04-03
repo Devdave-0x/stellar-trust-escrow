@@ -471,9 +471,6 @@ describe('WebSocket Pool', () => {
     });
 
     it('emits metrics event on connection changes', () => {
-      const { metricsEmitter } = pool.constructor
-        ? { metricsEmitter: null }
-        : { metricsEmitter: null };
       // Verify getMetrics() reflects live state
       pool.addConnection(createMockWs(), createMockReq());
       expect(pool.getMetrics().active_connections).toBe(1);

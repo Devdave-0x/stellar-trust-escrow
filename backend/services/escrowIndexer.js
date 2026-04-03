@@ -29,8 +29,6 @@
 
 // const prisma = new PrismaClient();
 
-import escrowController from '../api/controllers/escrowController.js';
-
 /**
  * The last ledger sequence successfully processed.
  * Persisted to DB so the indexer can resume after restarts.

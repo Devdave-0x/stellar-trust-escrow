@@ -29,11 +29,8 @@ import prisma from '../lib/prisma.js';
 import { scValToNative } from '@stellar/stellar-sdk';
 import { getContractEvents, getLatestLedger } from './stellarService.js';
 import { broadcastEscrowEvent } from '../api/websocket/handlers.js';
+import { broadcastEscrowUpdate } from './escrowRealtime.js';
 import { indexRecord } from './reputationSearchService.js';
-
-const log = createModuleLogger('eventIndexer');
-
-const log = createModuleLogger('eventIndexer');
 
 const log = createModuleLogger('eventIndexer');
 
