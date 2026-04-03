@@ -26,7 +26,6 @@ import Button from '../../../components/ui/Button';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 import XLMAmountInput from '../../../components/ui/XLMAmountInput';
-import { isValidStellarAddress } from '../../../lib/validation';
 import templatesData from '../../../data/templates.json';
 import { useToast } from '../../../contexts/ToastContext';
 
@@ -130,10 +129,6 @@ export default function CreateEscrowPage() {
     }
   };
 
-  const handleSuccess = () => {
-    showToast('Escrow created successfully!', 'success');
-  };
-
   const addMilestone = () => {
     setFormData((data) => ({
       ...data,
@@ -222,7 +217,6 @@ export default function CreateEscrowPage() {
           <StepCounterparty
             formData={formData}
             setFormData={setFormData}
-            touched={touched}
             setTouched={setTouched}
             amountError={amountError}
             descriptionError={descriptionError}
@@ -273,7 +267,7 @@ export default function CreateEscrowPage() {
 /**
  * Step 1: Enter counterparty details.
  */
-function StepCounterparty({ formData, setFormData, touched, setTouched, amountError, descriptionError }) {
+function StepCounterparty({ formData, setFormData, setTouched, amountError, descriptionError }) {
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-white">Counterparty & Funds</h2>

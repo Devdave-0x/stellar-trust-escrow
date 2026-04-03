@@ -16,23 +16,12 @@
  */
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Button from './Button';
-import Modal from './Modal';
 import Spinner from './Spinner';
 import { truncateAddress } from '../../lib/truncateAddress';
 import { useI18n } from '../../i18n/index.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Truncate a Stellar address to first 6 + last 4 chars.
- * e.g. GABCDEF...XY12
- */
-function truncateAddress(address) {
-  if (!address) return '';
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
 
 // ── Status Dot ────────────────────────────────────────────────────────────────
 
@@ -118,14 +107,6 @@ export default function WalletStatus({ wallet }) {
   const { isConnected, isConnecting, isFreighterInstalled, address, connect, disconnect, error } =
     wallet;
   const { t } = useI18n();
-  const router = useRouter();
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const handleDisconnect = () => {
-    disconnect();
-    setShowConfirm(false);
-    router.push('/');
-  };
 
   // Not installed — prompt installation
   if (!isFreighterInstalled) {
@@ -159,7 +140,6 @@ export default function WalletStatus({ wallet }) {
   if (isConnected && address) {
     return (
       <div className="flex items-center gap-2">
-        <Avatar address={address} size="sm" className="rounded-full" />
         <AddressWithTooltip address={address} />
         <Button id="wallet-disconnect-btn" variant="secondary" size="sm" onClick={disconnect}>
           {t('wallet.disconnect')}

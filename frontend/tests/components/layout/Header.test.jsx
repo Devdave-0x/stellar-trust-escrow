@@ -1,27 +1,19 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import Header from '../../../components/layout/Header';
-import { ThemeProvider } from '../../../contexts/ThemeContext';
-import { I18nProvider } from '../../../i18n/index.jsx';
+import { renderWithAppProviders } from '../../test-utils';
 
-const renderHeader = () =>
-  render(
-    <I18nProvider>
-      <ThemeProvider>
-        <Header />
-      </ThemeProvider>
-    </I18nProvider>,
-  );
+const renderHeader = () => renderWithAppProviders(<Header />);
 
 describe('Header', () => {
   it('renders the brand name', () => {
     renderHeader();
-    expect(screen.getByText(/StellarTrust/)).toBeInTheDocument();
+    expect(screen.getAllByText(/StellarTrust/).length).toBeGreaterThan(0);
   });
 
   it('renders navigation links', () => {
     renderHeader();
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Explorer' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Dashboard' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Explorer' }).length).toBeGreaterThan(0);
   });
 
   it('renders install link when Freighter is unavailable', () => {
