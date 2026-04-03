@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
 jobs:
   deploy-staging:
     name: Deploy to Staging
@@ -19,7 +22,7 @@ jobs:
           echo "Successfully deployed to Staging"
 
       - name: Slack Notification Success
-        if: success() && secrets.SLACK_WEBHOOK != ''
+        if: ${{ success() && env.SLACK_WEBHOOK != '' }}
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
@@ -27,7 +30,7 @@ jobs:
           SLACK_MESSAGE: 'Staging Deployment: success'
 
       - name: Slack Notification Failure
-        if: failure() && secrets.SLACK_WEBHOOK != ''
+        if: ${{ failure() && env.SLACK_WEBHOOK != '' }}
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
@@ -50,7 +53,7 @@ jobs:
           echo "Successfully deployed to Production"
 
       - name: Slack Notification Success
-        if: success() && secrets.SLACK_WEBHOOK != ''
+        if: ${{ success() && env.SLACK_WEBHOOK != '' }}
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
@@ -58,7 +61,7 @@ jobs:
           SLACK_MESSAGE: 'Production Deployment: success'
 
       - name: Slack Notification Failure
-        if: failure() && secrets.SLACK_WEBHOOK != ''
+        if: ${{ failure() && env.SLACK_WEBHOOK != '' }}
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
