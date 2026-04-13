@@ -2,8 +2,7 @@
 #[allow(clippy::module_inception)]
 mod pause_tests {
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig,
-        MS_PENDING,
+        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig, MS_PENDING,
     };
 
     fn no_multisig(env: &Env) -> MultisigConfig {

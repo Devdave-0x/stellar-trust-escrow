@@ -32,9 +32,7 @@
 use soroban_sdk::{contracttype, Address, BytesN, Env, Vec};
 
 use crate::PackedDataKey;
-use crate::{
-    DataKey, Milestone, OptionalTimelock, MS_APPROVED, MS_RELEASED, MS_SUBMITTED,
-};
+use crate::{DataKey, Milestone, OptionalTimelock, MS_APPROVED, MS_RELEASED, MS_SUBMITTED};
 
 // Current storage version - increment when storage layout changes
 pub const STORAGE_VERSION: u32 = 2;
