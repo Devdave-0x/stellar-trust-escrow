@@ -2481,6 +2481,19 @@ impl EscrowContract {
         ContractStorage::load_milestone(&env, escrow_id, milestone_id)
     }
 
+    /// Returns the approvals list for a given milestone.
+    /// Useful for frontends displaying multisig approval progress (e.g. "2 of 3 signers approved").
+    /// Returns `EscrowError::MilestoneNotFound` if the milestone does not exist.
+    pub fn get_milestone_approvals(
+        env: Env,
+        escrow_id: u64,
+        milestone_id: u32,
+    ) -> Result<soroban_sdk::Vec<ApprovalRecord>, EscrowError> {
+        ContractStorage::ensure_live_escrow(&env, escrow_id)?;
+        let milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
+        Ok(milestone.approvals)
+    }
+
     pub fn get_cancellation_request(
         env: Env,
         escrow_id: u64,
