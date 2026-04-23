@@ -2507,6 +2507,39 @@ impl EscrowContract {
         ContractStorage::load_slash_record(&env, escrow_id)
     }
 
+    /// Replaces the arbiter on an active escrow.
+    ///
+    /// Requires authorization from both the client and the freelancer.
+    /// The new arbiter must not be the client or freelancer themselves.
+    pub fn update_arbiter(
+        env: Env,
+        escrow_id: u64,
+        new_arbiter: Option<Address>,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_not_paused(&env)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::EscrowNotActive);
+        }
+
+        // Both parties must sign.
+        meta.client.require_auth();
+        meta.freelancer.require_auth();
+
+        // Validate: arbiter must not be client or freelancer.
+        if let Some(ref a) = new_arbiter {
+            if a == &meta.client || a == &meta.freelancer {
+                return Err(EscrowError::BadArbiter);
+            }
+        }
+
+        meta.arbiter = new_arbiter.clone();
+        ContractStorage::save_escrow_meta(&env, &meta);
+        events::emit_arbiter_updated(&env, escrow_id, &new_arbiter);
+        Ok(())
+    }
+
     // ── Cancellation Functions ─────────────────────────────────────────────────
 
     /// Requests cancellation of an escrow.
