@@ -2960,6 +2960,14 @@ impl EscrowContract {
         // Emit slash event
         events::emit_slash_applied(env, escrow_id, slashed_user, recipient, amount, reason);
     }
+
+    /// Returns the contract's current token balance for the given token address.
+    /// Use this for on-chain solvency checks to verify the contract holds
+    /// sufficient funds to cover all active escrow `remaining_balance` values.
+    pub fn get_contract_balance(env: Env, token: Address) -> i128 {
+        ContractStorage::bump_instance_ttl(&env);
+        token::Client::new(&env, &token).balance(&env.current_contract_address())
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
