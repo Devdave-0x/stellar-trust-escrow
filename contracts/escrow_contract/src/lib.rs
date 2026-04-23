@@ -199,6 +199,7 @@ impl ContractStorage {
         // Initialize storage version for upgradeable storage
         StorageManager::init_version(env);
         Self::bump_instance_ttl(env);
+        events::emit_admin_initialized(env, admin);
         Ok(())
     }
 
