@@ -157,37 +157,37 @@ struct ApproveMilestoneArgs {
 // `submitted_count` replaces the O(n) loop in cancel_escrow.
 #[contracttype]
 #[derive(Clone, Debug)]
-pub(crate) struct EscrowMeta {
-    pub(crate) escrow_id: u64,
-    pub(crate) client: Address,
-    pub(crate) freelancer: Address,
-    pub(crate) token: Address,
-    pub(crate) total_amount: i128,
+pub struct EscrowMeta {
+    pub escrow_id: u64,
+    pub client: Address,
+    pub freelancer: Address,
+    pub token: Address,
+    pub total_amount: i128,
     /// Running sum of milestone amounts added so far (allocation guard).
-    pub(crate) allocated_amount: i128,
-    pub(crate) remaining_balance: i128,
-    pub(crate) status: EscrowStatus,
-    pub(crate) milestone_count: u32,
+    pub allocated_amount: i128,
+    pub remaining_balance: i128,
+    pub status: EscrowStatus,
+    pub milestone_count: u32,
     /// Number of milestones in Approved state — avoids full scan on completion check.
-    pub(crate) approved_count: u32,
-    pub(crate) released_count: u32,
+    pub approved_count: u32,
+    pub released_count: u32,
     /// Number of milestones in Submitted state — avoids O(n) scan in cancel_escrow.
-    pub(crate) submitted_count: u32,
-    pub(crate) arbiter: Option<Address>,
-    pub(crate) buyer_signers: soroban_sdk::Vec<Address>,
-    pub(crate) created_at: u64,
-    pub(crate) deadline: Option<u64>,
+    pub submitted_count: u32,
+    pub arbiter: Option<Address>,
+    pub buyer_signers: soroban_sdk::Vec<Address>,
+    pub created_at: u64,
+    pub deadline: Option<u64>,
     /// Optional lock time (ledger timestamp) - funds locked until this time.
-    pub(crate) lock_time: Option<u64>,
+    pub lock_time: Option<u64>,
     /// Optional extension deadline for the lock time.
-    pub(crate) lock_time_extension: Option<u64>,
+    pub lock_time_extension: Option<u64>,
     /// Optional timelock controls release window after approval.
-    pub(crate) timelock: OptionalTimelock,
-    pub(crate) brief_hash: BytesN<32>,
+    pub timelock: OptionalTimelock,
+    pub brief_hash: BytesN<32>,
     /// Prepaid storage rent reserve held by the contract in the escrow token.
-    pub(crate) rent_balance: i128,
+    pub rent_balance: i128,
     /// Timestamp of the last successful rent collection checkpoint.
-    pub(crate) last_rent_collection_at: u64,
+    pub last_rent_collection_at: u64,
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -2556,6 +2556,14 @@ impl EscrowContract {
 
     pub fn get_escrow(env: Env, escrow_id: u64) -> Result<EscrowState, EscrowError> {
         ContractStorage::load_escrow(&env, escrow_id)
+    }
+
+    /// O(1) lightweight view — returns only the escrow header without loading milestones.
+    /// Suitable for monitoring dashboards that only need status, balances, and party info.
+    pub fn get_escrow_meta(env: Env, escrow_id: u64) -> Result<EscrowMeta, EscrowError> {
+        let mut meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+        ContractStorage::settle_rent_for_access(&env, &mut meta)?;
+        Ok(meta)
     }
 
     pub fn collect_rent(env: Env, escrow_id: u64) -> Result<i128, EscrowError> {
