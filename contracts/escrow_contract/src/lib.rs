@@ -775,6 +775,18 @@ impl ContractStorage {
         }
         Ok(())
     }
+
+    fn get_migration_cursor(env: &Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MigrationCursor)
+            .unwrap_or(0_u64)
+    }
+
+    fn set_migration_cursor(env: &Env, cursor: u64) {
+        env.storage().instance().set(&DataKey::MigrationCursor, &cursor);
+        Self::bump_instance_ttl(env);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2042,6 +2054,62 @@ impl EscrowContract {
 
         events::emit_client_role_transferred(&env, escrow_id, &old_client, &new_client);
         Ok(())
+    }
+
+    /// Releases funds for multiple approved milestones in a single transaction.
+    ///
+    /// # Behavior on Partial Failure
+    /// Skips invalid milestone IDs (not found or not in Approved state)
+    /// and continues processing valid milestones. Prevents griefing where one
+    /// invalid milestone ID could block all valid releases.
+    ///
+    /// # Returns
+    /// The number of milestones successfully released.
+    pub fn batch_release_funds(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        milestone_ids: soroban_sdk::Vec<u32>,
+    ) -> Result<u32, EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(EscrowError::NotInitialized)?;
+        caller.require_auth();
+        if caller != admin {
+            return Err(EscrowError::AdminOnly);
+        }
+
+        let mut meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+        ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
+
+        let token_client = token::Client::new(&env, &meta.token);
+        let contract_addr = env.current_contract_address();
+        let mut released_count = 0_u32;
+
+        for mid in milestone_ids.iter() {
+            let milestone = match ContractStorage::load_milestone(&env, escrow_id, mid) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            if milestone.status != MilestoneStatus::Approved {
+                continue;
+            }
+
+            let amount = milestone.amount;
+            if let Ok(new_balance) = meta.remaining_balance.checked_sub(amount) {
+                meta.remaining_balance = new_balance;
+                token_client.transfer(&contract_addr, &meta.freelancer, &amount);
+                events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
+                released_count += 1;
+            }
+        }
+
+        ContractStorage::save_escrow_meta(&env, &meta);
+        Ok(released_count)
     }
 
     /// Cancels an escrow and returns remaining funds to the client.

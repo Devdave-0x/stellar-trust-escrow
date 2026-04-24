@@ -395,3 +395,11 @@ pub fn emit_client_role_transferred(
         (old_client.clone(), new_client.clone()),
     );
 }
+
+/// Emitted when the contract is upgraded.
+pub fn emit_upgrade_executed(env: &Env, admin: &Address, new_wasm_hash: &soroban_sdk::BytesN<32>) {
+    env.events().publish(
+        (symbol_short!("upg_exe"),),
+        (admin.clone(), new_wasm_hash.clone()),
+    );
+}
