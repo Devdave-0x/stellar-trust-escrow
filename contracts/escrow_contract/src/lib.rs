@@ -3183,7 +3183,7 @@ mod tests {
     #![allow(clippy::all)]
     use super::*;
     use soroban_sdk::{
-        testutils::{Address as _, Ledger as _},
+        testutils::{Address as _, Events as _, Ledger as _},
         token, BytesN, Env, String,
     };
 
