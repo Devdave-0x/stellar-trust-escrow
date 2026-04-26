@@ -101,6 +101,8 @@ pub enum EscrowError {
     SlashAlreadyDisputed = 39,
     /// The dispute deadline for this slash has passed.
     SlashDisputeDeadlineExpired = 40,
+    /// A SlashRecord already exists for this escrow; duplicate slash rejected.
+    SlashAlreadyApplied = 41,
 
     // ── Storage Migration ───────────────────────────────────────────────────────
     /// An error occurred during a storage schema migration.

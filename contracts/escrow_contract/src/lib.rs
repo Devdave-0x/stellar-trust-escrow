@@ -3708,6 +3708,11 @@ impl EscrowContract {
         reason: &String,
         escrow_id: u64,
     ) {
+        // Guard: reject duplicate slash — a SlashRecord already exists for this escrow.
+        if ContractStorage::load_slash_record(env, escrow_id).is_ok() {
+            panic_with_error!(env, EscrowError::SlashAlreadyApplied);
+        }
+
         // Update reputation
         let mut reputation = ContractStorage::load_reputation(env, slashed_user);
         reputation.total_score = reputation.total_score.saturating_sub(10);
@@ -5244,6 +5249,14 @@ mod tests {
         assert_eq!(slash.recipient, freelancer);
         assert_eq!(slash.amount, 10_i128); // 10% of 100
         assert!(!slash.disputed);
+
+        // Escrow is now Cancelled and a SlashRecord exists.
+        // Any further call that would invoke apply_slash must be rejected with SlashAlreadyApplied.
+        let result = client.try_execute_cancellation(&escrow_id);
+        assert!(
+            result.is_err(),
+            "second execute_cancellation must fail when a SlashRecord already exists"
+        );
 
         // finalize_slash before SLASH_DISPUTE_PERIOD must fail
         let err = client.try_finalize_slash(&escrow_id);
