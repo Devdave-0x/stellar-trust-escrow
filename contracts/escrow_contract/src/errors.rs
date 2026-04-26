@@ -147,4 +147,9 @@ pub enum EscrowError {
     SplitInvalid = 57,
     /// The requested escrow template does not exist.
     TemplateNotFound = 58,
+
+    // ── Admin Transfer ───────────────────────────────────────────────────────
+    /// `accept_admin` was called but no pending admin transfer has been proposed,
+    /// or `accept_admin` was called by an address that is not the pending admin.
+    NoPending = 59,
 }

@@ -602,4 +602,6 @@ pub enum DataKey {
     Template(u64),
     /// Template counter — value: u64
     TemplateCounter,
+    /// Pending admin address during a two-step admin transfer — value: Address
+    PendingAdmin,
 }
