@@ -1,3 +1,15 @@
+//! # Contract Events
+//!
+//! Helper functions for emitting structured events from the escrow contract.
+//! Events are indexed by the backend `escrowIndexer` service to keep the
+//! database in sync without requiring direct contract reads.
+//!
+//! Event topics follow the pattern: `(event_name, primary_identifier)`
+//! Event data carries the payload relevant to that event type.
+//!
+//! All topic name constants live in [`event_names`] — edit that module to
+//! rename or add topics.
+
 #![allow(dead_code)]
 
 use soroban_sdk::{Address, Env};
@@ -99,7 +111,12 @@ pub fn emit_vesting_schedule_created(
 ) {
     env.events().publish(
         (ev::VESTING_SCHEDULE_CREATED, escrow_id),
-        (cliff_seconds, duration_seconds, monthly_amount, final_amount),
+        (
+            cliff_seconds,
+            duration_seconds,
+            monthly_amount,
+            final_amount,
+        ),
     );
 }
 
@@ -302,8 +319,10 @@ pub fn emit_admin_initialized(env: &Env, admin: &Address) {
 }
 
 pub fn emit_admin_proposed(env: &Env, current_admin: &Address, pending_admin: &Address) {
-    env.events()
-        .publish((ev::ADMIN_PROPOSED,), (current_admin.clone(), pending_admin.clone()));
+    env.events().publish(
+        (ev::ADMIN_PROPOSED,),
+        (current_admin.clone(), pending_admin.clone()),
+    );
 }
 
 pub fn emit_admin_changed(env: &Env, old_admin: &Address, new_admin: &Address) {
@@ -363,7 +382,7 @@ pub fn emit_nft_gated_escrow_created(
     token_id: u64,
 ) {
     env.events().publish(
-        (symbol_short!("nft_esc"), escrow_id),
+        (ev::NFT_GATED_ESCROW_CREATED, escrow_id),
         (nft_contract.clone(), token_id),
     );
 }
@@ -380,12 +399,7 @@ pub fn emit_escrow_split(
     );
 }
 
-pub fn emit_deadline_extended(
-    env: &Env,
-    escrow_id: u64,
-    old_deadline: u64,
-    new_deadline: u64,
-) {
+pub fn emit_deadline_extended(env: &Env, escrow_id: u64, old_deadline: u64, new_deadline: u64) {
     env.events().publish(
         (ev::DEADLINE_EXTENDED, escrow_id),
         (old_deadline, new_deadline),
