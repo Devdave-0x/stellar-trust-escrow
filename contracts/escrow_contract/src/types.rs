@@ -604,4 +604,14 @@ pub enum DataKey {
     TemplateCounter,
     /// Pending admin address during a two-step admin transfer — value: Address
     PendingAdmin,
+    /// Escrow IDs indexed by participant address — key: Address, value: Vec<u64>
+    EscrowsByParticipant(Address),
+    /// Escrow IDs indexed by status — key: EscrowStatus, value: Vec<u64>
+    EscrowsByStatus(EscrowStatus),
+    /// Escrow IDs with active cancellation requests indexed by requester — key: Address, value: Vec<u64>
+    CancellationsByRequester(Address),
+    /// Escrow IDs indexed by slashed user address — key: Address, value: Vec<u64>
+    SlashsByAddress(Address),
+    /// Minimum arbiter reputation score threshold — value: u64
+    MinArbiterReputation,
 }

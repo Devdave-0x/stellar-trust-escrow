@@ -67,6 +67,7 @@ mod meta_snapshot_tests;
 mod oracle_fallback_tests;
 mod oracle_tests;
 mod pause_tests;
+mod arbiter_reputation_tests;
 mod partial_cancel_tests;
 mod self_escrow_tests;
 mod timelock_enforcement_tests;
@@ -126,6 +127,11 @@ pub const AUTO_DEADLINE_EXTENSION_SECONDS: u64 = 604_800;
 
 /// Minimum escrow amount in stroops (1 XLM).
 pub const MIN_ESCROW_AMOUNT: i128 = 10_000_000i128;
+
+/// Minimum reputation score required for an address to serve as an arbiter.
+/// This prevents sybil attacks where fresh addresses with zero reputation
+/// could be used to gain control over dispute resolution.
+pub const MIN_ARBITER_REPUTATION_SCORE: u64 = 100;
 
 // ── Granular storage keys ─────────────────────────────────────────────────────
 // Separate keys for meta vs each milestone avoids deserialising the full
@@ -1131,6 +1137,37 @@ impl EscrowContract {
         bridge::get_bridge_confirmation(&env, &token)
     }
 
+    // ── Arbiter Reputation Configuration ──────────────────────────────────────
+
+    /// Sets the minimum reputation score required for an address to serve as an arbiter.
+    /// Admin only. This helps prevent sybil attacks by ensuring arbiters have
+    /// a track record on the platform.
+    ///
+    /// # Arguments
+    /// * `new_min` - The new minimum reputation score (0 to disable check)
+    pub fn set_min_arbiter_reputation(
+        env: Env,
+        caller: Address,
+        new_min: u64,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::MinArbiterReputation, &new_min);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Returns the current minimum arbiter reputation score threshold.
+    pub fn get_min_arbiter_reputation(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MinArbiterReputation)
+            .unwrap_or(MIN_ARBITER_REPUTATION_SCORE)
+    }
+
     // ── Escrow Lifecycle ──────────────────────────────────────────────────────
 
     /// Creates a new escrow and locks funds in the contract.
@@ -1311,6 +1348,19 @@ impl EscrowContract {
         // Check token whitelist if enabled
         if ContractStorage::is_token_whitelist_enabled(&env) && !ContractStorage::is_token_approved(&env, &token) {
             return Err(EscrowError::TokenDenied);
+        }
+
+        // Validate arbiter reputation if arbiter is specified
+        if let Some(ref arbiter_addr) = arbiter {
+            let min_reputation: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::MinArbiterReputation)
+                .unwrap_or(MIN_ARBITER_REPUTATION_SCORE);
+            let arbiter_reputation = ContractStorage::load_reputation(&env, arbiter_addr);
+            if arbiter_reputation.total_score < min_reputation {
+                return Err(EscrowError::Unauthorized);
+            }
         }
 
         let buyer_signers = {
