@@ -35,6 +35,11 @@ mod lock_time_enforcement_tests {
     /// Verifies that release_funds returns LockTimeNotExpired (28) when the
     /// ledger timestamp is before the escrow's lock_time.
     ///
+    /// Setup:
+    ///   - timestamp = 1_000, lock_time = 5_000
+    ///   - A long timelock keeps the milestone in MS_APPROVED after approve_milestone
+    ///     (no immediate release), so release_funds can be reached.
+    ///   - Timestamp is rewound to lock_time - 1 before calling release_funds.
     /// A long timelock keeps the milestone in MS_APPROVED after approve_milestone
     /// (no immediate release), so release_funds can be reached.
     /// Timestamp is rewound to lock_time - 1 before calling release_funds.
@@ -45,6 +50,10 @@ mod lock_time_enforcement_tests {
         let freelancer = Address::generate(&env);
 
         let amount = 500_i128;
+        // Mint: amount + rent for escrow (30) + rent for 1 milestone (30)
+        let token = register_token(&env, &admin, &client_addr, amount + 60);
+
+        // t = 1_000; lock_time = 5_000
         let token = register_token(&env, &admin, &client_addr, amount + 60);
 
         env.ledger().with_mut(|l| l.timestamp = 1_000);
@@ -63,6 +72,8 @@ mod lock_time_enforcement_tests {
             &no_multisig(&env),
         );
 
+        // Start a long timelock so approve_milestone keeps the milestone in
+        // MS_APPROVED (no immediate transfer) rather than releasing it.
         // Long timelock keeps milestone in MS_APPROVED (no immediate release).
         client.start_timelock(&client_addr, &escrow_id, &100_000_u64);
 
@@ -90,6 +101,12 @@ mod lock_time_enforcement_tests {
 
     /// Verifies that release_funds succeeds after the ledger timestamp passes
     /// the escrow's lock_time, and that the lock_exp event is emitted.
+    ///
+    /// Setup:
+    ///   - timestamp = 1_000, lock_time = 5_000
+    ///   - A long timelock keeps the milestone in MS_APPROVED after approve_milestone.
+    ///   - Admin calls release_funds at timestamp = lock_time + 1 (bypasses timelock,
+    ///     lock_time is expired) → succeeds and emits lock_exp event.
     #[test]
     fn test_lock_time_allows_release_after_expiry() {
         let (env, admin, contract_id, client) = setup();
@@ -126,6 +143,39 @@ mod lock_time_enforcement_tests {
         );
         client.submit_milestone(&freelancer, &escrow_id, &mid);
 
+        // Advance past lock_time and approve (milestone stays MS_APPROVED due to timelock).
+        env.ledger().with_mut(|l| l.timestamp = lock_time + 1);
+        client.approve_milestone(&client_addr, &escrow_id, &mid);
+
+        // Admin calls release_funds — bypasses timelock check, lock_time is expired.
+        client.release_funds(&admin, &escrow_id, &mid);
+
+        // Verify freelancer received the funds.
+        let token_client = token::Client::new(&env, &token);
+        assert_eq!(token_client.balance(&freelancer), amount);
+
+        // Verify lock_exp event was emitted with the correct lock_time value.
+        let lock_exp_sym = soroban_sdk::symbol_short!("lock_exp");
+        let lock_exp_event = env
+            .events()
+            .all()
+            .iter()
+            .find(|(addr, topics, _)| {
+                *addr == contract_id
+                    && topics
+                        .get(0)
+                        .map(|v| {
+                            Symbol::try_from_val(&env, &v)
+                                .map(|s| s == lock_exp_sym)
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(false)
+            });
+        assert!(lock_exp_event.is_some(), "lock_exp event must be emitted");
+
+        let (_, _, data) = lock_exp_event.unwrap();
+        let emitted_lock_time: u64 = soroban_sdk::FromVal::from_val(&env, &data);
+        assert_eq!(emitted_lock_time, lock_time, "lock_exp event must carry the lock_time value");
         env.ledger().with_mut(|l| l.timestamp = lock_time + 1);
         client.approve_milestone(&client_addr, &escrow_id, &mid);
 
