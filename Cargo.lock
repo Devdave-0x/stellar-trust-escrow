@@ -1570,7 +1570,6 @@ name = "stellar-trust-escrow-contract"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "hex",
  "soroban-sdk",
 ]
 
