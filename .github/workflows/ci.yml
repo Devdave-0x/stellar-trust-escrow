@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [develop]          # contributors push here only — never to main
+    branches: [main, develop]          # support both main and develop for merge-ready CI
   pull_request:
-    branches: [develop]          # all contributor PRs must target develop
+    branches: [main, develop]
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -96,6 +96,14 @@ jobs:
       - name: Clippy
         if: steps.changes.outputs.changed == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build workspace
+        if: steps.changes.outputs.changed == 'true'
+        run: cargo build --workspace --all-targets
+
+      - name: Run workspace tests
+        if: steps.changes.outputs.changed == 'true'
+        run: cargo test --workspace --all-targets
 
       - name: Test with coverage
         if: steps.changes.outputs.changed == 'true'
