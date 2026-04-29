@@ -94,7 +94,10 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, symbol_short, token, Address, BytesN,
     Env, IntoVal, String, Vec,
 };
-use stellar_trust_shared::{bump_instance_ttl as shared_bump_instance_ttl, bump_persistent_ttl as shared_bump_persistent_ttl};
+use stellar_trust_shared::{
+    bump_instance_ttl as shared_bump_instance_ttl,
+    bump_persistent_ttl as shared_bump_persistent_ttl,
+};
 
 mod storage;
 

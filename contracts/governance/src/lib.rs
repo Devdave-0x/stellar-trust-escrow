@@ -40,7 +40,10 @@ pub use types::{
 };
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
-use stellar_trust_shared::{bump_instance_ttl as shared_bump_instance_ttl, bump_persistent_ttl as shared_bump_persistent_ttl};
+use stellar_trust_shared::{
+    bump_instance_ttl as shared_bump_instance_ttl,
+    bump_persistent_ttl as shared_bump_persistent_ttl,
+};
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 

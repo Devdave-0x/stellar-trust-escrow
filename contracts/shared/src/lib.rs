@@ -36,11 +36,9 @@ pub fn bump_persistent_ttl<K>(env: &Env, key: &K)
 where
     K: IntoVal<Env, Val>,
 {
-    env.storage().persistent().extend_ttl(
-        key,
-        PERSISTENT_TTL_THRESHOLD,
-        PERSISTENT_TTL_EXTEND_TO,
-    );
+    env.storage()
+        .persistent()
+        .extend_ttl(key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND_TO);
 }
 
 // ── Escrow limits ─────────────────────────────────────────────────────────────

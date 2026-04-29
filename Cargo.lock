@@ -1571,6 +1571,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "soroban-sdk",
+ "stellar-trust-shared",
 ]
 
 [[package]]
@@ -1578,6 +1579,7 @@ name = "stellar-trust-escrow-extensions"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "stellar-trust-shared",
 ]
 
 [[package]]
@@ -1585,6 +1587,7 @@ name = "stellar-trust-governance"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "stellar-trust-shared",
 ]
 
 [[package]]
@@ -1597,6 +1600,9 @@ dependencies = [
 [[package]]
 name = "stellar-trust-shared"
 version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
 
 [[package]]
 name = "stellar-xdr"

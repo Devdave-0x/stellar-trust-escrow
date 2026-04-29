@@ -167,7 +167,11 @@ impl StorageManager {
     /// 2. Extracts EscrowMeta fields and stores separately
     /// 3. Stores each milestone with its own key
     /// 4. Removes the v1 storage entry
-    fn migrate_v1_to_v2(env: &Env, start_id: u64, max_count: u32) -> Result<u64, crate::EscrowError> {
+    fn migrate_v1_to_v2(
+        env: &Env,
+        start_id: u64,
+        max_count: u32,
+    ) -> Result<u64, crate::EscrowError> {
         let escrow_counter: u64 = env
             .storage()
             .instance()
