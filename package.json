@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "lint:sol": "solhint \"contracts/**/*.sol\"",
     "lint:fix": "eslint . --fix",
-    "lint:contracts": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "lint:contracts": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
     "lint:all": "npm run lint && npm run lint:contracts",
     "format": "prettier --write .",
     "fix": "npm run lint:fix && npm run format",
