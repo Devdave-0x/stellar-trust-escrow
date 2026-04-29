@@ -5,71 +5,17 @@
 
 #![allow(dead_code)]
 
-use soroban_sdk::{contractclient, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{contractclient, symbol_short, Address, Env, String};
 
 use crate::types::DataKey;
 use crate::EscrowError;
 
+mod types;
+pub use types::*;
+
 // ── Bridge confirmation threshold ─────────────────────────────────────────────
 /// Minimum confirmations required before a bridged deposit is considered final.
 pub const MIN_BRIDGE_CONFIRMATIONS: u32 = 15;
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-/// Supported bridge protocols.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BridgeProtocol {
-    Wormhole,
-    Allbridge,
-}
-
-/// Canonical metadata for a cross-chain (wrapped) token.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct WrappedTokenInfo {
-    /// The Stellar SAC address of the wrapped token.
-    pub stellar_address: Address,
-    /// The originating chain identifier (e.g. "ethereum", "solana").
-    pub origin_chain: String,
-    /// The original token address on the source chain (hex string).
-    pub origin_address: String,
-    /// Which bridge protocol wrapped this token.
-    pub bridge: BridgeProtocol,
-    /// Whether this token is approved for use in escrows.
-    pub is_approved: bool,
-}
-
-/// Tracks the confirmation state of a cross-chain deposit.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct BridgeConfirmation {
-    /// Unique VAA / transfer ID from the bridge protocol.
-    pub transfer_id: String,
-    /// Bridge protocol used.
-    pub bridge: BridgeProtocol,
-    /// Number of confirmations received so far.
-    pub confirmations: u32,
-    /// Whether the transfer has reached `MIN_BRIDGE_CONFIRMATIONS`.
-    pub is_finalized: bool,
-    /// Ledger timestamp when this record was last updated.
-    pub updated_at: u64,
-}
-
-// ── Storage keys ──────────────────────────────────────────────────────────────
-
-/// Persistent storage key for wrapped token metadata.
-/// Keyed by the Stellar SAC address of the wrapped token.
-#[contracttype]
-#[derive(Clone)]
-pub enum BridgeDataKey {
-    /// WrappedTokenInfo keyed by Stellar token address.
-    WrappedToken(Address),
-    /// BridgeConfirmation keyed by transfer_id string.
-    BridgeConfirmation(String),
-}
-
-// ── Minimal bridge interface (Wormhole-compatible) ────────────────────────────
 
 /// Minimal interface for querying a Wormhole token bridge contract on Stellar.
 /// Only the `is_wrapped_asset` query is needed for on-chain validation.
@@ -107,16 +53,16 @@ pub fn is_approved_wrapped_token(env: &Env, token: &Address) -> bool {
         .unwrap_or(false)
 }
 
-/// Record or update bridge confirmation state for a transfer.
+/// Record or update bridge confirmation state for a bridged token.
 pub fn record_bridge_confirmation(env: &Env, confirmation: &BridgeConfirmation) {
-    let key = BridgeDataKey::BridgeConfirmation(confirmation.transfer_id.clone());
+    let key = BridgeDataKey::BridgeConfirmation(confirmation.token.clone());
     env.storage().persistent().set(&key, confirmation);
     env.storage().persistent().extend_ttl(&key, 5_000, 50_000);
 }
 
-/// Retrieve bridge confirmation state for a transfer ID.
-pub fn get_bridge_confirmation(env: &Env, transfer_id: &String) -> Option<BridgeConfirmation> {
-    let key = BridgeDataKey::BridgeConfirmation(transfer_id.clone());
+/// Retrieve bridge confirmation state for a wrapped token.
+pub fn get_bridge_confirmation(env: &Env, token: &Address) -> Option<BridgeConfirmation> {
+    let key = BridgeDataKey::BridgeConfirmation(token.clone());
     let conf: Option<BridgeConfirmation> = env.storage().persistent().get(&key);
     if conf.is_some() {
         env.storage().persistent().extend_ttl(&key, 5_000, 50_000);
@@ -129,19 +75,20 @@ pub fn get_bridge_confirmation(env: &Env, transfer_id: &String) -> Option<Bridge
 /// Validate that `token` is usable in an escrow: either a native Stellar asset
 /// (not registered as wrapped) or an approved wrapped token.
 pub fn validate_escrow_token(env: &Env, token: &Address) -> Result<(), EscrowError> {
-    // If the token is registered as a wrapped asset it must be approved.
+    // If the token is registered as a wrapped asset it must be approved and finalized.
     if let Some(info) = get_wrapped_token_info(env, token) {
         if !info.is_approved {
             return Err(EscrowError::BridgeError);
         }
+        require_bridge_finalized(env, token)?;
     }
     // Native / unregistered Stellar tokens are always allowed.
     Ok(())
 }
 
 /// Validate that a bridge transfer is finalized (>= MIN_BRIDGE_CONFIRMATIONS).
-pub fn require_bridge_finalized(env: &Env, transfer_id: &String) -> Result<(), EscrowError> {
-    let conf = get_bridge_confirmation(env, transfer_id).ok_or(EscrowError::BridgeError)?;
+pub fn require_bridge_finalized(env: &Env, token: &Address) -> Result<(), EscrowError> {
+    let conf = get_bridge_confirmation(env, token).ok_or(EscrowError::BridgeError)?;
     if !conf.is_finalized {
         return Err(EscrowError::BridgeError);
     }
@@ -159,12 +106,12 @@ pub fn emit_wrapped_token_registered(env: &Env, token: &Address, origin_chain: &
 
 pub fn emit_bridge_confirmation_updated(
     env: &Env,
-    transfer_id: &String,
+    token: &Address,
     confirmations: u32,
     is_finalized: bool,
 ) {
     env.events().publish(
-        (symbol_short!("brg_cnf"), transfer_id.clone()),
+        (symbol_short!("brg_cnf"), token.clone()),
         (confirmations, is_finalized),
     );
 }
