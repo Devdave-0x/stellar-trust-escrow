@@ -93,6 +93,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, String, Vec,
     IntoVal,
 };
+use stellar_trust_shared::{bump_instance_ttl as shared_bump_instance_ttl, bump_persistent_ttl as shared_bump_persistent_ttl};
 
 mod storage;
 
@@ -110,12 +111,6 @@ mod storage;
 /// protocol's arithmetic attack surface.  Exported as `pub` so integrators can
 /// validate amounts client-side before submitting a transaction.
 pub const MAX_ESCROW_AMOUNT: i128 = 100_000_000_000_000_000i128;
-
-// ── TTL constants ─────────────────────────────────────────────────────────────
-const INSTANCE_TTL_THRESHOLD: u32 = 5_000;
-const INSTANCE_TTL_EXTEND_TO: u32 = 50_000;
-const PERSISTENT_TTL_THRESHOLD: u32 = 5_000;
-const PERSISTENT_TTL_EXTEND_TO: u32 = 50_000;
 
 const CANCELLATION_DISPUTE_PERIOD: u64 = 120_960;
 const SLASH_DISPUTE_PERIOD: u64 = 51_840;
@@ -519,23 +514,19 @@ impl ContractStorage {
 
     // ── TTL helpers ───────────────────────────────────────────────────────────
 
+    /// Bump instance TTL using shared config constants from `stellar_trust_shared`.
     #[inline]
     fn bump_instance_ttl(env: &Env) {
-        env.storage()
-            .instance()
-            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
+        shared_bump_instance_ttl(env);
     }
 
+    /// Bump persistent TTL using shared config constants from `stellar_trust_shared`.
     #[inline]
     fn bump_persistent_ttl<K>(env: &Env, key: &K)
     where
         K: soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
     {
-        env.storage().persistent().extend_ttl(
-            key,
-            PERSISTENT_TTL_THRESHOLD,
-            PERSISTENT_TTL_EXTEND_TO,
-        );
+        shared_bump_persistent_ttl(env, key);
     }
 
     // ── Storage rent helpers ─────────────────────────────────────────────────
