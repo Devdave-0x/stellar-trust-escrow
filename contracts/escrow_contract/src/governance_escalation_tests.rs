@@ -1,13 +1,11 @@
 //! Tests for escalate_dispute_to_governance functionality (Issue #706)
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod governance_escalation_tests {
-    use soroban_sdk::{
-        testutils::{Address as _},
-        token, Address, BytesN, Env,
-    };
+    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env};
 
-    use crate::{EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig};
+    use crate::{EscrowContract, EscrowContractClient, MultisigConfig};
 
     fn setup() -> (Env, Address, Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -153,12 +151,8 @@ mod governance_escalation_tests {
         client.raise_dispute(&client_addr, &escrow_id, &None);
 
         // Try to escalate as unauthorized party
-        let result =
-            client.try_escalate_dispute_to_governance(&unauthorized, &escrow_id);
-        assert!(
-            result.is_err(),
-            "Should fail for unauthorized caller"
-        );
+        let result = client.try_escalate_dispute_to_governance(&unauthorized, &escrow_id);
+        assert!(result.is_err(), "Should fail for unauthorized caller");
     }
 
     // Test 5: Verify HIGH_VALUE_THRESHOLD constant

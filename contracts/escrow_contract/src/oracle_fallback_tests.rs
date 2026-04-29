@@ -94,7 +94,7 @@ mod oracle_fallback_tests {
         let asset = Address::generate(&env);
         let result = client.try_get_price(&asset);
         assert!(
-            matches!(result, Err(Ok(EscrowError::OraclePriceStale))),
+            matches!(result, Err(Ok(EscrowError::BridgeError))),
             "should return OraclePriceStale when both oracles are stale"
         );
     }

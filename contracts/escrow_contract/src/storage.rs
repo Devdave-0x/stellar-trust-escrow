@@ -119,7 +119,7 @@ impl StorageManager {
 
         if current_version > STORAGE_VERSION {
             // Downgrade not supported - this could corrupt data
-            return Err(crate::EscrowError::StorageMigrationFailed);
+            return Err(crate::EscrowError::MigrationFailed);
         }
 
         // Run migrations in order from current to target version

@@ -1,6 +1,7 @@
 //! Tests for partial_cancel functionality (Issue #705)
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod partial_cancel_tests {
     use soroban_sdk::{
         testutils::{Address as _, Events},
@@ -183,7 +184,10 @@ mod partial_cancel_tests {
 
         // Try to partial cancel as freelancer (should fail)
         let result = client.try_partial_cancel(&freelancer, &escrow_id);
-        assert!(result.is_err(), "Freelancer should not be able to partial cancel");
+        assert!(
+            result.is_err(),
+            "Freelancer should not be able to partial cancel"
+        );
     }
 
     // Test 4: Partial cancel on non-active escrow

@@ -1,9 +1,7 @@
 #[cfg(test)]
 mod nft_gated_tests {
     use crate::{EscrowContract, EscrowContractClient, EscrowError};
-    use soroban_sdk::{
-        contract, contractimpl, testutils::Address as _, Address, BytesN, Env,
-    };
+    use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, BytesN, Env};
 
     // ── Mock NFT contract ─────────────────────────────────────────────────────
 

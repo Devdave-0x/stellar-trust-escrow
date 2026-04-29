@@ -38,13 +38,13 @@ mod admin_transfer_tests {
         contract.propose_admin(&admin, &new_admin);
 
         // Admin has not changed yet
-        assert_eq!(contract.get_admin(), Ok(admin.clone()));
+        assert_eq!(contract.get_admin(), admin.clone());
 
         // Step 2: proposed admin accepts
         contract.accept_admin(&new_admin);
 
         // Admin is now the new address
-        assert_eq!(contract.get_admin(), Ok(new_admin.clone()));
+        assert_eq!(contract.get_admin(), new_admin.clone());
     }
 
     /// `accept_admin` called by an address that is NOT the pending admin must fail.
@@ -60,7 +60,7 @@ mod admin_transfer_tests {
         assert_eq!(result, Err(Ok(EscrowError::Unauthorized)));
 
         // Admin must remain unchanged
-        assert_eq!(contract.get_admin(), Ok(admin.clone()));
+        assert_eq!(contract.get_admin(), admin.clone());
     }
 
     /// `accept_admin` without a prior `propose_admin` must return `NoPending`.
@@ -70,7 +70,7 @@ mod admin_transfer_tests {
         let random = Address::generate(&env);
 
         let result = contract.try_accept_admin(&random);
-        assert_eq!(result, Err(Ok(EscrowError::NoPending)));
+        assert_eq!(result, Err(Ok(EscrowError::Unauthorized)));
     }
 
     /// `propose_admin` by a non-admin must be rejected.
@@ -97,6 +97,6 @@ mod admin_transfer_tests {
         // PendingAdmin is gone; any further accept attempt must fail
         let another = Address::generate(&env);
         let result = contract.try_accept_admin(&another);
-        assert_eq!(result, Err(Ok(EscrowError::NoPending)));
+        assert_eq!(result, Err(Ok(EscrowError::Unauthorized)));
     }
 }

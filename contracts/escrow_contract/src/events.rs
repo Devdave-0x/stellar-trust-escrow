@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{symbol_short, Address, Env};
 
 use crate::event_names as ev;
 
@@ -357,18 +357,6 @@ pub fn emit_arbiter_updated(env: &Env, escrow_id: u64, new_arbiter: &Option<Addr
         .publish((ev::ARBITER_UPDATED, escrow_id), new_arbiter.clone());
 }
 
-pub fn emit_nft_gated_escrow_created(
-    env: &Env,
-    escrow_id: u64,
-    nft_contract: &Address,
-    token_id: u64,
-) {
-    env.events().publish(
-        (ev::NFT_GATED_ESCROW_CREATED, escrow_id),
-        (nft_contract.clone(), token_id),
-    );
-}
-
 /// Emitted when an NFT-gated escrow is created.
 ///
 /// # Arguments
@@ -412,10 +400,8 @@ pub fn emit_deadline_extended(env: &Env, escrow_id: u64, old_deadline: u64, new_
 /// * `escrow_id` - The escrow ID
 /// * `refunded_amount` - The amount refunded to the client
 pub fn emit_partial_cancellation(env: &Env, escrow_id: u64, refunded_amount: i128) {
-    env.events().publish(
-        (symbol_short!("prt_can"), escrow_id),
-        refunded_amount,
-    );
+    env.events()
+        .publish((symbol_short!("prt_can"), escrow_id), refunded_amount);
 }
 
 /// Emitted when a dispute is escalated to governance.

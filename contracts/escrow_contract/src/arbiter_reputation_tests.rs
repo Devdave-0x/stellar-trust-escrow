@@ -1,13 +1,11 @@
 //! Tests for MIN_ARBITER_REPUTATION_SCORE check (Issue #704)
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod arbiter_reputation_tests {
-    use soroban_sdk::{
-        testutils::{Address as _, Ledger},
-        token, Address, BytesN, Env, String,
-    };
+    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env};
 
-    use crate::{EscrowContract, EscrowContractClient, EscrowError, MultisigConfig};
+    use crate::{EscrowContract, EscrowContractClient, MultisigConfig};
 
     fn setup() -> (Env, Address, Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -33,13 +31,7 @@ mod arbiter_reputation_tests {
         }
     }
 
-    fn give_reputation(
-        env: &Env,
-        client: &EscrowContractClient,
-        address: &Address,
-        score: u64,
-        completed: u32,
-    ) {
+    fn give_reputation(client: &EscrowContractClient, address: &Address, completed: u32) {
         // Update reputation to give the address a score
         client.update_reputation(address, &true, &false, &1000_i128);
         // Call multiple times to build up score if needed
@@ -58,7 +50,7 @@ mod arbiter_reputation_tests {
         let token = register_token(&env, &admin, &client_addr, 10_000);
 
         // Give arbiter sufficient reputation (score >= 100)
-        give_reputation(&env, &client, &arbiter, 150, 15);
+        give_reputation(&client, &arbiter, 15);
 
         // Verify arbiter has sufficient reputation
         let arbiter_rep = client.get_reputation(&arbiter);
@@ -78,7 +70,10 @@ mod arbiter_reputation_tests {
             &None,
             &no_multisig(&env),
         );
-        assert!(result.is_ok(), "Should accept arbiter with sufficient reputation");
+        assert!(
+            result.is_ok(),
+            "Should accept arbiter with sufficient reputation"
+        );
     }
 
     // Test 2: Arbiter with insufficient reputation (should fail)
@@ -91,7 +86,7 @@ mod arbiter_reputation_tests {
         let token = register_token(&env, &admin, &client_addr, 10_000);
 
         // Give arbiter low reputation (score < 100)
-        give_reputation(&env, &client, &arbiter, 50, 5);
+        give_reputation(&client, &arbiter, 5);
 
         // Verify arbiter has insufficient reputation
         let arbiter_rep = client.get_reputation(&arbiter);
@@ -145,7 +140,7 @@ mod arbiter_reputation_tests {
     // Test 4: Admin can change minimum reputation threshold
     #[test]
     fn test_admin_can_set_min_reputation() {
-        let (env, admin, _contract_id, client) = setup();
+        let (_env, admin, _contract_id, client) = setup();
 
         // Check default value
         let default_min = client.get_min_arbiter_reputation();
@@ -169,7 +164,7 @@ mod arbiter_reputation_tests {
         let token = register_token(&env, &admin, &client_addr, 10_000);
 
         // Give arbiter reputation of 150 (passes default 100 threshold)
-        give_reputation(&env, &client, &arbiter, 150, 15);
+        give_reputation(&client, &arbiter, 15);
 
         // Create escrow with default threshold (should succeed)
         let brief_hash = BytesN::from_array(&env, &[1; 32]);
@@ -205,9 +200,6 @@ mod arbiter_reputation_tests {
             &None,
             &no_multisig(&env),
         );
-        assert!(
-            result2.is_err(),
-            "Should fail after threshold increase"
-        );
+        assert!(result2.is_err(), "Should fail after threshold increase");
     }
 }

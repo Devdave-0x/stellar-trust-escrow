@@ -453,9 +453,15 @@ mod tests {
         assert_eq!(s.client.batch_escrow_count(), 3);
 
         // Simulate fee collection on release for each escrow (1% of 1000 = 10 per escrow)
-        let (net0, fee0) = s.client.collect_fee(&ids.get(0).unwrap(), &s.token_id, &1_000_i128);
-        let (net1, fee1) = s.client.collect_fee(&ids.get(1).unwrap(), &s.token_id, &1_000_i128);
-        let (net2, fee2) = s.client.collect_fee(&ids.get(2).unwrap(), &s.token_id, &1_000_i128);
+        let (net0, fee0) = s
+            .client
+            .collect_fee(&ids.get(0).unwrap(), &s.token_id, &1_000_i128);
+        let (net1, fee1) = s
+            .client
+            .collect_fee(&ids.get(1).unwrap(), &s.token_id, &1_000_i128);
+        let (net2, fee2) = s
+            .client
+            .collect_fee(&ids.get(2).unwrap(), &s.token_id, &1_000_i128);
 
         // Each escrow's net amount after fee deduction must be 990 (1000 - 10)
         assert_eq!(net0, 990);

@@ -22,8 +22,7 @@ pub enum EscrowError {
     AdminOnly = 4,
     /// Operation requires the escrow client address.
     ClientOnly = 5,
-    /// Operation requires the escrow freelancer address.
-    FreelancerOnly = 6,
+    // Note: discriminant 6 is reserved / unused.
 
     // ── Escrow State ──────────────────────────────────────────────────────────
     // Note: discriminants 7 is reserved / unused.
@@ -35,7 +34,7 @@ pub enum EscrowError {
     EscrowNotDisputed = 10,
     // Note: discriminant 11 is reserved / unused.
     /// Escrow cannot be cancelled while milestone funds are pending release.
-    CannotCancelWithPendingFunds = 12,
+    PendingFunds = 12,
 
     // ── Milestone ─────────────────────────────────────────────────────────────
     /// No milestone exists for the given `milestone_id` within this escrow.
@@ -43,15 +42,14 @@ pub enum EscrowError {
     /// The milestone is not in the required state for this operation.
     InvalidMilestoneState = 14,
     /// The sum of milestone amounts would exceed the escrow's `total_amount`.
-    MilestoneAmountExceedsEscrow = 15,
+    MilestoneAmountExceeds = 15,
     /// Adding this milestone would exceed the maximum allowed milestone count.
     TooManyMilestones = 16,
     /// Milestone amount is zero or negative.
     InvalidMilestoneAmount = 17,
 
     // ── Funds ─────────────────────────────────────────────────────────────────
-    /// Token transfer via the SAC client failed.
-    TransferFailed = 18,
+    // Note: discriminant 18 is reserved / unused.
     /// Escrow `total_amount` is zero or negative.
     InvalidEscrowAmount = 19,
     /// Deposited amount does not match the sum of milestone amounts.
@@ -59,24 +57,20 @@ pub enum EscrowError {
     // ── Dispute ───────────────────────────────────────────────────────────────
     // Note: discriminant 22 is reserved / unused.
     // Note: discriminant 24 is reserved / unused.
-    /// A dispute already exists for this escrow; only one active dispute is allowed.
-    DisputeAlreadyExists = 23,
+    // Note: discriminant 23 is reserved / unused.
 
     // ── Deadline ──────────────────────────────────────────────────────────────
-    /// Provided deadline is in the past or otherwise invalid.
-    InvalidDeadline = 25,
+    // Note: discriminant 25 is reserved / unused.
     /// The escrow deadline has already passed.
     DeadlineExpired = 26,
 
     // ── Time Lock ─────────────────────────────────────────────────────────────
-    /// The specified lock time is in the past.
-    InvalidLockTime = 27,
+    // Note: discriminant 27 is reserved / unused.
     /// Funds are still locked until the lock time expires.
     LockTimeNotExpired = 28,
-    /// The lock time has expired.
-    LockTimeExpired = 29,
+    // Note: discriminant 29 is reserved / unused.
     /// Cannot extend lock time to the past.
-    InvalidLockTimeExtension = 30,
+    InvalidLockExtension = 30,
     /// The contract is currently paused.
     ContractPaused = 31,
 
@@ -84,13 +78,13 @@ pub enum EscrowError {
     /// No cancellation request exists for this escrow.
     CancellationNotFound = 32,
     /// A cancellation request already exists for this escrow.
-    CancellationAlreadyExists = 33,
+    CancelAlreadyExists = 33,
     /// The cancellation request has already been disputed.
-    CancellationAlreadyDisputed = 34,
+    CancelAlreadyDisputed = 34,
     /// The dispute window for this cancellation is still open.
-    CancellationDisputePeriodActive = 35,
+    CancelPeriodActive = 35,
     /// The dispute deadline for this cancellation has passed.
-    CancellationDisputeDeadlineExpired = 36,
+    CancelDeadlineExpired = 36,
     /// Cancellation is blocked because a dispute was raised against it.
     CancellationDisputed = 37,
 
@@ -100,39 +94,33 @@ pub enum EscrowError {
     /// The slash has already been disputed.
     SlashAlreadyDisputed = 39,
     /// The dispute deadline for this slash has passed.
-    SlashDisputeDeadlineExpired = 40,
+    SlashDeadlineExpired = 40,
     /// A SlashRecord already exists for this escrow; duplicate slash rejected.
     SlashAlreadyApplied = 41,
 
     // ── Storage Migration ───────────────────────────────────────────────────────
     /// An error occurred during a storage schema migration.
-    StorageMigrationFailed = 42,
+    MigrationFailed = 42,
 
     // ── Recurring Payments ───────────────────────────────────────────────────
     /// No recurring payment config exists for the given `escrow_id`.
-    RecurringConfigNotFound = 43,
+    RecurringNotFound = 43,
     /// Recurring schedule parameters are invalid (e.g. `start_time` in the past, no termination condition).
-    InvalidRecurringSchedule = 44,
+    InvalidRecurring = 44,
     /// No payment is currently due (`now < next_payment_at` or `payments_remaining == 0`).
-    NoRecurringPaymentDue = 45,
+    NoRecurringDue = 45,
     /// The recurring schedule is paused; call `resume_recurring_schedule` first.
-    RecurringSchedulePaused = 46,
+    RecurringPaused = 46,
     /// The recurring schedule has been cancelled; no further payments can be processed.
-    RecurringScheduleCancelled = 47,
+    RecurringCancelled = 47,
 
     // ── Oracle ───────────────────────────────────────────────────────────────
-    /// No oracle address has been configured on the contract.
-    OracleNotConfigured = 48,
-    /// The oracle price feed has not been updated within the acceptable staleness window.
-    OraclePriceStale = 49,
-    /// The oracle returned a zero or negative price.
-    OracleInvalidPrice = 50,
+    // Note: discriminants 48-50 are reserved / unused.
 
     // ── Timelock ─────────────────────────────────────────────────────────────
     /// The specified timelock duration is invalid.
-    InvalidTimelockDuration = 51,
-    /// The timelock is already active.
-    TimelockAlreadyActive = 52,
+    InvalidTimelock = 51,
+    // Note: discriminant 52 is reserved / unused.
     /// The timelock has not yet expired.
     TimelockNotExpired = 53,
 
@@ -143,15 +131,8 @@ pub enum EscrowError {
     // ── Input Validation ─────────────────────────────────────────────────────
     /// A string argument exceeds MAX_STRING_LEN or is empty.
     StringTooLong = 55,
-    /// The token is not on the approved whitelist.
-    TokenDenied = 56,
-    /// The split amount is invalid (zero, negative, or exceeds unallocated balance).
-    SplitInvalid = 57,
-    /// The requested escrow template does not exist.
-    TemplateNotFound = 58,
+    // Note: discriminants 56-58 are reserved / unused.
 
     // ── Admin Transfer ───────────────────────────────────────────────────────
-    /// `accept_admin` was called but no pending admin transfer has been proposed,
-    /// or `accept_admin` was called by an address that is not the pending admin.
-    NoPending = 59,
+    // Note: discriminant 59 is reserved / unused.
 }

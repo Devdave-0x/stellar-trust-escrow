@@ -10,11 +10,19 @@
 mod max_escrow_amount_tests {
     use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 
-    use crate::{EscrowContract, EscrowContractClient, EscrowError, MultisigConfig, MAX_ESCROW_AMOUNT};
+    use crate::{
+        EscrowContract, EscrowContractClient, EscrowError, MultisigConfig, MAX_ESCROW_AMOUNT,
+    };
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    fn setup() -> (Env, Address, Address, Address, EscrowContractClient<'static>) {
+    fn setup() -> (
+        Env,
+        Address,
+        Address,
+        Address,
+        EscrowContractClient<'static>,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -65,9 +73,13 @@ mod max_escrow_amount_tests {
             &None,
             &None,
             &None,
+            &None,
             &no_multisig(&env),
         );
-        assert!(result.is_ok(), "expected Ok at MAX_ESCROW_AMOUNT, got {result:?}");
+        assert!(
+            result.is_ok(),
+            "expected Ok at MAX_ESCROW_AMOUNT, got {result:?}"
+        );
     }
 
     /// `total_amount == MAX_ESCROW_AMOUNT + 1` must be rejected with `InvalidEscrowAmount`.
@@ -83,6 +95,7 @@ mod max_escrow_amount_tests {
             &token,
             &over,
             &hash32(&env),
+            &None,
             &None,
             &None,
             &None,
@@ -103,6 +116,7 @@ mod max_escrow_amount_tests {
             &token,
             &0,
             &hash32(&env),
+            &None,
             &None,
             &None,
             &None,
