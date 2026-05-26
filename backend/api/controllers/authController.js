@@ -181,16 +181,17 @@ export default { getNonce, verifySignatureAndLogin, refreshToken, logout };
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
-import prisma from '../../lib/prisma.js';
-import refreshTokenService from '../../services/refreshTokenService.js';
-import tokenBlacklistService from '../../services/tokenBlacklistService.js';
-import tokenMetricsService from '../../services/tokenMetricsService.js';
-import cookieUtils from '../../lib/cookieUtils.js';
+import { Keypair, StrKey } from '@stellar/stellar-sdk';
+import sessionService from '../../services/sessionService.js';
 
-const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+const JWT_SECRET    = process.env.JWT_SECRET    || 'change_this_in_production';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const NONCE_TTL_MS  = 5 * 60 * 1000;
 
-function normalizeWalletAddress(body = {}) {
-  return body.walletAddress || body.stellarAddress || null;
+const nonceStore = new Map();
+
+function isValidStellarAddress(address) {
+  try { return StrKey.isValidEd25519PublicKey(address); } catch { return false; }
 }
 
 // Helper to generate access token
@@ -207,98 +208,59 @@ const generateAccessToken = (user) => {
   );
 };
 
-export const register = async (req, res) => {
+function verifySignature(address, message, signature) {
   try {
-    const { email, password, walletAddress } = req.body;
-    const tenantId = req.tenant?.id;
+    return Keypair.fromPublicKey(address).verify(
+      Buffer.from(message, 'utf8'),
+      Buffer.from(signature, 'base64'),
+    );
+  } catch { return false; }
+}
 
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant context is required' });
-    }
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? '';
+}
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
+// ── Nonce ─────────────────────────────────────────────────────────────────────
 
-    if (walletAddress && !STELLAR_ADDRESS_RE.test(walletAddress)) {
-      return res.status(400).json({ error: 'Invalid Stellar wallet address' });
-    }
-
-    // Check if user exists
-    const existingUser = await prisma.user.findFirst({
-      where: { email, tenantId },
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    if (walletAddress) {
-      const existingWalletUser = await prisma.user.findFirst({
-        where: { tenantId, walletAddress },
-        select: { id: true },
-      });
-
-      if (existingWalletUser) {
-        return res.status(400).json({ error: 'Wallet address is already linked to another user' });
-      }
-    }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        tenantId,
-        email,
-        walletAddress,
-        password: hashedPassword,
-      },
-    });
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      userId: user.id,
-      tenant: { id: req.tenant.id, slug: req.tenant.slug },
-    });
-  } catch (error) {
-    console.error('[Register] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+export const getNonce = (req, res) => {
+  const { address } = req.body;
+  if (!address || !isValidStellarAddress(address)) {
+    return res.status(400).json({ error: 'Valid Stellar address required' });
   }
+  const nonce = crypto.randomBytes(32).toString('hex');
+  const message = buildChallengeMessage(address, nonce);
+  nonceStore.set(address, { message, expiresAt: Date.now() + NONCE_TTL_MS });
+  setTimeout(() => nonceStore.delete(address), NONCE_TTL_MS);
+  return res.json({ address, nonce, message, expiresIn: NONCE_TTL_MS / 1000 });
 };
 
-export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const tenantId = req.tenant?.id;
+// ── Verify & Login ────────────────────────────────────────────────────────────
 
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant context is required' });
-    }
+export const verifySignatureAndLogin = async (req, res) => {
+  const { address, signature } = req.body;
+  if (!address || !isValidStellarAddress(address)) {
+    return res.status(400).json({ error: 'Valid Stellar address required' });
+  }
+  if (!signature) return res.status(400).json({ error: 'Signature required' });
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
+  const stored = nonceStore.get(address);
+  if (!stored) return res.status(401).json({ error: 'No pending nonce. Request a new one.' });
+  if (Date.now() > stored.expiresAt) {
+    nonceStore.delete(address);
+    return res.status(401).json({ error: 'Nonce expired. Request a new one.' });
+  }
 
-    // Find user
-    const user = await prisma.user.findFirst({
-      where: { email, tenantId },
-    });
+  const valid = verifySignature(address, stored.message, signature);
+  nonceStore.delete(address);
+  if (!valid) return res.status(401).json({ error: 'Signature verification failed' });
 
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    // Verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    // Generate access token
-    const accessToken = generateAccessToken(user);
+  const jti = await sessionService.createSession({
+    address,
+    userAgent: req.headers['user-agent'],
+    ipAddress: getClientIp(req),
+    expiresIn: JWT_EXPIRES_IN,
+  });
 
     // Create refresh token with rotation support
     const deviceInfo = {
@@ -317,15 +279,24 @@ export const login = async (req, res) => {
     await tokenMetricsService.recordTokenGeneration(user.id, user.tenantId, 'access', deviceInfo);
     await tokenMetricsService.recordTokenGeneration(user.id, user.tenantId, 'refresh', deviceInfo);
 
-    res.json({
-      accessToken,
-      refreshToken: refreshTokenData.refreshToken,
-      userId: user.id,
-      tenant: { id: req.tenant.id, slug: req.tenant.slug },
+export const refreshToken = async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Bearer token required' });
+  }
+  try {
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    if (payload.jti) await sessionService.revokeSession(payload.jti);
+    const jti = await sessionService.createSession({
+      address: payload.address,
+      userAgent: req.headers['user-agent'],
+      ipAddress: getClientIp(req),
+      expiresIn: JWT_EXPIRES_IN,
     });
-  } catch (error) {
-    console.error('[Login] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const token = jwt.sign({ address: payload.address, jti }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return res.json({ token, address: payload.address, expiresIn: JWT_EXPIRES_IN });
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 
@@ -410,6 +381,7 @@ export const refresh = async (req, res) => {
 
     res.status(500).json({ error: 'Internal server error' });
   }
+  return res.json({ ok: true });
 };
 
 export const logout = async (req, res) => {
@@ -433,15 +405,13 @@ export const logout = async (req, res) => {
       await tokenMetricsService.recordTokenRevocation(req.user.userId, tenantId, 'logout_all');
     }
 
-    res.json({ message: 'Logged out successfully' });
-  } catch (error) {
-    console.error('[Logout] Error:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+export const listSessions = async (req, res) => {
+  try {
+    return res.json({ data: await sessionService.listSessions(req.user.address) });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
 };
 
-// New endpoint to revoke all user tokens (emergency logout)
-export const revokeAll = async (req, res) => {
+export const revokeSession = async (req, res) => {
   try {
     const tenantId = req.tenant?.id;
 
@@ -460,8 +430,7 @@ export const revokeAll = async (req, res) => {
   }
 };
 
-// New endpoint to list active sessions
-export const sessions = async (req, res) => {
+export const revokeAllSessions = async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -489,4 +458,4 @@ export const sessions = async (req, res) => {
   }
 };
 
-export default { register, login, refresh, logout, revokeAll, sessions };
+export default { getNonce, verifySignatureAndLogin, refreshToken, logout, listSessions, revokeSession, revokeAllSessions };
