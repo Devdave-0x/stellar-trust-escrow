@@ -154,4 +154,25 @@ pub enum DataKey {
     WithdrawCooldown(Address),
     /// Slash record counter
     SlashCounter,
+    // ── ve-token (voting escrow) ──────────────────────────────────────────────
+    /// Active lock for an address — key: Address, value: VeLock
+    VeLock(Address),
+}
+
+// ── ve-token types ────────────────────────────────────────────────────────────
+
+/// A time-locked token position that grants time-weighted voting power.
+///
+/// voting_power = locked_amount * (remaining_duration / MAX_LOCK_DURATION)
+///
+/// Power decays linearly as `unlock_time` approaches.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct VeLock {
+    /// Amount of governance tokens locked.
+    pub amount: i128,
+    /// Ledger timestamp when the lock expires and tokens can be withdrawn.
+    pub unlock_time: u64,
+    /// Ledger timestamp when the lock was created or last extended.
+    pub locked_at: u64,
 }

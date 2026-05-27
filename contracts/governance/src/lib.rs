@@ -36,7 +36,7 @@ mod types;
 pub use errors::GovError;
 pub use types::{
     DataKey, FundPayload, GovConfig, ParameterPayload, Proposal, ProposalPayload, ProposalStatus,
-    ProposalType, UpgradePayload, Vote,
+    ProposalType, UpgradePayload, VeLock, Vote,
 };
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
@@ -716,5 +716,205 @@ impl GovernanceContract {
         env.storage().persistent()
             .get(&DataKey::ArbitratorStake(address))
             .unwrap_or(0)
+    }
+
+    // ── ve-token (Voting Escrow) ───────────────────────────────────────────────
+    //
+    // Users lock governance tokens for a configurable duration.
+    // Voting power decays linearly:
+    //
+    //   voting_power = locked_amount * remaining_duration / MAX_LOCK_DURATION
+    //
+    // where remaining_duration = max(0, unlock_time - now).
+    //
+    // Constraints:
+    //   MIN_LOCK_DURATION (1 week)  ≤ lock_duration ≤ MAX_LOCK_DURATION (4 years)
+    //   Tokens cannot be withdrawn before unlock_time.
+    //   Locks can be extended (more tokens or longer duration, never shorter).
+
+    /// Minimum lock duration: 1 week in seconds.
+    const MIN_LOCK_DURATION: u64 = 604_800;
+
+    /// Maximum lock duration: 4 years in seconds (365.25 days × 4).
+    const MAX_LOCK_DURATION: u64 = 126_230_400;
+
+    /// Creates a new ve-token lock for `caller`.
+    ///
+    /// Transfers `amount` governance tokens from `caller` to this contract.
+    /// The lock expires at `now + lock_duration`.
+    ///
+    /// # Arguments
+    /// * `caller`        — must `require_auth()`. Tokens deducted from their balance.
+    /// * `amount`        — tokens to lock. Must be > 0.
+    /// * `lock_duration` — seconds to lock for. Must be in [MIN_LOCK_DURATION, MAX_LOCK_DURATION].
+    pub fn create_lock(env: Env, caller: Address, amount: i128, lock_duration: u64) -> Result<VeLock, GovError> {
+        Storage::require_initialized(&env)?;
+        caller.require_auth();
+
+        if amount <= 0 {
+            return Err(GovError::ZeroLockAmount);
+        }
+        if lock_duration < Self::MIN_LOCK_DURATION {
+            return Err(GovError::LockDurationTooShort);
+        }
+        if lock_duration > Self::MAX_LOCK_DURATION {
+            return Err(GovError::LockDurationTooLong);
+        }
+
+        let lock_key = DataKey::VeLock(caller.clone());
+        if env.storage().persistent().has(&lock_key) {
+            return Err(GovError::LockAlreadyExists);
+        }
+
+        let config = Storage::config(&env)?;
+        token::Client::new(&env, &config.token).transfer(
+            &caller,
+            &env.current_contract_address(),
+            &amount,
+        );
+
+        let now = env.ledger().timestamp();
+        let lock = VeLock {
+            amount,
+            unlock_time: now + lock_duration,
+            locked_at: now,
+        };
+
+        env.storage().persistent().set(&lock_key, &lock);
+        Storage::bump_persistent(&env, &lock_key);
+
+        env.events().publish(
+            (soroban_sdk::symbol_short!("ve_lock"), caller.clone()),
+            (amount, lock.unlock_time),
+        );
+        Ok(lock)
+    }
+
+    /// Increases the locked amount and/or extends the unlock time of an existing lock.
+    ///
+    /// Both `additional_amount` and `new_unlock_time` are optional (pass 0 / 0 to skip).
+    /// The new unlock time must be ≥ the current unlock time and ≤ now + MAX_LOCK_DURATION.
+    ///
+    /// # Arguments
+    /// * `caller`            — must `require_auth()`.
+    /// * `additional_amount` — extra tokens to add to the lock (0 = no change).
+    /// * `new_unlock_time`   — new expiry timestamp (0 = no change).
+    pub fn extend_lock(
+        env: Env,
+        caller: Address,
+        additional_amount: i128,
+        new_unlock_time: u64,
+    ) -> Result<VeLock, GovError> {
+        Storage::require_initialized(&env)?;
+        caller.require_auth();
+
+        let lock_key = DataKey::VeLock(caller.clone());
+        let mut lock: VeLock = env
+            .storage()
+            .persistent()
+            .get(&lock_key)
+            .ok_or(GovError::NoLockFound)?;
+
+        let now = env.ledger().timestamp();
+
+        // Extend duration
+        if new_unlock_time != 0 {
+            if new_unlock_time < lock.unlock_time {
+                return Err(GovError::NewUnlockTimeTooEarly);
+            }
+            let max_unlock = now + Self::MAX_LOCK_DURATION;
+            if new_unlock_time > max_unlock {
+                return Err(GovError::LockDurationTooLong);
+            }
+            lock.unlock_time = new_unlock_time;
+        }
+
+        // Add tokens
+        if additional_amount > 0 {
+            let config = Storage::config(&env)?;
+            token::Client::new(&env, &config.token).transfer(
+                &caller,
+                &env.current_contract_address(),
+                &additional_amount,
+            );
+            lock.amount += additional_amount;
+        }
+
+        lock.locked_at = now;
+        env.storage().persistent().set(&lock_key, &lock);
+        Storage::bump_persistent(&env, &lock_key);
+
+        env.events().publish(
+            (soroban_sdk::symbol_short!("ve_ext"), caller.clone()),
+            (lock.amount, lock.unlock_time),
+        );
+        Ok(lock)
+    }
+
+    /// Withdraws locked tokens after the lock has expired.
+    ///
+    /// Removes the lock and returns all tokens to `caller`.
+    ///
+    /// # Arguments
+    /// * `caller` — must `require_auth()`. Must have an expired lock.
+    pub fn withdraw_lock(env: Env, caller: Address) -> Result<i128, GovError> {
+        Storage::require_initialized(&env)?;
+        caller.require_auth();
+
+        let lock_key = DataKey::VeLock(caller.clone());
+        let lock: VeLock = env
+            .storage()
+            .persistent()
+            .get(&lock_key)
+            .ok_or(GovError::NoLockFound)?;
+
+        let now = env.ledger().timestamp();
+        if now < lock.unlock_time {
+            return Err(GovError::LockNotExpired);
+        }
+
+        let config = Storage::config(&env)?;
+        token::Client::new(&env, &config.token).transfer(
+            &env.current_contract_address(),
+            &caller,
+            &lock.amount,
+        );
+
+        env.storage().persistent().remove(&lock_key);
+
+        env.events().publish(
+            (soroban_sdk::symbol_short!("ve_wdr"), caller.clone()),
+            lock.amount,
+        );
+        Ok(lock.amount)
+    }
+
+    /// Returns the current time-weighted voting power of `address`.
+    ///
+    /// voting_power = locked_amount * remaining_duration / MAX_LOCK_DURATION
+    ///
+    /// Returns 0 if no lock exists or the lock has expired.
+    pub fn ve_voting_power(env: Env, address: Address) -> i128 {
+        let lock_key = DataKey::VeLock(address);
+        let lock: VeLock = match env.storage().persistent().get(&lock_key) {
+            Some(l) => l,
+            None => return 0,
+        };
+
+        let now = env.ledger().timestamp();
+        if now >= lock.unlock_time {
+            return 0;
+        }
+
+        let remaining = lock.unlock_time - now;
+        // Integer arithmetic: multiply first to preserve precision
+        lock.amount * remaining as i128 / Self::MAX_LOCK_DURATION as i128
+    }
+
+    /// Returns the VeLock record for `address`, if one exists.
+    pub fn get_lock(env: Env, address: Address) -> Option<VeLock> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::VeLock(address))
     }
 }

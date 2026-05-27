@@ -745,4 +745,194 @@ mod tests {
         let p = client.get_proposal(&id);
         assert_eq!(p.status, ProposalStatus::Executed);
     }
+
+    // ── ve-token (voting escrow) ──────────────────────────────────────────────
+
+    const MIN_LOCK: u64 = 604_800;       // 1 week
+    const MAX_LOCK: u64 = 126_230_400;   // 4 years
+
+    #[test]
+    fn test_create_lock_basic() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 1_000);
+
+        let lock = client.create_lock(&user, &1_000i128, &MIN_LOCK);
+        assert_eq!(lock.amount, 1_000);
+        assert!(lock.unlock_time > env.ledger().timestamp());
+    }
+
+    #[test]
+    fn test_ve_voting_power_decays_over_time() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 1_000_000);
+
+        // Lock for max duration → full power at creation
+        client.create_lock(&user, &1_000_000i128, &MAX_LOCK);
+
+        let power_now = client.ve_voting_power(&user);
+        assert!(power_now > 0);
+        assert!(power_now <= 1_000_000);
+
+        // Advance halfway through the lock
+        advance(&env, MAX_LOCK / 2);
+        let power_half = client.ve_voting_power(&user);
+
+        // Power at halfway should be roughly half of initial
+        assert!(power_half < power_now);
+        assert!(power_half > 0);
+    }
+
+    #[test]
+    fn test_ve_voting_power_zero_after_expiry() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 500);
+
+        client.create_lock(&user, &500i128, &MIN_LOCK);
+
+        // Advance past expiry
+        advance(&env, MIN_LOCK + 1);
+        let power = client.ve_voting_power(&user);
+        assert_eq!(power, 0);
+    }
+
+    #[test]
+    fn test_withdraw_lock_after_expiry() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 800);
+
+        client.create_lock(&user, &800i128, &MIN_LOCK);
+        advance(&env, MIN_LOCK + 1);
+
+        let returned = client.withdraw_lock(&user);
+        assert_eq!(returned, 800);
+
+        // Lock should be gone
+        assert!(client.get_lock(&user).is_none());
+    }
+
+    #[test]
+    fn test_withdraw_before_expiry_fails() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 500);
+
+        client.create_lock(&user, &500i128, &MIN_LOCK);
+
+        // Try to withdraw immediately — should fail
+        let result = client.try_withdraw_lock(&user);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extend_lock_amount() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 2_000);
+
+        client.create_lock(&user, &1_000i128, &MIN_LOCK);
+        let lock = client.extend_lock(&user, &1_000i128, &0u64);
+        assert_eq!(lock.amount, 2_000);
+    }
+
+    #[test]
+    fn test_extend_lock_duration() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 1_000);
+
+        let lock = client.create_lock(&user, &1_000i128, &MIN_LOCK);
+        let new_unlock = lock.unlock_time + MIN_LOCK;
+        let extended = client.extend_lock(&user, &0i128, &new_unlock);
+        assert_eq!(extended.unlock_time, new_unlock);
+    }
+
+    #[test]
+    fn test_extend_lock_cannot_shorten_duration() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 1_000);
+
+        let lock = client.create_lock(&user, &1_000i128, &(MIN_LOCK * 2));
+        // Try to set unlock_time earlier than current
+        let earlier = lock.unlock_time - 1;
+        let result = client.try_extend_lock(&user, &0i128, &earlier);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_duplicate_lock_fails() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 2_000);
+
+        client.create_lock(&user, &1_000i128, &MIN_LOCK);
+        let result = client.try_create_lock(&user, &1_000i128, &MIN_LOCK);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lock_duration_too_short_fails() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 1_000);
+
+        let result = client.try_create_lock(&user, &1_000i128, &(MIN_LOCK - 1));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lock_duration_too_long_fails() {
+        let (env, _admin, ta, token, client) = setup();
+        let user = Address::generate(&env);
+        mint(&env, &ta, &token, &user, 1_000);
+
+        let result = client.try_create_lock(&user, &1_000i128, &(MAX_LOCK + 1));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_no_lock_withdraw_fails() {
+        let (env, _admin, _ta, _token, client) = setup();
+        let user = Address::generate(&env);
+        let result = client.try_withdraw_lock(&user);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_larger_lock_gives_more_voting_power() {
+        let (env, _admin, ta, token, client) = setup();
+        let user_a = Address::generate(&env);
+        let user_b = Address::generate(&env);
+        mint(&env, &ta, &token, &user_a, 1_000);
+        mint(&env, &ta, &token, &user_b, 2_000);
+
+        // Same duration, different amounts
+        client.create_lock(&user_a, &1_000i128, &MAX_LOCK);
+        client.create_lock(&user_b, &2_000i128, &MAX_LOCK);
+
+        let power_a = client.ve_voting_power(&user_a);
+        let power_b = client.ve_voting_power(&user_b);
+        assert!(power_b > power_a);
+    }
+
+    #[test]
+    fn test_longer_lock_gives_more_voting_power() {
+        let (env, _admin, ta, token, client) = setup();
+        let user_a = Address::generate(&env);
+        let user_b = Address::generate(&env);
+        mint(&env, &ta, &token, &user_a, 1_000);
+        mint(&env, &ta, &token, &user_b, 1_000);
+
+        // Same amount, different durations
+        client.create_lock(&user_a, &1_000i128, &MIN_LOCK);
+        client.create_lock(&user_b, &1_000i128, &MAX_LOCK);
+
+        let power_a = client.ve_voting_power(&user_a);
+        let power_b = client.ve_voting_power(&user_b);
+        assert!(power_b > power_a);
+    }
 }

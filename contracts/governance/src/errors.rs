@@ -44,4 +44,13 @@ pub enum GovError {
     StakeCooldownActive = 24,
     NoStakeToWithdraw = 25,
     SlashExceedsStake = 26,
+
+    // ve-token (voting escrow)
+    LockDurationTooShort = 27,
+    LockDurationTooLong = 28,
+    LockAlreadyExists = 29,
+    NoLockFound = 30,
+    LockNotExpired = 31,
+    NewUnlockTimeTooEarly = 32,
+    ZeroLockAmount = 33,
 }
