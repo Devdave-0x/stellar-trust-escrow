@@ -297,6 +297,10 @@ pub struct Milestone {
     /// Optional price-based release condition. When set, funds are released
     /// automatically via `trigger_oracle_release` once the condition is met.
     pub price_condition: OptionalPriceCondition,
+
+    /// Optional prerequisite milestone ID that must be Approved or Released
+    /// before this milestone can be submitted or paid out.
+    pub depends_on: Option<u32>,
 }
 
 /// Configuration for a recurring/subscription escrow.
