@@ -350,6 +350,30 @@ pub struct CancellationRequest {
     pub disputed: bool,
 }
 
+/// Oracle-signed resolution payload for fallback dispute resolution.
+///
+/// Submitted by any caller once the grace period has elapsed.
+/// The contract verifies the Ed25519 signature over the canonical
+/// message `escrow_id || client_bps || freelancer_bps || expires_at`
+/// before distributing funds.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct OracleResolutionPayload {
+    /// Escrow this resolution applies to.
+    pub escrow_id: u64,
+    /// Client share in basis points (0–10000). Must sum to 10000 with freelancer_bps.
+    pub client_bps: u32,
+    /// Freelancer share in basis points (0–10000).
+    pub freelancer_bps: u32,
+    /// Ledger timestamp after which this payload is considered stale.
+    pub expires_at: u64,
+    /// Ed25519 signature over `escrow_id || client_bps || freelancer_bps || expires_at`
+    /// produced by the trusted oracle key.
+    pub signature: BytesN<64>,
+    /// Ed25519 public key of the oracle signer (must match stored trusted key).
+    pub oracle_pubkey: BytesN<32>,
+}
+
 /// A slash record for tracking penalties.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -461,4 +485,8 @@ pub enum DataKey {
     CancellationsByRequester(Address),
     /// Escrow IDs indexed by slashed user address — key: Address, value: Vec<u64>
     SlashsByAddress(Address),
+    /// Dispute resolution oracle payload by escrow ID — key: u64, value: OracleResolutionPayload
+    OracleResolution(u64),
+    /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
+    TrustedOracleKey,
 }

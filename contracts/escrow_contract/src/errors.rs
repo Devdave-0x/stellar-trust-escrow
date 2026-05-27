@@ -97,4 +97,16 @@ pub enum EscrowError {
     // ── Bridge / Cross-Chain ─────────────────────────────────────────────────
     /// Wrapped token not approved, transfer not found, or bridge not yet finalized.
     BridgeError = 54,
+
+    // ── Oracle Fallback Dispute Resolution ───────────────────────────────────
+    /// Grace period has not yet elapsed; oracle fallback not yet available.
+    GracePeriodNotElapsed = 55,
+    /// Oracle resolution payload signature is invalid.
+    OracleSignatureInvalid = 56,
+    /// Oracle resolution payload is stale (submitted after max age).
+    OraclePayloadStale = 57,
+    /// Oracle payout percentages do not sum to 100.
+    OraclePayoutInvalid = 58,
+    /// Dispute start ledger was not recorded for this escrow.
+    DisputeStartNotRecorded = 59,
 }
