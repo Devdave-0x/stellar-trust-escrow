@@ -51,6 +51,21 @@ services:
     depends_on:
       - backend
 
+  soroban-sandbox:
+    image: stellar/quickstart:soroban-dev
+    container_name: stellar-sandbox
+    command: ["--enable-soroban-rpc", "--standalone"]
+    ports:
+      - "8000:8000"
+    environment:
+      ENABLE_SOROBAN_RPC: "true"
+      NETWORK: "standalone"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/soroban/rpc || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   pgdata:
   esdata:
