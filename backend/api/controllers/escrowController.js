@@ -249,6 +249,114 @@ const getMilestone = async (req, res) => {
   }
 };
 
+// ── Stats endpoints (with Redis caching) ─────────────────────────────────────
+
+const STATS_CACHE_TTL = 3600; // 1 hour in seconds
+
+/**
+ * Helper to get cached stats or fetch from DB with cache population
+ * Falls back to DB if Redis is down without throwing errors
+ */
+async function getCachedStats(cacheKey, dbQuery) {
+  try {
+    // Try to get from cache
+    const cached = await cache.get(cacheKey);
+    if (cached !== null && cached !== undefined) {
+      console.log(`[Cache] Stats hit: ${cacheKey}`);
+      return JSON.parse(cached);
+    }
+
+    // Cache miss: fetch from database
+    const result = await dbQuery();
+
+    // Try to set cache (ignore errors if Redis is down)
+    try {
+      await cache.set(cacheKey, JSON.stringify(result), STATS_CACHE_TTL);
+      console.log(`[Cache] Stats cached: ${cacheKey}`);
+    } catch (cacheErr) {
+      console.warn(`[Cache] Failed to cache ${cacheKey}:`, cacheErr.message);
+    }
+
+    return result;
+  } catch (err) {
+    console.warn(`[Cache] Error getting stats ${cacheKey}:`, err.message);
+    // Fall back to direct DB query if caching fails completely
+    return dbQuery();
+  }
+}
+
+/**
+ * Invalidate stats caches and prevent cache stampedes with a simple lock
+ */
+let invalidationInProgress = false;
+
+async function invalidateStatsCaches() {
+  if (invalidationInProgress) return;
+
+  invalidationInProgress = true;
+  try {
+    await cache.invalidateTags(['stats:volume', 'stats:active', 'stats:success']);
+    console.log('[Cache] Invalidated stats caches');
+  } finally {
+    invalidationInProgress = false;
+  }
+}
+
+const getTotalVolume = async (req, res) => {
+  try {
+    const stats = await getCachedStats('stats:volume', async () => {
+      const result = await prisma.escrow.aggregate({
+        _sum: { totalAmount: true },
+      });
+      return {
+        totalVolume: result._sum.totalAmount || 0,
+      };
+    });
+    res.json(stats);
+  } catch (err) {
+    logControllerError('escrow.getTotalVolume', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const getActiveEscrows = async (req, res) => {
+  try {
+    const stats = await getCachedStats('stats:active', async () => {
+      const count = await prisma.escrow.count({
+        where: { status: 'Active' },
+      });
+      return {
+        activeEscrowCount: count,
+      };
+    });
+    res.json(stats);
+  } catch (err) {
+    logControllerError('escrow.getActiveEscrows', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const getSuccessRate = async (req, res) => {
+  try {
+    const stats = await getCachedStats('stats:success', async () => {
+      const [completedCount, totalCount] = await Promise.all([
+        prisma.escrow.count({ where: { status: 'Completed' } }),
+        prisma.escrow.count(),
+      ]);
+      const successRate = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+      return {
+        completedEscrows: completedCount,
+        totalEscrows: totalCount,
+        successRate: parseFloat(successRate.toFixed(2)),
+      };
+    });
+    res.json(stats);
+  } catch (err) {
+    logControllerError('escrow.getSuccessRate', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listEscrows,
   getEscrow,
@@ -256,6 +364,10 @@ export default {
   getMilestones,
   getMilestone,
   onEscrowStatusChange,
+  getTotalVolume,
+  getActiveEscrows,
+  getSuccessRate,
+  invalidateStatsCaches,
 };
 
 // ── Validation rule sets (used by escrowRoutes) ───────────────────────────────
