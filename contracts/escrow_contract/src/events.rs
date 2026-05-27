@@ -186,6 +186,19 @@ pub fn emit_dispute_resolved(
     );
 }
 
+pub fn emit_dispute_timeout_claimed(
+    env: &Env,
+    escrow_id: u64,
+    claimed_by: &Address,
+    client_amount: i128,
+    freelancer_amount: i128,
+) {
+    env.events().publish(
+        (ev::DISPUTE_TIMEOUT_CLAIMED, escrow_id),
+        (claimed_by.clone(), client_amount, freelancer_amount),
+    );
+}
+
 pub fn emit_reputation_updated(env: &Env, address: &Address, new_score: u64) {
     env.events()
         .publish((ev::REPUTATION_UPDATED,), (address.clone(), new_score));

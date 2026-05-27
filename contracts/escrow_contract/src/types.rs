@@ -165,6 +165,26 @@ pub enum OptionalTimelock {
     Some(Timelock),
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeTier {
+    /// Minimum escrow amount at which this tier becomes active.
+    pub min_total_amount: i128,
+    /// Fee rate in basis points (100 bps = 1%).
+    pub fee_bps: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowFeeSnapshot {
+    /// Applied fee rate in basis points for this escrow.
+    pub fee_bps: u32,
+    /// Total fee amount reserved for this escrow lifecycle.
+    pub fee_amount: i128,
+    /// Whether the fee has already been sent to treasury.
+    pub collected: bool,
+}
+
 impl From<Option<Timelock>> for OptionalTimelock {
     fn from(opt: Option<Timelock>) -> Self {
         match opt {
@@ -383,6 +403,12 @@ pub struct EscrowState {
 
     /// Optional timelock payload for buyer remorse protection.
     pub timelock: OptionalTimelock,
+
+    /// Optional dispute timeout measured in ledger sequence increments.
+    pub dispute_timeout_ledger: Option<u32>,
+
+    /// Ledger sequence at which the current dispute was raised.
+    pub dispute_started_ledger: Option<u32>,
 
     /// IPFS hash of the full project brief / agreement document.
     pub brief_hash: BytesN<32>,
@@ -678,4 +704,12 @@ pub enum DataKey {
     MinArbiterReputation,
     /// Governance contract address for dispute escalation — value: Address
     GovernanceContract,
+    /// Reentrancy guard flag for outbound token flows â€” value: bool
+    ReentrancyLock,
+    /// Treasury address for platform fee settlement â€” value: Address
+    PlatformTreasury,
+    /// Configured dynamic platform fee tiers â€” value: Vec<FeeTier>
+    PlatformFeeTiers,
+    /// Applied fee snapshot for an escrow â€” key: u64, value: EscrowFeeSnapshot
+    PlatformFeeSnapshot(u64),
 }
