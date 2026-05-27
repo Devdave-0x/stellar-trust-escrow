@@ -239,6 +239,10 @@ pub struct EscrowMeta {
     pub required_freelancer_stake: i128,
     /// Whether the freelancer has deposited the required stake.
     pub stake_deposited: bool,
+    /// Optional address of the client's referrer (receives 10% of platform fee).
+    pub client_referrer: Option<Address>,
+    /// Optional address of the freelancer's referrer (receives 10% of platform fee).
+    pub freelancer_referrer: Option<Address>,
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -1339,6 +1343,8 @@ impl EscrowContract {
         escrow_id: u64,
         token: &Address,
         snapshot: &mut EscrowFeeSnapshot,
+        client_referrer: &Option<Address>,
+        freelancer_referrer: &Option<Address>,
     ) -> Result<i128, EscrowError> {
         if snapshot.collected || snapshot.fee_amount == 0 {
             return Ok(0);
@@ -1350,11 +1356,43 @@ impl EscrowContract {
             .get(&DataKey::PlatformTreasury)
             .ok_or(EscrowError::NotInitialized)?;
 
-        token::Client::new(env, token).transfer(
-            &env.current_contract_address(),
-            &treasury,
-            &snapshot.fee_amount,
-        );
+        let token_client = token::Client::new(env, token);
+        let contract_addr = env.current_contract_address();
+
+        // Allocate 10% of fee to each referrer if present
+        const REFERRAL_PERCENTAGE: u32 = 10; // 10% per referrer
+        let mut total_allocated = 0i128;
+
+        if let Some(ref client_ref) = client_referrer {
+            let referral_amount = (snapshot.fee_amount as u128 * REFERRAL_PERCENTAGE as u128 / 100) as i128;
+            if referral_amount > 0 {
+                token_client.transfer(&contract_addr, client_ref, &referral_amount);
+                total_allocated = total_allocated
+                    .checked_add(referral_amount)
+                    .ok_or(EscrowError::AmountMismatch)?;
+                events::emit_referral_payout(env, escrow_id, client_ref, referral_amount);
+            }
+        }
+
+        if let Some(ref freelancer_ref) = freelancer_referrer {
+            let referral_amount = (snapshot.fee_amount as u128 * REFERRAL_PERCENTAGE as u128 / 100) as i128;
+            if referral_amount > 0 {
+                token_client.transfer(&contract_addr, freelancer_ref, &referral_amount);
+                total_allocated = total_allocated
+                    .checked_add(referral_amount)
+                    .ok_or(EscrowError::AmountMismatch)?;
+                events::emit_referral_payout(env, escrow_id, freelancer_ref, referral_amount);
+            }
+        }
+
+        // Transfer remainder to treasury
+        let treasury_amount = snapshot.fee_amount
+            .checked_sub(total_allocated)
+            .ok_or(EscrowError::AmountMismatch)?;
+        if treasury_amount > 0 {
+            token_client.transfer(&contract_addr, &treasury, &treasury_amount);
+        }
+
         snapshot.collected = true;
         ContractStorage::save_fee_snapshot(env, escrow_id, snapshot);
         Ok(snapshot.fee_amount)
@@ -1365,9 +1403,11 @@ impl EscrowContract {
         escrow_id: u64,
         token: &Address,
         gross_amount: i128,
+        client_referrer: &Option<Address>,
+        freelancer_referrer: &Option<Address>,
     ) -> Result<(i128, i128), EscrowError> {
         let mut snapshot = ContractStorage::load_fee_snapshot(env, escrow_id);
-        let collected_fee = Self::collect_platform_fee(env, escrow_id, token, &mut snapshot)?;
+        let collected_fee = Self::collect_platform_fee(env, escrow_id, token, &mut snapshot, client_referrer, freelancer_referrer)?;
         Ok((gross_amount, collected_fee))
     }
 
@@ -1377,9 +1417,11 @@ impl EscrowContract {
         token: &Address,
         client_amount: i128,
         freelancer_amount: i128,
+        client_referrer: &Option<Address>,
+        freelancer_referrer: &Option<Address>,
     ) -> Result<(i128, i128, i128), EscrowError> {
         let mut snapshot = ContractStorage::load_fee_snapshot(env, escrow_id);
-        let collected_fee = Self::collect_platform_fee(env, escrow_id, token, &mut snapshot)?;
+        let collected_fee = Self::collect_platform_fee(env, escrow_id, token, &mut snapshot, client_referrer, freelancer_referrer)?;
         Ok((client_amount, freelancer_amount, collected_fee))
     }
 
@@ -1441,7 +1483,7 @@ impl EscrowContract {
         lock_time: Option<u64>,
         required_freelancer_stake: i128,
     ) -> Result<u64, EscrowError> {
-        Self::create_escrow_internal(
+        Self::create_escrow_with_referrers_internal(
             env,
             client,
             freelancer,
@@ -1454,6 +1496,70 @@ impl EscrowContract {
             required_freelancer_stake,
             None,
             None,
+            None,
+        )
+    }
+
+    /// Creates a new escrow with optional referrer addresses.
+    pub fn create_escrow_with_referrers(
+        env: Env,
+        client: Address,
+        freelancer: Address,
+        token: Address,
+        total_amount: i128,
+        brief_hash: BytesN<32>,
+        arbiter: Option<Address>,
+        deadline: Option<u64>,
+        lock_time: Option<u64>,
+        client_referrer: Option<Address>,
+    ) -> Result<u64, EscrowError> {
+        Self::create_escrow_with_referrers_internal(
+            env,
+            client,
+            freelancer,
+            token,
+            total_amount,
+            brief_hash,
+            arbiter,
+            deadline,
+            lock_time,
+            0,
+            None,
+            client_referrer,
+            None,
+        )
+    }
+
+    fn create_escrow_with_referrers_internal(
+        env: Env,
+        client: Address,
+        freelancer: Address,
+        token: Address,
+        total_amount: i128,
+        brief_hash: BytesN<32>,
+        arbiter: Option<Address>,
+        deadline: Option<u64>,
+        lock_time: Option<u64>,
+        required_freelancer_stake: i128,
+        dispute_timeout_ledger: Option<u32>,
+        client_referrer: Option<Address>,
+        freelancer_referrer: Option<Address>,
+    ) -> Result<u64, EscrowError> {
+        Self::create_escrow_internal(
+            env,
+            client,
+            freelancer,
+            token,
+            total_amount,
+            brief_hash,
+            arbiter,
+            deadline,
+            lock_time,
+            required_freelancer_stake,
+            dispute_timeout_ledger,
+            None,
+            client_referrer,
+            freelancer_referrer,
         )
     }
 
@@ -1481,6 +1587,8 @@ impl EscrowContract {
             lock_time,
             0, // No freelancer stake required
             Some(dispute_timeout_ledger),
+            None,
+            None, // No referrers
             None,
         )
     }
@@ -1520,6 +1628,8 @@ impl EscrowContract {
             0, // No freelancer stake required
             None,
             None,
+            None, // No referrers
+            None,
         )?;
         events::emit_nft_gated_escrow_created(&env, escrow_id, &nft_contract, token_id);
         Ok(escrow_id)
@@ -1553,6 +1663,8 @@ impl EscrowContract {
             0, // No freelancer stake required
             None,
             Some(buyer_signers),
+            None, // No referrers
+            None,
         )
     }
 
@@ -1612,6 +1724,8 @@ impl EscrowContract {
         required_freelancer_stake: i128,
         dispute_timeout_ledger: Option<u32>,
         buyer_signers: Option<soroban_sdk::Vec<Address>>,
+        client_referrer: Option<Address>,
+        freelancer_referrer: Option<Address>,
     ) -> Result<u64, EscrowError> {
         // Auth + validation before any storage I/O
         client.require_auth();
@@ -1719,6 +1833,8 @@ impl EscrowContract {
                 last_rent_collection_at: now,
                 required_freelancer_stake,
                 stake_deposited: required_freelancer_stake == 0,
+                client_referrer,
+                freelancer_referrer,
             },
         );
 
@@ -1827,6 +1943,8 @@ impl EscrowContract {
             last_rent_collection_at: now,
             required_freelancer_stake: 0,
             stake_deposited: true,
+            client_referrer: None,
+            freelancer_referrer: None,
         };
         ContractStorage::charge_entry_rent(&env, &mut meta, &client, 1)?;
         ContractStorage::save_escrow_meta(&env, &meta);
@@ -2346,6 +2464,8 @@ impl EscrowContract {
                     escrow_id,
                     &meta.token,
                     total_amount,
+                    &meta.client_referrer,
+                    &meta.freelancer_referrer,
                 )?
             } else {
                 (total_amount, 0)
@@ -2843,7 +2963,7 @@ impl EscrowContract {
             let completes_escrow =
                 meta.released_count + 1 == meta.milestone_count && meta.milestone_count > 0;
             let (payout_amount, _) = if completes_escrow {
-                Self::settle_completion_fee_from_single_payout(&env, escrow_id, &meta.token, amount)?
+                Self::settle_completion_fee_from_single_payout(&env, escrow_id, &meta.token, amount, &meta.client_referrer, &meta.freelancer_referrer)?
             } else {
                 (amount, 0)
             };
@@ -3018,6 +3138,8 @@ impl EscrowContract {
             meta.required_freelancer_stake,
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
+            meta.client_referrer.clone(),
+            meta.freelancer_referrer.clone(),
         )?;
 
         // Create second child escrow
@@ -3034,6 +3156,8 @@ impl EscrowContract {
             meta.required_freelancer_stake,
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
+            meta.client_referrer.clone(),
+            meta.freelancer_referrer.clone(),
         )?;
 
         // Note: Parent escrow remains active, only unallocated balance is split
@@ -3273,6 +3397,8 @@ impl EscrowContract {
                     &meta.token,
                     client_amount,
                     freelancer_amount,
+                    &meta.client_referrer,
+                    &meta.freelancer_referrer,
                 )?;
 
             let token = token::Client::new(&env, &meta.token);
@@ -3347,6 +3473,8 @@ impl EscrowContract {
                     &meta.token,
                     client_amount,
                     freelancer_amount,
+                    &meta.client_referrer,
+                    &meta.freelancer_referrer,
                 )?;
 
             let token = token::Client::new(&env, &meta.token);
@@ -3712,6 +3840,8 @@ impl EscrowContract {
             0, // No freelancer stake required
             None, // dispute_timeout_ledger
             None, // buyer_signers
+            None, // No referrers
+            None,
         )?;
 
         // Add template milestones

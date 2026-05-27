@@ -246,6 +246,8 @@ impl StorageManager {
                     stake_deposited: true,
                     dispute_timeout_ledger: None,
                     dispute_started_ledger: None,
+                    client_referrer: None,
+                    freelancer_referrer: None,
                 };
 
                 // Store meta in v2 format using PackedDataKey
