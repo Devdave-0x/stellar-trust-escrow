@@ -11,10 +11,18 @@
  *   - RPC downtime: exponential backoff up to MAX_BACKOFF_MS
  *   - Batch processing: processes BATCH_SIZE ledgers per tick to avoid RPC overload
  *   - Zero data loss: ledger cursor only advances after successful DB write
+ *   - Distributed locking: Redlock (Redis) prevents duplicate processing across nodes
+ *     - Lock key: indexer:ledger:<ledger>  TTL: LOCK_TTL_MS
+ *     - If lock acquisition fails the batch is skipped (another node is processing it)
+ *     - Locks auto-expire so a crashed node never blocks the cluster
  */
 
+import { Redis } from 'ioredis';
 import prisma from '../lib/prisma.js';
 import { withRetry } from '../lib/transaction.js';
+import { createModuleLogger } from '../config/logger.js';
+
+const logger = createModuleLogger('worker.escrowIndexer');
 
 const CONTRACT_ID         = process.env.ESCROW_CONTRACT_ID || '';
 const RPC_URL             = process.env.SOROBAN_RPC_URL    || 'https://soroban-testnet.stellar.org';
@@ -23,6 +31,11 @@ const BATCH_SIZE          = parseInt(process.env.INDEXER_BATCH_SIZE       || '10
 const BASE_BACKOFF_MS     = parseInt(process.env.INDEXER_BASE_BACKOFF_MS  || '1000',  10);
 const MAX_BACKOFF_MS      = parseInt(process.env.INDEXER_MAX_BACKOFF_MS   || '60000', 10);
 const START_LEDGER        = parseInt(process.env.INDEXER_START_LEDGER     || '0',     10);
+
+// Redlock config
+const LOCK_TTL_MS         = parseInt(process.env.INDEXER_LOCK_TTL_MS      || '30000', 10);
+const LOCK_RETRY_COUNT    = parseInt(process.env.INDEXER_LOCK_RETRY_COUNT || '3',     10);
+const LOCK_RETRY_DELAY_MS = parseInt(process.env.INDEXER_LOCK_RETRY_DELAY_MS || '200', 10);
 
 // ── Metrics ───────────────────────────────────────────────────────────────────
 
@@ -33,10 +46,65 @@ const metrics = {
   dbErrors: 0,
   lastTickMs: 0,
   lastLedger: 0,
+  locksAcquired: 0,
+  locksSkipped: 0,
 };
 
 function logMetrics() {
-  console.log('[Indexer] metrics', JSON.stringify(metrics));
+  logger.info({ message: 'indexer_metrics', ...metrics });
+}
+
+// ── Redis / Redlock ───────────────────────────────────────────────────────────
+
+let redisClient = null;
+
+function getRedis() {
+  if (!redisClient) {
+    redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    redisClient.on('error', (err) =>
+      logger.warn({ message: 'redis_error', error: err.message }),
+    );
+  }
+  return redisClient;
+}
+
+/**
+ * Attempt to acquire a Redlock-style distributed lock for a ledger range.
+ *
+ * Uses SET NX PX (atomic) — compatible with single-node Redis and Redlock
+ * multi-node setups. Returns the lock token on success, null on failure.
+ *
+ * @param {number} fromLedger
+ * @param {number} toLedger
+ * @returns {Promise<string|null>} lock token or null
+ */
+async function acquireLock(fromLedger, toLedger) {
+  const redis = getRedis();
+  const key   = `indexer:ledger:${fromLedger}:${toLedger}`;
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  for (let attempt = 0; attempt < LOCK_RETRY_COUNT; attempt++) {
+    const result = await redis.set(key, token, 'NX', 'PX', LOCK_TTL_MS).catch(() => null);
+    if (result === 'OK') return token;
+    if (attempt < LOCK_RETRY_COUNT - 1) {
+      await new Promise((r) => setTimeout(r, LOCK_RETRY_DELAY_MS));
+    }
+  }
+  return null;
+}
+
+/**
+ * Release a lock only if we still own it (compare-and-delete via Lua).
+ */
+async function releaseLock(fromLedger, toLedger, token) {
+  const redis = getRedis();
+  const key   = `indexer:ledger:${fromLedger}:${toLedger}`;
+  const lua   = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end`;
+  await redis.eval(lua, 1, key, token).catch(() => null);
 }
 
 // ── RPC helpers ───────────────────────────────────────────────────────────────
@@ -208,13 +276,27 @@ async function handleReputationUpdated(event) {
 // ── Main loop ─────────────────────────────────────────────────────────────────
 
 async function processBatch(fromLedger, toLedger) {
-  const events = await getEvents(fromLedger, toLedger);
-  for (const event of events) {
-    await withRetry(() => dispatchEvent(event));
-    metrics.eventsProcessed++;
+  const token = await acquireLock(fromLedger, toLedger);
+
+  if (!token) {
+    // Another node holds the lock — skip this batch
+    metrics.locksSkipped++;
+    logger.debug({ message: 'indexer_lock_skipped', fromLedger, toLedger });
+    return 0;
   }
-  metrics.ledgersProcessed += toLedger - fromLedger + 1;
-  return events.length;
+
+  metrics.locksAcquired++;
+  try {
+    const events = await getEvents(fromLedger, toLedger);
+    for (const event of events) {
+      await withRetry(() => dispatchEvent(event));
+      metrics.eventsProcessed++;
+    }
+    metrics.ledgersProcessed += toLedger - fromLedger + 1;
+    return events.length;
+  } finally {
+    await releaseLock(fromLedger, toLedger, token);
+  }
 }
 
 export async function startIndexer() {
@@ -225,7 +307,7 @@ export async function startIndexer() {
 
   let cursor = await loadCursor();
   let backoff = BASE_BACKOFF_MS;
-  console.log(`[Indexer] Starting from ledger ${cursor}`);
+  logger.info({ message: 'indexer_starting', fromLedger: cursor });
 
   const tick = async () => {
     const t0 = Date.now();
@@ -245,7 +327,7 @@ export async function startIndexer() {
       backoff = BASE_BACKOFF_MS; // reset on success
     } catch (err) {
       metrics.rpcErrors++;
-      console.error(`[Indexer] Tick error (backoff ${backoff}ms):`, err.message);
+      logger.error({ message: 'indexer_tick_error', backoffMs: backoff, error: err.message });
       await new Promise(r => setTimeout(r, backoff));
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
     } finally {
