@@ -1,4 +1,21 @@
 services:
+  # ── Stellar Quickstart (local Soroban sandbox) ──────────────────────────────
+  stellar:
+    image: stellar/quickstart:latest
+    command: --local --enable-soroban-rpc
+    ports:
+      - '8000:8000'   # Horizon API
+      - '8001:8001'   # Soroban RPC
+    environment:
+      NETWORK_PASSPHRASE: 'Standalone Network ; February 2017'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:8000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - stellar_data:/opt/stellar
+
   postgres:
     image: postgres:15-alpine
     environment:
@@ -54,3 +71,4 @@ services:
 volumes:
   pgdata:
   esdata:
+  stellar_data:
