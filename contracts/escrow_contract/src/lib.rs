@@ -2954,16 +2954,68 @@ impl EscrowContract {
                 return Err(EscrowError::EscrowNotActive);
             }
 
-            if meta.submitted_count > 0 || meta.approved_count > meta.released_count {
-                return Err(EscrowError::PendingFunds);
+            // Stage-based cancellation split:
+            // - Deduct platform fee from the remaining escrow balance first.
+            // - Pay any Approved (but not yet Released) milestone amounts to the freelancer.
+            // - Refund the rest to the client.
+            let mut snapshot = Self::calculate_platform_fee(&env, meta.total_amount)?;
+            let mut fee_amount = snapshot.fee_amount;
+            if fee_amount > meta.remaining_balance {
+                fee_amount = meta.remaining_balance;
             }
 
-            let returned = meta.remaining_balance;
-            token::Client::new(&env, &meta.token).transfer(
-                &env.current_contract_address(),
-                &meta.client,
-                &returned,
-            );
+            let mut approved_due: i128 = 0;
+            for mid in 0..meta.milestone_count {
+                let m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+                if m.status == MS_APPROVED {
+                    approved_due = approved_due
+                        .checked_add(m.amount)
+                        .ok_or(EscrowError::AmountMismatch)?;
+                }
+            }
+
+            let available_after_fee = meta
+                .remaining_balance
+                .checked_sub(fee_amount)
+                .ok_or(EscrowError::AmountMismatch)?;
+            if approved_due > available_after_fee {
+                return Err(EscrowError::AmountMismatch);
+            }
+
+            let freelancer_payout = approved_due;
+            let client_refund = available_after_fee
+                .checked_sub(approved_due)
+                .ok_or(EscrowError::AmountMismatch)?;
+
+            if fee_amount > 0 {
+                let treasury: Address = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::PlatformTreasury)
+                    .ok_or(EscrowError::NotInitialized)?;
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &treasury,
+                    &fee_amount,
+                );
+                snapshot.collected = true;
+            }
+
+            if freelancer_payout > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.freelancer,
+                    &freelancer_payout,
+                );
+            }
+
+            if client_refund > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.client,
+                    &client_refund,
+                );
+            }
 
             meta.remaining_balance = 0;
             meta.status = EscrowStatus::Cancelled;
@@ -2980,7 +3032,11 @@ impl EscrowContract {
             ContractStorage::save_escrow_meta(&env, &meta);
             ContractStorage::remove_fee_snapshot(&env, escrow_id);
 
-            events::emit_escrow_cancelled(&env, escrow_id, returned);
+            env.events().publish(
+                (symbol_short!("escrow_cancelled_breakdown"), escrow_id),
+                (freelancer_payout, client_refund, fee_amount),
+            );
+            events::emit_escrow_cancelled(&env, escrow_id, client_refund);
             Ok(())
         })
     }
@@ -4672,6 +4728,20 @@ mod tests {
         });
     }
 
+    fn set_milestone_status(
+        env: &Env,
+        contract_id: &Address,
+        escrow_id: u64,
+        milestone_id: u32,
+        status: MilestoneStatus,
+    ) {
+        env.as_contract(contract_id, || {
+            let mut m = ContractStorage::load_milestone(env, escrow_id, milestone_id).unwrap();
+            m.status = status;
+            ContractStorage::save_milestone(env, escrow_id, &m);
+        });
+    }
+
     #[test]
     fn test_dependency_linear_chain_activation_rejected_until_satisfied() {
         let (env, admin, contract_id, client) = setup();
@@ -5380,11 +5450,13 @@ mod tests {
 
     #[test]
     fn test_cancel_escrow() {
-        let (env, admin, _, client) = setup();
+        let (env, admin, contract_id, client) = setup();
         client.initialize(&admin);
 
         let escrow_client = Address::generate(&env);
         let freelancer = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        client.set_platform_treasury(&admin, &treasury);
         let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
         let token_id = token_contract.address();
         let token_admin = token::StellarAssetClient::new(&env, &token_id);
@@ -5412,7 +5484,80 @@ mod tests {
 
         let state = client.get_escrow(&escrow_id);
         assert_eq!(state.status, EscrowStatus::Cancelled);
-        assert_eq!(token_client.balance(&escrow_client), 200_i128);
+        // Default fee tier for 200 is 200 bps => 4 fee.
+        assert_eq!(token_client.balance(&treasury), 4_i128);
+        assert_eq!(token_client.balance(&escrow_client), 196_i128);
+        assert_eq!(token_client.balance(&freelancer), 0_i128);
+
+        // Verify cancellation breakdown event was emitted
+        let all_events = env.events().all();
+        assert!(
+            all_events.iter().any(|e| {
+                let topic = &e.0;
+                topic == &(symbol_short!("escrow_cancelled_breakdown"), escrow_id).into_val(&env)
+            }),
+            "expected escrow_cancelled_breakdown event"
+        );
+    }
+
+    #[test]
+    fn test_cancel_escrow_partial_completion_splits_balance() {
+        let (env, admin, contract_id, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        client.set_platform_treasury(&admin, &treasury);
+
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+        let token_client = token::Client::new(&env, &token_id);
+
+        token_admin.mint(
+            &escrow_client,
+            &(2_000_i128 + ContractStorage::reserve_for_entries(1)),
+        );
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &2_000_i128,
+            &BytesN::from_array(&env, &[60; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let m0 = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "M0"),
+            &BytesN::from_array(&env, &[61; 32]),
+            &1_000_i128,
+        );
+        let m1 = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "M1"),
+            &BytesN::from_array(&env, &[62; 32]),
+            &1_000_i128,
+        );
+
+        // Simulate partial completion: m0 approved, m1 pending (no release performed).
+        set_milestone_status(&env, &contract_id, escrow_id, m0, MS_APPROVED);
+        set_milestone_status(&env, &contract_id, escrow_id, m1, MS_PENDING);
+
+        client.cancel_escrow(&escrow_client, &escrow_id);
+
+        // Fee for 2_000 @ 150 bps => 30
+        assert_eq!(token_client.balance(&treasury), 30_i128);
+        assert_eq!(token_client.balance(&freelancer), 1_000_i128);
+        assert_eq!(token_client.balance(&escrow_client), 970_i128);
     }
 
     #[test]
