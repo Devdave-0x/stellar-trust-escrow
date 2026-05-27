@@ -8,6 +8,8 @@
 
 use soroban_sdk::{Env, IntoVal, Val};
 
+pub mod auth;
+
 // ── TTL constants ─────────────────────────────────────────────────────────────
 
 /// Bump instance storage TTL when remaining ledgers fall below this threshold.

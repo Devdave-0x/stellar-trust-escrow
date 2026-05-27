@@ -666,6 +666,10 @@ pub enum DataKey {
     Reputation(Address),
     /// Contract admin address — value: Address
     Admin,
+    /// Admin signer set for threshold authorization — value: Vec<Address>
+    AdminSigners,
+    /// Required number of admin signatures — value: u32
+    AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
@@ -716,4 +720,6 @@ pub enum DataKey {
     PlatformFeeTiers,
     /// Applied fee snapshot for an escrow â€” key: u64, value: EscrowFeeSnapshot
     PlatformFeeSnapshot(u64),
+    /// Escrow frozen flag (security freeze) — key: u64, value: bool
+    EscrowFrozen(u64),
 }
