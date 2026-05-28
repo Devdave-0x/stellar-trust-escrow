@@ -14,15 +14,20 @@
  *   DATABASE_URL  — PostgreSQL connection string (required)
  */
 
-'use strict';
+import dotenv from 'dotenv';
+import { Client } from 'pg';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const { Client } = require('pg');
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /** Bloat ratio threshold above which an index is rebuilt (30 %). */
-const BLOAT_THRESHOLD = 0.30;
+const BLOAT_THRESHOLD = 0.3;
 
 /** Weekly cron: Sunday at 02:00 UTC (ms). */
 const WEEKLY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -119,7 +124,7 @@ async function rebuildFragmentedIndexes(client) {
       // Measure size after rebuild
       const { rows: after } = await client.query(
         `SELECT pg_relation_size(oid) AS size FROM pg_class WHERE relname = $1`,
-        [row.index_name]
+        [row.index_name],
       );
       const sizeAfter = parseInt(after[0]?.size, 10) || 0;
       const reclaimed = Math.max(0, sizeBefore - sizeAfter);
@@ -191,11 +196,11 @@ async function verifyConsistency(client) {
     LIMIT 20;
   `);
 
-  const flagged = rows.filter(r => parseFloat(r.dead_ratio) > 0.10);
+  const flagged = rows.filter((r) => parseFloat(r.dead_ratio) > 0.1);
   if (flagged.length > 0) {
     log('warn', 'Tables with high dead-tuple ratio after vacuum', {
       count: flagged.length,
-      tables: flagged.map(r => ({ table: r.tablename, dead_ratio: r.dead_ratio })),
+      tables: flagged.map((r) => ({ table: r.tablename, dead_ratio: r.dead_ratio })),
     });
   } else {
     log('info', 'Consistency check passed — no high dead-tuple tables');
@@ -235,28 +240,28 @@ function scheduleWeekly() {
   });
 
   // Run immediately on start, then every 7 days
-  run().catch(err => log('error', 'Optimization run failed', { error: err.message }));
+  run().catch((err) => log('error', 'Optimization run failed', { error: err.message }));
 
   setInterval(() => {
     log('info', 'Weekly optimization triggered');
-    run().catch(err => log('error', 'Optimization run failed', { error: err.message }));
+    run().catch((err) => log('error', 'Optimization run failed', { error: err.message }));
   }, WEEKLY_INTERVAL_MS);
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-if (require.main === module) {
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   const isCron = process.argv.includes('--cron');
   if (isCron) {
     scheduleWeekly();
   } else {
     run()
       .then(() => process.exit(0))
-      .catch(err => {
+      .catch((err) => {
         log('error', 'Fatal error', { error: err.message });
         process.exit(1);
       });
   }
 }
 
-module.exports = { run, rebuildFragmentedIndexes, vacuumAnalyzeTables, verifyConsistency };
+export { run, rebuildFragmentedIndexes, vacuumAnalyzeTables, verifyConsistency };
