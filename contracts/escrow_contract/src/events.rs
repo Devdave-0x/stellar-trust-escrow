@@ -436,3 +436,16 @@ pub fn emit_dispute_escalated_to_governance(
         (initiator.clone(), proposal_id, amount),
     );
 }
+
+/// Emitted when a referrer receives a reward from the platform fee.
+///
+/// # Arguments
+/// * `escrow_id` - The escrow ID
+/// * `referrer` - The address of the referrer
+/// * `amount` - The referral payout amount
+pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("ref_pay"), escrow_id),
+        (referrer.clone(), amount),
+    );
+}

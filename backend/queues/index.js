@@ -48,3 +48,6 @@ const createQueue = (name) =>
 export const emailQueue = createQueue('email');
 export const webhookQueue = createQueue('webhook');
 export const scheduledQueue = createQueue('scheduled');
+
+// eventQueue is handled separately due to its complex retry/DLQ setup
+export { default as eventQueueModule } from './eventQueue.js';
