@@ -10,13 +10,14 @@ const prismaMock = {
 };
 
 jest.unstable_mockModule('../lib/prisma.js', () => ({ default: prismaMock }));
+const archiveService = await import('../services/escrowArchiveService.js');
 jest.unstable_mockModule('../services/escrowArchiveService.js', () => ({
+  ...archiveService,
   listArchiveTables: jest.fn(async () => ['escrows_archive_2025_01']),
 }));
 
 const { default: searchService } = await import('../services/searchService.js');
-const { archiveCompletedEscrows, getArchiveTableName } =
-  await import('../services/escrowArchiveService.js');
+const { archiveCompletedEscrows, getArchiveTableName } = archiveService;
 
 describe('escrowArchiveService', () => {
   it('creates stable monthly archive table names', () => {

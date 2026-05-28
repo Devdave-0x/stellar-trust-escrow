@@ -35,7 +35,7 @@ const mockSorobanRpc = {
 
 jest.unstable_mockModule('@stellar/stellar-sdk', () => mockSorobanRpc);
 
-const { default: stellarClient } = await import('../services/stellarClient.js');
+const { default: stellarClient, StellarClient } = await import('../services/stellarClient.js');
 
 describe('Stellar Client with Horizon Failover', () => {
   let primaryServer;
@@ -64,6 +64,15 @@ describe('Stellar Client with Horizon Failover', () => {
 
     mockServerInstances.set('https://primary.stellar.org', primaryServer);
     mockServerInstances.set('https://backup.stellar.org', backupServer);
+
+    for (const health of stellarClient.nodeHealth.values()) {
+      health.isHealthy = true;
+      health.failureCount = 0;
+      health.successCount = 0;
+      health.lastFailedAt = null;
+      health.averageLatency = 0;
+      health.deprioritizedUntil = null;
+    }
   });
 
   afterEach(() => {
@@ -124,7 +133,7 @@ describe('Stellar Client with Horizon Failover', () => {
 
       // Create a new client with multiple endpoints for this test
       const testEndpoints = ['https://primary.stellar.org', 'https://backup.stellar.org'];
-      const client = new (await import('../services/stellarClient.js')).default();
+      const client = new StellarClient();
       // Manually set up endpoints to test failover
       client.endpoints = testEndpoints;
       client.nodeHealth.clear();
@@ -194,7 +203,7 @@ describe('Stellar Client with Horizon Failover', () => {
     it('throws meaningful error when all endpoints fail', async () => {
       primaryServer.getLatestLedger.mockRejectedValue(new Error('Primary failed'));
 
-      const client = new (await import('../services/stellarClient.js')).default();
+      const client = new StellarClient();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {
@@ -215,7 +224,7 @@ describe('Stellar Client with Horizon Failover', () => {
     it('logs error when all nodes fail', async () => {
       primaryServer.getLatestLedger.mockRejectedValue(new Error('Service unavailable'));
 
-      const client = new (await import('../services/stellarClient.js')).default();
+      const client = new StellarClient();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {
@@ -244,7 +253,7 @@ describe('Stellar Client with Horizon Failover', () => {
     it('does not crash when error occurs', async () => {
       primaryServer.getLatestLedger.mockRejectedValue(new Error('Fatal error'));
 
-      const client = new (await import('../services/stellarClient.js')).default();
+      const client = new StellarClient();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {
@@ -355,11 +364,9 @@ describe('Stellar Client with Horizon Failover', () => {
   describe('query timeout handling', () => {
     it('times out slow queries', async () => {
       // Mock slow response
-      primaryServer.getLatestLedger.mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ sequence: 60000 }), 60000)),
-      );
+      primaryServer.getLatestLedger.mockImplementation(() => new Promise(() => {}));
 
-      const client = new (await import('../services/stellarClient.js')).default();
+      const client = new StellarClient();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {

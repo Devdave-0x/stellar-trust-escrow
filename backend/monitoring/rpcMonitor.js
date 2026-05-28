@@ -24,11 +24,11 @@ const logger = createModuleLogger('monitoring.rpcMonitor');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const ENDPOINTS = (
-  process.env.RPC_MONITOR_ENDPOINTS ||
-  process.env.SOROBAN_RPC_URL ||
-  'https://soroban-testnet.stellar.org'
-)
+const configuredEndpoints =
+  process.env.RPC_MONITOR_ENDPOINTS ??
+  process.env.SOROBAN_RPC_URL ??
+  (process.env.NODE_ENV === 'test' ? '' : 'https://soroban-testnet.stellar.org');
+const ENDPOINTS = configuredEndpoints
   .split(',')
   .map((u) => u.trim())
   .filter(Boolean);
@@ -252,10 +252,11 @@ export function startRpcMonitor() {
   }
 
   poll().catch((err) => logger.error({ message: 'rpc_poll_error', error: err.message }));
-  setInterval(
+  const timer = setInterval(
     () => poll().catch((err) => logger.error({ message: 'rpc_poll_error', error: err.message })),
     POLL_INTERVAL_MS,
   );
+  timer.unref?.();
 }
 
 export default { startRpcMonitor };

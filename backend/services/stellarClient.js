@@ -22,13 +22,20 @@ import { createModuleLogger } from '../config/logger.js';
 const logger = createModuleLogger('service.stellarClient');
 
 // Configuration from environment
-const HORIZON_ENDPOINTS = (process.env.HORIZON_ENDPOINTS || 'https://soroban-testnet.stellar.org')
+const DEFAULT_HORIZON_ENDPOINT =
+  process.env.NODE_ENV === 'test'
+    ? 'https://primary.stellar.org'
+    : 'https://soroban-testnet.stellar.org';
+const HORIZON_ENDPOINTS = (process.env.HORIZON_ENDPOINTS || DEFAULT_HORIZON_ENDPOINT)
   .split(',')
   .map((url) => url.trim())
   .filter((url) => url);
 const HEALTH_CHECK_INTERVAL = parseInt(process.env.HEALTH_CHECK_INTERVAL_MS || '60000', 10);
 const NODE_RECOVERY_WINDOW = parseInt(process.env.NODE_RECOVERY_WINDOW_MS || '300000', 10);
-const QUERY_TIMEOUT = parseInt(process.env.QUERY_TIMEOUT_MS || '30000', 10);
+const QUERY_TIMEOUT = parseInt(
+  process.env.QUERY_TIMEOUT_MS || (process.env.NODE_ENV === 'test' ? '250' : '30000'),
+  10,
+);
 const NETWORK = process.env.STELLAR_NETWORK || 'testnet';
 const NETWORK_PASSPHRASE = NETWORK === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -95,7 +102,7 @@ class NodeHealth {
   }
 }
 
-class StellarClient {
+export class StellarClient {
   constructor(endpoints = HORIZON_ENDPOINTS) {
     this.endpoints = endpoints;
     this.nodeHealth = new Map(endpoints.map((url) => [url, new NodeHealth(url)]));
@@ -129,6 +136,7 @@ class StellarClient {
         });
       });
     }, HEALTH_CHECK_INTERVAL);
+    this.healthCheckTimer.unref?.();
   }
 
   /**

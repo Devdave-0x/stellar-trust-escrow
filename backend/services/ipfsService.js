@@ -22,28 +22,32 @@ const logger = createModuleLogger('service.ipfsService');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const PINATA_JWT = process.env.PINATA_JWT;
 const PINATA_API = 'https://api.pinata.cloud/pinning/pinFileToIPFS';
-const GATEWAY = process.env.PINATA_GATEWAY_URL || process.env.IPFS_GATEWAY_URL || 'https://ipfs.io';
+const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024;
+const DEFAULT_ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'text/plain',
+  'video/mp4',
+];
 
-const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || String(10 * 1024 * 1024), 10);
+function getGateway() {
+  return process.env.PINATA_GATEWAY_URL || process.env.IPFS_GATEWAY_URL || 'https://ipfs.io';
+}
 
-const ALLOWED_MIME_TYPES = new Set(
-  (
-    process.env.ALLOWED_MIME_TYPES ||
-    [
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-      'image/gif',
-      'application/pdf',
-      'text/plain',
-      'video/mp4',
-    ].join(',')
-  )
-    .split(',')
-    .map((t) => t.trim()),
-);
+function getMaxFileSize() {
+  return parseInt(process.env.MAX_FILE_SIZE || String(DEFAULT_MAX_FILE_SIZE), 10);
+}
+
+function getAllowedMimeTypes() {
+  const configured = process.env.ALLOWED_MIME_TYPES?.trim();
+  return new Set(
+    (configured ? configured.split(',') : DEFAULT_ALLOWED_MIME_TYPES).map((t) => t.trim()),
+  );
+}
 
 // ── In-process key store  (CID → { key, iv, authorisedAddresses }) ────────────
 // In production, replace with a secrets manager (Vault, AWS Secrets Manager, etc.)
@@ -78,12 +82,13 @@ function decryptBuffer(ciphertext, key, iv, authTag) {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 function validateFile(buffer, mimeType) {
-  if (buffer.length > MAX_FILE_SIZE) {
-    throw Object.assign(new Error(`File exceeds ${MAX_FILE_SIZE} byte limit`), {
+  const maxFileSize = getMaxFileSize();
+  if (buffer.length > maxFileSize) {
+    throw Object.assign(new Error(`File exceeds ${maxFileSize} byte limit`), {
       code: 'FILE_TOO_LARGE',
     });
   }
-  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+  if (!getAllowedMimeTypes().has(mimeType)) {
     throw Object.assign(new Error(`MIME type not allowed: ${mimeType}`), {
       code: 'MIME_NOT_ALLOWED',
     });
@@ -93,7 +98,8 @@ function validateFile(buffer, mimeType) {
 // ── Pinata upload ─────────────────────────────────────────────────────────────
 
 async function pinToPinata(encryptedBuffer, filename) {
-  if (!PINATA_JWT) throw new Error('PINATA_JWT is not configured');
+  const pinataJwt = process.env.PINATA_JWT;
+  if (!pinataJwt) throw new Error('PINATA_JWT is not configured');
 
   const form = new FormData();
   form.append('file', new Blob([encryptedBuffer]), filename);
@@ -101,7 +107,7 @@ async function pinToPinata(encryptedBuffer, filename) {
 
   const res = await fetch(PINATA_API, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${PINATA_JWT}` },
+    headers: { Authorization: `Bearer ${pinataJwt}` },
     body: form,
     signal: AbortSignal.timeout(60_000),
   });
@@ -196,7 +202,7 @@ class IPFSService {
   }
 
   getFileUrl(cid) {
-    return `${GATEWAY}/ipfs/${cid}`;
+    return `${getGateway()}/ipfs/${cid}`;
   }
 
   isImage(mimeType) {
