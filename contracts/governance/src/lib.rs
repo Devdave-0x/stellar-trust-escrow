@@ -28,6 +28,7 @@
 #![deny(warnings)]
 #![allow(clippy::too_many_arguments)]
 
+pub mod arbitrators;
 mod errors;
 mod events;
 mod tests;
@@ -570,12 +571,18 @@ impl GovernanceContract {
         );
 
         // Accumulate stake
-        let prev_stake: i128 = env.storage().persistent()
+        let prev_stake: i128 = env
+            .storage()
+            .persistent()
             .get(&DataKey::ArbitratorStake(caller.clone()))
             .unwrap_or(0);
         let new_stake = prev_stake + amount;
-        env.storage().persistent().set(&DataKey::ArbitratorStake(caller.clone()), &new_stake);
-        env.storage().persistent().set(&DataKey::Arbitrator(caller.clone()), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ArbitratorStake(caller.clone()), &new_stake);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Arbitrator(caller.clone()), &true);
 
         Storage::bump_persistent(&env, &DataKey::ArbitratorStake(caller.clone()));
         Storage::bump_persistent(&env, &DataKey::Arbitrator(caller.clone()));
@@ -594,7 +601,9 @@ impl GovernanceContract {
         Storage::require_initialized(&env)?;
         caller.require_auth();
 
-        let stake: i128 = env.storage().persistent()
+        let stake: i128 = env
+            .storage()
+            .persistent()
             .get(&DataKey::ArbitratorStake(caller.clone()))
             .unwrap_or(0);
 
@@ -605,7 +614,11 @@ impl GovernanceContract {
         let now = env.ledger().timestamp();
         let cooldown_key = DataKey::WithdrawCooldown(caller.clone());
 
-        match env.storage().persistent().get::<DataKey, u64>(&cooldown_key) {
+        match env
+            .storage()
+            .persistent()
+            .get::<DataKey, u64>(&cooldown_key)
+        {
             None => {
                 // First call — start cooldown
                 let expires = now + Self::WITHDRAW_COOLDOWN;
@@ -627,8 +640,12 @@ impl GovernanceContract {
             &stake,
         );
 
-        env.storage().persistent().remove(&DataKey::ArbitratorStake(caller.clone()));
-        env.storage().persistent().remove(&DataKey::Arbitrator(caller.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ArbitratorStake(caller.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Arbitrator(caller.clone()));
         env.storage().persistent().remove(&cooldown_key);
 
         env.events().publish(
@@ -664,7 +681,9 @@ impl GovernanceContract {
             return Err(GovError::AdminOnly);
         }
 
-        let stake: i128 = env.storage().persistent()
+        let stake: i128 = env
+            .storage()
+            .persistent()
             .get(&DataKey::ArbitratorStake(arbitrator.clone()))
             .unwrap_or(0);
 
@@ -690,10 +709,16 @@ impl GovernanceContract {
         // Update or remove stake
         if remaining < Self::MIN_STAKE {
             // Below minimum — remove from whitelist
-            env.storage().persistent().remove(&DataKey::Arbitrator(arbitrator.clone()));
-            env.storage().persistent().remove(&DataKey::ArbitratorStake(arbitrator.clone()));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Arbitrator(arbitrator.clone()));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::ArbitratorStake(arbitrator.clone()));
         } else {
-            env.storage().persistent().set(&DataKey::ArbitratorStake(arbitrator.clone()), &remaining);
+            env.storage()
+                .persistent()
+                .set(&DataKey::ArbitratorStake(arbitrator.clone()), &remaining);
             Storage::bump_persistent(&env, &DataKey::ArbitratorStake(arbitrator.clone()));
         }
 
@@ -706,14 +731,16 @@ impl GovernanceContract {
 
     /// Returns whether `address` is a whitelisted arbitrator.
     pub fn is_arbitrator(env: Env, address: Address) -> bool {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get::<DataKey, bool>(&DataKey::Arbitrator(address))
             .unwrap_or(false)
     }
 
     /// Returns the current stake of `address`.
     pub fn get_stake(env: Env, address: Address) -> i128 {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get(&DataKey::ArbitratorStake(address))
             .unwrap_or(0)
     }
@@ -747,7 +774,12 @@ impl GovernanceContract {
     /// * `caller`        — must `require_auth()`. Tokens deducted from their balance.
     /// * `amount`        — tokens to lock. Must be > 0.
     /// * `lock_duration` — seconds to lock for. Must be in [MIN_LOCK_DURATION, MAX_LOCK_DURATION].
-    pub fn create_lock(env: Env, caller: Address, amount: i128, lock_duration: u64) -> Result<VeLock, GovError> {
+    pub fn create_lock(
+        env: Env,
+        caller: Address,
+        amount: i128,
+        lock_duration: u64,
+    ) -> Result<VeLock, GovError> {
         Storage::require_initialized(&env)?;
         caller.require_auth();
 
@@ -913,8 +945,107 @@ impl GovernanceContract {
 
     /// Returns the VeLock record for `address`, if one exists.
     pub fn get_lock(env: Env, address: Address) -> Option<VeLock> {
-        env.storage()
+        env.storage().persistent().get(&DataKey::VeLock(address))
+    }
+
+    // ── Arbitrator selection pools (Issue #897) ───────────────────────────────
+
+    /// Admin adds an arbitrator to the selection registry.
+    ///
+    /// The arbitrator must already be whitelisted (staked via `stake_arbitrator`).
+    pub fn registry_add_arbitrator(
+        env: Env,
+        caller: Address,
+        arbitrator: Address,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        caller.require_auth();
+        let admin = Storage::admin(&env)?;
+        if caller != admin {
+            return Err(GovError::AdminOnly);
+        }
+        if !env
+            .storage()
             .persistent()
-            .get(&DataKey::VeLock(address))
+            .get::<DataKey, bool>(&DataKey::Arbitrator(arbitrator.clone()))
+            .unwrap_or(false)
+        {
+            return Err(GovError::NotArbitrator);
+        }
+        arbitrators::registry_add(&env, &arbitrator);
+        Ok(())
+    }
+
+    /// Admin removes an arbitrator from the selection registry.
+    pub fn registry_remove_arbitrator(
+        env: Env,
+        caller: Address,
+        arbitrator: Address,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        caller.require_auth();
+        let admin = Storage::admin(&env)?;
+        if caller != admin {
+            return Err(GovError::AdminOnly);
+        }
+        arbitrators::registry_remove(&env, &arbitrator);
+        Ok(())
+    }
+
+    /// Select a three-member arbitrator panel for `dispute_id`.
+    ///
+    /// Uses ledger sequence XOR dispute_id as a pseudo-random seed.
+    /// Prefers lowest-load arbitrators; no duplicate in the same panel.
+    ///
+    /// # Returns
+    /// The created panel, or `Err(GovError::NotArbitrator)` if fewer than 3
+    /// arbitrators are registered.
+    pub fn select_dispute_panel(
+        env: Env,
+        dispute_id: u64,
+    ) -> Result<arbitrators::ArbitratorPanel, GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrators::select_panel(&env, dispute_id).ok_or(GovError::NotArbitrator)
+    }
+
+    /// Selected arbitrator accepts their assignment.
+    pub fn accept_arbitration(
+        env: Env,
+        arbitrator: Address,
+        dispute_id: u64,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrator.require_auth();
+        arbitrators::accept_arbitration(&env, dispute_id, &arbitrator)
+            .map_err(|_| GovError::Unauthorized)
+    }
+
+    /// Selected arbitrator declines their assignment (triggers auto-rotation).
+    pub fn decline_arbitration(
+        env: Env,
+        arbitrator: Address,
+        dispute_id: u64,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrator.require_auth();
+        arbitrators::decline_arbitration(&env, dispute_id, &arbitrator)
+            .map_err(|_| GovError::Unauthorized)
+    }
+
+    /// Rotate a timed-out slot (anyone can call after the 48-hour deadline).
+    pub fn rotate_timed_out_slot(env: Env, dispute_id: u64, slot_idx: u32) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrators::rotate_timed_out(&env, dispute_id, slot_idx)
+            .map_err(|_| GovError::Unauthorized)
+    }
+
+    /// Returns the arbitrator panel for a dispute.
+    pub fn get_dispute_panel(env: Env, dispute_id: u64) -> Option<arbitrators::ArbitratorPanel> {
+        arbitrators::get_panel(&env, dispute_id)
+    }
+
+    /// Returns whether `address` is in the selection registry.
+    pub fn is_in_registry(env: Env, address: Address) -> bool {
+        arbitrators::registry_contains(&env, &address)
     }
 }
