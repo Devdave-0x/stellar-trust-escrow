@@ -11,17 +11,21 @@
  */
 
 import { jest } from '@jest/globals';
-import {
-  requireMfa,
-  requireMfaForHighValue,
-  generateMfaToken,
-} from '../../api/middleware/mfaAuth.js';
-import mfaService from '../../services/mfaService.js';
-import cache from '../../lib/cache.js';
 import jwt from 'jsonwebtoken';
 
-jest.mock('../../services/mfaService.js');
-jest.mock('../../lib/cache.js');
+const mfaService = {
+  requiresMfa: jest.fn(),
+};
+const cache = {
+  get: jest.fn(),
+  set: jest.fn(),
+};
+
+jest.unstable_mockModule('../../services/mfaService.js', () => ({ default: mfaService }));
+jest.unstable_mockModule('../../lib/cache.js', () => ({ default: cache }));
+
+const { requireMfa, requireMfaForHighValue, generateMfaToken } =
+  await import('../../api/middleware/mfaAuth.js');
 
 describe('MFA Middleware', () => {
   let req, res, next;

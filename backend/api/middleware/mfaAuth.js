@@ -125,7 +125,7 @@ export async function requireMfa(req, res, next) {
  */
 export async function requireMfaForHighValue(req, res, next) {
   try {
-    const amount = req.body.amount || req.params.amount || 0;
+    const amount = req.body?.amount || req.params?.amount || 0;
     const threshold = parseFloat(process.env.MFA_HIGH_VALUE_THRESHOLD || '10000');
 
     // If amount is below threshold, skip MFA

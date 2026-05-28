@@ -47,8 +47,11 @@ export async function processWebhookJob(job) {
   }
 }
 
-const webhookWorker = new Worker('webhook', processWebhookJob, {
-  connection,
-});
+const webhookWorker =
+  process.env.NODE_ENV === 'test'
+    ? null
+    : new Worker('webhook', processWebhookJob, {
+        connection,
+      });
 
 export default webhookWorker;

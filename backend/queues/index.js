@@ -33,7 +33,7 @@ class InMemoryQueue {
   }
 }
 
-const redisConnection = process.env.REDIS_URL
+export const connection = process.env.REDIS_URL
   ? { url: process.env.REDIS_URL }
   : {
       host: process.env.REDIS_HOST || '127.0.0.1',
@@ -41,13 +41,12 @@ const redisConnection = process.env.REDIS_URL
     };
 
 const createQueue = (name) =>
-  process.env.NODE_ENV === 'test'
-    ? new InMemoryQueue(name)
-    : new Queue(name, { connection: redisConnection });
+  process.env.NODE_ENV === 'test' ? new InMemoryQueue(name) : new Queue(name, { connection });
 
 export const emailQueue = createQueue('email');
 export const webhookQueue = createQueue('webhook');
 export const scheduledQueue = createQueue('scheduled');
 
-// eventQueue is handled separately due to its complex retry/DLQ setup
-export { default as eventQueueModule } from './eventQueue.js';
+// eventQueue is handled separately due to its complex retry/DLQ setup.
+// Import it directly from './eventQueue.js' to avoid starting BullMQ workers
+// as a side effect of importing shared queue primitives.

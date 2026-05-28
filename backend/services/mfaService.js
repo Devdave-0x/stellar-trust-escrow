@@ -177,7 +177,7 @@ async function recordAttempt(
  * Returns secret and QR code data
  */
 async function initializeTOTP(userId, tenantId, userEmail, methodName = 'Authenticator App') {
-  const secret = authenticator.generateSecret();
+  const secret = authenticator.generateSecret(32);
   const otpauth = authenticator.keyuri(userEmail, RP_NAME, secret);
 
   // Store in cache temporarily (10 minutes) until user confirms

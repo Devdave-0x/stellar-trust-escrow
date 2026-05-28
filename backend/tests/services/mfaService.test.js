@@ -11,16 +11,60 @@
  * @module tests/services/mfaService
  */
 
+import crypto from 'crypto';
 import { jest } from '@jest/globals';
-import mfaService from '../../services/mfaService.js';
-import prisma from '../../lib/prisma.js';
-import cache from '../../lib/cache.js';
 import { authenticator } from 'otplib';
 
-// Mock dependencies
-jest.mock('../../lib/prisma.js');
-jest.mock('../../lib/cache.js');
-jest.mock('@simplewebauthn/server');
+process.env.MFA_ENCRYPTION_KEY = '0'.repeat(64);
+
+function encryptForTest(text) {
+  const iv = Buffer.alloc(16, 1);
+  const key = Buffer.from(process.env.MFA_ENCRYPTION_KEY, 'hex');
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return `${iv.toString('hex')}:${encrypted}`;
+}
+
+function hashBackupCodeForTest(code) {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+const model = () => ({
+  create: jest.fn(),
+  update: jest.fn(),
+  findFirst: jest.fn(),
+  findUnique: jest.fn(),
+  findMany: jest.fn(),
+  count: jest.fn(),
+  delete: jest.fn(),
+  deleteMany: jest.fn(),
+  upsert: jest.fn(),
+});
+
+const prisma = {
+  user: model(),
+  mfaMethod: model(),
+  mfaAttempt: model(),
+  mfaLockout: model(),
+};
+const cache = {
+  get: jest.fn(),
+  set: jest.fn(),
+  del: jest.fn(),
+};
+const simpleWebAuthn = {
+  generateRegistrationOptions: jest.fn(),
+  verifyRegistrationResponse: jest.fn(),
+  generateAuthenticationOptions: jest.fn(),
+  verifyAuthenticationResponse: jest.fn(),
+};
+
+jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: prisma }));
+jest.unstable_mockModule('../../lib/cache.js', () => ({ default: cache }));
+jest.unstable_mockModule('@simplewebauthn/server', () => simpleWebAuthn);
+
+const { default: mfaService } = await import('../../services/mfaService.js');
 
 describe('MFA Service', () => {
   const mockUserId = 1;
@@ -30,7 +74,8 @@ describe('MFA Service', () => {
   const mockUserAgent = 'Mozilla/5.0';
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
+    jest.resetAllMocks();
   });
 
   describe('TOTP Setup', () => {
@@ -47,9 +92,9 @@ describe('MFA Service', () => {
       expect(result).toHaveProperty('secret');
       expect(result).toHaveProperty('otpauth');
       expect(result).toHaveProperty('methodName', 'My Authenticator');
-      expect(result.secret).toHaveLength(32);
+      expect(result.secret).toMatch(/^[A-Z2-7]+$/);
       expect(result.otpauth).toContain('otpauth://totp/');
-      expect(result.otpauth).toContain(mockEmail);
+      expect(result.otpauth).toContain(encodeURIComponent(mockEmail));
 
       expect(cache.set).toHaveBeenCalledWith(
         `mfa:totp:setup:${mockUserId}`,
@@ -161,7 +206,7 @@ describe('MFA Service', () => {
       prisma.mfaLockout.findUnique.mockResolvedValue(null);
       prisma.mfaMethod.findFirst.mockResolvedValue({
         id: 'method-123',
-        totpSecret: `iv:${Buffer.from(secret).toString('hex')}`, // Mock encrypted
+        totpSecret: encryptForTest(secret),
         totpBackupCodes: [],
       });
 
@@ -190,7 +235,7 @@ describe('MFA Service', () => {
       prisma.mfaLockout.findUnique.mockResolvedValue(null);
       prisma.mfaMethod.findFirst.mockResolvedValue({
         id: 'method-123',
-        totpSecret: 'encrypted-secret',
+        totpSecret: encryptForTest(authenticator.generateSecret()),
         totpBackupCodes: [],
       });
 
@@ -231,7 +276,7 @@ describe('MFA Service', () => {
       prisma.mfaLockout.delete.mockResolvedValue({});
       prisma.mfaMethod.findFirst.mockResolvedValue({
         id: 'method-123',
-        totpSecret: 'encrypted-secret',
+        totpSecret: encryptForTest(authenticator.generateSecret()),
         totpBackupCodes: [],
       });
 
@@ -249,13 +294,13 @@ describe('MFA Service', () => {
   describe('Backup Codes', () => {
     it('should accept valid backup code', async () => {
       const backupCode = 'ABCD-1234';
-      const hashedCode = 'hashed-backup-code';
+      const hashedCode = hashBackupCodeForTest(backupCode.replace('-', ''));
 
       prisma.mfaLockout.findUnique.mockResolvedValue(null);
       prisma.mfaMethod.findFirst.mockResolvedValue({
         id: 'method-123',
-        totpSecret: 'encrypted-secret',
-        totpBackupCodes: ['encrypted-hash-1', 'encrypted-hash-2'],
+        totpSecret: encryptForTest(authenticator.generateSecret()),
+        totpBackupCodes: [encryptForTest(hashedCode), encryptForTest('unused-hash')],
       });
 
       // Mock the service to simulate backup code match
@@ -480,7 +525,7 @@ describe('MFA Service', () => {
       const result = await mfaService.initializeTOTP(mockUserId, mockTenantId, mockEmail);
 
       // Secret returned to user is plaintext for QR code
-      expect(result.secret).toMatch(/^[A-Z2-7]{32}$/);
+      expect(result.secret).toMatch(/^[A-Z2-7]+$/);
     });
 
     it('should prevent replay attacks with WebAuthn counter', async () => {

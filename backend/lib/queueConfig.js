@@ -7,21 +7,85 @@
  * @module queueConfig
  */
 
-import { Queue, Worker, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import IORedis from 'ioredis';
+
+const isTest = process.env.NODE_ENV === 'test';
+
+class InMemoryQueue {
+  constructor(name) {
+    this.name = name;
+    this.jobs = [];
+    this.paused = false;
+  }
+
+  async add(name, data) {
+    const job = { id: `${this.name}-${this.jobs.length + 1}`, name, data };
+    this.jobs.push(job);
+    return job;
+  }
+
+  async getJobCounts() {
+    return { waiting: this.jobs.length, active: 0, completed: 0, failed: 0, delayed: 0 };
+  }
+
+  async getWaiting() {
+    return [...this.jobs];
+  }
+
+  async getActive() {
+    return [];
+  }
+
+  async getCompleted() {
+    return [];
+  }
+
+  async getFailed() {
+    return [];
+  }
+
+  async getJob() {
+    return null;
+  }
+
+  async pause() {
+    this.paused = true;
+  }
+
+  async resume() {
+    this.paused = false;
+  }
+
+  async clean() {
+    return [];
+  }
+
+  async close() {}
+}
+
+class InMemoryQueueEvents {
+  on() {
+    return this;
+  }
+
+  async close() {}
+}
 
 // Redis connection configuration
 const redisConfig = {
   host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
+  port: parseInt(process.env.REDIS_PORT || '6379', 10),
   password: process.env.REDIS_PASSWORD,
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: null,
   retryDelayOnFailover: 100,
   lazyConnect: true,
 };
 
 // Create Redis connection
-const connection = new IORedis(redisConfig);
+const connection = isTest
+  ? { info: async () => '', quit: async () => undefined }
+  : new IORedis(redisConfig);
 
 // Queue names
 export const QUEUE_NAMES = {
@@ -29,23 +93,27 @@ export const QUEUE_NAMES = {
   DEAD_LETTER: 'stellar-events-dead-letter',
 };
 
+const createQueue = (name, options = {}) =>
+  isTest ? new InMemoryQueue(name) : new Queue(name, { connection, ...options });
+
+const createQueueEvents = (name) =>
+  isTest ? new InMemoryQueueEvents() : new QueueEvents(name, { connection });
+
 // Main event processing queue with retry configuration
-export const stellarEventsQueue = new Queue(QUEUE_NAMES.STELLAR_EVENTS, {
-  connection,
+export const stellarEventsQueue = createQueue(QUEUE_NAMES.STELLAR_EVENTS, {
   defaultJobOptions: {
-    removeOnComplete: 100, // Keep last 100 completed jobs
-    removeOnFail: 50, // Keep last 50 failed jobs
-    attempts: 5, // Retry 5 times
+    removeOnComplete: 100,
+    removeOnFail: 50,
+    attempts: 5,
     backoff: {
       type: 'exponential',
-      delay: 2000, // Start with 2 seconds
+      delay: 2000,
     },
   },
 });
 
 // Dead letter queue for permanently failed jobs
-export const deadLetterQueue = new Queue(QUEUE_NAMES.DEAD_LETTER, {
-  connection,
+export const deadLetterQueue = createQueue(QUEUE_NAMES.DEAD_LETTER, {
   defaultJobOptions: {
     removeOnComplete: 10,
     removeOnFail: 10,
@@ -53,10 +121,10 @@ export const deadLetterQueue = new Queue(QUEUE_NAMES.DEAD_LETTER, {
 });
 
 // Queue events for monitoring
-export const queueEvents = new QueueEvents(QUEUE_NAMES.STELLAR_EVENTS, { connection });
+export const queueEvents = createQueueEvents(QUEUE_NAMES.STELLAR_EVENTS);
 
 // Dead letter queue events
-export const deadLetterQueueEvents = new QueueEvents(QUEUE_NAMES.DEAD_LETTER, { connection });
+export const deadLetterQueueEvents = createQueueEvents(QUEUE_NAMES.DEAD_LETTER);
 
 /**
  * Metrics collector for queue monitoring
@@ -96,7 +164,6 @@ export const queueMetrics = new QueueMetrics();
  * Setup queue event listeners for metrics collection and alerting
  */
 export const setupQueueEventListeners = () => {
-  // Main queue events
   queueEvents.on('completed', ({ jobId }) => {
     queueMetrics.completedJobs++;
     console.log(`[Queue] Job ${jobId} completed successfully`);
@@ -106,12 +173,10 @@ export const setupQueueEventListeners = () => {
     queueMetrics.failedJobs++;
     console.error(`[Queue] Job ${jobId} failed:`, failedReason);
 
-    // Check failure rate and alert if > 5%
     if (queueMetrics.getFailureRate() > 5) {
       console.warn(
         `[ALERT] High failure rate detected: ${queueMetrics.getFailureRate().toFixed(2)}%`,
       );
-      // TODO: Send alert to monitoring system
     }
   });
 
@@ -119,7 +184,6 @@ export const setupQueueEventListeners = () => {
     console.log(`[Queue] Job ${jobId} progress:`, data);
   });
 
-  // Dead letter queue events
   deadLetterQueueEvents.on('completed', ({ jobId }) => {
     console.log(`[DeadLetter] Job ${jobId} processed from dead letter queue`);
   });

@@ -13,7 +13,7 @@ import {
   deadLetterQueue,
   queueMetrics,
   connection,
-} from '../lib/queueConfig.js';
+} from '../../lib/queueConfig.js';
 
 const router = express.Router();
 
@@ -317,24 +317,24 @@ router.get('/', (req, res) => {
 <body>
     <div class="container">
         <h1>Stellar Event Queue Dashboard <button class="btn btn-primary refresh" onclick="location.reload()">Refresh</button></h1>
-        
+
         <div id="alerts"></div>
-        
+
         <div class="card">
             <h2>Queue Metrics</h2>
             <div class="metrics" id="metrics"></div>
         </div>
-        
+
         <div class="card">
             <h2>Queue Status</h2>
             <div id="queue-status"></div>
         </div>
-        
+
         <div class="card">
             <h2>Recent Jobs</h2>
             <div id="recent-jobs"></div>
         </div>
-        
+
         <div class="card">
             <h2>Queue Controls</h2>
             <button class="btn btn-warning" onclick="pauseQueue()">Pause Queue</button>
@@ -354,12 +354,12 @@ router.get('/', (req, res) => {
                 console.error('Error fetching stats:', error);
             }
         }
-        
+
         function updateDashboard(stats) {
             // Update alerts
             const alertsDiv = document.getElementById('alerts');
             alertsDiv.innerHTML = '';
-            
+
             if (stats.alerts.highFailureRate) {
                 alertsDiv.innerHTML += '<div class="alert alert-warning">⚠️ High failure rate detected: ' + stats.metrics.failureRate.toFixed(2) + '%</div>';
             }
@@ -369,7 +369,7 @@ router.get('/', (req, res) => {
             if (!stats.alerts.queueProcessingActive && stats.mainQueue.waitingJobs > 0) {
                 alertsDiv.innerHTML += '<div class="alert alert-warning">⚠️ Queue has waiting jobs but no active processing</div>';
             }
-            
+
             // Update metrics
             const metricsDiv = document.getElementById('metrics');
             metricsDiv.innerHTML = \`
@@ -406,7 +406,7 @@ router.get('/', (req, res) => {
                     <div class="metric-label">Uptime</div>
                 </div>
             \`;
-            
+
             // Update queue status
             const statusDiv = document.getElementById('queue-status');
             statusDiv.innerHTML = \`
@@ -415,12 +415,12 @@ router.get('/', (req, res) => {
                 <p><strong>Memory Usage:</strong> \${stats.redis.usedMemory}</p>
                 <p><strong>Connected Clients:</strong> \${stats.redis.connectedClients}</p>
             \`;
-            
+
             // Update recent jobs
             const jobsDiv = document.getElementById('recent-jobs');
             const recentFailed = stats.mainQueue.recentFailed.slice(0, 5);
             if (recentFailed.length > 0) {
-                jobsDiv.innerHTML = '<h3>Recent Failed Jobs</h3><ul>' + 
+                jobsDiv.innerHTML = '<h3>Recent Failed Jobs</h3><ul>' +
                     recentFailed.map(job => \`
                         <li>
                             <strong>Job \${job.id}:</strong> \${job.failedReason}
@@ -431,7 +431,7 @@ router.get('/', (req, res) => {
                 jobsDiv.innerHTML = '<p>No recent failed jobs</p>';
             }
         }
-        
+
         async function pauseQueue() {
             try {
                 await fetch('/admin/queues/queue/pause', { method: 'POST' });
@@ -441,7 +441,7 @@ router.get('/', (req, res) => {
                 alert('Error pausing queue: ' + error.message);
             }
         }
-        
+
         async function resumeQueue() {
             try {
                 await fetch('/admin/queues/queue/resume', { method: 'POST' });
@@ -451,11 +451,11 @@ router.get('/', (req, res) => {
                 alert('Error resuming queue: ' + error.message);
             }
         }
-        
+
         async function cleanupJobs() {
             try {
-                await fetch('/admin/queues/cleanup', { 
-                    method: 'POST', 
+                await fetch('/admin/queues/cleanup', {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ state: 'completed', keepLast: 50 })
                 });
@@ -465,7 +465,7 @@ router.get('/', (req, res) => {
                 alert('Error cleaning up jobs: ' + error.message);
             }
         }
-        
+
         async function resetMetrics() {
             try {
                 await fetch('/admin/queues/metrics/reset', { method: 'POST' });
@@ -475,7 +475,7 @@ router.get('/', (req, res) => {
                 alert('Error resetting metrics: ' + error.message);
             }
         }
-        
+
         async function retryJob(jobId) {
             try {
                 await fetch(\`/admin/queues/jobs/\${jobId}/retry\`, { method: 'POST' });
@@ -485,7 +485,7 @@ router.get('/', (req, res) => {
                 alert('Error retrying job: ' + error.message);
             }
         }
-        
+
         // Auto-refresh every 5 seconds
         setInterval(fetchStats, 5000);
         fetchStats();

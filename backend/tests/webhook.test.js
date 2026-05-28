@@ -1,3 +1,5 @@
+import { jest } from '@jest/globals';
+
 const prismaMock = {
   webhookSubscription: {
     create: jest.fn(),

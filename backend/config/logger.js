@@ -116,7 +116,7 @@ if (aggregatorUrl) {
   }
 }
 
-const rootLogger = winston.createLogger({
+export const logger = winston.createLogger({
   level,
   defaultMeta: baseMeta(),
   transports,
@@ -127,7 +127,7 @@ const rootLogger = winston.createLogger({
  * Logger for the current HTTP request (includes requestId when in request context).
  */
 export function getLogger() {
-  return rootLogger;
+  return logger;
 }
 
 /**
@@ -135,7 +135,7 @@ export function getLogger() {
  * @param {string} module
  */
 export function createModuleLogger(module) {
-  return rootLogger.child({ module });
+  return logger.child({ module });
 }
 
 /**
@@ -146,7 +146,7 @@ export function createModuleLogger(module) {
  */
 export function logControllerError(operation, err, req) {
   const e = err instanceof Error ? err : new Error(String(err));
-  rootLogger.error({
+  logger.error({
     message: operation,
     error: e.message,
     stack: e.stack,
@@ -156,4 +156,4 @@ export function logControllerError(operation, err, req) {
   });
 }
 
-export default rootLogger;
+export default logger;
