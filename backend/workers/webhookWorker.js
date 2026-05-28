@@ -1,11 +1,12 @@
 import { Worker } from 'bullmq';
+import prisma from '../lib/prisma.js';
 import { connection } from '../queues/index.js';
 
-const webhookWorker = new Worker(
-  'webhook',
-  async (job) => {
-    const { url, payload, headers = {} } = job.data;
+export async function processWebhookJob(job) {
+  const { url, payload, headers = {}, deliveryId } = job.data;
+  const attempts = job.attemptsMade + 1;
 
+  try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -20,11 +21,34 @@ const webhookWorker = new Worker(
       throw new Error(`Webhook failed: ${response.status} ${errorText}`);
     }
 
+    await prisma.webhookDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: 'success',
+        responseCode: response.status,
+        attempts,
+        lastAttemptAt: new Date(),
+      },
+    });
+
     console.log(`[WebhookWorker] Delivered to ${url}: ${response.status}`);
-  },
-  {
-    connection,
-  },
-);
+  } catch (err) {
+    const isTerminal = attempts >= (job.opts.attempts ?? 1);
+    await prisma.webhookDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: isTerminal ? 'failed' : 'pending',
+        errorMessage: err.message,
+        attempts,
+        lastAttemptAt: new Date(),
+      },
+    });
+    throw err;
+  }
+}
+
+const webhookWorker = new Worker('webhook', processWebhookJob, {
+  connection,
+});
 
 export default webhookWorker;
