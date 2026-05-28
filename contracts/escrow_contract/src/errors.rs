@@ -136,16 +136,24 @@ pub enum EscrowError {
     // ── Input Validation ─────────────────────────────────────────────────────
     /// A string argument exceeds MAX_STRING_LEN or is empty.
     StringTooLong = 55,
-    // Note: discriminants 56-58 are reserved / unused.
 
-    // ── Admin Transfer ───────────────────────────────────────────────────────
-    // Note: discriminant 59 is reserved / unused.
+    // ── Oracle Fallback Dispute Resolution ───────────────────────────────────
+    /// Grace period has not yet elapsed; oracle fallback not yet available.
+    GracePeriodNotElapsed = 56,
+    /// Oracle resolution payload signature is invalid.
+    OracleSignatureInvalid = 57,
+    /// Oracle resolution payload is stale (submitted after max age).
+    OraclePayloadStale = 58,
+    /// Oracle payout percentages do not sum to 100.
+    OraclePayoutInvalid = 59,
+    /// Dispute start ledger was not recorded for this escrow.
+    DisputeStartNotRecorded = 60,
 
     // ── Security Freeze / Admin Multisig ─────────────────────────────────────
     /// Escrow is frozen; state-mutating operations are blocked.
-    EscrowFrozen = 60,
+    EscrowFrozen = 61,
     /// Provided admin signatures did not meet the configured threshold.
-    InsufficientAdminSignatures = 61,
+    InsufficientAdminSignatures = 62,
     /// Invalid admin multisig threshold configuration.
-    InvalidAdminThreshold = 62,
+    InvalidAdminThreshold = 63,
 }

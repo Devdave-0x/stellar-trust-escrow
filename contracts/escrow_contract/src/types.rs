@@ -507,6 +507,30 @@ pub struct CancellationRequest {
     pub counterparty_approved: bool,
 }
 
+/// Oracle-signed resolution payload for fallback dispute resolution.
+///
+/// Submitted by any caller once the grace period has elapsed.
+/// The contract verifies the Ed25519 signature over the canonical
+/// message `escrow_id || client_bps || freelancer_bps || expires_at`
+/// before distributing funds.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct OracleResolutionPayload {
+    /// Escrow this resolution applies to.
+    pub escrow_id: u64,
+    /// Client share in basis points (0–10000). Must sum to 10000 with freelancer_bps.
+    pub client_bps: u32,
+    /// Freelancer share in basis points (0–10000).
+    pub freelancer_bps: u32,
+    /// Ledger timestamp after which this payload is considered stale.
+    pub expires_at: u64,
+    /// Ed25519 signature over `escrow_id || client_bps || freelancer_bps || expires_at`
+    /// produced by the trusted oracle key.
+    pub signature: BytesN<64>,
+    /// Ed25519 public key of the oracle signer (must match stored trusted key).
+    pub oracle_pubkey: BytesN<32>,
+}
+
 /// A slash record for tracking penalties.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -712,14 +736,18 @@ pub enum DataKey {
     MinArbiterReputation,
     /// Governance contract address for dispute escalation — value: Address
     GovernanceContract,
-    /// Reentrancy guard flag for outbound token flows â€” value: bool
+    /// Reentrancy guard flag for outbound token flows — value: bool
     ReentrancyLock,
-    /// Treasury address for platform fee settlement â€” value: Address
+    /// Treasury address for platform fee settlement — value: Address
     PlatformTreasury,
-    /// Configured dynamic platform fee tiers â€” value: Vec<FeeTier>
+    /// Configured dynamic platform fee tiers — value: Vec<FeeTier>
     PlatformFeeTiers,
-    /// Applied fee snapshot for an escrow â€” key: u64, value: EscrowFeeSnapshot
+    /// Applied fee snapshot for an escrow — key: u64, value: EscrowFeeSnapshot
     PlatformFeeSnapshot(u64),
     /// Escrow frozen flag (security freeze) — key: u64, value: bool
     EscrowFrozen(u64),
+    /// Dispute resolution oracle payload by escrow ID — key: u64, value: OracleResolutionPayload
+    OracleResolution(u64),
+    /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
+    TrustedOracleKey,
 }
