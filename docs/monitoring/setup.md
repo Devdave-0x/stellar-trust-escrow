@@ -8,6 +8,7 @@ docker compose up -d
 ```
 
 This launches:
+
 - **Prometheus**: http://localhost:9090 (scrapes app at :4000/metrics)
 - **Grafana**: http://localhost:3001 (admin/admin) - auto-provisioned dashboards/datasources
 
@@ -41,14 +42,15 @@ http://localhost:3001/d/ste-overview
 ```
 
 ## Key Ports
-| Service | Port | Purpose |
-|---------|------|---------|
-| Prometheus | 9090 | Metrics storage/query |
-| Grafana | 3001 | Dashboards/alerting UI |
-| App | 4000 | /metrics endpoint |
+
+| Service    | Port | Purpose                |
+| ---------- | ---- | ---------------------- |
+| Prometheus | 9090 | Metrics storage/query  |
+| Grafana    | 3001 | Dashboards/alerting UI |
+| App        | 4000 | /metrics endpoint      |
 
 ## Troubleshooting
+
 - **No metrics**: Check `host.docker.internal:4000/metrics` accessible from Prometheus
 - **Slow queries**: Threshold 200ms logged + `db_slow_queries_total`
 - **Shutdown**: `docker compose down -v`
-

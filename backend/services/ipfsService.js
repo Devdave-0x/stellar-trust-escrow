@@ -22,21 +22,27 @@ const logger = createModuleLogger('service.ipfsService');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const PINATA_JWT      = process.env.PINATA_JWT;
-const PINATA_API      = 'https://api.pinata.cloud/pinning/pinFileToIPFS';
-const GATEWAY         = process.env.PINATA_GATEWAY_URL
-  || process.env.IPFS_GATEWAY_URL
-  || 'https://ipfs.io';
+const PINATA_JWT = process.env.PINATA_JWT;
+const PINATA_API = 'https://api.pinata.cloud/pinning/pinFileToIPFS';
+const GATEWAY = process.env.PINATA_GATEWAY_URL || process.env.IPFS_GATEWAY_URL || 'https://ipfs.io';
 
-const MAX_FILE_SIZE   = parseInt(process.env.MAX_FILE_SIZE || String(10 * 1024 * 1024), 10);
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || String(10 * 1024 * 1024), 10);
 
 const ALLOWED_MIME_TYPES = new Set(
-  (process.env.ALLOWED_MIME_TYPES || [
-    'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-    'application/pdf',
-    'text/plain',
-    'video/mp4',
-  ].join(',')).split(',').map((t) => t.trim()),
+  (
+    process.env.ALLOWED_MIME_TYPES ||
+    [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'application/pdf',
+      'text/plain',
+      'video/mp4',
+    ].join(',')
+  )
+    .split(',')
+    .map((t) => t.trim()),
 );
 
 // ── In-process key store  (CID → { key, iv, authorisedAddresses }) ────────────
@@ -53,7 +59,7 @@ const keyStore = new Map();
  */
 function encryptBuffer(plaintext) {
   const key = crypto.randomBytes(32); // 256-bit key
-  const iv  = crypto.randomBytes(12); // 96-bit IV (recommended for GCM)
+  const iv = crypto.randomBytes(12); // 96-bit IV (recommended for GCM)
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const authTag = cipher.getAuthTag();
@@ -73,10 +79,14 @@ function decryptBuffer(ciphertext, key, iv, authTag) {
 
 function validateFile(buffer, mimeType) {
   if (buffer.length > MAX_FILE_SIZE) {
-    throw Object.assign(new Error(`File exceeds ${MAX_FILE_SIZE} byte limit`), { code: 'FILE_TOO_LARGE' });
+    throw Object.assign(new Error(`File exceeds ${MAX_FILE_SIZE} byte limit`), {
+      code: 'FILE_TOO_LARGE',
+    });
   }
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-    throw Object.assign(new Error(`MIME type not allowed: ${mimeType}`), { code: 'MIME_NOT_ALLOWED' });
+    throw Object.assign(new Error(`MIME type not allowed: ${mimeType}`), {
+      code: 'MIME_NOT_ALLOWED',
+    });
   }
 }
 
@@ -133,7 +143,12 @@ class IPFSService {
       authorisedAddresses: new Set(authorisedAddresses.map((a) => a.toLowerCase())),
     });
 
-    logger.info({ message: 'ipfs_pin_success', cid, size, authorisedCount: authorisedAddresses.length });
+    logger.info({
+      message: 'ipfs_pin_success',
+      cid,
+      size,
+      authorisedCount: authorisedAddresses.length,
+    });
     return { cid, size };
   }
 
@@ -149,12 +164,14 @@ class IPFSService {
     if (!entry) throw Object.assign(new Error('No key found for CID'), { code: 'KEY_NOT_FOUND' });
 
     if (!entry.authorisedAddresses.has(callerAddress.toLowerCase())) {
-      throw Object.assign(new Error('Not authorised to decrypt this file'), { code: 'UNAUTHORISED' });
+      throw Object.assign(new Error('Not authorised to decrypt this file'), {
+        code: 'UNAUTHORISED',
+      });
     }
 
     return {
       key: entry.key.toString('hex'),
-      iv:  entry.iv.toString('hex'),
+      iv: entry.iv.toString('hex'),
     };
   }
 
@@ -168,7 +185,7 @@ class IPFSService {
    * @returns {Buffer}
    */
   decryptFile(encryptedPayload, keyHex, ivHex) {
-    const authTag    = encryptedPayload.subarray(0, 16);
+    const authTag = encryptedPayload.subarray(0, 16);
     const ciphertext = encryptedPayload.subarray(16);
     return decryptBuffer(
       ciphertext,
@@ -214,10 +231,12 @@ class IPFSService {
     if (this.isImage(mimeType)) {
       try {
         const info = await sharp(buffer).metadata();
-        metadata.width  = info.width;
+        metadata.width = info.width;
         metadata.height = info.height;
         metadata.format = info.format;
-      } catch { /* non-fatal */ }
+      } catch {
+        /* non-fatal */
+      }
     }
 
     return metadata;

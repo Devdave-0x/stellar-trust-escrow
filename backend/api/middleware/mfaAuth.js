@@ -17,7 +17,7 @@ const MFA_SESSION_DURATION = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Middleware to require MFA verification for sensitive operations
- * 
+ *
  * Usage:
  *   router.post('/admin/users/:id/ban', authMiddleware, requireMfa, adminController.banUser)
  *   router.patch('/admin/settings', authMiddleware, requireMfa, adminController.updateSettings)
@@ -26,7 +26,7 @@ export async function requireMfa(req, res, next) {
   try {
     // User must be authenticated first
     if (!req.user || !req.user.address) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Authentication required',
         mfaRequired: false,
       });
@@ -37,7 +37,7 @@ export async function requireMfa(req, res, next) {
     const tenantId = req.tenant?.id || req.user.tenantId;
 
     if (!userId) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'User ID not found in token',
         mfaRequired: false,
       });
@@ -63,12 +63,13 @@ export async function requireMfa(req, res, next) {
 
     // Check for MFA token in header
     const mfaToken = req.headers['x-mfa-token'];
-    
+
     if (!mfaToken) {
       return res.status(403).json({
         error: 'MFA verification required',
         mfaRequired: true,
-        message: 'This operation requires multi-factor authentication. Please complete MFA verification.',
+        message:
+          'This operation requires multi-factor authentication. Please complete MFA verification.',
       });
     }
 
@@ -102,7 +103,7 @@ export async function requireMfa(req, res, next) {
         method: mfaPayload.method,
         verifiedAt: new Date().toISOString(),
       },
-      MFA_SESSION_DURATION / 1000
+      MFA_SESSION_DURATION / 1000,
     );
 
     // Attach MFA info to request
@@ -118,7 +119,7 @@ export async function requireMfa(req, res, next) {
 
 /**
  * Middleware to require MFA for high-value wallet operations
- * 
+ *
  * Usage:
  *   router.post('/escrow/:id/release', authMiddleware, requireMfaForHighValue, escrowController.release)
  */
@@ -179,7 +180,7 @@ export function generateMfaToken(userId, tenantId, method) {
       iat: Math.floor(Date.now() / 1000),
     },
     JWT_SECRET,
-    { expiresIn: '30m' } // MFA token valid for 30 minutes
+    { expiresIn: '30m' }, // MFA token valid for 30 minutes
   );
 }
 

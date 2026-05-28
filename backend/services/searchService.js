@@ -108,7 +108,8 @@ async function searchArchiveFallback(filters = {}) {
   const rawRows = await prisma.$queryRawUnsafe(
     tables
       .map(
-        (table) => `SELECT id, client_address AS "clientAddress", freelancer_address AS "freelancerAddress", status, total_amount AS "totalAmount", created_at AS "createdAt" FROM ${table}`,
+        (table) =>
+          `SELECT id, client_address AS "clientAddress", freelancer_address AS "freelancerAddress", status, total_amount AS "totalAmount", created_at AS "createdAt" FROM ${table}`,
       )
       .join(' UNION ALL '),
   );

@@ -5,7 +5,7 @@ services:
       - '6379:6379'
     command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 3
@@ -16,4 +16,3 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-

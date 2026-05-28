@@ -60,10 +60,7 @@ Requests are signed with HMAC-SHA256 using the subscription secret. The signatur
 Verify by computing:
 
 ```js
-const signature = crypto
-  .createHmac('sha256', secret)
-  .update(JSON.stringify(body))
-  .digest('hex');
+const signature = crypto.createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex');
 ```
 
 Then compare it to the received header.

@@ -32,13 +32,13 @@ pub enum MilestoneStatus {
 }
 ```
 
-| Variant | Description |
-|---------|-------------|
-| `Pending` | Milestone created but no work submitted yet. This is the initial state for every milestone added via `add_milestone`. |
-| `Submitted` | Freelancer has called `submit_milestone`. The client can now approve or reject. |
-| `Approved` | Client has called `approve_milestone`. Funds have been transferred to the freelancer. |
-| `Rejected` | Client has called `reject_milestone`. The freelancer may resubmit by calling `submit_milestone` again. |
-| `Disputed` | A dispute was raised (via `raise_dispute`) while the milestone was `Pending` or `Submitted`. Funds are frozen until the dispute is resolved. |
+| Variant     | Description                                                                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Pending`   | Milestone created but no work submitted yet. This is the initial state for every milestone added via `add_milestone`.                        |
+| `Submitted` | Freelancer has called `submit_milestone`. The client can now approve or reject.                                                              |
+| `Approved`  | Client has called `approve_milestone`. Funds have been transferred to the freelancer.                                                        |
+| `Rejected`  | Client has called `reject_milestone`. The freelancer may resubmit by calling `submit_milestone` again.                                       |
+| `Disputed`  | A dispute was raised (via `raise_dispute`) while the milestone was `Pending` or `Submitted`. Funds are frozen until the dispute is resolved. |
 
 ---
 
@@ -100,15 +100,15 @@ milestone itself — no further status changes occur after those states.
 
 ## Transition Reference Table
 
-| From | To | Function | Auth required |
-|------|----|----------|---------------|
-| *(none)* | `Pending` | `add_milestone` | Client |
-| `Pending` | `Submitted` | `submit_milestone` | Freelancer |
-| `Rejected` | `Submitted` | `submit_milestone` | Freelancer |
-| `Submitted` | `Approved` | `approve_milestone` | Client |
-| `Submitted` | `Rejected` | `reject_milestone` | Client |
-| `Pending` | `Disputed` | `raise_dispute` (with `milestone_id`) | Client or Freelancer |
-| `Submitted` | `Disputed` | `raise_dispute` (with `milestone_id`) | Client or Freelancer |
+| From        | To          | Function                              | Auth required        |
+| ----------- | ----------- | ------------------------------------- | -------------------- |
+| _(none)_    | `Pending`   | `add_milestone`                       | Client               |
+| `Pending`   | `Submitted` | `submit_milestone`                    | Freelancer           |
+| `Rejected`  | `Submitted` | `submit_milestone`                    | Freelancer           |
+| `Submitted` | `Approved`  | `approve_milestone`                   | Client               |
+| `Submitted` | `Rejected`  | `reject_milestone`                    | Client               |
+| `Pending`   | `Disputed`  | `raise_dispute` (with `milestone_id`) | Client or Freelancer |
+| `Submitted` | `Disputed`  | `raise_dispute` (with `milestone_id`) | Client or Freelancer |
 
 `Approved` and `Disputed` have no outgoing transitions — they are
 terminal states for the milestone record.
@@ -247,13 +247,13 @@ States that **do not** block cancellation: `Pending`, `Rejected`, `Disputed`.
 
 ## Terminal States
 
-| State | Terminal? | Reason |
-|-------|-----------|--------|
-| `Pending` | No | Can transition to `Submitted` or `Disputed`. |
-| `Submitted` | No | Can transition to `Approved`, `Rejected`, or `Disputed`. |
-| `Approved` | Yes | Funds have been released. No further transitions. |
-| `Rejected` | No | Freelancer can resubmit → `Submitted`. |
-| `Disputed` | Yes | Milestone is frozen. Resolution happens at the escrow level. |
+| State       | Terminal? | Reason                                                       |
+| ----------- | --------- | ------------------------------------------------------------ |
+| `Pending`   | No        | Can transition to `Submitted` or `Disputed`.                 |
+| `Submitted` | No        | Can transition to `Approved`, `Rejected`, or `Disputed`.     |
+| `Approved`  | Yes       | Funds have been released. No further transitions.            |
+| `Rejected`  | No        | Freelancer can resubmit → `Submitted`.                       |
+| `Disputed`  | Yes       | Milestone is frozen. Resolution happens at the escrow level. |
 
 `Approved` and `Disputed` are terminal for the milestone record. Once a
 milestone reaches either state, its `status` field will not change again.

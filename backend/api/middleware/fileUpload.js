@@ -26,7 +26,12 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const fileFilter = (_req, file, cb) => {
   if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-    return cb(Object.assign(new Error(`File type ${file.mimetype} is not allowed`), { code: 'LIMIT_FILE_TYPE' }), false);
+    return cb(
+      Object.assign(new Error(`File type ${file.mimetype} is not allowed`), {
+        code: 'LIMIT_FILE_TYPE',
+      }),
+      false,
+    );
   }
   cb(null, true);
 };
@@ -44,7 +49,9 @@ const upload = multer({
 export function handleUploadError(err, _req, res, next) {
   if (!err) return next();
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit` });
+    return res
+      .status(413)
+      .json({ error: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit` });
   }
   if (err.code === 'LIMIT_FILE_COUNT') {
     return res.status(400).json({ error: `Too many files. Maximum is ${MAX_FILES}` });
@@ -54,7 +61,6 @@ export function handleUploadError(err, _req, res, next) {
   }
   next(err);
 }
-
 
 const ipfsUploadMiddleware = async (req, res, next) => {
   if (!req.files || req.files.length === 0) return next();
@@ -85,7 +91,11 @@ const ipfsUploadMiddleware = async (req, res, next) => {
           }
         }
 
-        const metadata = await ipfsService.getFileMetadata(file.buffer, file.originalname, file.mimetype);
+        const metadata = await ipfsService.getFileMetadata(
+          file.buffer,
+          file.originalname,
+          file.mimetype,
+        );
 
         return {
           fieldname: file.fieldname,
@@ -96,14 +106,16 @@ const ipfsUploadMiddleware = async (req, res, next) => {
           thumbnailCid,
           metadata,
         };
-      })
+      }),
     );
 
     req.ipfsUploadResults = uploadResults;
     next();
   } catch (error) {
     console.error('IPFS upload error:', error);
-    res.status(500).json({ error: 'IPFS upload failed', message: 'Unable to upload files to IPFS' });
+    res
+      .status(500)
+      .json({ error: 'IPFS upload failed', message: 'Unable to upload files to IPFS' });
   }
 };
 
@@ -129,11 +141,10 @@ const validateDisputeAccess = async (req, res, next) => {
     if (!dispute) return res.status(404).json({ error: 'Dispute not found' });
 
     const isParticipant =
-      (userAddress && (
-        dispute.raisedByAddress === userAddress ||
+      userAddress &&
+      (dispute.raisedByAddress === userAddress ||
         dispute.escrow.clientAddress === userAddress ||
-        dispute.escrow.freelancerAddress === userAddress
-      ));
+        dispute.escrow.freelancerAddress === userAddress);
     const isAdmin = req.user?.role === 'admin' || req.user?.role === 'arbiter';
 
     if (!isParticipant && !isAdmin) return res.status(403).json({ error: 'Access denied' });

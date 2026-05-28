@@ -80,7 +80,9 @@ function TimelineItem({ escrow, address, isLast }) {
           className={`w-3 h-3 rounded-full mt-1 ring-2 ring-gray-950 ${cfg.dot} transition-transform group-hover:scale-125`}
           aria-hidden="true"
         />
-        {!isLast && <div className="w-0.5 flex-1 bg-gray-800 mt-1 min-h-[2.5rem]" aria-hidden="true" />}
+        {!isLast && (
+          <div className="w-0.5 flex-1 bg-gray-800 mt-1 min-h-[2.5rem]" aria-hidden="true" />
+        )}
       </div>
 
       {/* Content */}
@@ -176,7 +178,8 @@ export default function ActivityTimeline({ address }) {
             <tbody>
               {escrows.map((escrow) => {
                 const role = escrow.clientAddress === address ? 'client' : 'freelancer';
-                const counterparty = role === 'client' ? escrow.freelancerAddress : escrow.clientAddress;
+                const counterparty =
+                  role === 'client' ? escrow.freelancerAddress : escrow.clientAddress;
                 return (
                   <tr key={escrow.id.toString()}>
                     <td>{escrow.id}</td>

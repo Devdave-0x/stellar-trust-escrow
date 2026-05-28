@@ -79,22 +79,22 @@ All errors follow this shape:
 
 ## Endpoints Overview
 
-| Tag           | Base Path            | Auth Required |
-| ------------- | -------------------- | ------------- |
-| Auth          | `/api/auth`          | Public except `POST /logout` |
-| Escrows       | `/api/escrows`       | Bearer JWT |
-| Users         | `/api/users`         | Bearer JWT, with wallet ownership on export/import |
-| Reputation    | `/api/reputation`    | Public |
-| Disputes      | `/api/disputes`      | Bearer JWT |
-| Payments      | `/api/payments`      | Bearer JWT, with wallet/payment ownership; webhook signed |
-| KYC           | `/api/kyc`           | Bearer JWT for user endpoints; webhook signed; admin uses API key |
-| Events        | `/api/events`        | Public |
-| Search        | `/api/search`        | Public, except admin analytics/reindex |
+| Tag           | Base Path            | Auth Required                                                                                          |
+| ------------- | -------------------- | ------------------------------------------------------------------------------------------------------ |
+| Auth          | `/api/auth`          | Public except `POST /logout`                                                                           |
+| Escrows       | `/api/escrows`       | Bearer JWT                                                                                             |
+| Users         | `/api/users`         | Bearer JWT, with wallet ownership on export/import                                                     |
+| Reputation    | `/api/reputation`    | Public                                                                                                 |
+| Disputes      | `/api/disputes`      | Bearer JWT                                                                                             |
+| Payments      | `/api/payments`      | Bearer JWT, with wallet/payment ownership; webhook signed                                              |
+| KYC           | `/api/kyc`           | Bearer JWT for user endpoints; webhook signed; admin uses API key                                      |
+| Events        | `/api/events`        | Public                                                                                                 |
+| Search        | `/api/search`        | Public, except admin analytics/reindex                                                                 |
 | Notifications | `/api/notifications` | Admin API Key for internal queue/event endpoints; unsubscribe/resubscribe token for user email actions |
-| Relayer       | `/api/relayer`       | Bearer JWT for execution and fee estimate |
-| Audit         | `/api/audit`         | Admin API Key |
-| Admin         | `/api/admin`         | Admin API Key |
-| Health        | `/health`            | Public |
+| Relayer       | `/api/relayer`       | Bearer JWT for execution and fee estimate                                                              |
+| Audit         | `/api/audit`         | Admin API Key                                                                                          |
+| Admin         | `/api/admin`         | Admin API Key                                                                                          |
+| Health        | `/health`            | Public                                                                                                 |
 
 For full request/response schemas, parameters, and code samples, see the **[interactive Swagger UI](http://localhost:4000/api/docs)**.
 

@@ -128,7 +128,7 @@ export default async function virusScanMiddleware(req, res, next) {
           originalname: file.originalname,
           ...(await virusScanner.quickScan(file.buffer, file.originalname)),
         };
-      })
+      }),
     );
 
     // Separate infected from clean files

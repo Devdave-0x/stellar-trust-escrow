@@ -40,12 +40,16 @@ function MessageBubble({ msg, isMine }) {
   return (
     <div className={`flex gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'} items-end`}>
       {/* Avatar */}
-      <div className="w-7 h-7 rounded-full bg-indigo-600/30 flex items-center justify-center
-                      text-indigo-400 text-xs font-bold flex-shrink-0">
+      <div
+        className="w-7 h-7 rounded-full bg-indigo-600/30 flex items-center justify-center
+                      text-indigo-400 text-xs font-bold flex-shrink-0"
+      >
         {msg.role?.[0]?.toUpperCase() ?? '?'}
       </div>
 
-      <div className={`max-w-[72%] space-y-0.5 ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
+      <div
+        className={`max-w-[72%] space-y-0.5 ${isMine ? 'items-end' : 'items-start'} flex flex-col`}
+      >
         {/* Sender label */}
         <span className="text-xs text-gray-500 px-1">
           {isMine ? 'You' : truncateAddress(msg.address)}
@@ -53,10 +57,14 @@ function MessageBubble({ msg, isMine }) {
         </span>
 
         {/* Bubble */}
-        <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed break-words
-          ${isMine
-            ? 'bg-indigo-600 text-white rounded-br-sm'
-            : 'bg-gray-800 text-gray-100 rounded-bl-sm'}`}>
+        <div
+          className={`rounded-2xl px-3 py-2 text-sm leading-relaxed break-words
+          ${
+            isMine
+              ? 'bg-indigo-600 text-white rounded-br-sm'
+              : 'bg-gray-800 text-gray-100 rounded-bl-sm'
+          }`}
+        >
           {msg.text}
           {msg.attachment && (
             <a
@@ -82,15 +90,19 @@ function MessageBubble({ msg, isMine }) {
 
 function TypingIndicator({ typers }) {
   if (!typers.length) return null;
-  const label = typers.length === 1
-    ? `${truncateAddress(typers[0])} is typing…`
-    : `${typers.length} people are typing…`;
+  const label =
+    typers.length === 1
+      ? `${truncateAddress(typers[0])} is typing…`
+      : `${typers.length} people are typing…`;
   return (
     <div className="flex items-center gap-2 px-3 py-1 text-xs text-gray-500" aria-live="polite">
       <span className="flex gap-0.5">
-        {[0, 1, 2].map(i => (
-          <span key={i} className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
-            style={{ animationDelay: `${i * 0.15}s` }} />
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
+            style={{ animationDelay: `${i * 0.15}s` }}
+          />
         ))}
       </span>
       {label}
@@ -116,27 +128,32 @@ export default function DisputeChat({ escrowId, address, role, token }) {
   const announcerRef = useRef(null);
 
   // ── Load message history ──────────────────────────────────────────────────
-  const loadHistory = useCallback(async (p = 1) => {
-    setLoadingHistory(true);
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/disputes/${escrowId}/messages?page=${p}&limit=30`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-      );
-      if (!res.ok) return;
-      const data = await res.json();
-      const msgs = data.data ?? data.messages ?? [];
-      setMessages(prev => p === 1 ? msgs : [...msgs, ...prev]);
-      setHasMore(data.hasNextPage ?? false);
-      setPage(p);
-    } catch {
-      // network error — show empty state
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [escrowId, token]);
+  const loadHistory = useCallback(
+    async (p = 1) => {
+      setLoadingHistory(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/disputes/${escrowId}/messages?page=${p}&limit=30`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const msgs = data.data ?? data.messages ?? [];
+        setMessages((prev) => (p === 1 ? msgs : [...msgs, ...prev]));
+        setHasMore(data.hasNextPage ?? false);
+        setPage(p);
+      } catch {
+        // network error — show empty state
+      } finally {
+        setLoadingHistory(false);
+      }
+    },
+    [escrowId, token],
+  );
 
-  useEffect(() => { loadHistory(1); }, [loadHistory]);
+  useEffect(() => {
+    loadHistory(1);
+  }, [loadHistory]);
 
   // ── WebSocket connection ──────────────────────────────────────────────────
   useEffect(() => {
@@ -157,11 +174,10 @@ export default function DisputeChat({ escrowId, address, role, token }) {
         const msg = JSON.parse(event.data);
         switch (msg.type) {
           case 'message':
-            setMessages(prev => [...prev, msg.payload]);
+            setMessages((prev) => [...prev, msg.payload]);
             // Announce to screen readers
             if (announcerRef.current) {
-              announcerRef.current.textContent =
-                `New message from ${truncateAddress(msg.payload.address)}: ${msg.payload.text}`;
+              announcerRef.current.textContent = `New message from ${truncateAddress(msg.payload.address)}: ${msg.payload.text}`;
             }
             break;
           case 'typing':
@@ -171,8 +187,8 @@ export default function DisputeChat({ escrowId, address, role, token }) {
             setOnline(msg.payload.online ?? []);
             break;
           case 'read':
-            setMessages(prev =>
-              prev.map(m => m.id === msg.payload.messageId ? { ...m, read: true } : m)
+            setMessages((prev) =>
+              prev.map((m) => (m.id === msg.payload.messageId ? { ...m, read: true } : m)),
             );
             break;
         }
@@ -201,7 +217,7 @@ export default function DisputeChat({ escrowId, address, role, token }) {
     wsRef.current.send(JSON.stringify(msg));
 
     // Optimistic update
-    setMessages(prev => [...prev, { ...msg.payload, isMine: true }]);
+    setMessages((prev) => [...prev, { ...msg.payload, isMine: true }]);
     setInput('');
   }, [input, address, role]);
 
@@ -218,7 +234,10 @@ export default function DisputeChat({ escrowId, address, role, token }) {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
   };
 
   // ── File attachment ───────────────────────────────────────────────────────
@@ -242,11 +261,14 @@ export default function DisputeChat({ escrowId, address, role, token }) {
         payload: {
           text: `Attached: ${name}`,
           attachment: { url, name },
-          address, role, ts: Date.now(), id: crypto.randomUUID(),
+          address,
+          role,
+          ts: Date.now(),
+          id: crypto.randomUUID(),
         },
       };
       wsRef.current?.send(JSON.stringify(msg));
-      setMessages(prev => [...prev, { ...msg.payload, isMine: true }]);
+      setMessages((prev) => [...prev, { ...msg.payload, isMine: true }]);
     } catch {
       // upload failed
     }
@@ -256,7 +278,6 @@ export default function DisputeChat({ escrowId, address, role, token }) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
         <div>
@@ -264,15 +285,20 @@ export default function DisputeChat({ escrowId, address, role, token }) {
           <p className="text-xs text-gray-500">Escrow #{escrowId}</p>
         </div>
         <div className="flex items-center gap-2">
-          {online.map(addr => (
-            <span key={addr} className="flex items-center gap-1 text-xs text-emerald-400"
-              title={addr}>
+          {online.map((addr) => (
+            <span
+              key={addr}
+              className="flex items-center gap-1 text-xs text-emerald-400"
+              title={addr}
+            >
               <Circle size={6} className="fill-emerald-400" />
               {truncateAddress(addr)}
             </span>
           ))}
-          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-gray-600'}`}
-            title={connected ? 'Connected' : 'Disconnected'} />
+          <span
+            className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-gray-600'}`}
+            title={connected ? 'Connected' : 'Disconnected'}
+          />
         </div>
       </div>
 
@@ -287,8 +313,12 @@ export default function DisputeChat({ escrowId, address, role, token }) {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0"
-        role="log" aria-label="Dispute chat messages" aria-live="polite">
+      <div
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0"
+        role="log"
+        aria-label="Dispute chat messages"
+        aria-live="polite"
+      >
         {loadingHistory && (
           <div className="flex justify-center py-4">
             <span className="text-xs text-gray-500 animate-pulse">Loading messages…</span>
@@ -300,9 +330,13 @@ export default function DisputeChat({ escrowId, address, role, token }) {
           </p>
         )}
         {messages.map((msg, i) => (
-          <MessageBubble key={msg.id ?? i} msg={msg} isMine={msg.address === address || msg.isMine} />
+          <MessageBubble
+            key={msg.id ?? i}
+            msg={msg}
+            isMine={msg.address === address || msg.isMine}
+          />
         ))}
-        <TypingIndicator typers={typers.filter(a => a !== address)} />
+        <TypingIndicator typers={typers.filter((a) => a !== address)} />
         <div ref={bottomRef} />
       </div>
 
@@ -311,11 +345,17 @@ export default function DisputeChat({ escrowId, address, role, token }) {
 
       {/* Input */}
       <div className="px-3 py-3 border-t border-gray-800 flex items-end gap-2">
-        <label className="cursor-pointer text-gray-500 hover:text-gray-300 transition-colors p-1.5"
-          title="Attach file">
+        <label
+          className="cursor-pointer text-gray-500 hover:text-gray-300 transition-colors p-1.5"
+          title="Attach file"
+        >
           <Paperclip size={16} />
-          <input type="file" className="sr-only" onChange={handleAttach}
-            accept="image/*,.pdf,.doc,.docx" />
+          <input
+            type="file"
+            className="sr-only"
+            onChange={handleAttach}
+            accept="image/*,.pdf,.doc,.docx"
+          />
         </label>
 
         <textarea

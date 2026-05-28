@@ -46,16 +46,16 @@ const INDEX = 'reputation_records';
 const MAPPING = {
   mappings: {
     properties: {
-      address:          { type: 'keyword' },
-      tenant_id:        { type: 'keyword' },
-      total_score:      { type: 'long' },
-      completed_escrows:{ type: 'integer' },
+      address: { type: 'keyword' },
+      tenant_id: { type: 'keyword' },
+      total_score: { type: 'long' },
+      completed_escrows: { type: 'integer' },
       disputed_escrows: { type: 'integer' },
-      disputes_won:     { type: 'integer' },
-      total_volume:     { type: 'keyword' },   // stored as string (BigInt)
-      last_updated:     { type: 'date' },
+      disputes_won: { type: 'integer' },
+      total_volume: { type: 'keyword' }, // stored as string (BigInt)
+      last_updated: { type: 'date' },
       // address prefix field for autocomplete
-      address_suggest:  {
+      address_suggest: {
         type: 'search_as_you_type',
         max_shingle_size: 3,
       },
@@ -87,15 +87,15 @@ export async function ensureIndex() {
 
 function toDoc(record) {
   return {
-    address:           record.address,
-    tenant_id:         record.tenantId,
-    total_score:       Number(record.totalScore ?? 0),
+    address: record.address,
+    tenant_id: record.tenantId,
+    total_score: Number(record.totalScore ?? 0),
     completed_escrows: record.completedEscrows ?? 0,
-    disputed_escrows:  record.disputedEscrows ?? 0,
-    disputes_won:      record.disputesWon ?? 0,
-    total_volume:      String(record.totalVolume ?? '0'),
-    last_updated:      record.lastUpdated ?? record.updatedAt ?? new Date(),
-    address_suggest:   record.address,
+    disputed_escrows: record.disputedEscrows ?? 0,
+    disputes_won: record.disputesWon ?? 0,
+    total_volume: String(record.totalVolume ?? '0'),
+    last_updated: record.lastUpdated ?? record.updatedAt ?? new Date(),
+    address_suggest: record.address,
   };
 }
 
@@ -121,10 +121,7 @@ export async function bulkSync(records) {
   const client = getClient();
   if (!client || records.length === 0) return 0;
   try {
-    const ops = records.flatMap((r) => [
-      { index: { _index: INDEX, _id: r.address } },
-      toDoc(r),
-    ]);
+    const ops = records.flatMap((r) => [{ index: { _index: INDEX, _id: r.address } }, toDoc(r)]);
     const { errors, items } = await client.bulk({ operations: ops, refresh: false });
     if (errors) {
       const failed = items.filter((i) => i.index?.error).length;
@@ -186,7 +183,12 @@ export async function search(q, { tenantId, limit = 10, from = 0 } = {}) {
         must.push({
           multi_match: {
             query: q,
-            fields: ['address', 'address_suggest', 'address_suggest._2gram', 'address_suggest._3gram'],
+            fields: [
+              'address',
+              'address_suggest',
+              'address_suggest._2gram',
+              'address_suggest._3gram',
+            ],
             type: 'bool_prefix',
           },
         });
@@ -220,7 +222,10 @@ export async function search(q, { tenantId, limit = 10, from = 0 } = {}) {
   };
   const [records, total] = await prisma.$transaction([
     prisma.reputationRecord.findMany({
-      where, orderBy: { totalScore: 'desc' }, skip: from, take: limit,
+      where,
+      orderBy: { totalScore: 'desc' },
+      skip: from,
+      take: limit,
     }),
     prisma.reputationRecord.count({ where }),
   ]);

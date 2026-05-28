@@ -30,24 +30,24 @@ const DATASET_PATH = path.join(__dirname, 'data', 'generated.json');
 
 // ── Thresholds for alerting ────────────────────────────────────────────────
 const ALERT_THRESHOLDS = {
-  maxErrorRate: 1,           // >1% error rate triggers alert
-  maxTailLatencyMs: 500,     // >500ms p97.5 triggers alert
-  minRequestsPerSecond: 50,  // <50 req/s triggers alert
-  maxCpuPercent: 80,         // >80% CPU triggers alert
-  maxMemoryMb: 1024,         // >1024MB memory triggers alert
+  maxErrorRate: 1, // >1% error rate triggers alert
+  maxTailLatencyMs: 500, // >500ms p97.5 triggers alert
+  minRequestsPerSecond: 50, // <50 req/s triggers alert
+  maxCpuPercent: 80, // >80% CPU triggers alert
+  maxMemoryMb: 1024, // >1024MB memory triggers alert
 };
 
 // ── System metrics capture ─────────────────────────────────────────────────
 function captureSystemMetrics() {
   try {
-    const cpu = execSync(
-      "top -bn1 | grep 'Cpu(s)' | awk '{print $2 + $4}'",
-      { encoding: 'utf8', timeout: 5000 },
-    ).trim();
-    const mem = execSync(
-      "free -m | awk '/Mem:/ {print $3}'",
-      { encoding: 'utf8', timeout: 5000 },
-    ).trim();
+    const cpu = execSync("top -bn1 | grep 'Cpu(s)' | awk '{print $2 + $4}'", {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+    const mem = execSync("free -m | awk '/Mem:/ {print $3}'", {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
     return {
       cpuPercent: parseFloat(cpu) || 0,
       memoryMb: parseFloat(mem) || 0,
@@ -253,35 +253,47 @@ function generateDashboard(history) {
   const scenarioIds = [...new Set(runs.flatMap((r) => r.scenarios.map((s) => s.id)))];
 
   const chartData = scenarioIds.map((id) => {
-    const dataPoints = runs.map((run) => {
-      const scenario = run.scenarios.find((s) => s.id === id);
-      return scenario
-        ? {
-            date: run.generatedAt.slice(0, 10),
-            p50: scenario.latency.p50,
-            p95: scenario.latency.p95,
-            p99: scenario.latency.p99,
-            throughput: scenario.requests.average,
-            errorRate: scenario.errorRate,
-          }
-        : null;
-    }).filter(Boolean);
+    const dataPoints = runs
+      .map((run) => {
+        const scenario = run.scenarios.find((s) => s.id === id);
+        return scenario
+          ? {
+              date: run.generatedAt.slice(0, 10),
+              p50: scenario.latency.p50,
+              p95: scenario.latency.p95,
+              p99: scenario.latency.p99,
+              throughput: scenario.requests.average,
+              errorRate: scenario.errorRate,
+            }
+          : null;
+      })
+      .filter(Boolean);
 
-    return { id, title: runs.find((r) => r.scenarios.find((s) => s.id === id))?.scenarios.find((s) => s.id === id)?.title || id, dataPoints };
+    return {
+      id,
+      title:
+        runs.find((r) => r.scenarios.find((s) => s.id === id))?.scenarios.find((s) => s.id === id)
+          ?.title || id,
+      dataPoints,
+    };
   });
 
   const alertsHtml = latestRun?.alerts?.length
-    ? latestRun.alerts.map((a) =>
-        `<div class="alert alert-${a.severity}">
+    ? latestRun.alerts
+        .map(
+          (a) =>
+            `<div class="alert alert-${a.severity}">
           <strong>${a.severity.toUpperCase()}</strong>: ${a.message}
-        </div>`
-      ).join('\n')
+        </div>`,
+        )
+        .join('\n')
     : '<div class="alert alert-ok">No alerts — all metrics within thresholds.</div>';
 
-  const scenarioCards = chartData.map((sc) => {
-    const latest = sc.dataPoints[sc.dataPoints.length - 1];
-    if (!latest) return '';
-    return `
+  const scenarioCards = chartData
+    .map((sc) => {
+      const latest = sc.dataPoints[sc.dataPoints.length - 1];
+      if (!latest) return '';
+      return `
       <div class="card">
         <h3>${sc.title}</h3>
         <div class="metrics-grid">
@@ -311,14 +323,16 @@ function generateDashboard(history) {
         </div>
       </div>
     `;
-  }).join('\n');
+    })
+    .join('\n');
 
-  const chartInitScripts = chartData.map((sc) => {
-    const labels = JSON.stringify(sc.dataPoints.map((d) => d.date));
-    const p50 = JSON.stringify(sc.dataPoints.map((d) => d.p50));
-    const p95 = JSON.stringify(sc.dataPoints.map((d) => d.p95));
-    const p99 = JSON.stringify(sc.dataPoints.map((d) => d.p99));
-    return `
+  const chartInitScripts = chartData
+    .map((sc) => {
+      const labels = JSON.stringify(sc.dataPoints.map((d) => d.date));
+      const p50 = JSON.stringify(sc.dataPoints.map((d) => d.p50));
+      const p95 = JSON.stringify(sc.dataPoints.map((d) => d.p95));
+      const p99 = JSON.stringify(sc.dataPoints.map((d) => d.p99));
+      return `
       new Chart(document.getElementById('chart-${sc.id}'), {
         type: 'line',
         data: {
@@ -340,7 +354,8 @@ function generateDashboard(history) {
         },
       });
     `;
-  }).join('\n');
+    })
+    .join('\n');
 
   const systemMetricsHtml = latestRun?.systemMetrics
     ? `
@@ -446,16 +461,25 @@ function generateDashboard(history) {
       </tr>
     </thead>
     <tbody>
-      ${runs.slice().reverse().slice(0, 30).map((run) => `
+      ${runs
+        .slice()
+        .reverse()
+        .slice(0, 30)
+        .map(
+          (run) => `
         <tr>
           <td>${run.generatedAt.slice(0, 10)}</td>
-          ${scenarioIds.map((id) => {
-            const s = run.scenarios.find((sc) => sc.id === id);
-            return `<td>${s ? s.latency.p95.toFixed(1) + 'ms' : '—'}</td>`;
-          }).join('')}
+          ${scenarioIds
+            .map((id) => {
+              const s = run.scenarios.find((sc) => sc.id === id);
+              return `<td>${s ? s.latency.p95.toFixed(1) + 'ms' : '—'}</td>`;
+            })
+            .join('')}
           <td>${run.alerts?.length || 0}</td>
         </tr>
-      `).join('')}
+      `,
+        )
+        .join('')}
     </tbody>
   </table>
 

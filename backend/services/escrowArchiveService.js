@@ -26,7 +26,10 @@ async function ensureArchivePartition(prisma, date = new Date()) {
   return { tableName, start, end };
 }
 
-async function archiveCompletedEscrows(prisma, olderThan = new Date(Date.now() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000)) {
+async function archiveCompletedEscrows(
+  prisma,
+  olderThan = new Date(Date.now() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000),
+) {
   const rows = await prisma.escrow.findMany({
     where: {
       status: 'Completed',
@@ -43,13 +46,16 @@ async function archiveCompletedEscrows(prisma, olderThan = new Date(Date.now() -
   for (const row of rows) {
     const { tableName } = getArchiveWindow(row.createdAt);
     await ensureArchivePartition(prisma, row.createdAt);
-    await prisma.$executeRawUnsafe(`
+    await prisma.$executeRawUnsafe(
+      `
       INSERT INTO ${tableName} (id, tenant_id, client_address, freelancer_address, arbiter_address, token_address, total_amount, remaining_balance, status, brief_hash, deadline, created_at, updated_at, created_ledger)
       SELECT id, tenant_id, client_address, freelancer_address, arbiter_address, token_address, total_amount, remaining_balance, status, brief_hash, deadline, created_at, updated_at, created_ledger
       FROM escrows
       WHERE id = $1
       ON CONFLICT (id) DO NOTHING
-    `, row.id);
+    `,
+      row.id,
+    );
     await prisma.$executeRawUnsafe('DELETE FROM escrows WHERE id = $1', row.id);
     archived.push({ id: row.id, tableName, createdAt: row.createdAt });
   }

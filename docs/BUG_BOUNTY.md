@@ -21,12 +21,12 @@ StellarTrustEscrow rewards security researchers who responsibly disclose vulnera
 
 ### In Scope
 
-| Asset | Type | Focus Areas |
-|-------|------|-------------|
-| `stellartrustescrow.example.com` | Web app | XSS, CSRF, authentication bypass |
-| `api.stellartrustescrow.example.com` | API | Rate limit bypass, authorization flaws |
-| `contracts/escrow_contract` | Smart contract | Fund theft, authorization bypass, arithmetic errors |
-| Freighter integration | Wallet | Signature replay, phishing vectors |
+| Asset                                | Type           | Focus Areas                                         |
+| ------------------------------------ | -------------- | --------------------------------------------------- |
+| `stellartrustescrow.example.com`     | Web app        | XSS, CSRF, authentication bypass                    |
+| `api.stellartrustescrow.example.com` | API            | Rate limit bypass, authorization flaws              |
+| `contracts/escrow_contract`          | Smart contract | Fund theft, authorization bypass, arithmetic errors |
+| Freighter integration                | Wallet         | Signature replay, phishing vectors                  |
 
 ### Out of Scope
 
@@ -40,12 +40,12 @@ StellarTrustEscrow rewards security researchers who responsibly disclose vulnera
 
 ## Rewards
 
-| Severity | Bounty | Examples |
-|----------|--------|----------|
+| Severity | Bounty           | Examples                                                |
+| -------- | ---------------- | ------------------------------------------------------- |
 | Critical | $5,000 – $10,000 | Smart contract fund theft, auth bypass with fund access |
-| High | $1,000 – $5,000 | Unauthorized data access, XSS with session hijack |
-| Medium | $200 – $1,000 | CSRF, rate limit bypass with impact |
-| Low | $50 – $200 | Information disclosure, minor logic bugs |
+| High     | $1,000 – $5,000  | Unauthorized data access, XSS with session hijack       |
+| Medium   | $200 – $1,000    | CSRF, rate limit bypass with impact                     |
+| Low      | $50 – $200       | Information disclosure, minor logic bugs                |
 
 **Bonus**: 50% bonus for smart contract vulnerabilities (on-chain impact).
 
@@ -65,8 +65,8 @@ StellarTrustEscrow rewards security researchers who responsibly disclose vulnera
 ## Hall of Fame
 
 | Date | Researcher | Vulnerability | Bounty |
-|------|-----------|---------------|--------|
-| – | – | – | – |
+| ---- | ---------- | ------------- | ------ |
+| –    | –          | –             | –      |
 
 (First submission will be listed here)
 

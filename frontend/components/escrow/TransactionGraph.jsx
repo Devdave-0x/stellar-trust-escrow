@@ -22,21 +22,21 @@ const W = 640;
 const H = 320;
 
 const NODES = {
-  buyer:     { id: 'buyer',     label: 'Buyer Wallet',       x: 80,  y: 160, color: '#6366f1' },
-  escrow:    { id: 'escrow',    label: 'Escrow Contract',    x: 320, y: 160, color: '#8b5cf6' },
-  treasury:  { id: 'treasury',  label: 'Platform Treasury',  x: 560, y: 80,  color: '#f59e0b' },
-  freelancer:{ id: 'freelancer',label: 'Freelancer Wallet',  x: 560, y: 240, color: '#10b981' },
+  buyer: { id: 'buyer', label: 'Buyer Wallet', x: 80, y: 160, color: '#6366f1' },
+  escrow: { id: 'escrow', label: 'Escrow Contract', x: 320, y: 160, color: '#8b5cf6' },
+  treasury: { id: 'treasury', label: 'Platform Treasury', x: 560, y: 80, color: '#f59e0b' },
+  freelancer: { id: 'freelancer', label: 'Freelancer Wallet', x: 560, y: 240, color: '#10b981' },
 };
 
 /** Edges active per escrow status */
 const STATUS_EDGES = {
-  Active:    [{ from: 'buyer',   to: 'escrow',     label: 'Deposit' }],
+  Active: [{ from: 'buyer', to: 'escrow', label: 'Deposit' }],
   Completed: [
     { from: 'escrow', to: 'freelancer', label: 'Payout' },
-    { from: 'escrow', to: 'treasury',   label: 'Fee' },
+    { from: 'escrow', to: 'treasury', label: 'Fee' },
   ],
-  Disputed:  [{ from: 'buyer',   to: 'escrow',     label: 'Locked' }],
-  Cancelled: [{ from: 'escrow',  to: 'buyer',      label: 'Refund' }],
+  Disputed: [{ from: 'buyer', to: 'escrow', label: 'Locked' }],
+  Cancelled: [{ from: 'escrow', to: 'buyer', label: 'Refund' }],
 };
 
 // ── Particle animation ────────────────────────────────────────────────────────
@@ -48,7 +48,10 @@ function useParticle(active) {
   const DURATION = 1800; // ms per cycle
 
   useEffect(() => {
-    if (!active) { setT(0); return; }
+    if (!active) {
+      setT(0);
+      return;
+    }
     const animate = (now) => {
       if (!start.current) start.current = now;
       const elapsed = (now - start.current) % DURATION;
@@ -56,7 +59,10 @@ function useParticle(active) {
       raf.current = requestAnimationFrame(animate);
     };
     raf.current = requestAnimationFrame(animate);
-    return () => { cancelAnimationFrame(raf.current); start.current = null; };
+    return () => {
+      cancelAnimationFrame(raf.current);
+      start.current = null;
+    };
   }, [active]);
 
   return t;
@@ -66,17 +72,19 @@ function useParticle(active) {
 
 function Edge({ from, to, label, color = '#6366f1', animate: doAnimate }) {
   const t = useParticle(doAnimate);
-  const fx = NODES[from].x, fy = NODES[from].y;
-  const tx = NODES[to].x,   ty = NODES[to].y;
+  const fx = NODES[from].x,
+    fy = NODES[from].y;
+  const tx = NODES[to].x,
+    ty = NODES[to].y;
 
   // Cubic bezier control points for a gentle arc
   const cx = (fx + tx) / 2;
   const cy = (fy + ty) / 2 - 40;
-  const d  = `M ${fx} ${fy} Q ${cx} ${cy} ${tx} ${ty}`;
+  const d = `M ${fx} ${fy} Q ${cx} ${cy} ${tx} ${ty}`;
 
   // Particle position along the bezier at parameter t
-  const bx = (1-t)*(1-t)*fx + 2*(1-t)*t*cx + t*t*tx;
-  const by = (1-t)*(1-t)*fy + 2*(1-t)*t*cy + t*t*ty;
+  const bx = (1 - t) * (1 - t) * fx + 2 * (1 - t) * t * cx + t * t * tx;
+  const by = (1 - t) * (1 - t) * fy + 2 * (1 - t) * t * cy + t * t * ty;
 
   return (
     <g>
@@ -92,14 +100,7 @@ function Edge({ from, to, label, color = '#6366f1', animate: doAnimate }) {
         strokeDasharray="6 4"
       />
       {/* Edge label */}
-      <text
-        x={cx}
-        y={cy - 8}
-        textAnchor="middle"
-        fontSize={10}
-        fill={color}
-        opacity={0.9}
-      >
+      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={10} fill={color} opacity={0.9}>
         {label}
       </text>
       {/* Animated particle */}
@@ -134,7 +135,9 @@ function Node({ node, detail, onClick, active }) {
       )}
       {/* Node circle */}
       <circle
-        cx={x} cy={y} r={22}
+        cx={x}
+        cy={y}
+        r={22}
         fill={`${color}22`}
         stroke={color}
         strokeWidth={active ? 2 : 1.5}
@@ -156,9 +159,9 @@ function Node({ node, detail, onClick, active }) {
 
 function NodeDetail({ nodeId, escrow, onClose }) {
   const details = {
-    buyer:      { address: escrow?.clientAddress,     tx: escrow?.transactionHash },
-    escrow:     { address: escrow?.contractAddress,   tx: escrow?.transactionHash },
-    treasury:   { address: 'Platform Treasury',       tx: null },
+    buyer: { address: escrow?.clientAddress, tx: escrow?.transactionHash },
+    escrow: { address: escrow?.contractAddress, tx: escrow?.transactionHash },
+    treasury: { address: 'Platform Treasury', tx: null },
     freelancer: { address: escrow?.freelancerAddress, tx: escrow?.transactionHash },
   };
   const d = details[nodeId] || {};
@@ -172,16 +175,24 @@ function NodeDetail({ nodeId, escrow, onClose }) {
     >
       <div className="flex justify-between items-center mb-2">
         <span className="text-sm font-semibold text-white">{NODES[nodeId]?.label}</span>
-        <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-white text-lg leading-none">&times;</button>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="text-gray-400 hover:text-white text-lg leading-none"
+        >
+          &times;
+        </button>
       </div>
       {d.address && (
         <p className="text-xs text-gray-400 font-mono break-all mb-1">
-          <span className="text-gray-500">Address: </span>{d.address}
+          <span className="text-gray-500">Address: </span>
+          {d.address}
         </p>
       )}
       {d.tx && (
         <p className="text-xs text-gray-400 font-mono break-all">
-          <span className="text-gray-500">TX: </span>{d.tx}
+          <span className="text-gray-500">TX: </span>
+          {d.tx}
         </p>
       )}
     </div>
@@ -229,7 +240,7 @@ export default function TransactionGraph({ escrow }) {
   }, []);
 
   const status = escrow?.status || 'Active';
-  const edges  = STATUS_EDGES[status] || STATUS_EDGES.Active;
+  const edges = STATUS_EDGES[status] || STATUS_EDGES.Active;
 
   // Which nodes are involved in active edges
   const activeNodeIds = new Set(edges.flatMap((e) => [e.from, e.to]));
@@ -242,8 +253,8 @@ export default function TransactionGraph({ escrow }) {
     <div className="card relative overflow-hidden" aria-label="Transaction flow graph">
       <h2 className="text-sm font-semibold text-gray-400 mb-4">Fund Flow</h2>
 
-      {/* SVG graph — hidden from screen readers, table below is the a11y surface */}
-      <div aria-hidden="true">
+      {/* SVG graph remains keyboard-accessible; table below provides a compact text fallback. */}
+      <div>
         <svg
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
@@ -276,11 +287,7 @@ export default function TransactionGraph({ escrow }) {
 
       {/* Node detail popover */}
       {selectedNode && escrow && (
-        <NodeDetail
-          nodeId={selectedNode}
-          escrow={escrow}
-          onClose={() => setSelectedNode(null)}
-        />
+        <NodeDetail nodeId={selectedNode} escrow={escrow} onClose={() => setSelectedNode(null)} />
       )}
 
       {/* Accessible table fallback */}

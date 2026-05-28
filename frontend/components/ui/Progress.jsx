@@ -2,7 +2,14 @@
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-const Progress = ({ className, value, max = 100, indeterminate = false, size = 'md', ...props }) => {
+const Progress = ({
+  className,
+  value,
+  max = 100,
+  indeterminate = false,
+  size = 'md',
+  ...props
+}) => {
   if (indeterminate) {
     const sizeClasses = {
       sm: 'w-4 h-4',

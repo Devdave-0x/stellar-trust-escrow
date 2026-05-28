@@ -3,15 +3,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Alert,
-  Linking,
-  RefreshControl,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEscrow, useMilestones } from '../../hooks/useEscrows';
@@ -166,15 +158,7 @@ export default function EscrowDetailScreen() {
   );
 }
 
-function PartyRow({
-  label,
-  address,
-  isYou,
-}: {
-  label: string;
-  address: string;
-  isYou: boolean;
-}) {
+function PartyRow({ label, address, isYou }: { label: string; address: string; isYou: boolean }) {
   return (
     <View style={styles.partyRow}>
       <Text style={styles.partyLabel}>{label}</Text>

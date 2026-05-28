@@ -53,6 +53,7 @@ STRESS_TARGET_URL=https://staging.example.com npm run loadtest:stress
   - Browse sorted by amount
 
 **What it tests**:
+
 - Database query performance under load
 - Index effectiveness
 - Connection pool management for reads
@@ -70,6 +71,7 @@ STRESS_TARGET_URL=https://staging.example.com npm run loadtest:stress
   - Fetch events
 
 **What it tests**:
+
 - JOIN query performance
 - N+1 query problems
 - Related data fetching efficiency
@@ -85,6 +87,7 @@ STRESS_TARGET_URL=https://staging.example.com npm run loadtest:stress
   - POST milestone completion with signature
 
 **What it tests**:
+
 - Write transaction handling
 - Database locking behavior
 - Concurrent update conflicts
@@ -101,6 +104,7 @@ STRESS_TARGET_URL=https://staging.example.com npm run loadtest:stress
   - POST dispute evidence with IPFS hash
 
 **What it tests**:
+
 - File upload handling
 - IPFS integration performance
 - Storage system capacity
@@ -119,6 +123,7 @@ STRESS_TARGET_URL=https://staging.example.com npm run loadtest:stress
   - Fetch notifications
 
 **What it tests**:
+
 - Multi-query coordination
 - User-specific data isolation
 - Dashboard aggregation performance
@@ -134,6 +139,7 @@ STRESS_TARGET_URL=https://staging.example.com npm run loadtest:stress
   - 50% writes (milestone approval)
 
 **What it tests**:
+
 - Read/write balance
 - Real-world performance characteristics
 - System behavior under mixed load
@@ -160,14 +166,14 @@ CI=true
 
 Stress tests use more lenient thresholds than regular load tests:
 
-| Metric | Local Threshold | CI Threshold | Rationale |
-|--------|----------------|--------------|-----------|
-| Error Rate | ≤5% | ≤2% | Some errors expected under extreme load |
-| Tail Latency (p97.5) | ≤3000ms | ≤2000ms | Higher latency acceptable under stress |
-| Throughput | ≥20 req/s | ≥30 req/s | Minimum acceptable throughput |
-| CPU Usage | ≤90% | ≤90% | Near-maximum CPU utilization |
-| Memory Usage | ≤2048MB | ≤2048MB | Memory ceiling |
-| DB Pool Utilization | ≤90% | ≤90% | Connection pool near capacity |
+| Metric               | Local Threshold | CI Threshold | Rationale                               |
+| -------------------- | --------------- | ------------ | --------------------------------------- |
+| Error Rate           | ≤5%             | ≤2%          | Some errors expected under extreme load |
+| Tail Latency (p97.5) | ≤3000ms         | ≤2000ms      | Higher latency acceptable under stress  |
+| Throughput           | ≥20 req/s       | ≥30 req/s    | Minimum acceptable throughput           |
+| CPU Usage            | ≤90%            | ≤90%         | Near-maximum CPU utilization            |
+| Memory Usage         | ≤2048MB         | ≤2048MB      | Memory ceiling                          |
+| DB Pool Utilization  | ≤90%            | ≤90%         | Connection pool near capacity           |
 
 ## Understanding Results
 
@@ -230,12 +236,14 @@ The JSON report (`load-tests/results/stress/latest.json`) contains:
 **Symptoms**: Error rate >5%
 
 **Possible Causes**:
+
 - Database connection pool exhausted
 - Rate limiting triggered
 - Backend crashes under load
 - Network timeouts
 
 **Solutions**:
+
 1. Increase database connection pool size
 2. Add connection pooling middleware
 3. Implement request queuing
@@ -246,12 +254,14 @@ The JSON report (`load-tests/results/stress/latest.json`) contains:
 **Symptoms**: p99 latency >3000ms
 
 **Possible Causes**:
+
 - Slow database queries
 - Missing indexes
 - N+1 query problems
 - Insufficient resources
 
 **Solutions**:
+
 1. Add database indexes
 2. Optimize queries
 3. Implement caching
@@ -262,12 +272,14 @@ The JSON report (`load-tests/results/stress/latest.json`) contains:
 **Symptoms**: Pool utilization >90%
 
 **Possible Causes**:
+
 - Too many concurrent connections
 - Long-running queries
 - Connection leaks
 - Insufficient pool size
 
 **Solutions**:
+
 1. Increase pool size: `max: 30` → `max: 50`
 2. Reduce query execution time
 3. Implement connection timeout
@@ -278,12 +290,14 @@ The JSON report (`load-tests/results/stress/latest.json`) contains:
 **Symptoms**: Memory usage continuously increasing
 
 **Possible Causes**:
+
 - Unclosed database connections
 - Event listener leaks
 - Large object retention
 - Cache without eviction
 
 **Solutions**:
+
 1. Profile with Node.js heap snapshots
 2. Implement proper cleanup in finally blocks
 3. Add cache size limits
@@ -294,12 +308,14 @@ The JSON report (`load-tests/results/stress/latest.json`) contains:
 **Symptoms**: CPU usage >90%
 
 **Possible Causes**:
+
 - CPU-intensive operations in request path
 - Synchronous blocking operations
 - Inefficient algorithms
 - Insufficient parallelization
 
 **Solutions**:
+
 1. Move heavy operations to background jobs
 2. Use worker threads for CPU-intensive tasks
 3. Optimize algorithms
@@ -413,6 +429,7 @@ fi
 **Problem**: Stress tests don't complete
 
 **Solutions**:
+
 - Increase timeout in workflow: `timeout-minutes: 120`
 - Reduce test duration: `STRESS_DURATION=180`
 - Reduce connections: `STRESS_CONNECTIONS=100`
@@ -422,6 +439,7 @@ fi
 **Problem**: Backend crashes during stress test
 
 **Solutions**:
+
 - Check error logs for stack traces
 - Reduce load gradually to find breaking point
 - Add error handling and graceful degradation
@@ -432,6 +450,7 @@ fi
 **Problem**: Results vary significantly between runs
 
 **Solutions**:
+
 - Ensure clean state before each run
 - Use deterministic test data
 - Run multiple iterations and average
@@ -442,6 +461,7 @@ fi
 **Problem**: HTML/JSON reports missing
 
 **Solutions**:
+
 - Check for errors in console output
 - Verify write permissions on results directory
 - Ensure test completed successfully

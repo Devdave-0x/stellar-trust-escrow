@@ -7,6 +7,7 @@ This document specifies the formal verification requirements for critical escrow
 **Kani** is the primary formal verification tool for this project.
 
 Why Kani over Certora:
+
 - Open-source and actively maintained by AWS
 - Native Rust — no separate specification language required
 - Compatible with `no_std` crates and `wasm32-unknown-unknown` targets
@@ -51,18 +52,18 @@ The following four functions are designated formal verification checkpoints. Any
 
 **Invariants that must hold after every successful call:**
 
-| Invariant | Expression |
-|---|---|
-| Total amount is positive | `meta.total_amount > 0` |
+| Invariant                                         | Expression                                    |
+| ------------------------------------------------- | --------------------------------------------- |
+| Total amount is positive                          | `meta.total_amount > 0`                       |
 | Remaining balance equals total amount at creation | `meta.remaining_balance == meta.total_amount` |
-| Status is Active immediately after creation | `meta.status == EscrowStatus::Active` |
+| Status is Active immediately after creation       | `meta.status == EscrowStatus::Active`         |
 
 ### 2. `fund_escrow` / `add_milestone`
 
 **Invariants that must hold after every successful call:**
 
-| Invariant | Expression |
-|---|---|
+| Invariant                                   | Expression                                   |
+| ------------------------------------------- | -------------------------------------------- |
 | Allocated amount never exceeds total amount | `meta.allocated_amount <= meta.total_amount` |
 
 This invariant must hold after each individual `add_milestone` call, not just at the end of a batch.
@@ -71,19 +72,19 @@ This invariant must hold after each individual `add_milestone` call, not just at
 
 **Invariants that must hold after every successful call:**
 
-| Invariant | Expression |
-|---|---|
+| Invariant                                                   | Expression                                      |
+| ----------------------------------------------------------- | ----------------------------------------------- |
 | Remaining balance decreases by exactly the milestone amount | `new_balance == old_balance - milestone.amount` |
-| Remaining balance never goes negative | `new_balance >= 0` |
+| Remaining balance never goes negative                       | `new_balance >= 0`                              |
 
 ### 4. `dispute_escrow`
 
 **Invariants that must hold after every successful call:**
 
-| Invariant | Expression |
-|---|---|
+| Invariant                                           | Expression                                      |
+| --------------------------------------------------- | ----------------------------------------------- |
 | Status transitions only from `Active` to `Disputed` | `old_status == Active → new_status == Disputed` |
-| No other status transition is permitted | `old_status != Active → call must be rejected` |
+| No other status transition is permitted             | `old_status != Active → call must be rejected`  |
 
 ---
 
@@ -162,10 +163,11 @@ cargo kani --harness <harness_name>
 ```markdown
 <details>
 <summary>Kani proof output — release_funds</summary>
-
 ```
+
 VERIFICATION:- SUCCESSFUL
 Verification Time: 0.42s
+
 ```
 
 </details>

@@ -15,7 +15,8 @@ jest.unstable_mockModule('../services/escrowArchiveService.js', () => ({
 }));
 
 const { default: searchService } = await import('../services/searchService.js');
-const { archiveCompletedEscrows, getArchiveTableName } = await import('../services/escrowArchiveService.js');
+const { archiveCompletedEscrows, getArchiveTableName } =
+  await import('../services/escrowArchiveService.js');
 
 describe('escrowArchiveService', () => {
   it('creates stable monthly archive table names', () => {
@@ -25,7 +26,9 @@ describe('escrowArchiveService', () => {
   it('archives completed rows older than the retention horizon', async () => {
     const archivePrisma = {
       escrow: {
-        findMany: jest.fn().mockResolvedValue([{ id: 7n, createdAt: new Date('2024-03-01T00:00:00.000Z') }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 7n, createdAt: new Date('2024-03-01T00:00:00.000Z') }]),
       },
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };

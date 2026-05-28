@@ -72,7 +72,6 @@ function Lightbox({ files, index, onClose, onPrev, onNext }) {
         {/* Content */}
         <div className="flex items-center justify-center min-h-64 p-4 bg-gray-950">
           {isImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img src={url} alt={file.name} className="max-h-[60vh] object-contain rounded-lg" />
           ) : (
             <div className="text-center text-gray-400 space-y-2">
@@ -101,7 +100,9 @@ function Lightbox({ files, index, onClose, onPrev, onNext }) {
             >
               <ChevronLeft size={16} /> Prev
             </button>
-            <span className="text-xs text-gray-600">{index + 1} / {files.length}</span>
+            <span className="text-xs text-gray-600">
+              {index + 1} / {files.length}
+            </span>
             <button
               onClick={onNext}
               disabled={index === files.length - 1}
@@ -120,44 +121,47 @@ function Lightbox({ files, index, onClose, onPrev, onNext }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function EvidenceUploader({ onUpload, maxFiles = 5 }) {
-  const [files, setFiles] = useState([]);   // { id, name, size, type, raw, progress, error }
+  const [files, setFiles] = useState([]); // { id, name, size, type, raw, progress, error }
   const [isDragging, setIsDragging] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const inputRef = useRef(null);
 
-  const processFiles = useCallback((rawFiles) => {
-    const accepted = [];
-    for (const raw of rawFiles) {
-      if (files.length + accepted.length >= maxFiles) break;
+  const processFiles = useCallback(
+    (rawFiles) => {
+      const accepted = [];
+      for (const raw of rawFiles) {
+        if (files.length + accepted.length >= maxFiles) break;
 
-      let error = null;
-      if (!ACCEPTED_TYPES[raw.type]) {
-        error = `Unsupported type. Allowed: ${Object.values(ACCEPTED_TYPES).join(', ')}`;
-      } else if (raw.size > MAX_SIZE_BYTES) {
-        error = `File too large (max ${formatBytes(MAX_SIZE_BYTES)})`;
+        let error = null;
+        if (!ACCEPTED_TYPES[raw.type]) {
+          error = `Unsupported type. Allowed: ${Object.values(ACCEPTED_TYPES).join(', ')}`;
+        } else if (raw.size > MAX_SIZE_BYTES) {
+          error = `File too large (max ${formatBytes(MAX_SIZE_BYTES)})`;
+        }
+
+        accepted.push({
+          id: `${raw.name}-${Date.now()}-${Math.random()}`,
+          name: raw.name,
+          size: raw.size,
+          type: raw.type,
+          raw,
+          progress: error ? 0 : 0,
+          error,
+        });
       }
 
-      accepted.push({
-        id: `${raw.name}-${Date.now()}-${Math.random()}`,
-        name: raw.name,
-        size: raw.size,
-        type: raw.type,
-        raw,
-        progress: error ? 0 : 0,
-        error,
+      if (accepted.length === 0) return;
+
+      setFiles((prev) => {
+        const next = [...prev, ...accepted];
+        // Simulate upload progress for valid files
+        accepted.filter((f) => !f.error).forEach((f) => simulateUpload(f.id));
+        onUpload?.(next.filter((f) => !f.error).map((f) => f.raw));
+        return next;
       });
-    }
-
-    if (accepted.length === 0) return;
-
-    setFiles((prev) => {
-      const next = [...prev, ...accepted];
-      // Simulate upload progress for valid files
-      accepted.filter((f) => !f.error).forEach((f) => simulateUpload(f.id));
-      onUpload?.(next.filter((f) => !f.error).map((f) => f.raw));
-      return next;
-    });
-  }, [files, maxFiles, onUpload]);
+    },
+    [files, maxFiles, onUpload],
+  );
 
   const simulateUpload = (id) => {
     let progress = 0;
@@ -177,7 +181,10 @@ export default function EvidenceUploader({ onUpload, maxFiles = 5 }) {
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
 
-  const onDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+  const onDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
   const onDragLeave = () => setIsDragging(false);
   const onDrop = (e) => {
     e.preventDefault();
@@ -210,9 +217,10 @@ export default function EvidenceUploader({ onUpload, maxFiles = 5 }) {
           relative flex flex-col items-center justify-center gap-3
           border-2 border-dashed rounded-2xl p-8 cursor-pointer
           transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500
-          ${isDragging
-            ? 'border-indigo-500 bg-indigo-500/10 scale-[1.01]'
-            : 'border-gray-700 bg-gray-900/50 hover:border-gray-600 hover:bg-gray-900'
+          ${
+            isDragging
+              ? 'border-indigo-500 bg-indigo-500/10 scale-[1.01]'
+              : 'border-gray-700 bg-gray-900/50 hover:border-gray-600 hover:bg-gray-900'
           }
           ${files.length >= maxFiles ? 'opacity-50 pointer-events-none' : ''}
         `}
@@ -255,11 +263,15 @@ export default function EvidenceUploader({ onUpload, maxFiles = 5 }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-white truncate">{file.name}</span>
-                  <span className="text-xs text-gray-500 flex-shrink-0">{formatBytes(file.size)}</span>
+                  <span className="text-xs text-gray-500 flex-shrink-0">
+                    {formatBytes(file.size)}
+                  </span>
                 </div>
 
                 {file.error ? (
-                  <p className="text-xs text-red-400 mt-0.5" role="alert">{file.error}</p>
+                  <p className="text-xs text-red-400 mt-0.5" role="alert">
+                    {file.error}
+                  </p>
                 ) : file.progress < 100 ? (
                   <div className="mt-1.5">
                     <div

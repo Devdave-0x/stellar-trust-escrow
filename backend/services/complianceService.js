@@ -263,8 +263,10 @@ async function buildUserReport(filters = {}) {
     },
     users: users.map((user) => {
       const profile = profileByAddress.get(filters.address) ?? null;
-      const kyc = filters.address ? kycByAddress.get(filters.address) ?? null : null;
-      const reputation = filters.address ? reputationByAddress.get(filters.address) ?? null : null;
+      const kyc = filters.address ? (kycByAddress.get(filters.address) ?? null) : null;
+      const reputation = filters.address
+        ? (reputationByAddress.get(filters.address) ?? null)
+        : null;
       return {
         id: user.id,
         email: user.email,
@@ -541,7 +543,12 @@ async function exportReport(type, format = EXPORT_FORMATS.JSON, filters = {}, ac
 
 async function runScheduledReport(schedule, trigger = 'system') {
   const report = await generateReport(schedule.type, schedule.filters, trigger);
-  const exportResult = await exportReport(schedule.type, schedule.format, schedule.filters, trigger);
+  const exportResult = await exportReport(
+    schedule.type,
+    schedule.format,
+    schedule.filters,
+    trigger,
+  );
   const historyEntry = {
     id: `${schedule.id}-${Date.now()}`,
     scheduleId: schedule.id,
@@ -585,7 +592,10 @@ function startScheduler() {
     return;
   }
 
-  const intervalMs = Number.parseInt(process.env.COMPLIANCE_REPORT_SCHEDULER_INTERVAL_MS ?? '60000', 10);
+  const intervalMs = Number.parseInt(
+    process.env.COMPLIANCE_REPORT_SCHEDULER_INTERVAL_MS ?? '60000',
+    10,
+  );
   scheduleState.timer = setInterval(() => {
     processDueSchedules().catch((error) => {
       console.error('[ComplianceService] scheduled report processing failed:', error.message);

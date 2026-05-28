@@ -17,7 +17,7 @@ Provide a 2–4 sentence overview of the audit scope, the overall security postu
 **Finding summary:**
 
 | Severity      | Total | Open | In Progress | Resolved | Accepted Risk |
-|---------------|------:|-----:|------------:|---------:|--------------:|
+| ------------- | ----: | ---: | ----------: | -------: | ------------: |
 | Critical      |     0 |    0 |           0 |        0 |             0 |
 | High          |     0 |    0 |           0 |        0 |             0 |
 | Medium        |     0 |    0 |           0 |        0 |             0 |
@@ -31,9 +31,9 @@ Provide a 2–4 sentence overview of the audit scope, the overall security postu
 
 **Contracts reviewed:**
 
-| Path | Description |
-|------|-------------|
-| `contracts/escrow_contract/src/` | [Brief description] |
+| Path                              | Description         |
+| --------------------------------- | ------------------- |
+| `contracts/escrow_contract/src/`  | [Brief description] |
 | `contracts/[other_contract]/src/` | [Brief description] |
 
 **Explicitly out of scope:**
@@ -54,12 +54,12 @@ Provide a 2–4 sentence overview of the audit scope, the overall security postu
 
 **Tools used:**
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Slither | [version] | Automated vulnerability detection |
-| `cargo audit` | [version] | Dependency vulnerability scanning |
+| Tool               | Version   | Purpose                                    |
+| ------------------ | --------- | ------------------------------------------ |
+| Slither            | [version] | Automated vulnerability detection          |
+| `cargo audit`      | [version] | Dependency vulnerability scanning          |
 | Kani Rust Verifier | [version] | Formal verification of critical invariants |
-| `cargo-llvm-cov` | [version] | Test coverage measurement |
+| `cargo-llvm-cov`   | [version] | Test coverage measurement                  |
 
 **Manual review areas:**
 
@@ -72,25 +72,25 @@ Provide a 2–4 sentence overview of the audit scope, the overall security postu
 
 **Severity rating scale:**
 
-| Severity      | Criteria |
-|---------------|----------|
+| Severity      | Criteria                                                                   |
+| ------------- | -------------------------------------------------------------------------- |
 | Critical      | Direct fund loss or theft possible; exploitable without special conditions |
-| High          | Significant fund loss or access control bypass under realistic conditions |
-| Medium        | Partial fund loss, griefing, or logic error with limited impact |
-| Low           | Best-practice deviation; no direct fund impact |
-| Informational | Code quality, documentation, or gas optimisation suggestion |
+| High          | Significant fund loss or access control bypass under realistic conditions  |
+| Medium        | Partial fund loss, griefing, or logic error with limited impact            |
+| Low           | Best-practice deviation; no direct fund impact                             |
+| Informational | Code quality, documentation, or gas optimisation suggestion                |
 
 ---
 
 ## 4. Findings Table
 
-| ID           | Title | Severity | Affected Function | Status |
-|--------------|-------|----------|-------------------|--------|
-| FINDING-001  | [Title] | Critical | `[function_name]` | Open |
-| FINDING-002  | [Title] | High | `[function_name]` | Open |
-| FINDING-003  | [Title] | Medium | `[function_name]` | Open |
-| FINDING-004  | [Title] | Low | `[function_name]` | Open |
-| FINDING-005  | [Title] | Informational | `[function_name]` | Open |
+| ID          | Title   | Severity      | Affected Function | Status |
+| ----------- | ------- | ------------- | ----------------- | ------ |
+| FINDING-001 | [Title] | Critical      | `[function_name]` | Open   |
+| FINDING-002 | [Title] | High          | `[function_name]` | Open   |
+| FINDING-003 | [Title] | Medium        | `[function_name]` | Open   |
+| FINDING-004 | [Title] | Low           | `[function_name]` | Open   |
+| FINDING-005 | [Title] | Informational | `[function_name]` | Open   |
 
 > Add or remove rows as needed. Keep IDs sequential and unique across the entire report.
 
@@ -254,21 +254,21 @@ fn poc_finding_002() {
 
 Track the resolution of each finding after the initial report is delivered.
 
-| ID           | Severity      | Status        | Resolution commit / PR | Notes |
-|--------------|---------------|---------------|------------------------|-------|
-| FINDING-001  | Critical      | Open          | —                      |       |
-| FINDING-002  | High          | Open          | —                      |       |
-| FINDING-003  | Medium        | Open          | —                      |       |
-| FINDING-004  | Low           | Open          | —                      |       |
-| FINDING-005  | Informational | Open          | —                      |       |
+| ID          | Severity      | Status | Resolution commit / PR | Notes |
+| ----------- | ------------- | ------ | ---------------------- | ----- |
+| FINDING-001 | Critical      | Open   | —                      |       |
+| FINDING-002 | High          | Open   | —                      |       |
+| FINDING-003 | Medium        | Open   | —                      |       |
+| FINDING-004 | Low           | Open   | —                      |       |
+| FINDING-005 | Informational | Open   | —                      |       |
 
 **Status definitions:**
 
-| Status        | Meaning |
-|---------------|---------|
-| Open          | Finding has been reported; no fix has been submitted yet |
-| In Progress   | A fix is being developed or reviewed |
-| Resolved      | Fix has been merged and verified by the auditor |
+| Status        | Meaning                                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| Open          | Finding has been reported; no fix has been submitted yet                                              |
+| In Progress   | A fix is being developed or reviewed                                                                  |
+| Resolved      | Fix has been merged and verified by the auditor                                                       |
 | Accepted Risk | The project team has acknowledged the finding and chosen not to fix it, with documented justification |
 
 **Re-audit note:** After all Critical and High findings reach Resolved or Accepted Risk status, the lead auditor should perform a targeted re-review of the affected functions and update this table accordingly.
@@ -285,10 +285,10 @@ By signing below, the lead auditor confirms that:
 - Test coverage meets the minimum threshold defined in `docs/security/testing-requirements.md`.
 - The security checklist at `docs/security/security-checklist-template.md` was completed for the audited scope.
 
-| Field              | Value |
-|--------------------|-------|
-| Lead auditor name  | [Full Name] |
-| Organisation       | [Organisation Name] |
-| Date               | YYYY-MM-DD |
-| Report version     | 1.0 |
-| Audited commit     | `[full-40-char-sha]` |
+| Field             | Value                |
+| ----------------- | -------------------- |
+| Lead auditor name | [Full Name]          |
+| Organisation      | [Organisation Name]  |
+| Date              | YYYY-MM-DD           |
+| Report version    | 1.0                  |
+| Audited commit    | `[full-40-char-sha]` |

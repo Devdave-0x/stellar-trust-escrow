@@ -143,7 +143,7 @@ class StellarClient {
         const result = await Promise.race([
           server.getLatestLedger(),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Health check timeout')), QUERY_TIMEOUT)
+            setTimeout(() => reject(new Error('Health check timeout')), QUERY_TIMEOUT),
           ),
         ]);
         const latency = Date.now() - startTime;
@@ -203,7 +203,7 @@ class StellarClient {
         const result = await Promise.race([
           queryFn(server),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Query timeout')), QUERY_TIMEOUT)
+            setTimeout(() => reject(new Error('Query timeout')), QUERY_TIMEOUT),
           ),
         ]);
 

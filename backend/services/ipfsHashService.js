@@ -70,7 +70,7 @@ export function merkleRoot(leaves) {
  * @returns {{ hashes: string[], root: string }}
  */
 export function hashFiles(buffers) {
-  const hashes = buffers.map(b => hashFile(b).hex);
+  const hashes = buffers.map((b) => hashFile(b).hex);
   const root = merkleRoot(hashes);
   return { hashes, root };
 }
@@ -99,7 +99,7 @@ export function verifyFiles(buffers, storedHashes, storedRoot) {
     return { valid: false, fileResults: [], rootMatch: false };
   }
   const fileResults = buffers.map((b, i) => verifyFile(b, storedHashes[i]));
-  const recomputedRoot = merkleRoot(fileResults.map((ok, i) => ok ? storedHashes[i] : 'invalid'));
+  const recomputedRoot = merkleRoot(fileResults.map((ok, i) => (ok ? storedHashes[i] : 'invalid')));
   const rootMatch = recomputedRoot === storedRoot;
   return { valid: fileResults.every(Boolean) && rootMatch, fileResults, rootMatch };
 }

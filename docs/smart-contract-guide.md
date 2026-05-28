@@ -42,6 +42,7 @@ bash scripts/test-contract.sh --build
 ```
 
 The release profile is configured in `Cargo.toml` with:
+
 - `opt-level = "z"` — optimize for smallest binary size
 - `lto = true` — link-time optimization across crates
 - `codegen-units = 1` — single codegen unit for maximum optimization

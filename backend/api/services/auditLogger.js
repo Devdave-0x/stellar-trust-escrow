@@ -27,11 +27,11 @@ const logger = createModuleLogger('auditLogger');
 // ── Action constants ──────────────────────────────────────────────────────────
 
 export const ArbitratorAction = {
-  DISPUTE_ASSIGNED:     'DISPUTE_ASSIGNED',
-  EVIDENCE_VIEWED:      'EVIDENCE_VIEWED',
-  VOTE_CAST:            'VOTE_CAST',
+  DISPUTE_ASSIGNED: 'DISPUTE_ASSIGNED',
+  EVIDENCE_VIEWED: 'EVIDENCE_VIEWED',
+  VOTE_CAST: 'VOTE_CAST',
   COMMUNICATION_LOGGED: 'COMMUNICATION_LOGGED',
-  RESOLUTION_ISSUED:    'RESOLUTION_ISSUED',
+  RESOLUTION_ISSUED: 'RESOLUTION_ISSUED',
 };
 
 // ── Hash chain helpers ────────────────────────────────────────────────────────
@@ -53,9 +53,7 @@ function computeHash(prevHash, entry) {
     entry.action,
     entry.actor,
     entry.resourceId ?? '',
-    entry.timestamp instanceof Date
-      ? entry.timestamp.toISOString()
-      : String(entry.timestamp),
+    entry.timestamp instanceof Date ? entry.timestamp.toISOString() : String(entry.timestamp),
     JSON.stringify(entry.metadata ?? {}),
   ].join('|');
 
@@ -113,35 +111,39 @@ export async function logArbitratorAction(entry) {
       // Create with placeholder hash
       const created = await tx.arbitratorAuditLog.create({
         data: {
-          action:     entry.action,
-          actor:      entry.actor,
+          action: entry.action,
+          actor: entry.actor,
           resourceId: entry.resourceId ?? null,
-          metadata:   entry.metadata   ?? undefined,
-          ipAddress:  entry.ipAddress  ?? null,
+          metadata: entry.metadata ?? undefined,
+          ipAddress: entry.ipAddress ?? null,
           timestamp,
-          prevHash:   chainPrev,
-          hash:       'pending', // replaced below
+          prevHash: chainPrev,
+          hash: 'pending', // replaced below
         },
       });
 
       const hash = computeHash(chainPrev, {
-        id:         created.id,
-        action:     created.action,
-        actor:      created.actor,
+        id: created.id,
+        action: created.action,
+        actor: created.actor,
         resourceId: created.resourceId,
-        timestamp:  created.timestamp,
-        metadata:   created.metadata,
+        timestamp: created.timestamp,
+        metadata: created.metadata,
       });
 
       return tx.arbitratorAuditLog.update({
         where: { id: created.id },
-        data:  { hash },
+        data: { hash },
       });
     });
 
     return record;
   } catch (err) {
-    logger.error({ message: 'arbitrator_audit_write_failed', error: err.message, stack: err.stack });
+    logger.error({
+      message: 'arbitrator_audit_write_failed',
+      error: err.message,
+      stack: err.stack,
+    });
     return null;
   }
 }
@@ -168,30 +170,30 @@ export async function validateChain() {
     // Verify prevHash linkage
     if (entry.prevHash !== prevHash) {
       firstViolation = {
-        id:       entry.id,
-        reason:   'prevHash_mismatch',
+        id: entry.id,
+        reason: 'prevHash_mismatch',
         expected: prevHash,
-        actual:   entry.prevHash,
+        actual: entry.prevHash,
       };
       break;
     }
 
     // Recompute and verify hash
     const expected = computeHash(prevHash, {
-      id:         entry.id,
-      action:     entry.action,
-      actor:      entry.actor,
+      id: entry.id,
+      action: entry.action,
+      actor: entry.actor,
       resourceId: entry.resourceId,
-      timestamp:  entry.timestamp,
-      metadata:   entry.metadata,
+      timestamp: entry.timestamp,
+      metadata: entry.metadata,
     });
 
     if (expected !== entry.hash) {
       firstViolation = {
-        id:       entry.id,
-        reason:   'hash_mismatch',
+        id: entry.id,
+        reason: 'hash_mismatch',
         expected,
-        actual:   entry.hash,
+        actual: entry.hash,
       };
       break;
     }
@@ -200,8 +202,8 @@ export async function validateChain() {
   }
 
   return {
-    valid:          firstViolation === null,
-    checkedCount:   entries.length,
+    valid: firstViolation === null,
+    checkedCount: entries.length,
     firstViolation,
   };
 }
@@ -222,18 +224,18 @@ export async function validateChain() {
  * @returns {Promise<{ data, total, page, limit, pages }>}
  */
 export async function queryLogs(filters = {}) {
-  const page  = Math.max(1, parseInt(filters.page)  || 1);
+  const page = Math.max(1, parseInt(filters.page) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(filters.limit) || 50));
-  const skip  = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
   const where = {};
-  if (filters.actor)      where.actor      = { contains: filters.actor, mode: 'insensitive' };
-  if (filters.action)     where.action     = filters.action;
+  if (filters.actor) where.actor = { contains: filters.actor, mode: 'insensitive' };
+  if (filters.action) where.action = filters.action;
   if (filters.resourceId) where.resourceId = { contains: filters.resourceId, mode: 'insensitive' };
   if (filters.from || filters.to) {
     where.timestamp = {};
     if (filters.from) where.timestamp.gte = new Date(filters.from);
-    if (filters.to)   where.timestamp.lte = new Date(filters.to);
+    if (filters.to) where.timestamp.lte = new Date(filters.to);
   }
 
   const [data, total] = await prisma.$transaction([

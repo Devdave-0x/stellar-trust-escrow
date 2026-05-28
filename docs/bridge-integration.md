@@ -50,10 +50,10 @@ pub enum BridgeProtocol {
 }
 ```
 
-| Variant | Description |
-|---------|-------------|
-| `Wormhole` | Token bridged via the Wormhole protocol. The contract calls `WormholeBridgeInterface::is_wrapped_asset` to verify the token on-chain before registration. |
-| `Allbridge` | Token bridged via Allbridge Core. Verification is performed off-chain; the admin registers the token manually. |
+| Variant     | Description                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Wormhole`  | Token bridged via the Wormhole protocol. The contract calls `WormholeBridgeInterface::is_wrapped_asset` to verify the token on-chain before registration. |
+| `Allbridge` | Token bridged via Allbridge Core. Verification is performed off-chain; the admin registers the token manually.                                            |
 
 ### WrappedTokenInfo
 
@@ -67,13 +67,13 @@ pub struct WrappedTokenInfo {
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `stellar_address` | `Address` | The SAC address callers pass as `token` in `create_escrow`. |
-| `origin_chain` | `u16` | Wormhole chain ID (2 = Ethereum, 4 = BSC, 5 = Polygon, 6 = Avalanche). |
-| `origin_address` | `BytesN<32>` | 32-byte zero-padded EVM address of the original token contract. |
-| `bridge` | `BridgeProtocol` | `Wormhole` or `Allbridge`. |
-| `is_approved` | `bool` | Admin approval flag. Set to `true` by `register_wrapped_token`. Must be `true` before `validate_escrow_token` will accept the token. |
+| Field             | Type             | Description                                                                                                                          |
+| ----------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `stellar_address` | `Address`        | The SAC address callers pass as `token` in `create_escrow`.                                                                          |
+| `origin_chain`    | `u16`            | Wormhole chain ID (2 = Ethereum, 4 = BSC, 5 = Polygon, 6 = Avalanche).                                                               |
+| `origin_address`  | `BytesN<32>`     | 32-byte zero-padded EVM address of the original token contract.                                                                      |
+| `bridge`          | `BridgeProtocol` | `Wormhole` or `Allbridge`.                                                                                                           |
+| `is_approved`     | `bool`           | Admin approval flag. Set to `true` by `register_wrapped_token`. Must be `true` before `validate_escrow_token` will accept the token. |
 
 ### BridgeConfirmation
 
@@ -86,20 +86,20 @@ pub struct BridgeConfirmation {
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `token` | The SAC address this record belongs to. |
-| `confirmations` | Number of source-chain block confirmations observed so far. |
-| `is_finalized` | `true` when `confirmations >= MIN_BRIDGE_CONFIRMATIONS`. Set automatically by `update_bridge_confirmation`. |
-| `last_updated` | Ledger timestamp of the last `update_bridge_confirmation` call. |
+| Field           | Description                                                                                                 |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `token`         | The SAC address this record belongs to.                                                                     |
+| `confirmations` | Number of source-chain block confirmations observed so far.                                                 |
+| `is_finalized`  | `true` when `confirmations >= MIN_BRIDGE_CONFIRMATIONS`. Set automatically by `update_bridge_confirmation`. |
+| `last_updated`  | Ledger timestamp of the last `update_bridge_confirmation` call.                                             |
 
 ---
 
 ## Constants
 
-| Constant | Value | File | Meaning |
-|----------|-------|------|---------|
-| `MIN_BRIDGE_CONFIRMATIONS` | `15` | `bridge.rs` | Minimum source-chain block confirmations required before a bridged token is considered final and safe to use in an escrow. |
+| Constant                   | Value | File        | Meaning                                                                                                                    |
+| -------------------------- | ----- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `MIN_BRIDGE_CONFIRMATIONS` | `15`  | `bridge.rs` | Minimum source-chain block confirmations required before a bridged token is considered final and safe to use in an escrow. |
 
 15 confirmations provides strong probabilistic finality on Ethereum
 (approximately 3 minutes at 12 s/block) and is even safer on faster
@@ -290,12 +290,12 @@ create_escrow with this token now succeeds
 
 `BridgeError` is returned as `EscrowError` code **54**.
 
-| Cause | Resolution |
-|-------|-----------|
-| `get_bridge_confirmation` called for an unregistered token | Call `register_wrapped_token` first, then `update_bridge_confirmation`. |
-| `create_escrow` called before `is_finalized = true` | Wait for the relayer to submit enough confirmations, or call `update_bridge_confirmation` manually with the current count. |
+| Cause                                                                                           | Resolution                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_bridge_confirmation` called for an unregistered token                                      | Call `register_wrapped_token` first, then `update_bridge_confirmation`.                                                                                  |
+| `create_escrow` called before `is_finalized = true`                                             | Wait for the relayer to submit enough confirmations, or call `update_bridge_confirmation` manually with the current count.                               |
 | `register_wrapped_token` with `BridgeProtocol::Wormhole` but `is_wrapped_asset` returns `false` | Verify `stellar_address` is the correct SAC for the Wormhole-wrapped token. Check that `set_wormhole_bridge` was called with the correct bridge address. |
-| `set_wormhole_bridge` not called before `register_wrapped_token` | Call `set_wormhole_bridge` with the Wormhole token bridge SAC address first. |
+| `set_wormhole_bridge` not called before `register_wrapped_token`                                | Call `set_wormhole_bridge` with the Wormhole token bridge SAC address first.                                                                             |
 
 ---
 
@@ -381,16 +381,16 @@ soroban contract invoke \
 
 ## Common Wormhole Chain IDs
 
-| Chain | Wormhole ID |
-|-------|-------------|
-| Ethereum | 2 |
-| BNB Smart Chain | 4 |
-| Polygon | 5 |
-| Avalanche | 6 |
-| Fantom | 10 |
-| Celo | 14 |
-| Arbitrum | 23 |
-| Optimism | 24 |
-| Base | 30 |
+| Chain           | Wormhole ID |
+| --------------- | ----------- |
+| Ethereum        | 2           |
+| BNB Smart Chain | 4           |
+| Polygon         | 5           |
+| Avalanche       | 6           |
+| Fantom          | 10          |
+| Celo            | 14          |
+| Arbitrum        | 23          |
+| Optimism        | 24          |
+| Base            | 30          |
 
 Full list: https://docs.wormhole.com/wormhole/reference/constants

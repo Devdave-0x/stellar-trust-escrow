@@ -120,12 +120,8 @@ describe('tenantController', () => {
 
     prismaMock.tenant.findFirst.mockResolvedValue(tenant);
     prismaMock.user.count.mockResolvedValue(2);
-    prismaMock.escrow.count
-      .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(3);
-    prismaMock.dispute.count
-      .mockResolvedValueOnce(4)
-      .mockResolvedValueOnce(1);
+    prismaMock.escrow.count.mockResolvedValueOnce(5).mockResolvedValueOnce(3);
+    prismaMock.dispute.count.mockResolvedValueOnce(4).mockResolvedValueOnce(1);
     prismaMock.payment.count.mockResolvedValue(7);
     prismaMock.contractEvent.count.mockResolvedValue(9);
     prismaMock.kycVerification.count.mockResolvedValue(2);

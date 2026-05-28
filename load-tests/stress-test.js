@@ -2,22 +2,22 @@
 
 /**
  * Stress Testing Suite
- * 
+ *
  * Simulates high transaction volume with hundreds of concurrent users
  * performing realistic actions: viewing escrows, completing milestones,
  * uploading evidence, and managing disputes.
- * 
+ *
  * This suite is designed to:
  * - Identify database connection pool exhaustion
  * - Detect memory leaks under sustained load
  * - Measure system degradation over extended periods
  * - Validate rate limiting and circuit breaker behavior
  * - Test concurrent write operations
- * 
+ *
  * Usage:
  *   node load-tests/stress-test.js
  *   npm run loadtest:stress (if added to package.json)
- * 
+ *
  * Environment Variables:
  *   STRESS_TARGET_URL - Target URL (default: local server)
  *   STRESS_DURATION - Test duration in seconds (default: 300)
@@ -200,14 +200,14 @@ const STRESS_THRESHOLDS = {
  */
 function captureSystemMetrics() {
   try {
-    const cpu = execSync(
-      "top -bn1 | grep 'Cpu(s)' | awk '{print $2 + $4}'",
-      { encoding: 'utf8', timeout: 5000 }
-    ).trim();
-    const mem = execSync(
-      "free -m | awk '/Mem:/ {print $3}'",
-      { encoding: 'utf8', timeout: 5000 }
-    ).trim();
+    const cpu = execSync("top -bn1 | grep 'Cpu(s)' | awk '{print $2 + $4}'", {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+    const mem = execSync("free -m | awk '/Mem:/ {print $3}'", {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
     return {
       cpuPercent: parseFloat(cpu) || 0,
       memoryMb: parseFloat(mem) || 0,
@@ -423,14 +423,19 @@ function evaluateStressResults(results) {
  */
 function generateStressReport(results, alerts, summary) {
   const alertsHtml = alerts.length
-    ? alerts.map((a) =>
-        `<div class="alert alert-${a.severity}">
+    ? alerts
+        .map(
+          (a) =>
+            `<div class="alert alert-${a.severity}">
           <strong>${a.severity.toUpperCase()}</strong>: ${a.message}
-        </div>`
-      ).join('\n')
+        </div>`,
+        )
+        .join('\n')
     : '<div class="alert alert-ok">✅ No alerts — all metrics within stress thresholds</div>';
 
-  const scenarioCards = results.map((result) => `
+  const scenarioCards = results
+    .map(
+      (result) => `
     <div class="card">
       <h3>${result.title}</h3>
       <p class="description">${result.description}</p>
@@ -473,7 +478,9 @@ function generateStressReport(results, alerts, summary) {
         </div>
       </div>
     </div>
-  `).join('\n');
+  `,
+    )
+    .join('\n');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -625,7 +632,7 @@ async function main() {
         ...dbPoolMetricsAfter,
         poolUtilizationPercent: Math.max(
           dbPoolMetricsBefore.poolUtilizationPercent,
-          dbPoolMetricsAfter.poolUtilizationPercent
+          dbPoolMetricsAfter.poolUtilizationPercent,
         ),
       };
 

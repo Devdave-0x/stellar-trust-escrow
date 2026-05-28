@@ -96,7 +96,9 @@ export default function ExplorerScreen() {
         data={escrows}
         keyExtractor={(e: Escrow) => String(e.id)}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#6366f1" />}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#6366f1" />
+        }
         renderItem={renderItem}
         ListEmptyComponent={
           !isLoading ? (
@@ -121,7 +123,14 @@ const styles = StyleSheet.create({
     color: '#f9fafb',
   },
   chips: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, flexWrap: 'wrap', marginBottom: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: '#1f2937', borderWidth: 1, borderColor: '#374151' },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#1f2937',
+    borderWidth: 1,
+    borderColor: '#374151',
+  },
   chipActive: { backgroundColor: '#4338ca', borderColor: '#6366f1' },
   chipText: { fontSize: 12, color: '#9ca3af' },
   chipTextActive: { color: '#fff' },

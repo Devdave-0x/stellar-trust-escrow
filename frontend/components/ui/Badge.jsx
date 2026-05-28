@@ -76,7 +76,11 @@ export default function Badge({ status, variant, size = 'md', children }) {
       aria-label={`Status: ${label}`}
       className={`inline-flex items-center gap-1 font-medium border rounded-full ${sizeClass} ${styles}`}
     >
-      {icon && <span aria-hidden="true" className="text-[10px]">{icon}</span>}
+      {icon && (
+        <span aria-hidden="true" className="text-[10px]">
+          {icon}
+        </span>
+      )}
       {label}
     </span>
   );

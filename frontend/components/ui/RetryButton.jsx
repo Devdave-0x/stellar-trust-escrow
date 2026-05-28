@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 
 export default function RetryButton({ onRetry, children }) {
   const [loading, setLoading] = useState(false);
@@ -8,7 +8,7 @@ export default function RetryButton({ onRetry, children }) {
     try {
       await onRetry();
     } catch (err) {
-      console.error("Retry failed:", err);
+      console.error('Retry failed:', err);
     } finally {
       setLoading(false);
     }
@@ -20,7 +20,7 @@ export default function RetryButton({ onRetry, children }) {
       disabled={loading}
       className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
     >
-      {loading ? "Retrying..." : children || "Retry"}
+      {loading ? 'Retrying...' : children || 'Retry'}
     </button>
   );
 }

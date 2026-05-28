@@ -14,8 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-const HORIZON_URL =
-  process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 
 const OPERATION_ICONS = {
   escrow_creation: FileText,
@@ -105,9 +104,10 @@ function getStatusLabel(status) {
 
 function stellarExpertLink(operationId) {
   const network = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
-  const base = network === 'mainnet'
-    ? 'https://stellar.expert/explorer/public'
-    : 'https://stellar.expert/explorer/testnet';
+  const base =
+    network === 'mainnet'
+      ? 'https://stellar.expert/explorer/public'
+      : 'https://stellar.expert/explorer/testnet';
   return `${base}/operation/${operationId}`;
 }
 
@@ -122,73 +122,72 @@ export default function WalletLedger() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const sentinelRef = useRef(null);
 
-  const fetchOperations = useCallback(async (pageCursor = null) => {
-    if (!address) return;
+  const fetchOperations = useCallback(
+    async (pageCursor = null) => {
+      if (!address) return;
 
-    try {
-      if (!pageCursor) {
-        setIsLoading(true);
-      } else {
-        setIsLoadingMore(true);
-      }
-      setError(null);
-
-      const params = new URLSearchParams({
-        limit: '20',
-        order: 'desc',
-      });
-      if (pageCursor) params.set('cursor', pageCursor);
-
-      const res = await fetch(
-        `${HORIZON_URL}/accounts/${address}/operations?${params}`,
-      );
-      if (!res.ok) throw new Error(`Horizon API error: ${res.status}`);
-
-      const data = await res.json();
-
-      const parsed = (data._embedded?.records || []).map((op) => ({
-        id: op.id,
-        type: classifyOperation(op),
-        rawType: op.type,
-        date: op.created_at,
-        tokenValue: formatTokenValue(op),
-        status: getStatus(op),
-        blockNumber: op.transaction_hash ? op.transaction_hash.slice(0, 16) + '…' : '—',
-        baseFee: op.transaction?.fee_charged
-          ? `${(parseInt(op.transaction.fee_charged) / 1e7).toFixed(2)} XLM`
-          : '—',
-        transactionHash: op.transaction_hash,
-        operationId: op.id,
-        amount: op.amount,
-        assetType: op.asset_type,
-        from: op.from,
-        to: op.to,
-        name: op.name,
-        value: op.value,
-      }));
-
-      setOperations((prev) =>
-        pageCursor ? [...prev, ...parsed] : parsed,
-      );
-
-      if (data._embedded?.records.length < 20) {
-        setHasMore(false);
-      } else {
-        const nextLink = data._links?.next?.href;
-        if (nextLink) {
-          const nextCursor = new URL(nextLink).searchParams.get('cursor');
-          setCursor(nextCursor);
+      try {
+        if (!pageCursor) {
+          setIsLoading(true);
         } else {
-          setHasMore(false);
+          setIsLoadingMore(true);
         }
+        setError(null);
+
+        const params = new URLSearchParams({
+          limit: '20',
+          order: 'desc',
+        });
+        if (pageCursor) params.set('cursor', pageCursor);
+
+        const res = await fetch(`${HORIZON_URL}/accounts/${address}/operations?${params}`);
+        if (!res.ok) throw new Error(`Horizon API error: ${res.status}`);
+
+        const data = await res.json();
+
+        const parsed = (data._embedded?.records || []).map((op) => ({
+          id: op.id,
+          type: classifyOperation(op),
+          rawType: op.type,
+          date: op.created_at,
+          tokenValue: formatTokenValue(op),
+          status: getStatus(op),
+          blockNumber: op.transaction_hash ? op.transaction_hash.slice(0, 16) + '…' : '—',
+          baseFee: op.transaction?.fee_charged
+            ? `${(parseInt(op.transaction.fee_charged) / 1e7).toFixed(2)} XLM`
+            : '—',
+          transactionHash: op.transaction_hash,
+          operationId: op.id,
+          amount: op.amount,
+          assetType: op.asset_type,
+          from: op.from,
+          to: op.to,
+          name: op.name,
+          value: op.value,
+        }));
+
+        setOperations((prev) => (pageCursor ? [...prev, ...parsed] : parsed));
+
+        if (data._embedded?.records.length < 20) {
+          setHasMore(false);
+        } else {
+          const nextLink = data._links?.next?.href;
+          if (nextLink) {
+            const nextCursor = new URL(nextLink).searchParams.get('cursor');
+            setCursor(nextCursor);
+          } else {
+            setHasMore(false);
+          }
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+        setIsLoadingMore(false);
       }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  }, [address]);
+    },
+    [address],
+  );
 
   useEffect(() => {
     if (isConnected && address) {
@@ -235,11 +234,7 @@ export default function WalletLedger() {
   }
 
   return (
-    <div
-      className="space-y-4"
-      role="region"
-      aria-label="Wallet Transaction Ledger"
-    >
+    <div className="space-y-4" role="region" aria-label="Wallet Transaction Ledger">
       <h2 className="text-lg font-semibold text-white">Transaction History</h2>
 
       {error && (
@@ -384,16 +379,12 @@ export default function WalletLedger() {
           aria-label="Loading more transactions"
           role="status"
         >
-          {isLoadingMore && (
-            <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
-          )}
+          {isLoadingMore && <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />}
         </div>
       )}
 
       {!hasMore && operations.length > 0 && (
-        <p className="text-center text-gray-600 text-sm py-4">
-          All transactions loaded.
-        </p>
+        <p className="text-center text-gray-600 text-sm py-4">All transactions loaded.</p>
       )}
     </div>
   );

@@ -29,20 +29,33 @@ export function injectDbDisconnect(prisma, durationMs = 5_000) {
     meta: { chaos: true },
   });
 
-  prisma.$queryRaw = async () => { throw err; };
-  prisma.$executeRaw = async () => { throw err; };
+  prisma.$queryRaw = async () => {
+    throw err;
+  };
+  prisma.$executeRaw = async () => {
+    throw err;
+  };
 
   // Also patch findMany / findUnique / create / update / delete on all models
-  const modelNames = Object.keys(prisma).filter(
-    (k) => !k.startsWith('$') && !k.startsWith('_'),
-  );
+  const modelNames = Object.keys(prisma).filter((k) => !k.startsWith('$') && !k.startsWith('_'));
   const origModelMethods = {};
   for (const model of modelNames) {
     origModelMethods[model] = {};
-    for (const method of ['findMany', 'findUnique', 'findFirst', 'create', 'update', 'delete', 'count', 'upsert']) {
+    for (const method of [
+      'findMany',
+      'findUnique',
+      'findFirst',
+      'create',
+      'update',
+      'delete',
+      'count',
+      'upsert',
+    ]) {
       if (typeof prisma[model]?.[method] === 'function') {
         origModelMethods[model][method] = prisma[model][method].bind(prisma[model]);
-        prisma[model][method] = async () => { throw err; };
+        prisma[model][method] = async () => {
+          throw err;
+        };
       }
     }
   }
@@ -78,8 +91,7 @@ export function injectRedisTimeout(redisClient, lagMs = 3_000, durationMs = 5_00
   const origGet = redisClient.get.bind(redisClient);
   const origSet = redisClient.set.bind(redisClient);
 
-  redisClient.get = (_key) =>
-    new Promise((resolve) => setTimeout(() => resolve(null), lagMs));
+  redisClient.get = (_key) => new Promise((resolve) => setTimeout(() => resolve(null), lagMs));
   redisClient.set = (_key, _val, _opts) =>
     new Promise((resolve) => setTimeout(() => resolve('OK'), lagMs));
 
@@ -137,9 +149,6 @@ export function injectRpcLag(rpcUrl, lagMs = 4_000, durationMs = 8_000) {
  * @returns {Promise<[any, any]>} [firstResult, secondResult]
  */
 export async function injectDuplicateTransaction(submitFn, ...args) {
-  const [first, second] = await Promise.allSettled([
-    submitFn(...args),
-    submitFn(...args),
-  ]);
+  const [first, second] = await Promise.allSettled([submitFn(...args), submitFn(...args)]);
   return [first, second];
 }

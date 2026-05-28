@@ -2,7 +2,13 @@ import prisma from '../../lib/prisma.js';
 import { withTenantScopeBypassed } from '../../lib/tenantContext.js';
 
 function normalizeSlug(value) {
-  return value?.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-{2,}/g, '-') ?? '';
+  return (
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-{2,}/g, '-') ?? ''
+  );
 }
 
 function sanitizeTenant(tenant) {
@@ -73,7 +79,9 @@ const createTenant = async (req, res) => {
     res.status(201).json({ tenant: sanitizeTenant(tenant) });
   } catch (err) {
     const statusCode = err.code === 'P2002' ? 409 : 500;
-    res.status(statusCode).json({ error: statusCode === 409 ? 'Tenant already exists' : err.message });
+    res
+      .status(statusCode)
+      .json({ error: statusCode === 409 ? 'Tenant already exists' : err.message });
   }
 };
 
@@ -141,7 +149,9 @@ const updateTenant = async (req, res) => {
     res.json({ tenant: sanitizeTenant(tenant) });
   } catch (err) {
     const statusCode = err.code === 'P2002' ? 409 : 500;
-    res.status(statusCode).json({ error: statusCode === 409 ? 'Tenant slug already exists' : err.message });
+    res
+      .status(statusCode)
+      .json({ error: statusCode === 409 ? 'Tenant slug already exists' : err.message });
   }
 };
 

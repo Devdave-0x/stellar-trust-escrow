@@ -45,7 +45,10 @@ export async function listFlags() {
 /**
  * Create a new feature flag.
  */
-export async function createFlag({ key, isEnabled = false, percentage = 0, targetUsers = [], description = '' }, adminId) {
+export async function createFlag(
+  { key, isEnabled = false, percentage = 0, targetUsers = [], description = '' },
+  adminId,
+) {
   const flag = await prisma.featureFlag.create({
     data: { key, isEnabled, percentage, targetUsers, description },
   });

@@ -4,11 +4,11 @@ The sandbox runs Playwright tests against the frontend through Toxiproxy so UI f
 
 ## Network Constraints
 
-| Constraint | Value |
-|---|---|
-| Latency | 300ms plus 30ms jitter |
-| Drop simulation | 2% downstream timeout toxic |
-| Bandwidth | 48 KB/s, roughly 3G throughput |
+| Constraint      | Value                          |
+| --------------- | ------------------------------ |
+| Latency         | 300ms plus 30ms jitter         |
+| Drop simulation | 2% downstream timeout toxic    |
+| Bandwidth       | 48 KB/s, roughly 3G throughput |
 
 ## Run
 

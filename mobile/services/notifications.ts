@@ -60,8 +60,7 @@ export async function registerForPushNotifications(stellarAddress: string): Prom
     });
   }
 
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 
   const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
   storage.set(STORAGE_KEYS.PUSH_TOKEN, token);

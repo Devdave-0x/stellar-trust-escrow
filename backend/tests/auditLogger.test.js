@@ -115,8 +115,16 @@ describe('logArbitratorAction', () => {
   });
 
   it('produces different hashes for different entries', async () => {
-    await logArbitratorAction({ action: ArbitratorAction.DISPUTE_ASSIGNED, actor: 'GARB1', resourceId: 'd1' });
-    await logArbitratorAction({ action: ArbitratorAction.RESOLUTION_ISSUED, actor: 'GARB1', resourceId: 'd1' });
+    await logArbitratorAction({
+      action: ArbitratorAction.DISPUTE_ASSIGNED,
+      actor: 'GARB1',
+      resourceId: 'd1',
+    });
+    await logArbitratorAction({
+      action: ArbitratorAction.RESOLUTION_ISSUED,
+      actor: 'GARB1',
+      resourceId: 'd1',
+    });
 
     expect(mockStore[0].hash).not.toBe(mockStore[1].hash);
   });
@@ -134,7 +142,7 @@ describe('validateChain', () => {
 
   it('returns valid=true for a correctly chained log', async () => {
     await logArbitratorAction({ action: ArbitratorAction.DISPUTE_ASSIGNED, actor: 'GARB1' });
-    await logArbitratorAction({ action: ArbitratorAction.EVIDENCE_VIEWED,  actor: 'GARB1' });
+    await logArbitratorAction({ action: ArbitratorAction.EVIDENCE_VIEWED, actor: 'GARB1' });
     await logArbitratorAction({ action: ArbitratorAction.RESOLUTION_ISSUED, actor: 'GARB1' });
 
     const result = await validateChain();
@@ -157,7 +165,7 @@ describe('validateChain', () => {
 
   it('detects a tampered prevHash linkage', async () => {
     await logArbitratorAction({ action: ArbitratorAction.DISPUTE_ASSIGNED, actor: 'GARB1' });
-    await logArbitratorAction({ action: ArbitratorAction.EVIDENCE_VIEWED,  actor: 'GARB1' });
+    await logArbitratorAction({ action: ArbitratorAction.EVIDENCE_VIEWED, actor: 'GARB1' });
 
     // Break the chain link on the second entry
     mockStore[1].prevHash = 'badhash'.padEnd(64, '0');
@@ -171,9 +179,21 @@ describe('validateChain', () => {
 describe('queryLogs', () => {
   beforeEach(async () => {
     clearStore();
-    await logArbitratorAction({ action: ArbitratorAction.DISPUTE_ASSIGNED, actor: 'GARB1', resourceId: 'd1' });
-    await logArbitratorAction({ action: ArbitratorAction.EVIDENCE_VIEWED,  actor: 'GARB2', resourceId: 'd1' });
-    await logArbitratorAction({ action: ArbitratorAction.RESOLUTION_ISSUED, actor: 'GARB1', resourceId: 'd2' });
+    await logArbitratorAction({
+      action: ArbitratorAction.DISPUTE_ASSIGNED,
+      actor: 'GARB1',
+      resourceId: 'd1',
+    });
+    await logArbitratorAction({
+      action: ArbitratorAction.EVIDENCE_VIEWED,
+      actor: 'GARB2',
+      resourceId: 'd1',
+    });
+    await logArbitratorAction({
+      action: ArbitratorAction.RESOLUTION_ISSUED,
+      actor: 'GARB1',
+      resourceId: 'd2',
+    });
   });
 
   it('returns paginated results', async () => {

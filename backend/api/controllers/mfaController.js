@@ -26,7 +26,7 @@ export const getMfaStatus = async (req, res) => {
     res.json({
       mfaEnabled: methods.length > 0,
       mfaRequired,
-      methods: methods.map(m => ({
+      methods: methods.map((m) => ({
         id: m.id,
         type: m.type,
         name: m.name,
@@ -46,7 +46,7 @@ export const getMfaStatus = async (req, res) => {
 /**
  * POST /api/mfa/totp/setup
  * Initialize TOTP setup - generates secret and QR code
- * 
+ *
  * Body: { name?: string }
  */
 export const setupTOTP = async (req, res) => {
@@ -60,7 +60,7 @@ export const setupTOTP = async (req, res) => {
       userId,
       tenantId,
       userEmail,
-      name
+      name,
     );
 
     // Generate QR code as data URL
@@ -71,7 +71,8 @@ export const setupTOTP = async (req, res) => {
       qrCode: qrCodeDataUrl,
       otpauth,
       methodName,
-      message: 'Scan the QR code with your authenticator app, then verify with a code to complete setup.',
+      message:
+        'Scan the QR code with your authenticator app, then verify with a code to complete setup.',
     });
   } catch (error) {
     console.error('[TOTP Setup] Error:', error);
@@ -82,7 +83,7 @@ export const setupTOTP = async (req, res) => {
 /**
  * POST /api/mfa/totp/verify-setup
  * Complete TOTP setup by verifying a code
- * 
+ *
  * Body: { code: string }
  */
 export const verifyTOTPSetup = async (req, res) => {
@@ -103,22 +104,23 @@ export const verifyTOTPSetup = async (req, res) => {
       tenantId,
       code,
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     res.json({
       success: true,
       method: result.method,
       backupCodes: result.backupCodes,
-      message: 'TOTP authentication enabled successfully. Save your backup codes in a secure location.',
+      message:
+        'TOTP authentication enabled successfully. Save your backup codes in a secure location.',
     });
   } catch (error) {
     console.error('[TOTP Verify Setup] Error:', error);
-    
+
     if (error.message.includes('expired') || error.message.includes('not found')) {
       return res.status(400).json({ error: error.message });
     }
-    
+
     if (error.message.includes('Invalid')) {
       return res.status(400).json({ error: error.message });
     }
@@ -130,7 +132,7 @@ export const verifyTOTPSetup = async (req, res) => {
 /**
  * POST /api/mfa/totp/verify
  * Verify TOTP code for authentication
- * 
+ *
  * Body: { code: string }
  */
 export const verifyTOTP = async (req, res) => {
@@ -146,13 +148,7 @@ export const verifyTOTP = async (req, res) => {
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent');
 
-    const result = await mfaService.verifyTOTP(
-      userId,
-      tenantId,
-      code,
-      ipAddress,
-      userAgent
-    );
+    const result = await mfaService.verifyTOTP(userId, tenantId, code, ipAddress, userAgent);
 
     // Generate MFA token for subsequent requests
     const mfaToken = generateMfaToken(userId, tenantId, result.method);
@@ -164,21 +160,22 @@ export const verifyTOTP = async (req, res) => {
       expiresIn: '30m',
       ...(result.backupCodesRemaining !== undefined && {
         backupCodesRemaining: result.backupCodesRemaining,
-        warning: result.backupCodesRemaining < 3 
-          ? 'You are running low on backup codes. Consider regenerating them.'
-          : undefined,
+        warning:
+          result.backupCodesRemaining < 3
+            ? 'You are running low on backup codes. Consider regenerating them.'
+            : undefined,
       }),
     });
   } catch (error) {
     console.error('[TOTP Verify] Error:', error);
-    
+
     if (error.message.includes('locked')) {
-      return res.status(429).json({ 
+      return res.status(429).json({
         error: error.message,
         locked: true,
       });
     }
-    
+
     if (error.message.includes('not configured')) {
       return res.status(400).json({ error: error.message });
     }
@@ -196,7 +193,7 @@ export const verifyTOTP = async (req, res) => {
 /**
  * POST /api/mfa/webauthn/register-options
  * Generate WebAuthn registration options
- * 
+ *
  * Body: { name?: string }
  */
 export const getWebAuthnRegistrationOptions = async (req, res) => {
@@ -210,7 +207,7 @@ export const getWebAuthnRegistrationOptions = async (req, res) => {
       userId,
       tenantId,
       userEmail,
-      name
+      name,
     );
 
     res.json(options);
@@ -223,7 +220,7 @@ export const getWebAuthnRegistrationOptions = async (req, res) => {
 /**
  * POST /api/mfa/webauthn/register-verify
  * Verify WebAuthn registration response
- * 
+ *
  * Body: { response: RegistrationResponseJSON }
  */
 export const verifyWebAuthnRegistration = async (req, res) => {
@@ -244,7 +241,7 @@ export const verifyWebAuthnRegistration = async (req, res) => {
       tenantId,
       response,
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     res.json({
@@ -254,7 +251,7 @@ export const verifyWebAuthnRegistration = async (req, res) => {
     });
   } catch (error) {
     console.error('[WebAuthn Registration Verify] Error:', error);
-    
+
     if (error.message.includes('expired') || error.message.includes('not found')) {
       return res.status(400).json({ error: error.message });
     }
@@ -277,7 +274,7 @@ export const getWebAuthnAuthenticationOptions = async (req, res) => {
     res.json(options);
   } catch (error) {
     console.error('[WebAuthn Authentication Options] Error:', error);
-    
+
     if (error.message.includes('No WebAuthn')) {
       return res.status(400).json({ error: error.message });
     }
@@ -289,7 +286,7 @@ export const getWebAuthnAuthenticationOptions = async (req, res) => {
 /**
  * POST /api/mfa/webauthn/auth-verify
  * Verify WebAuthn authentication response
- * 
+ *
  * Body: { response: AuthenticationResponseJSON }
  */
 export const verifyWebAuthnAuthentication = async (req, res) => {
@@ -310,7 +307,7 @@ export const verifyWebAuthnAuthentication = async (req, res) => {
       tenantId,
       response,
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     // Generate MFA token for subsequent requests
@@ -324,14 +321,14 @@ export const verifyWebAuthnAuthentication = async (req, res) => {
     });
   } catch (error) {
     console.error('[WebAuthn Authentication Verify] Error:', error);
-    
+
     if (error.message.includes('locked')) {
-      return res.status(429).json({ 
+      return res.status(429).json({
         error: error.message,
         locked: true,
       });
     }
-    
+
     if (error.message.includes('expired') || error.message.includes('not found')) {
       return res.status(400).json({ error: error.message });
     }
@@ -378,7 +375,7 @@ export const removeMfaMethod = async (req, res) => {
     });
   } catch (error) {
     console.error('[Remove MFA Method] Error:', error);
-    
+
     if (error.message.includes('not found')) {
       return res.status(404).json({ error: error.message });
     }

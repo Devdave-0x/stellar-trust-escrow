@@ -23,7 +23,8 @@ export default function ProposalPage({ params }) {
     const mockProposal = {
       id: params.id,
       title: 'Increase Protocol Fee to 2%',
-      description: 'This proposal aims to increase the protocol fee from 1% to 2% to fund ecosystem development.',
+      description:
+        'This proposal aims to increase the protocol fee from 1% to 2% to fund ecosystem development.',
       createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
       endsAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
       totalVotingPower: 1000000,
@@ -232,9 +233,7 @@ export default function ProposalPage({ params }) {
               <p className="text-gray-400 mb-2">Your vote impact:</p>
               {simulatedVote ? (
                 <div aria-live="polite" aria-atomic="true">
-                  <p className="text-white font-mono">
-                    {simulatedVote.impact}% of total votes
-                  </p>
+                  <p className="text-white font-mono">{simulatedVote.impact}% of total votes</p>
                   <p className="text-gray-500 text-xs mt-1">
                     Voting {simulatedVote.type.toUpperCase()}
                   </p>
@@ -300,7 +299,8 @@ export default function ProposalPage({ params }) {
                 <div>
                   <p className="font-medium text-white">{comment.author}</p>
                   <p className="text-xs text-gray-500">
-                    {comment.timestamp.toLocaleDateString()} {comment.timestamp.toLocaleTimeString()}
+                    {comment.timestamp.toLocaleDateString()}{' '}
+                    {comment.timestamp.toLocaleTimeString()}
                   </p>
                 </div>
                 <div className="text-sm text-gray-400">👍 {comment.votes}</div>

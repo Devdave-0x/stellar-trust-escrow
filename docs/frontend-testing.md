@@ -30,6 +30,7 @@ npm run test:perf
 ## Testing State Hooks & Store
 
 **SWR Hooks** (mock `useSWR`):
+
 ```jsx
 import { renderHook } from '@testing-library/react';
 
@@ -42,12 +43,16 @@ test('loading/error/mutate', () => {
 ```
 
 **WebSocket Hooks** (mock `WebSocket` class):
+
 ```jsx
-global.WebSocket = class MockWebSocket { /* simulate open/close/message */ };
+global.WebSocket = class MockWebSocket {
+  /* simulate open/close/message */
+};
 const { result } = renderHook(() => useEscrowUpdates('123'));
 ```
 
 **Store** (custom `renderWithStore` wrapper):
+
 ```jsx
 // Persists to mock localStorage
 const { result } = renderWithStore(<ComponentUsingWalletStore />);
@@ -59,4 +64,3 @@ fireEvent.click(screen.getByRole('button', { name: /connect/ }));
 - Every pull request runs frontend lint, build, unit, integration, a11y, and coverage checks.
 - Playwright runs smoke, visual, and performance tests on Node 20 with browser artifacts uploaded on failure.
 - Visual baselines live beside the Playwright specs so regressions show up in code review.
-

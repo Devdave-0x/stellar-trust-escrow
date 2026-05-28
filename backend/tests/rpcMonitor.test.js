@@ -12,9 +12,9 @@ const makeMetric = () => ({ observe: jest.fn(), inc: jest.fn(), set: jest.fn() }
 jest.unstable_mockModule('prom-client', () => ({
   default: {
     Histogram: jest.fn(() => makeMetric()),
-    Counter:   jest.fn(() => makeMetric()),
-    Gauge:     jest.fn(() => makeMetric()),
-    Registry:  jest.fn(() => ({ setDefaultLabels: jest.fn(), registerMetric: jest.fn() })),
+    Counter: jest.fn(() => makeMetric()),
+    Gauge: jest.fn(() => makeMetric()),
+    Registry: jest.fn(() => ({ setDefaultLabels: jest.fn(), registerMetric: jest.fn() })),
     collectDefaultMetrics: jest.fn(),
   },
 }));
@@ -35,16 +35,24 @@ beforeEach(() => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeRpcResponse(sequence = 100, ok = true, latencyMs = 50) {
-  return jest.fn().mockImplementation(() =>
-    new Promise((resolve) =>
-      setTimeout(() => {
-        if (!ok) resolve({ ok: false, status: 503, statusText: 'Service Unavailable', text: async () => 'err' });
-        else resolve({
-          ok: true,
-          json: async () => ({ result: { sequence } }),
-        });
-      }, latencyMs),
-    ),
+  return jest.fn().mockImplementation(
+    () =>
+      new Promise((resolve) =>
+        setTimeout(() => {
+          if (!ok)
+            resolve({
+              ok: false,
+              status: 503,
+              statusText: 'Service Unavailable',
+              text: async () => 'err',
+            });
+          else
+            resolve({
+              ok: true,
+              json: async () => ({ result: { sequence } }),
+            });
+        }, latencyMs),
+      ),
   );
 }
 
@@ -80,17 +88,20 @@ describe('rpcMonitor', () => {
   describe('probe — latency threshold breach', () => {
     it('emits a Slack alert when latency exceeds threshold', async () => {
       process.env.RPC_MONITOR_ENDPOINTS = 'https://slow.example.com';
-      process.env.RPC_LATENCY_THRESHOLD_MS = '1';   // 1 ms — always breached
+      process.env.RPC_LATENCY_THRESHOLD_MS = '1'; // 1 ms — always breached
       process.env.SLACK_RPC_WEBHOOK = 'https://hooks.slack.com/test';
       process.env.PAGERDUTY_ROUTING_KEY = '';
 
       // First call: the RPC probe (slow)
-      fetchMock.mockImplementationOnce(() =>
-        new Promise((r) =>
-          setTimeout(() =>
-            r({ ok: true, json: async () => ({ result: { sequence: 1 } }) }),
-          50), // 50 ms > 1 ms threshold
-        ),
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise(
+            (r) =>
+              setTimeout(
+                () => r({ ok: true, json: async () => ({ result: { sequence: 1 } }) }),
+                50,
+              ), // 50 ms > 1 ms threshold
+          ),
       );
       // Second call: Slack webhook
       fetchMock.mockResolvedValueOnce({ ok: true });

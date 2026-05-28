@@ -47,15 +47,15 @@ pub struct GovConfig {
 }
 ```
 
-| Parameter | Unit | Description |
-|-----------|------|-------------|
-| `token` | Address | The governance token. Voting power = token balance at vote time. |
-| `proposal_threshold` | token base units | Minimum token balance required to create a proposal. |
-| `voting_period` | seconds | How long the vote is open after `vote_start`. Must be > 0. |
-| `voting_delay` | seconds | Delay between proposal creation and vote start. Allows token holders to prepare. |
-| `timelock_delay` | seconds | Delay between a passed vote and execution. Gives time to react to malicious proposals. |
-| `quorum_bps` | basis points | Minimum participation: `(votes_for + votes_against) >= total_supply_snapshot * quorum_bps / 10_000`. |
-| `approval_threshold_bps` | basis points | Minimum approval: `votes_for >= total_votes * approval_threshold_bps / 10_000`. |
+| Parameter                | Unit             | Description                                                                                          |
+| ------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| `token`                  | Address          | The governance token. Voting power = token balance at vote time.                                     |
+| `proposal_threshold`     | token base units | Minimum token balance required to create a proposal.                                                 |
+| `voting_period`          | seconds          | How long the vote is open after `vote_start`. Must be > 0.                                           |
+| `voting_delay`           | seconds          | Delay between proposal creation and vote start. Allows token holders to prepare.                     |
+| `timelock_delay`         | seconds          | Delay between a passed vote and execution. Gives time to react to malicious proposals.               |
+| `quorum_bps`             | basis points     | Minimum participation: `(votes_for + votes_against) >= total_supply_snapshot * quorum_bps / 10_000`. |
+| `approval_threshold_bps` | basis points     | Minimum approval: `votes_for >= total_votes * approval_threshold_bps / 10_000`.                      |
 
 Basis points: 100 bps = 1%, 10_000 bps = 100%.
 
@@ -197,22 +197,22 @@ A proposal passes only if **both** quorum and threshold are met.
 - Votes FOR: 30,000 | Votes AGAINST: 15,000 | Total: 45,000
 
 Quorum check: 45,000 >= 40,000 ✓
-Threshold check: 30,000 >= 45,000 * 51% = 22,950 ✓
+Threshold check: 30,000 >= 45,000 \* 51% = 22,950 ✓
 → **Proposal passes**
 
 ---
 
 ## ProposalStatus Transitions
 
-| From | To | Trigger | Who |
-|------|----|---------|-----|
-| *(none)* | `Active` | `create_proposal` | Proposer (≥ threshold) |
-| `Active` | `Queued` | `finalize_proposal` (quorum + threshold met) | Anyone |
-| `Active` | `Defeated` | `finalize_proposal` (quorum or threshold not met) | Anyone |
-| `Queued` | `Executed` | `execute_proposal` (after timelock) | Anyone |
-| `Active` | `Cancelled` | `cancel_proposal` | Proposer or Admin |
-| `Queued` | `Cancelled` | `cancel_proposal` | Proposer or Admin |
-| `Defeated` | `Cancelled` | `cancel_proposal` | Proposer or Admin |
+| From       | To          | Trigger                                           | Who                    |
+| ---------- | ----------- | ------------------------------------------------- | ---------------------- |
+| _(none)_   | `Active`    | `create_proposal`                                 | Proposer (≥ threshold) |
+| `Active`   | `Queued`    | `finalize_proposal` (quorum + threshold met)      | Anyone                 |
+| `Active`   | `Defeated`  | `finalize_proposal` (quorum or threshold not met) | Anyone                 |
+| `Queued`   | `Executed`  | `execute_proposal` (after timelock)               | Anyone                 |
+| `Active`   | `Cancelled` | `cancel_proposal`                                 | Proposer or Admin      |
+| `Queued`   | `Cancelled` | `cancel_proposal`                                 | Proposer or Admin      |
+| `Defeated` | `Cancelled` | `cancel_proposal`                                 | Proposer or Admin      |
 
 `Executed` is terminal — cannot be cancelled.
 
@@ -419,33 +419,33 @@ soroban contract invoke \
 
 ## Error Reference
 
-| Code | Name | Meaning |
-|------|------|---------|
-| 1 | `AlreadyInitialized` | `initialize` called twice. |
-| 2 | `NotInitialized` | Contract not initialized. |
-| 3 | `Unauthorized` | `cancel_proposal` called by non-proposer, non-admin. |
-| 4 | `AdminOnly` | `update_config` called by non-admin. |
-| 5 | `ProposalNotFound` | No proposal with this ID. |
-| 6 | `ProposalNotActive` | `cast_vote` or `finalize_proposal` on non-Active proposal. |
-| 7 | `ProposalNotPassed` | `execute_proposal` on non-Queued proposal. |
-| 8 | `ProposalAlreadyExecuted` | `cancel_proposal` on Executed proposal. |
-| 10 | `TimelockNotElapsed` | `execute_proposal` called before `executable_at`. |
-| 11 | `InvalidProposalType` | Payload type does not match `proposal_type`. |
-| 13 | `AlreadyVoted` | Voter has already cast a vote on this proposal. |
-| 14 | `VotingClosed` | `cast_vote` called after `vote_end`; or `finalize_proposal` called before `vote_end`. |
-| 15 | `VotingNotStarted` | `cast_vote` called before `vote_start`. |
-| 16 | `InsufficientVotingPower` | Proposer below threshold, or voter has zero balance. |
-| 20 | `InvalidDuration` | `voting_period` is 0. |
+| Code | Name                      | Meaning                                                                               |
+| ---- | ------------------------- | ------------------------------------------------------------------------------------- |
+| 1    | `AlreadyInitialized`      | `initialize` called twice.                                                            |
+| 2    | `NotInitialized`          | Contract not initialized.                                                             |
+| 3    | `Unauthorized`            | `cancel_proposal` called by non-proposer, non-admin.                                  |
+| 4    | `AdminOnly`               | `update_config` called by non-admin.                                                  |
+| 5    | `ProposalNotFound`        | No proposal with this ID.                                                             |
+| 6    | `ProposalNotActive`       | `cast_vote` or `finalize_proposal` on non-Active proposal.                            |
+| 7    | `ProposalNotPassed`       | `execute_proposal` on non-Queued proposal.                                            |
+| 8    | `ProposalAlreadyExecuted` | `cancel_proposal` on Executed proposal.                                               |
+| 10   | `TimelockNotElapsed`      | `execute_proposal` called before `executable_at`.                                     |
+| 11   | `InvalidProposalType`     | Payload type does not match `proposal_type`.                                          |
+| 13   | `AlreadyVoted`            | Voter has already cast a vote on this proposal.                                       |
+| 14   | `VotingClosed`            | `cast_vote` called after `vote_end`; or `finalize_proposal` called before `vote_end`. |
+| 15   | `VotingNotStarted`        | `cast_vote` called before `vote_start`.                                               |
+| 16   | `InsufficientVotingPower` | Proposer below threshold, or voter has zero balance.                                  |
+| 20   | `InvalidDuration`         | `voting_period` is 0.                                                                 |
 
 ---
 
 ## Recommended Testnet Configuration
 
-| Parameter | Recommended value | Rationale |
-|-----------|------------------|-----------|
-| `voting_delay` | `3600` (1 hour) | Gives token holders time to prepare. |
-| `voting_period` | `604800` (7 days) | Standard governance window. |
-| `timelock_delay` | `172800` (2 days) | Time to react to malicious proposals. |
-| `quorum_bps` | `400` (4%) | Low enough for early-stage participation. |
-| `approval_threshold_bps` | `5100` (51%) | Simple majority. |
-| `proposal_threshold` | 1% of total supply | Prevents spam while remaining accessible. |
+| Parameter                | Recommended value  | Rationale                                 |
+| ------------------------ | ------------------ | ----------------------------------------- |
+| `voting_delay`           | `3600` (1 hour)    | Gives token holders time to prepare.      |
+| `voting_period`          | `604800` (7 days)  | Standard governance window.               |
+| `timelock_delay`         | `172800` (2 days)  | Time to react to malicious proposals.     |
+| `quorum_bps`             | `400` (4%)         | Low enough for early-stage participation. |
+| `approval_threshold_bps` | `5100` (51%)       | Simple majority.                          |
+| `proposal_threshold`     | 1% of total supply | Prevents spam while remaining accessible. |

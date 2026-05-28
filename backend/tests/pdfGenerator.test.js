@@ -47,7 +47,11 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({
 jest.mock('fs', () => ({
   createWriteStream: jest.fn(() => {
     const { Writable } = require('stream');
-    return new Writable({ write(chunk, enc, cb) { cb(); } });
+    return new Writable({
+      write(chunk, enc, cb) {
+        cb();
+      },
+    });
   }),
   mkdirSync: jest.fn(),
 }));
@@ -70,12 +74,12 @@ jest.mock('../config/logger.js', () => ({
 
 const mockEscrow = {
   id: BigInt(1),
-  clientAddress:     'GCLIENT000000000000000000000000000000000000000000000000000',
+  clientAddress: 'GCLIENT000000000000000000000000000000000000000000000000000',
   freelancerAddress: 'GFREELANCER0000000000000000000000000000000000000000000000',
-  totalAmount:       '1000',
-  tokenAddress:      'GTOKEN00000000000000000000000000000000000000000000000000000',
-  deadline:          null,
-  milestones:        [{ title: 'Design', amount: '500', deadline: null }],
+  totalAmount: '1000',
+  tokenAddress: 'GTOKEN00000000000000000000000000000000000000000000000000000',
+  deadline: null,
+  milestones: [{ title: 'Design', amount: '500', deadline: null }],
 };
 
 const mockPdfRecord = { hash: null };
@@ -86,7 +90,10 @@ jest.mock('@prisma/client', () => ({
       findUniqueOrThrow: jest.fn(async () => mockEscrow),
     },
     escrowPdf: {
-      upsert:    jest.fn(async ({ create }) => { mockPdfRecord.hash = create.hash; return create; }),
+      upsert: jest.fn(async ({ create }) => {
+        mockPdfRecord.hash = create.hash;
+        return create;
+      }),
       findUnique: jest.fn(async () => mockPdfRecord),
     },
     escrowPdfSignature: {

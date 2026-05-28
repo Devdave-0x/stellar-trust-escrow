@@ -46,7 +46,10 @@ describe('EscrowCard', () => {
 
   it('links to the escrow detail page', () => {
     renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
-    expect(screen.getByRole('button', { name: /view details for escrow/i })).toHaveAttribute('href', '/escrow/1');
+    expect(screen.getByRole('button', { name: /view details for escrow/i })).toHaveAttribute(
+      'href',
+      '/escrow/1',
+    );
   });
 
   it('renders the status badge', () => {

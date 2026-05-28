@@ -88,12 +88,7 @@ export function buildCacheKey(req) {
  * @returns {import('express').RequestHandler}
  */
 export function cacheResponse(options = {}) {
-  const {
-    ttl = TTL.DEFAULT,
-    tags = [],
-    keyFn = buildCacheKey,
-    skip,
-  } = options;
+  const { ttl = TTL.DEFAULT, tags = [], keyFn = buildCacheKey, skip } = options;
 
   return async (req, res, next) => {
     // Only cache GET / HEAD requests
@@ -184,8 +179,7 @@ export function invalidateOn(options = {}) {
 // ── Convenience factories ─────────────────────────────────────────────────────
 
 /** Cache a list endpoint (short TTL, tagged with a collection name). */
-export const cacheList = (collection, ttl = TTL.LIST) =>
-  cacheResponse({ ttl, tags: [collection] });
+export const cacheList = (collection, ttl = TTL.LIST) => cacheResponse({ ttl, tags: [collection] });
 
 /** Cache a detail endpoint (medium TTL, tagged with item + collection). */
 export const cacheDetail = (collection, idFn, ttl = TTL.DETAIL) =>
@@ -197,8 +191,5 @@ export const cacheDetail = (collection, idFn, ttl = TTL.DETAIL) =>
 /** Invalidate a collection and optionally a specific item. */
 export const invalidateCollection = (collection, idFn = null) =>
   invalidateOn({
-    tags: (req) => [
-      collection,
-      ...(idFn ? [`${collection}:${idFn(req)}`] : []),
-    ],
+    tags: (req) => [collection, ...(idFn ? [`${collection}:${idFn(req)}`] : [])],
   });

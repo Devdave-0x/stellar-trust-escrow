@@ -16,9 +16,7 @@ const resolvedApiUrl = API_URL || 'http://localhost:3001';
 // Use a sync wrapper — top-level await is unreliable in next.config.js
 import bundleAnalyzerPkg from '@next/bundle-analyzer';
 const withBundleAnalyzer =
-  process.env.ANALYZE === 'true'
-    ? bundleAnalyzerPkg({ enabled: true })
-    : (config) => config;
+  process.env.ANALYZE === 'true' ? bundleAnalyzerPkg({ enabled: true }) : (config) => config;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

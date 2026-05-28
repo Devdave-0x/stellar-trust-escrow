@@ -2,14 +2,14 @@
 
 /**
  * Automated Accessibility Scanner
- * 
+ *
  * Scans all major pages of the application for WCAG Level AA violations
  * using Playwright and @axe-core/playwright.
- * 
+ *
  * Usage:
  *   node scripts/accessibility-scan.js
  *   npm run test:a11y:scan (if added to package.json)
- * 
+ *
  * Environment Variables:
  *   BASE_URL - Base URL of the application (default: http://localhost:3000)
  *   CI - Set to 'true' to enable CI mode with stricter thresholds
@@ -39,8 +39,8 @@ const PAGES_TO_SCAN = [
 
 // Thresholds for CI failure
 const THRESHOLDS = {
-  critical: 0,  // No critical violations allowed
-  serious: IS_CI ? 0 : 5,  // Stricter in CI
+  critical: 0, // No critical violations allowed
+  serious: IS_CI ? 0 : 5, // Stricter in CI
   moderate: IS_CI ? 5 : 10,
   minor: IS_CI ? 10 : 20,
 };
@@ -58,7 +58,7 @@ const AXE_CONFIG = {
  */
 async function scanPage(page, pageInfo) {
   console.log(`\n📄 Scanning: ${pageInfo.name} (${pageInfo.path})`);
-  
+
   try {
     // Navigate to page
     await page.goto(`${BASE_URL}${pageInfo.path}`, {
@@ -79,10 +79,10 @@ async function scanPage(page, pageInfo) {
 
     // Categorize violations by impact
     const categorized = {
-      critical: violations.filter(v => v.impact === 'critical'),
-      serious: violations.filter(v => v.impact === 'serious'),
-      moderate: violations.filter(v => v.impact === 'moderate'),
-      minor: violations.filter(v => v.impact === 'minor'),
+      critical: violations.filter((v) => v.impact === 'critical'),
+      serious: violations.filter((v) => v.impact === 'serious'),
+      moderate: violations.filter((v) => v.impact === 'moderate'),
+      minor: violations.filter((v) => v.impact === 'minor'),
     };
 
     // Print summary
@@ -232,22 +232,31 @@ function generateHTMLReport(results, outputPath) {
     </div>
   </div>
 
-  ${results.map(result => `
+  ${results
+    .map(
+      (result) => `
     <div class="page-result">
       <h2>${result.page}</h2>
       <p><code>${result.path}</code></p>
       
-      ${result.error ? `
+      ${
+        result.error
+          ? `
         <p style="color: #d00;">❌ Error: ${result.error}</p>
-      ` : ''}
+      `
+          : ''
+      }
       
-      ${['critical', 'serious', 'moderate', 'minor'].map(impact => {
-        const violations = result.violations?.[impact] || [];
-        if (violations.length === 0) return '';
-        
-        return `
+      ${['critical', 'serious', 'moderate', 'minor']
+        .map((impact) => {
+          const violations = result.violations?.[impact] || [];
+          if (violations.length === 0) return '';
+
+          return `
           <h3>${impact.charAt(0).toUpperCase() + impact.slice(1)} (${violations.length})</h3>
-          ${violations.map(v => `
+          ${violations
+            .map(
+              (v) => `
             <div class="violation ${impact}">
               <h4>
                 <span class="badge ${impact}">${impact}</span>
@@ -255,27 +264,37 @@ function generateHTMLReport(results, outputPath) {
               </h4>
               <div class="violation-meta">
                 <strong>Rule:</strong> ${v.id} | 
-                <strong>WCAG:</strong> ${v.tags.filter(t => t.startsWith('wcag')).join(', ')}
+                <strong>WCAG:</strong> ${v.tags.filter((t) => t.startsWith('wcag')).join(', ')}
               </div>
               <p>${v.description}</p>
               <div class="violation-nodes">
                 <strong>Affected elements (${v.nodes.length}):</strong>
-                ${v.nodes.slice(0, 3).map(node => `
+                ${v.nodes
+                  .slice(0, 3)
+                  .map(
+                    (node) => `
                   <div class="violation-node">
                     ${node.html}
                   </div>
-                `).join('')}
+                `,
+                  )
+                  .join('')}
                 ${v.nodes.length > 3 ? `<p><em>... and ${v.nodes.length - 3} more</em></p>` : ''}
               </div>
               ${v.helpUrl ? `<p><a href="${v.helpUrl}" target="_blank">Learn more →</a></p>` : ''}
             </div>
-          `).join('')}
+          `,
+            )
+            .join('')}
         `;
-      }).join('')}
+        })
+        .join('')}
       
       ${result.totalViolations === 0 && !result.error ? '<p>✅ No violations found!</p>' : ''}
     </div>
-  `).join('')}
+  `,
+    )
+    .join('')}
 </body>
 </html>
   `;
@@ -296,7 +315,7 @@ function checkThresholds(results) {
   };
 
   const failures = [];
-  
+
   if (totals.critical > THRESHOLDS.critical) {
     failures.push(`Critical: ${totals.critical} (threshold: ${THRESHOLDS.critical})`);
   }
@@ -356,7 +375,7 @@ async function main() {
 
   if (failures.length > 0) {
     console.log('\n❌ THRESHOLD VIOLATIONS:');
-    failures.forEach(f => console.log(`   - ${f}`));
+    failures.forEach((f) => console.log(`   - ${f}`));
     console.log('\n💡 Review the HTML report for details.');
     process.exit(1);
   } else {
@@ -366,7 +385,7 @@ async function main() {
 }
 
 // Run
-main().catch(error => {
+main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });

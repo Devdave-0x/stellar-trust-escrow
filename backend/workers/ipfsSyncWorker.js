@@ -17,9 +17,9 @@ import { createModuleLogger } from '../config/logger.js';
 
 const log = createModuleLogger('ipfsSyncWorker');
 
-const GATEWAY        = process.env.IPFS_GATEWAY_URL || 'https://ipfs.io';
-const FETCH_TIMEOUT  = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS  || '15000', 10);
-const MAX_RETRIES    = parseInt(process.env.IPFS_SYNC_MAX_RETRIES   || '3',     10);
+const GATEWAY = process.env.IPFS_GATEWAY_URL || 'https://ipfs.io';
+const FETCH_TIMEOUT = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '15000', 10);
+const MAX_RETRIES = parseInt(process.env.IPFS_SYNC_MAX_RETRIES || '3', 10);
 const RETRY_DELAY_MS = parseInt(process.env.IPFS_SYNC_RETRY_DELAY_MS || '2000', 10);
 
 /** In-flight CIDs — prevents duplicate concurrent fetches. */
@@ -64,9 +64,9 @@ async function cacheMetadata(cid, metadata) {
     data: {
       description: metadata.description,
       evidenceType: metadata.evidenceType,
-      filename:     metadata.filename     ?? null,
-      mimeType:     metadata.mimeType     ?? null,
-      fileSize:     metadata.fileSize     ?? null,
+      filename: metadata.filename ?? null,
+      mimeType: metadata.mimeType ?? null,
+      fileSize: metadata.fileSize ?? null,
     },
   });
   log.info({ message: 'ipfs_metadata_cached', cid, rowsUpdated: updated.count });

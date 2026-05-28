@@ -25,21 +25,24 @@ export default function AdminAuditLogsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchLogs = useCallback(async (page = 1) => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await adminFetch(`/api/admin/audit-logs?page=${page}&limit=50`, apiKey);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch audit logs');
-      setLogs(data.logs);
-      setPagination(data.pagination);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiKey]);
+  const fetchLogs = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      setError('');
+      try {
+        const res = await adminFetch(`/api/admin/audit-logs?page=${page}&limit=50`, apiKey);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch audit logs');
+        setLogs(data.logs);
+        setPagination(data.pagination);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiKey],
+  );
 
   useEffect(() => {
     fetchLogs(1);

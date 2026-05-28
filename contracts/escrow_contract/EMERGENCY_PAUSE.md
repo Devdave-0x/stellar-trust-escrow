@@ -43,32 +43,32 @@ soroban contract invoke \
 
 Every state-changing function reverts with `ContractPaused (error 31)`:
 
-| Function | Who calls it |
-|---|---|
-| `create_escrow` / `create_escrow_with_buyer_signers` | client |
-| `create_recurring_escrow` | client |
-| `add_milestone` | client |
-| `submit_milestone` | freelancer |
-| `approve_milestone` | client / buyer signers |
-| `reject_milestone` | client |
-| `release_funds` | admin / timelock expiry |
-| `cancel_escrow` | client |
-| `start_timelock` | client or freelancer |
-| `extend_lock_time` | client |
-| `raise_dispute` | client or freelancer |
-| `resolve_dispute` | arbiter or admin |
-| `update_reputation` | public |
-| `process_recurring_payments` | public |
-| `pause_recurring_schedule` | client |
-| `resume_recurring_schedule` | client |
-| `cancel_recurring_escrow` | client |
-| `top_up_rent` | client |
-| `request_cancellation` | client or freelancer |
-| `execute_cancellation` | public |
-| `dispute_cancellation` | non-requester |
-| `finalize_slash` | public |
-| `dispute_slash` | slashed user |
-| `resolve_slash_dispute` | arbiter or admin |
+| Function                                             | Who calls it            |
+| ---------------------------------------------------- | ----------------------- |
+| `create_escrow` / `create_escrow_with_buyer_signers` | client                  |
+| `create_recurring_escrow`                            | client                  |
+| `add_milestone`                                      | client                  |
+| `submit_milestone`                                   | freelancer              |
+| `approve_milestone`                                  | client / buyer signers  |
+| `reject_milestone`                                   | client                  |
+| `release_funds`                                      | admin / timelock expiry |
+| `cancel_escrow`                                      | client                  |
+| `start_timelock`                                     | client or freelancer    |
+| `extend_lock_time`                                   | client                  |
+| `raise_dispute`                                      | client or freelancer    |
+| `resolve_dispute`                                    | arbiter or admin        |
+| `update_reputation`                                  | public                  |
+| `process_recurring_payments`                         | public                  |
+| `pause_recurring_schedule`                           | client                  |
+| `resume_recurring_schedule`                          | client                  |
+| `cancel_recurring_escrow`                            | client                  |
+| `top_up_rent`                                        | client                  |
+| `request_cancellation`                               | client or freelancer    |
+| `execute_cancellation`                               | public                  |
+| `dispute_cancellation`                               | non-requester           |
+| `finalize_slash`                                     | public                  |
+| `dispute_slash`                                      | slashed user            |
+| `resolve_slash_dispute`                              | arbiter or admin        |
 
 ## What Remains Available While Paused
 
@@ -91,10 +91,10 @@ during an incident:
 
 ## Events
 
-| Event topic | Emitted when |
-|---|---|
-| `paused` | `pause()` transitions `false → true` |
-| `unpaused` | `unpause()` transitions `true → false` |
+| Event topic | Emitted when                           |
+| ----------- | -------------------------------------- |
+| `paused`    | `pause()` transitions `false → true`   |
+| `unpaused`  | `unpause()` transitions `true → false` |
 
 Both events carry the admin address as payload for audit trails.
 
@@ -117,6 +117,7 @@ Both events carry the admin address as payload for audit trails.
 ## Gas Impact
 
 Both `pause()` and `unpause()` perform:
+
 - One instance storage read (`is_paused`)
 - One instance storage write (`set_paused` + TTL bump)
 - One event publish

@@ -24,15 +24,21 @@ const logger = createModuleLogger('monitoring.rpcMonitor');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const ENDPOINTS = (process.env.RPC_MONITOR_ENDPOINTS || process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org')
-  .split(',').map((u) => u.trim()).filter(Boolean);
+const ENDPOINTS = (
+  process.env.RPC_MONITOR_ENDPOINTS ||
+  process.env.SOROBAN_RPC_URL ||
+  'https://soroban-testnet.stellar.org'
+)
+  .split(',')
+  .map((u) => u.trim())
+  .filter(Boolean);
 
-const POLL_INTERVAL_MS       = parseInt(process.env.RPC_MONITOR_POLL_INTERVAL_MS  || '10000', 10);
-const LATENCY_THRESHOLD_MS   = parseInt(process.env.RPC_LATENCY_THRESHOLD_MS      || '1500',  10);
-const FAILURE_RATE_THRESHOLD = parseFloat(process.env.RPC_FAILURE_RATE_THRESHOLD  || '0.02');
-const ALERT_WINDOW           = parseInt(process.env.RPC_ALERT_WINDOW              || '50',    10);
-const SLACK_WEBHOOK          = process.env.SLACK_RPC_WEBHOOK;
-const PAGERDUTY_KEY          = process.env.PAGERDUTY_ROUTING_KEY;
+const POLL_INTERVAL_MS = parseInt(process.env.RPC_MONITOR_POLL_INTERVAL_MS || '10000', 10);
+const LATENCY_THRESHOLD_MS = parseInt(process.env.RPC_LATENCY_THRESHOLD_MS || '1500', 10);
+const FAILURE_RATE_THRESHOLD = parseFloat(process.env.RPC_FAILURE_RATE_THRESHOLD || '0.02');
+const ALERT_WINDOW = parseInt(process.env.RPC_ALERT_WINDOW || '50', 10);
+const SLACK_WEBHOOK = process.env.SLACK_RPC_WEBHOOK;
+const PAGERDUTY_KEY = process.env.PAGERDUTY_ROUTING_KEY;
 
 // ── Prometheus metrics ────────────────────────────────────────────────────────
 
@@ -140,10 +146,7 @@ async function emitAlert(endpoint, reason, detail) {
   const msg = `[RPC Alert] ${reason} on ${endpoint}: ${detail}`;
   logger.warn({ message: 'rpc_sla_breach', endpoint, reason, detail });
   rpcAlertsTotal.inc({ endpoint, reason });
-  await Promise.all([
-    sendSlack(`:warning: ${msg}`),
-    sendPagerDuty(msg),
-  ]);
+  await Promise.all([sendSlack(`:warning: ${msg}`), sendPagerDuty(msg)]);
 }
 
 // ── Probe logic ───────────────────────────────────────────────────────────────
@@ -193,7 +196,11 @@ async function probe(url) {
     const rate = state.failureRate();
     if (rate > FAILURE_RATE_THRESHOLD && !state._alertedFailureRate) {
       state._alertedFailureRate = true;
-      await emitAlert(url, 'failure_rate', `${(rate * 100).toFixed(1)}% > ${(FAILURE_RATE_THRESHOLD * 100).toFixed(1)}%`);
+      await emitAlert(
+        url,
+        'failure_rate',
+        `${(rate * 100).toFixed(1)}% > ${(FAILURE_RATE_THRESHOLD * 100).toFixed(1)}%`,
+      );
     } else if (rate <= FAILURE_RATE_THRESHOLD) {
       state._alertedFailureRate = false;
     }
@@ -232,7 +239,11 @@ export function startRpcMonitor() {
     return;
   }
 
-  logger.info({ message: 'rpc_monitor_started', endpoints: ENDPOINTS, pollIntervalMs: POLL_INTERVAL_MS });
+  logger.info({
+    message: 'rpc_monitor_started',
+    endpoints: ENDPOINTS,
+    pollIntervalMs: POLL_INTERVAL_MS,
+  });
 
   // Initialise gauges to avoid gaps in Prometheus scrapes
   for (const url of ENDPOINTS) {

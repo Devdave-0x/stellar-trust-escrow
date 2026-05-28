@@ -9,17 +9,17 @@ import { jest } from '@jest/globals';
 
 // ── Mock metrics so Prometheus counters don't accumulate across test runs ─────
 
-const circuitBreakerStateMock    = { set: jest.fn() };
-const circuitBreakerCallsMock    = { inc: jest.fn() };
-const circuitBreakerTransMock    = { inc: jest.fn() };
+const circuitBreakerStateMock = { set: jest.fn() };
+const circuitBreakerCallsMock = { inc: jest.fn() };
+const circuitBreakerTransMock = { inc: jest.fn() };
 
 jest.unstable_mockModule('../../lib/metrics.js', () => ({
-  circuitBreakerState:            circuitBreakerStateMock,
-  circuitBreakerCallsTotal:       circuitBreakerCallsMock,
+  circuitBreakerState: circuitBreakerStateMock,
+  circuitBreakerCallsTotal: circuitBreakerCallsMock,
   circuitBreakerTransitionsTotal: circuitBreakerTransMock,
   // Other exports referenced by retryUtils etc. — provide stubs
-  dbConnectionErrorsTotal:        { inc: jest.fn() },
-  chaosInjectedTotal:             { inc: jest.fn() },
+  dbConnectionErrorsTotal: { inc: jest.fn() },
+  chaosInjectedTotal: { inc: jest.fn() },
 }));
 
 const { CircuitBreaker, CircuitOpenError, STATES, getBreaker, clearRegistry } =

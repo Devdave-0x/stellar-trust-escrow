@@ -20,9 +20,7 @@ try {
     const tab = await context.newPage();
     await tab.goto(`${BASE_URL}${page.path}`, { waitUntil: 'networkidle' });
 
-    const report = await new AxeBuilder({ page: tab })
-      .withTags(['wcag2aa'])
-      .analyze();
+    const report = await new AxeBuilder({ page: tab }).withTags(['wcag2aa']).analyze();
     const { violations } = report;
 
     totalViolations += violations.length;

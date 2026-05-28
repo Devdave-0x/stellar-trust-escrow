@@ -70,7 +70,8 @@ async function fetchPrice(asset, fiat) {
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 
 function Sparkline({ data, positive, width = 120, height = 36 }) {
-  if (!data?.length) return <div style={{ width, height }} className="bg-gray-800 rounded animate-pulse" />;
+  if (!data?.length)
+    return <div style={{ width, height }} className="bg-gray-800 rounded animate-pulse" />;
 
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -153,7 +154,10 @@ export default function PriceConverter({ baseAsset = 'XLM', quoteAsset = 'USD', 
   useEffect(() => {
     if (!priceData?.price) return;
     const n = parseFloat(fromAmount);
-    if (isNaN(n)) { setToAmount(''); return; }
+    if (isNaN(n)) {
+      setToAmount('');
+      return;
+    }
     const converted = isFiatFrom ? n / priceData.price : n * priceData.price;
     setToAmount(converted.toFixed(isFiatTo ? 2 : 6));
   }, [fromAmount, priceData, isFiatFrom, isFiatTo]);
@@ -162,36 +166,48 @@ export default function PriceConverter({ baseAsset = 'XLM', quoteAsset = 'USD', 
     setToAmount(val);
     if (!priceData?.price) return;
     const n = parseFloat(val);
-    if (isNaN(n)) { setFromAmount(''); return; }
+    if (isNaN(n)) {
+      setFromAmount('');
+      return;
+    }
     const converted = isFiatFrom ? n * priceData.price : n / priceData.price;
     setFromAmount(converted.toFixed(isFiatFrom ? 2 : 6));
   };
 
-  const swap = () => { setFrom(to); setTo(from); };
+  const swap = () => {
+    setFrom(to);
+    setTo(from);
+  };
 
   const positive = (priceData?.change24h ?? 0) >= 0;
   const TrendIcon = positive ? TrendingUp : TrendingDown;
   const trendColor = positive ? 'text-emerald-400' : 'text-red-400';
 
   return (
-    <div className={`bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4
+    <div
+      className={`bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4
                      hover:border-indigo-500/40 transition-all duration-300
-                     hover:shadow-[0_0_20px_rgba(99,102,241,0.1)] ${className}`}>
-
+                     hover:shadow-[0_0_20px_rgba(99,102,241,0.1)] ${className}`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Price Converter</h3>
-        <button onClick={loadPrice} disabled={loading}
+        <button
+          onClick={loadPrice}
+          disabled={loading}
           className="text-gray-500 hover:text-white transition-colors disabled:opacity-40"
-          aria-label="Refresh prices">
+          aria-label="Refresh prices"
+        >
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-400/10
-                        rounded-lg px-3 py-2">
+        <div
+          className="flex items-center gap-2 text-xs text-amber-400 bg-amber-400/10
+                        rounded-lg px-3 py-2"
+        >
           <AlertCircle size={13} />
           {error} — showing cached data
         </div>
@@ -210,11 +226,13 @@ export default function PriceConverter({ baseAsset = 'XLM', quoteAsset = 'USD', 
 
         {/* Swap button */}
         <div className="flex justify-center">
-          <button onClick={swap}
+          <button
+            onClick={swap}
             className="w-7 h-7 rounded-full bg-gray-800 hover:bg-indigo-600/30
                        border border-gray-700 hover:border-indigo-500/50
                        flex items-center justify-center text-gray-400 hover:text-indigo-400
-                       transition-all text-xs">
+                       transition-all text-xs"
+          >
             ⇅
           </button>
         </div>
@@ -236,7 +254,8 @@ export default function PriceConverter({ baseAsset = 'XLM', quoteAsset = 'USD', 
             <p className="text-xs text-gray-500">
               1 {isFiatFrom ? to : from} ={' '}
               <span className="text-white font-medium">
-                {priceData.price?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {isFiatFrom ? from : to}
+                {priceData.price?.toLocaleString(undefined, { maximumFractionDigits: 6 })}{' '}
+                {isFiatFrom ? from : to}
               </span>
             </p>
             <div className={`flex items-center gap-1 text-xs ${trendColor}`}>
@@ -265,7 +284,7 @@ function AssetInput({ label, amount, asset, assets, onAmountChange, onAssetChang
         <input
           type="number"
           value={amount}
-          onChange={e => onAmountChange(e.target.value)}
+          onChange={(e) => onAmountChange(e.target.value)}
           placeholder="0.00"
           className="w-full bg-transparent text-white text-lg font-semibold
                      focus:outline-none placeholder-gray-600"
@@ -275,12 +294,16 @@ function AssetInput({ label, amount, asset, assets, onAmountChange, onAssetChang
       </div>
       <select
         value={asset}
-        onChange={e => onAssetChange(e.target.value)}
+        onChange={(e) => onAssetChange(e.target.value)}
         className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-sm
                    text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
         aria-label={`${label} asset`}
       >
-        {assets.map(a => <option key={a} value={a}>{a}</option>)}
+        {assets.map((a) => (
+          <option key={a} value={a}>
+            {a}
+          </option>
+        ))}
       </select>
     </div>
   );

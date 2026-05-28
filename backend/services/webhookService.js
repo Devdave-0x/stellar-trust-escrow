@@ -24,10 +24,7 @@ function generateSecret() {
 }
 
 function signPayload(secret, payload) {
-  return crypto
-    .createHmac('sha256', secret)
-    .update(JSON.stringify(payload))
-    .digest('hex');
+  return crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
 }
 
 async function createSubscription({ url, eventTypes, createdBy }) {

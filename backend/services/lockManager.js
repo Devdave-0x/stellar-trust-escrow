@@ -16,8 +16,8 @@ import { createModuleLogger } from '../config/logger.js';
 
 const log = createModuleLogger('lockManager');
 
-const REDIS_URL          = process.env.REDIS_URL || 'redis://localhost:6379';
-const RENEWAL_INTERVAL   = 0.5; // renew at 50% of TTL remaining
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const RENEWAL_INTERVAL = 0.5; // renew at 50% of TTL remaining
 
 let _redis = null;
 
@@ -54,7 +54,7 @@ class Lock {
   #renewTimer = null;
 
   constructor(key, token, ttlMs) {
-    this.#key   = key;
+    this.#key = key;
     this.#token = token;
     this.#ttlMs = ttlMs;
   }
@@ -70,7 +70,13 @@ class Lock {
 
   async #renew() {
     try {
-      const result = await getRedis().eval(RENEW_SCRIPT, 1, this.#key, this.#token, String(this.#ttlMs));
+      const result = await getRedis().eval(
+        RENEW_SCRIPT,
+        1,
+        this.#key,
+        this.#token,
+        String(this.#ttlMs),
+      );
       if (result === 0) {
         log.warn({ message: 'lock_renewal_failed_not_owner', key: this.#key });
         this.#stopRenewal();
@@ -94,7 +100,10 @@ class Lock {
     this.#stopRenewal();
     try {
       const result = await getRedis().eval(RELEASE_SCRIPT, 1, this.#key, this.#token);
-      log.debug({ message: result ? 'lock_released' : 'lock_release_skipped_not_owner', key: this.#key });
+      log.debug({
+        message: result ? 'lock_released' : 'lock_release_skipped_not_owner',
+        key: this.#key,
+      });
     } catch (err) {
       log.warn({ message: 'lock_release_error', key: this.#key, error: err.message });
     }

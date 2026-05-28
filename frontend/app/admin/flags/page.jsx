@@ -27,14 +27,19 @@ export default function FeatureFlagsPage() {
     }
   }, [apiKey]);
 
-  useEffect(() => { fetchFlags(); }, [fetchFlags]);
+  useEffect(() => {
+    fetchFlags();
+  }, [fetchFlags]);
 
   async function saveFlag(e) {
     e.preventDefault();
     const payload = {
       ...form,
       percentage: Number(form.percentage),
-      targetUsers: form.targetUsers.split(',').map((s) => s.trim()).filter(Boolean),
+      targetUsers: form.targetUsers
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
     };
 
     const url = editingKey
@@ -150,7 +155,10 @@ export default function FeatureFlagsPage() {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => { setEditingKey(null); setForm(EMPTY_FORM); }}
+              onClick={() => {
+                setEditingKey(null);
+                setForm(EMPTY_FORM);
+              }}
             >
               Cancel
             </button>

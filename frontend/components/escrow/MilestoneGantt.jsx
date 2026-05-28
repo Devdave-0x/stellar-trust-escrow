@@ -31,15 +31,22 @@ const MIN_BAR_WIDTH = 8;
 const HEADER_HEIGHT = 40;
 
 const STATUS_COLORS = {
-  Pending:   { bar: '#4b5563', fill: '#6b7280', text: '#9ca3af' },
+  Pending: { bar: '#4b5563', fill: '#6b7280', text: '#9ca3af' },
   Submitted: { bar: '#1d4ed8', fill: '#3b82f6', text: '#93c5fd' },
-  Approved:  { bar: '#065f46', fill: '#10b981', text: '#6ee7b7' },
-  Released:  { bar: '#065f46', fill: '#34d399', text: '#a7f3d0' },
-  Rejected:  { bar: '#7f1d1d', fill: '#ef4444', text: '#fca5a5' },
-  Disputed:  { bar: '#78350f', fill: '#f59e0b', text: '#fde68a' },
+  Approved: { bar: '#065f46', fill: '#10b981', text: '#6ee7b7' },
+  Released: { bar: '#065f46', fill: '#34d399', text: '#a7f3d0' },
+  Rejected: { bar: '#7f1d1d', fill: '#ef4444', text: '#fca5a5' },
+  Disputed: { bar: '#78350f', fill: '#f59e0b', text: '#fde68a' },
 };
 
-const COMPLETION = { Pending: 0, Submitted: 40, Approved: 80, Released: 100, Rejected: 0, Disputed: 20 };
+const COMPLETION = {
+  Pending: 0,
+  Submitted: 40,
+  Approved: 80,
+  Released: 100,
+  Rejected: 0,
+  Disputed: 20,
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,7 +72,9 @@ function formatDate(d) {
 
 function formatAmount(amount) {
   const n = Number(amount) / 10_000_000;
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDC';
+  return (
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDC'
+  );
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
@@ -82,7 +91,9 @@ function Tooltip({ milestone, x, y, visible }) {
     >
       <p className="font-semibold text-white truncate">{milestone.title}</p>
       <p style={{ color: colors.text }}>● {milestone.status}</p>
-      <p className="text-gray-400">Amount: <span className="text-white">{formatAmount(milestone.amount)}</span></p>
+      <p className="text-gray-400">
+        Amount: <span className="text-white">{formatAmount(milestone.amount)}</span>
+      </p>
       {milestone.submittedAt && (
         <p className="text-gray-400">Submitted: {formatDate(new Date(milestone.submittedAt))}</p>
       )}
@@ -103,7 +114,7 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
   // Responsive width
   useEffect(() => {
     if (!containerRef.current) return;
-    const ro = new ResizeObserver(entries => {
+    const ro = new ResizeObserver((entries) => {
       setContainerWidth(entries[0].contentRect.width);
     });
     ro.observe(containerRef.current);
@@ -114,14 +125,15 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
 
   // ── Compute timeline bounds ───────────────────────────────────────────────
   const { timeStart, timeEnd, totalDays, ticks } = useMemo(() => {
-    const dates = milestones.flatMap(m => [
-      parseDate(m.submittedAt),
-      parseDate(m.resolvedAt),
-    ]).filter(Boolean);
+    const dates = milestones
+      .flatMap((m) => [parseDate(m.submittedAt), parseDate(m.resolvedAt)])
+      .filter(Boolean);
 
     const now = new Date();
-    const ts = parseDate(startDate) ?? (dates.length ? new Date(Math.min(...dates)) : addDays(now, -7));
-    const te = parseDate(endDate) ?? (dates.length ? new Date(Math.max(...dates)) : addDays(now, 30));
+    const ts =
+      parseDate(startDate) ?? (dates.length ? new Date(Math.min(...dates)) : addDays(now, -7));
+    const te =
+      parseDate(endDate) ?? (dates.length ? new Date(Math.max(...dates)) : addDays(now, 30));
 
     // Pad by 2 days each side
     const start = addDays(ts, -2);
@@ -147,7 +159,9 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
   const getMilestoneBar = (m, index) => {
     const now = new Date();
     const barStart = parseDate(m.submittedAt) ?? addDays(now, index * 3);
-    const barEnd = parseDate(m.resolvedAt) ?? addDays(barStart, Math.max(3, Math.ceil(Number(m.amount) / 10_000_000 / 100)));
+    const barEnd =
+      parseDate(m.resolvedAt) ??
+      addDays(barStart, Math.max(3, Math.ceil(Number(m.amount) / 10_000_000 / 100)));
 
     const x = dayToX(barStart);
     const width = Math.max(MIN_BAR_WIDTH, dayToX(barEnd) - x);
@@ -171,7 +185,6 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
   return (
     <div ref={containerRef} className={`relative overflow-x-auto ${className}`}>
       <div className="flex" style={{ minWidth: LABEL_WIDTH + 400 }}>
-
         {/* Labels column */}
         <div className="flex-shrink-0" style={{ width: LABEL_WIDTH }}>
           <div style={{ height: HEADER_HEIGHT }} className="flex items-end pb-2">
@@ -180,11 +193,15 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
           {milestones.map((m, i) => {
             const colors = STATUS_COLORS[m.status] ?? STATUS_COLORS.Pending;
             return (
-              <div key={m.id ?? i}
+              <div
+                key={m.id ?? i}
                 style={{ height: ROW_HEIGHT + ROW_GAP }}
-                className="flex items-center px-2 gap-2">
-                <span className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: colors.fill }} />
+                className="flex items-center px-2 gap-2"
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: colors.fill }}
+                />
                 <span className="text-xs text-gray-300 truncate" title={m.title}>
                   {m.title}
                 </span>
@@ -195,21 +212,30 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
 
         {/* Chart area */}
         <div className="flex-1 relative">
-          <svg
-            width={chartWidth}
-            height={svgHeight}
-            aria-label="Milestone Gantt chart"
-            role="img"
-          >
+          <svg width={chartWidth} height={svgHeight} aria-label="Milestone Gantt chart" role="img">
             {/* Grid lines + tick labels */}
             {ticks.map(({ day, label }) => {
               const x = (day / totalDays) * chartWidth;
               return (
                 <g key={day}>
-                  <line x1={x} y1={HEADER_HEIGHT} x2={x} y2={svgHeight}
-                    stroke="#374151" strokeWidth="1" strokeDasharray="3,3" />
-                  <text x={x} y={HEADER_HEIGHT - 6} textAnchor="middle"
-                    fontSize="10" fill="#6b7280">{label}</text>
+                  <line
+                    x1={x}
+                    y1={HEADER_HEIGHT}
+                    x2={x}
+                    y2={svgHeight}
+                    stroke="#374151"
+                    strokeWidth="1"
+                    strokeDasharray="3,3"
+                  />
+                  <text
+                    x={x}
+                    y={HEADER_HEIGHT - 6}
+                    textAnchor="middle"
+                    fontSize="10"
+                    fill="#6b7280"
+                  >
+                    {label}
+                  </text>
                 </g>
               );
             })}
@@ -220,9 +246,17 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
               if (todayX < 0 || todayX > chartWidth) return null;
               return (
                 <g>
-                  <line x1={todayX} y1={HEADER_HEIGHT} x2={todayX} y2={svgHeight}
-                    stroke="#6366f1" strokeWidth="1.5" />
-                  <text x={todayX + 3} y={HEADER_HEIGHT - 6} fontSize="9" fill="#818cf8">Today</text>
+                  <line
+                    x1={todayX}
+                    y1={HEADER_HEIGHT}
+                    x2={todayX}
+                    y2={svgHeight}
+                    stroke="#6366f1"
+                    strokeWidth="1.5"
+                  />
+                  <text x={todayX + 3} y={HEADER_HEIGHT - 6} fontSize="9" fill="#818cf8">
+                    Today
+                  </text>
                 </g>
               );
             })()}
@@ -234,7 +268,8 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
               const fillW = (completion / 100) * width;
 
               return (
-                <g key={m.id ?? i}
+                <g
+                  key={m.id ?? i}
                   tabIndex={0}
                   role="button"
                   aria-label={`${m.title}: ${m.status}, ${formatAmount(m.amount)}`}
@@ -242,36 +277,49 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
                     const rect = containerRef.current?.getBoundingClientRect();
                     const svgRect = e.currentTarget.closest('svg').getBoundingClientRect();
                     setTooltip({
-                      visible: true, milestone: m,
+                      visible: true,
+                      milestone: m,
                       x: x + width / 2 + LABEL_WIDTH,
                       y: y - (rect?.top ?? 0) + (svgRect?.top ?? 0) - (rect?.top ?? 0),
                     });
                   }}
-                  onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}
+                  onMouseLeave={() => setTooltip((t) => ({ ...t, visible: false }))}
                   onFocus={(e) => {
                     const rect = containerRef.current?.getBoundingClientRect();
                     setTooltip({
-                      visible: true, milestone: m,
+                      visible: true,
+                      milestone: m,
                       x: x + width / 2 + LABEL_WIDTH,
                       y: y,
                     });
                   }}
-                  onBlur={() => setTooltip(t => ({ ...t, visible: false }))}
+                  onBlur={() => setTooltip((t) => ({ ...t, visible: false }))}
                   style={{ cursor: 'pointer', outline: 'none' }}
                 >
                   {/* Background bar */}
-                  <rect x={x} y={y + 4} width={width} height={barH}
-                    rx="4" fill={colors.bar} />
+                  <rect x={x} y={y + 4} width={width} height={barH} rx="4" fill={colors.bar} />
                   {/* Completion fill */}
                   {fillW > 0 && (
-                    <rect x={x} y={y + 4} width={fillW} height={barH}
-                      rx="4" fill={colors.fill} opacity="0.85" />
+                    <rect
+                      x={x}
+                      y={y + 4}
+                      width={fillW}
+                      height={barH}
+                      rx="4"
+                      fill={colors.fill}
+                      opacity="0.85"
+                    />
                   )}
                   {/* Label inside bar */}
                   {width > 40 && (
-                    <text x={x + 6} y={y + 4 + barH / 2 + 4}
-                      fontSize="10" fill="white" opacity="0.9"
-                      style={{ pointerEvents: 'none' }}>
+                    <text
+                      x={x + 6}
+                      y={y + 4 + barH / 2 + 4}
+                      fontSize="10"
+                      fill="white"
+                      opacity="0.9"
+                      style={{ pointerEvents: 'none' }}
+                    >
                       {completion}%
                     </text>
                   )}

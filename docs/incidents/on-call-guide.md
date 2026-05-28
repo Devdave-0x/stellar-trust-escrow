@@ -11,14 +11,14 @@ On-call is configured via the `ONCALL_SCHEDULE` environment variable — a JSON 
     "email": "alice@example.com",
     "phone": "+1-555-0100",
     "startUtc": "2026-01-05T00:00:00Z",
-    "endUtc":   "2026-01-12T00:00:00Z"
+    "endUtc": "2026-01-12T00:00:00Z"
   },
   {
     "name": "Bob Jones",
     "email": "bob@example.com",
     "phone": "+1-555-0101",
     "startUtc": "2026-01-12T00:00:00Z",
-    "endUtc":   "2026-01-19T00:00:00Z"
+    "endUtc": "2026-01-19T00:00:00Z"
   }
 ]
 ```
@@ -54,12 +54,12 @@ The current on-call engineer is returned by `GET /api/incidents/oncall`.
 
 ## Escalation
 
-| Situation | Escalate to |
-|-----------|-------------|
-| No response after 10 min | Secondary on-call |
-| SEV1 lasting > 30 min | Engineering lead |
-| Security breach | Security lead + CTO immediately |
-| Data loss suspected | CTO + Legal immediately |
+| Situation                | Escalate to                     |
+| ------------------------ | ------------------------------- |
+| No response after 10 min | Secondary on-call               |
+| SEV1 lasting > 30 min    | Engineering lead                |
+| Security breach          | Security lead + CTO immediately |
+| Data loss suspected      | CTO + Legal immediately         |
 
 ## After Your Shift
 

@@ -30,7 +30,15 @@ export async function createSession({ address, userAgent, ipAddress, expiresIn =
       data: { jti, address, userAgent: userAgent ?? '', ipAddress: ipAddress ?? '', expiresAt },
     });
   } catch {
-    memSessions.set(jti, { jti, address, userAgent, ipAddress, expiresAt, revokedAt: null, createdAt: new Date() });
+    memSessions.set(jti, {
+      jti,
+      address,
+      userAgent,
+      ipAddress,
+      expiresAt,
+      revokedAt: null,
+      createdAt: new Date(),
+    });
   }
   return jti;
 }
@@ -56,7 +64,7 @@ export async function listSessions(address) {
     });
   } catch {
     return [...memSessions.values()].filter(
-      s => s.address === address && !s.revokedAt && s.expiresAt > new Date(),
+      (s) => s.address === address && !s.revokedAt && s.expiresAt > new Date(),
     );
   }
 }
@@ -72,7 +80,10 @@ export async function revokeSession(jti) {
 
 export async function revokeAllSessions(address) {
   try {
-    await prisma.session.updateMany({ where: { address, revokedAt: null }, data: { revokedAt: new Date() } });
+    await prisma.session.updateMany({
+      where: { address, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   } catch {
     for (const s of memSessions.values()) {
       if (s.address === address) s.revokedAt = new Date();

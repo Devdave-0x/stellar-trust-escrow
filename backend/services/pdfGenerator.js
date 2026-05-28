@@ -20,11 +20,7 @@
 import { createHash } from 'crypto';
 import { Keypair } from '@stellar/stellar-sdk';
 import PDFDocument from 'pdfkit';
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-} from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createWriteStream, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -47,7 +43,7 @@ const s3 = USE_S3
   ? new S3Client({
       region: process.env.AWS_REGION || 'us-east-1',
       credentials: {
-        accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
       },
     })
@@ -78,7 +74,15 @@ async function renderPdf(escrow, placeholderHash = '') {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const { id, clientAddress, freelancerAddress, totalAmount, tokenAddress, deadline, milestones = [] } = escrow;
+    const {
+      id,
+      clientAddress,
+      freelancerAddress,
+      totalAmount,
+      tokenAddress,
+      deadline,
+      milestones = [],
+    } = escrow;
 
     // ── Header ──────────────────────────────────────────────────────────────
     doc
@@ -123,8 +127,8 @@ async function renderPdf(escrow, placeholderHash = '') {
           .text(`${i + 1}. ${m.title ?? `Milestone ${i + 1}`}`)
           .font('Helvetica');
         if (m.description) doc.text(`   Description: ${m.description}`);
-        if (m.amount)       doc.text(`   Amount:      ${m.amount}`);
-        if (m.deadline)     doc.text(`   Due:         ${new Date(m.deadline).toUTCString()}`);
+        if (m.amount) doc.text(`   Amount:      ${m.amount}`);
+        if (m.deadline) doc.text(`   Due:         ${new Date(m.deadline).toUTCString()}`);
         doc.moveDown(0.5);
       });
     }
@@ -186,14 +190,16 @@ async function storePdf(escrowId, buffer) {
   const key = `escrows/${escrowId}/contract.pdf`;
 
   if (USE_S3) {
-    await s3.send(new PutObjectCommand({
-      Bucket:      S3_BUCKET,
-      Key:         key,
-      Body:        buffer,
-      ContentType: 'application/pdf',
-      // Server-side encryption
-      ServerSideEncryption: 'AES256',
-    }));
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: 'application/pdf',
+        // Server-side encryption
+        ServerSideEncryption: 'AES256',
+      }),
+    );
     logger.info({ message: 'pdf_uploaded_s3', escrowId, key });
   } else {
     // Local fallback for development
@@ -216,11 +222,9 @@ async function storePdf(escrowId, buffer) {
  */
 async function getPdfUrl(storageKey) {
   if (USE_S3) {
-    return getSignedUrl(
-      s3,
-      new GetObjectCommand({ Bucket: S3_BUCKET, Key: storageKey }),
-      { expiresIn: PRESIGN_EXPIRES_SECONDS },
-    );
+    return getSignedUrl(s3, new GetObjectCommand({ Bucket: S3_BUCKET, Key: storageKey }), {
+      expiresIn: PRESIGN_EXPIRES_SECONDS,
+    });
   }
   return join(LOCAL_PDF_DIR, storageKey);
 }
@@ -241,13 +245,13 @@ export async function generateEscrowPdf(escrowId) {
   });
 
   const { buffer, hash } = await generatePdf({
-    id:                 String(escrow.id),
-    clientAddress:      escrow.clientAddress,
-    freelancerAddress:  escrow.freelancerAddress,
-    totalAmount:        escrow.totalAmount,
-    tokenAddress:       escrow.tokenAddress,
-    deadline:           escrow.deadline,
-    milestones:         escrow.milestones,
+    id: String(escrow.id),
+    clientAddress: escrow.clientAddress,
+    freelancerAddress: escrow.freelancerAddress,
+    totalAmount: escrow.totalAmount,
+    tokenAddress: escrow.tokenAddress,
+    deadline: escrow.deadline,
+    milestones: escrow.milestones,
   });
 
   const storageKey = await storePdf(String(escrow.id), buffer);
@@ -255,18 +259,18 @@ export async function generateEscrowPdf(escrowId) {
 
   // Persist PDF record
   await prisma.escrowPdf.upsert({
-    where:  { escrowId: escrow.id },
+    where: { escrowId: escrow.id },
     create: { escrowId: escrow.id, storageKey, hash, generatedAt: new Date() },
     update: { storageKey, hash, generatedAt: new Date() },
   });
 
   // Auto-email both parties
   await enqueueEvent({
-    type:    'escrow_contract_pdf',
+    type: 'escrow_contract_pdf',
     payload: {
       recipients: [escrow.clientAddress, escrow.freelancerAddress],
-      escrowId:   String(escrow.id),
-      pdfUrl:     url,
+      escrowId: String(escrow.id),
+      pdfUrl: url,
       hash,
     },
   }).catch((err) => logger.error({ message: 'pdf_email_enqueue_failed', error: err.message }));
@@ -293,9 +297,11 @@ export async function signPdf(escrowId, walletAddress, signature) {
   });
 
   const role =
-    escrow.clientAddress     === walletAddress ? 'client'
-    : escrow.freelancerAddress === walletAddress ? 'freelancer'
-    : null;
+    escrow.clientAddress === walletAddress
+      ? 'client'
+      : escrow.freelancerAddress === walletAddress
+        ? 'freelancer'
+        : null;
 
   if (!role) {
     const err = new Error('Wallet address is not a party to this escrow');
@@ -328,7 +334,7 @@ export async function signPdf(escrowId, walletAddress, signature) {
 
   // Persist signature
   await prisma.escrowPdfSignature.upsert({
-    where:  { escrowId_walletAddress: { escrowId: BigInt(escrowId), walletAddress } },
+    where: { escrowId_walletAddress: { escrowId: BigInt(escrowId), walletAddress } },
     create: { escrowId: BigInt(escrowId), walletAddress, role, signature, signedAt: new Date() },
     update: { signature, signedAt: new Date() },
   });

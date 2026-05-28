@@ -1,6 +1,6 @@
 /**
  * Auto-Refresh Middleware
- * 
+ *
  * Automatically refreshes access tokens when they're close to expiring.
  * Provides seamless UX without requiring manual token refresh.
  */
@@ -20,28 +20,28 @@ function autoRefreshMiddleware(options = {}) {
   const {
     enableCookieRefresh = true,
     enableHeaderRefresh = true,
-    refreshThreshold = REFRESH_THRESHOLD_MS
+    refreshThreshold = REFRESH_THRESHOLD_MS,
   } = options;
 
   return async (req, res, next) => {
     const authHeader = req.header('Authorization');
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return next();
     }
 
     const token = authHeader.split(' ')[1];
-    
+
     try {
       // Decode token without verification to check expiry
       const decoded = jwt.decode(token);
-      
+
       if (!decoded || !decoded.exp) {
         return next();
       }
 
       const timeUntilExpiry = decoded.exp * 1000 - Date.now();
-      
+
       // Only refresh if token is close to expiring
       if (timeUntilExpiry > refreshThreshold) {
         return next();
@@ -49,11 +49,11 @@ function autoRefreshMiddleware(options = {}) {
 
       // Try to get refresh token from cookie or body
       let refreshToken = null;
-      
+
       if (enableCookieRefresh) {
         refreshToken = cookieUtils.getRefreshTokenFromCookie(req);
       }
-      
+
       if (!refreshToken && enableHeaderRefresh && req.body.refreshToken) {
         refreshToken = req.body.refreshToken;
       }
@@ -65,19 +65,19 @@ function autoRefreshMiddleware(options = {}) {
       // Attempt to refresh the token
       const deviceInfo = {
         type: 'auto_refresh',
-        originalUserAgent: req.get('User-Agent')
+        originalUserAgent: req.get('User-Agent'),
       };
 
       const newTokens = await refreshTokenService.rotateRefreshToken(
         refreshToken,
         deviceInfo,
         req.ip,
-        req.get('User-Agent')
+        req.get('User-Agent'),
       );
 
       // Set new access token in response header
       res.setHeader('X-New-Access-Token', newTokens.accessToken);
-      
+
       // Optionally set new refresh token in cookie
       if (enableCookieRefresh) {
         cookieUtils.setRefreshTokenCookie(res, newTokens.refreshToken);
@@ -85,14 +85,13 @@ function autoRefreshMiddleware(options = {}) {
 
       // Update the authorization header for downstream middleware
       req.headers.authorization = `Bearer ${newTokens.accessToken}`;
-      
+
       console.log(`[AutoRefresh] Token refreshed for user ${decoded.userId}`);
-      
     } catch (error) {
       // Auto-refresh failed, but continue with original token
       console.warn('[AutoRefresh] Failed to refresh token:', error.message);
     }
-    
+
     next();
   };
 }
@@ -105,16 +104,16 @@ function refreshErrorHandler() {
     if (err.name === 'TokenExpiredError') {
       // Check if we have a refresh token available
       const refreshToken = cookieUtils.getRefreshTokenFromCookie(req) || req.body.refreshToken;
-      
+
       if (refreshToken) {
         return res.status(401).json({
           error: 'Access token expired',
           requiresRefresh: true,
-          message: 'Please refresh your token'
+          message: 'Please refresh your token',
         });
       }
     }
-    
+
     next(err);
   };
 }
@@ -131,7 +130,7 @@ function needsRefresh(token, threshold = REFRESH_THRESHOLD_MS) {
     if (!decoded || !decoded.exp) {
       return false;
     }
-    
+
     const timeUntilExpiry = decoded.exp * 1000 - Date.now();
     return timeUntilExpiry <= threshold;
   } catch {
@@ -146,21 +145,21 @@ function createRefreshRoute() {
   return async (req, res) => {
     try {
       const { refreshToken } = req.body;
-      
+
       if (!refreshToken) {
         return res.status(400).json({ error: 'Refresh token is required' });
       }
 
       const deviceInfo = {
         type: 'explicit_refresh',
-        userAgent: req.get('User-Agent')
+        userAgent: req.get('User-Agent'),
       };
 
       const tokens = await refreshTokenService.rotateRefreshToken(
         refreshToken,
         deviceInfo,
         req.ip,
-        req.get('User-Agent')
+        req.get('User-Agent'),
       );
 
       // Set new refresh token in cookie if requested
@@ -171,19 +170,18 @@ function createRefreshRoute() {
       res.json({
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        expiresAt: tokens.expiresAt
+        expiresAt: tokens.expiresAt,
       });
-      
     } catch (error) {
       console.error('[RefreshRoute] Error:', error.message);
-      
+
       if (error.message.includes('blacklisted')) {
         return res.status(403).json({ error: 'Token has been revoked' });
       }
       if (error.message.includes('Invalid') || error.message.includes('expired')) {
         return res.status(403).json({ error: 'Invalid refresh token' });
       }
-      
+
       res.status(500).json({ error: 'Internal server error' });
     }
   };
@@ -194,5 +192,5 @@ export default {
   refreshErrorHandler,
   needsRefresh,
   createRefreshRoute,
-  REFRESH_THRESHOLD_MS
+  REFRESH_THRESHOLD_MS,
 };

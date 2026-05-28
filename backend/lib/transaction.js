@@ -33,7 +33,10 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, Math.max(0, ms + jitter)));
 }
 
-export async function withRetry(fn, { maxRetries = DEFAULT_MAX_RETRIES, baseDelayMs = DEFAULT_BASE_DELAY_MS } = {}) {
+export async function withRetry(
+  fn,
+  { maxRetries = DEFAULT_MAX_RETRIES, baseDelayMs = DEFAULT_BASE_DELAY_MS } = {},
+) {
   let attempt = 0;
   while (true) {
     try {
@@ -48,16 +51,19 @@ export async function withRetry(fn, { maxRetries = DEFAULT_MAX_RETRIES, baseDela
   }
 }
 
-export async function withTransaction(fn, {
-  isolationLevel = DEFAULT_ISOLATION,
-  maxRetries = DEFAULT_MAX_RETRIES,
-  baseDelayMs = DEFAULT_BASE_DELAY_MS,
-  timeout = 10_000,
-} = {}) {
-  return withRetry(
-    () => prisma.$transaction(fn, { isolationLevel, timeout }),
-    { maxRetries, baseDelayMs },
-  );
+export async function withTransaction(
+  fn,
+  {
+    isolationLevel = DEFAULT_ISOLATION,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    baseDelayMs = DEFAULT_BASE_DELAY_MS,
+    timeout = 10_000,
+  } = {},
+) {
+  return withRetry(() => prisma.$transaction(fn, { isolationLevel, timeout }), {
+    maxRetries,
+    baseDelayMs,
+  });
 }
 
 export default { withTransaction, withRetry, isDeadlock };

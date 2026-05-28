@@ -141,7 +141,7 @@ export default function MilestonePlanner({ milestones = [], onChange = () => {} 
   const handleKeyDown = (e) => {
     if (e.key === 'Delete' && selectedNodes.size > 0) {
       const newEdges = edges.filter(
-        (edge) => !selectedNodes.has(edge.from) && !selectedNodes.has(edge.to)
+        (edge) => !selectedNodes.has(edge.from) && !selectedNodes.has(edge.to),
       );
       setEdges(newEdges);
       setSelectedNodes(new Set());
@@ -162,8 +162,14 @@ export default function MilestonePlanner({ milestones = [], onChange = () => {} 
     );
   }
 
-  const width = Math.max(600, (Math.max(...milestones.map((_, i) => i % 3)) + 1) * (NODE_WIDTH + NODE_PADDING));
-  const height = Math.max(400, (Math.ceil(milestones.length / 3)) * (NODE_HEIGHT + NODE_PADDING) + 100);
+  const width = Math.max(
+    600,
+    (Math.max(...milestones.map((_, i) => i % 3)) + 1) * (NODE_WIDTH + NODE_PADDING),
+  );
+  const height = Math.max(
+    400,
+    Math.ceil(milestones.length / 3) * (NODE_HEIGHT + NODE_PADDING) + 100,
+  );
 
   return (
     <div className="space-y-4">
@@ -278,7 +284,9 @@ export default function MilestonePlanner({ milestones = [], onChange = () => {} 
                   fontWeight="500"
                   pointerEvents="none"
                 >
-                  {milestone.title?.length > 16 ? milestone.title?.substring(0, 13) + '...' : milestone.title}
+                  {milestone.title?.length > 16
+                    ? milestone.title?.substring(0, 13) + '...'
+                    : milestone.title}
                 </text>
                 <text
                   x={pos.x + NODE_WIDTH / 2}
@@ -317,8 +325,13 @@ export default function MilestonePlanner({ milestones = [], onChange = () => {} 
       </div>
 
       <div className="text-xs text-gray-400 space-y-1">
-        <p>🖱️ Drag nodes to reposition | 🔗 Drag from green handle (bottom) to yellow handle (top) to create dependencies</p>
-        <p>Shift+Click to select/deselect nodes | Delete key to remove selected nodes and their edges</p>
+        <p>
+          🖱️ Drag nodes to reposition | 🔗 Drag from green handle (bottom) to yellow handle (top) to
+          create dependencies
+        </p>
+        <p>
+          Shift+Click to select/deselect nodes | Delete key to remove selected nodes and their edges
+        </p>
         <p>Circular dependencies are blocked automatically</p>
       </div>
     </div>

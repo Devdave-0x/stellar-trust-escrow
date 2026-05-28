@@ -196,7 +196,9 @@ function ProposalCard({ proposal, onVote, onExpand, isExpanded, userVoting }) {
                 </p>
                 <p>
                   <span className="text-gray-400">Voting Share:</span>
-                  <span className="text-blue-400 ml-2 font-semibold">{proposal.user_voting_share || '0'}%</span>
+                  <span className="text-blue-400 ml-2 font-semibold">
+                    {proposal.user_voting_share || '0'}%
+                  </span>
                 </p>
               </div>
             </div>
@@ -210,7 +212,11 @@ function ProposalCard({ proposal, onVote, onExpand, isExpanded, userVoting }) {
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:text-gray-400 text-white font-semibold rounded-lg transition-colors"
                 aria-label={`Vote for proposal ${proposal.id}`}
               >
-                {userVoting ? <Loader2 size={16} className="animate-spin" /> : <ThumbsUp size={16} />}
+                {userVoting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <ThumbsUp size={16} />
+                )}
                 Vote For
               </button>
               <button
@@ -219,7 +225,11 @@ function ProposalCard({ proposal, onVote, onExpand, isExpanded, userVoting }) {
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:text-gray-400 text-white font-semibold rounded-lg transition-colors"
                 aria-label={`Vote against proposal ${proposal.id}`}
               >
-                {userVoting ? <Loader2 size={16} className="animate-spin" /> : <ThumbsDown size={16} />}
+                {userVoting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <ThumbsDown size={16} />
+                )}
                 Vote Against
               </button>
             </div>
@@ -233,7 +243,10 @@ function ProposalCard({ proposal, onVote, onExpand, isExpanded, userVoting }) {
               </p>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {proposal.voters.slice(0, 5).map((voter, idx) => (
-                  <div key={idx} className="text-xs text-gray-300 flex items-center justify-between">
+                  <div
+                    key={idx}
+                    className="text-xs text-gray-300 flex items-center justify-between"
+                  >
                     <span>{voter.address.slice(0, 10)}...</span>
                     <span className={voter.support ? 'text-emerald-400' : 'text-red-400'}>
                       {voter.support ? '✓ For' : '✗ Against'}
@@ -284,7 +297,12 @@ function ProposalForm({ onSubmit, isSubmitting }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="card space-y-4" role="form" aria-label="Create proposal">
+    <form
+      onSubmit={handleSubmit}
+      className="card space-y-4"
+      role="form"
+      aria-label="Create proposal"
+    >
       <h2 className="text-2xl font-bold text-white flex items-center gap-2">
         <Plus size={24} className="text-blue-400" />
         Create Proposal
@@ -374,7 +392,10 @@ function ProposalForm({ onSubmit, isSubmitting }) {
               )}
             </div>
             <div>
-              <label htmlFor="paramValue" className="block text-sm font-semibold text-gray-300 mb-2">
+              <label
+                htmlFor="paramValue"
+                className="block text-sm font-semibold text-gray-300 mb-2"
+              >
                 Value
               </label>
               <input
@@ -500,8 +521,8 @@ export default function GovernancePage() {
                   votes_for: support ? p.votes_for + 1 : p.votes_for,
                   votes_against: !support ? p.votes_against + 1 : p.votes_against,
                 }
-              : p
-          )
+              : p,
+          ),
         );
         const action = support ? 'for' : 'against';
         showToast(`Vote cast ${action} proposal`, 'success');
@@ -560,8 +581,7 @@ export default function GovernancePage() {
 
   const filteredProposals = proposals.filter((p) => {
     if (filter === 'active') return p.status === 'Active';
-    if (filter === 'resolved')
-      return ['Executed', 'Defeated', 'Cancelled'].includes(p.status);
+    if (filter === 'resolved') return ['Executed', 'Defeated', 'Cancelled'].includes(p.status);
     return true;
   });
 
@@ -572,7 +592,9 @@ export default function GovernancePage() {
           <div className="card text-center py-12">
             <AlertCircle size={48} className="mx-auto mb-4 text-amber-400" />
             <h2 className="text-2xl font-bold text-white mb-2">Connect Your Wallet</h2>
-            <p className="text-gray-400 mb-6">Please connect your wallet to access governance features</p>
+            <p className="text-gray-400 mb-6">
+              Please connect your wallet to access governance features
+            </p>
           </div>
         </div>
       </div>
@@ -597,7 +619,8 @@ export default function GovernancePage() {
               Governance Portal
             </h1>
             <p className="text-gray-400">
-              Your voting share: <span className="text-blue-400 font-semibold">{userVotingShare}%</span>
+              Your voting share:{' '}
+              <span className="text-blue-400 font-semibold">{userVotingShare}%</span>
             </p>
           </div>
 
@@ -607,9 +630,7 @@ export default function GovernancePage() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-4 py-2 rounded font-semibold capitalize transition-colors ${
-                  filter === f
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
+                  filter === f ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
                 }`}
                 aria-pressed={filter === f}
               >

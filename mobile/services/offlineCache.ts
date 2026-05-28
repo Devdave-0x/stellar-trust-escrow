@@ -26,17 +26,15 @@ export function initOfflineDb(): void {
 }
 
 export function cacheEscrow(escrow: Record<string, unknown>): void {
-  db.runSync(
-    `INSERT OR REPLACE INTO escrows (id, data, cached_at) VALUES (?, ?, ?)`,
-    [String(escrow.id), JSON.stringify(escrow), Date.now()],
-  );
+  db.runSync(`INSERT OR REPLACE INTO escrows (id, data, cached_at) VALUES (?, ?, ?)`, [
+    String(escrow.id),
+    JSON.stringify(escrow),
+    Date.now(),
+  ]);
 }
 
 export function getCachedEscrow(id: string): Record<string, unknown> | null {
-  const row = db.getFirstSync<{ data: string }>(
-    `SELECT data FROM escrows WHERE id = ?`,
-    [id],
-  );
+  const row = db.getFirstSync<{ data: string }>(`SELECT data FROM escrows WHERE id = ?`, [id]);
   return row ? JSON.parse(row.data) : null;
 }
 
@@ -48,10 +46,12 @@ export function getCachedEscrows(): Record<string, unknown>[] {
 export function cacheMilestones(escrowId: string, milestones: Record<string, unknown>[]): void {
   db.runSync(`DELETE FROM milestones WHERE escrow_id = ?`, [escrowId]);
   for (const m of milestones) {
-    db.runSync(
-      `INSERT INTO milestones (id, escrow_id, data, cached_at) VALUES (?, ?, ?, ?)`,
-      [Number(m.id), escrowId, JSON.stringify(m), Date.now()],
-    );
+    db.runSync(`INSERT INTO milestones (id, escrow_id, data, cached_at) VALUES (?, ?, ?, ?)`, [
+      Number(m.id),
+      escrowId,
+      JSON.stringify(m),
+      Date.now(),
+    ]);
   }
 }
 

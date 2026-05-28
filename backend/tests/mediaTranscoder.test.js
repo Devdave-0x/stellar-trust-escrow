@@ -70,7 +70,12 @@ describe('Media Transcoder Service', () => {
 
     it('transcodes PNG to WebP', async () => {
       const pngBuffer = await sharp({
-        create: { width: 100, height: 100, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+        create: {
+          width: 100,
+          height: 100,
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+        },
       })
         .png()
         .toBuffer();

@@ -6,7 +6,7 @@ const mockMutate = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../../hooks/useEscrow', () => ({
   useEscrow: () => ({
-    escrow: null,   // page falls back to PLACEHOLDER_ESCROW
+    escrow: null, // page falls back to PLACEHOLDER_ESCROW
     isLoading: false,
     error: null,
     mutate: mockMutate,
@@ -14,22 +14,26 @@ jest.mock('../../hooks/useEscrow', () => ({
 }));
 
 // Mock components that require context providers not set up in tests.
-jest.mock('../../components/ui/CurrencyAmount', () =>
-  function CurrencyAmount({ amount }) {
-    return <span>{amount}</span>;
-  }
+jest.mock(
+  '../../components/ui/CurrencyAmount',
+  () =>
+    function CurrencyAmount({ amount }) {
+      return <span>{amount}</span>;
+    },
 );
 
-jest.mock('../../components/escrow/MilestoneList', () =>
-  function MilestoneList({ milestones }) {
-    return (
-      <ul>
-        {milestones.map((m) => (
-          <li key={m.id}>{m.title}</li>
-        ))}
-      </ul>
-    );
-  }
+jest.mock(
+  '../../components/escrow/MilestoneList',
+  () =>
+    function MilestoneList({ milestones }) {
+      return (
+        <ul>
+          {milestones.map((m) => (
+            <li key={m.id}>{m.title}</li>
+          ))}
+        </ul>
+      );
+    },
 );
 
 const params = { id: '1' };

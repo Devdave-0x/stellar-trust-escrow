@@ -92,7 +92,10 @@ function StatWidget({ label, value, icon, color = 'text-white', sub }) {
     >
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
-        <span className="text-lg opacity-60 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+        <span
+          className="text-lg opacity-60 group-hover:opacity-100 transition-opacity"
+          aria-hidden="true"
+        >
           {icon}
         </span>
       </div>

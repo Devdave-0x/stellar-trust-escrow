@@ -11,14 +11,7 @@
  *   const { isOnline, isSyncing, cachedEscrows, queueMutation } = useOffline();
  */
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 const DB_NAME = 'ste-offline';
 const DB_VERSION = 1;
@@ -177,7 +170,15 @@ export function OfflineProvider({ children }) {
 
   return (
     <OfflineContext.Provider
-      value={{ isOnline, isSyncing, cachedEscrows, pendingCount, cacheEscrows, queueMutation, syncMutations }}
+      value={{
+        isOnline,
+        isSyncing,
+        cachedEscrows,
+        pendingCount,
+        cacheEscrows,
+        queueMutation,
+        syncMutations,
+      }}
     >
       {children}
     </OfflineContext.Provider>

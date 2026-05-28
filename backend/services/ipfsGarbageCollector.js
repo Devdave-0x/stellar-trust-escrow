@@ -28,7 +28,8 @@ async function listPinnedCidsFromPinata() {
     if (!res.ok) throw new Error(`Pinata list failed: ${res.status} ${res.statusText}`);
     const data = await res.json();
     if (!Array.isArray(data.rows)) break;
-    for (const row of data.rows) results.push(row.ipfs_pin_hash || row.id || row.pin || row.cid || row.ipfs_pin_hash);
+    for (const row of data.rows)
+      results.push(row.ipfs_pin_hash || row.id || row.pin || row.cid || row.ipfs_pin_hash);
     if (data.rows.length < PAGE_LIMIT) break;
     pageOffset += PAGE_LIMIT;
   }
@@ -151,7 +152,10 @@ export async function runGarbageCollector({ dryRun = false } = {}) {
     }
   }
 
-  log.info({ unpinned: results.unpinned.length, failed: results.failed.length }, '[IPFSGC] Completed');
+  log.info(
+    { unpinned: results.unpinned.length, failed: results.failed.length },
+    '[IPFSGC] Completed',
+  );
   return results;
 }
 

@@ -92,7 +92,7 @@ describe('Stellar Client with Horizon Failover', () => {
       expect(loggerMock.info).toHaveBeenCalledWith(
         expect.objectContaining({
           message: 'query_success',
-        })
+        }),
       );
     });
 
@@ -124,12 +124,11 @@ describe('Stellar Client with Horizon Failover', () => {
 
       // Create a new client with multiple endpoints for this test
       const testEndpoints = ['https://primary.stellar.org', 'https://backup.stellar.org'];
-      const client = new (await import('../services/stellarClient.js')).default;
+      const client = new (await import('../services/stellarClient.js')).default();
       // Manually set up endpoints to test failover
       client.endpoints = testEndpoints;
       client.nodeHealth.clear();
       testEndpoints.forEach((url) => {
-        const nodeHealthClass = (await import('../services/stellarClient.js')).NodeHealth || function () {};
         const health = {
           url,
           isHealthy: true,
@@ -155,7 +154,7 @@ describe('Stellar Client with Horizon Failover', () => {
       expect(loggerMock.warn).toHaveBeenCalledWith(
         expect.objectContaining({
           message: 'query_failed_attempting_next_node',
-        })
+        }),
       );
     });
 
@@ -195,7 +194,7 @@ describe('Stellar Client with Horizon Failover', () => {
     it('throws meaningful error when all endpoints fail', async () => {
       primaryServer.getLatestLedger.mockRejectedValue(new Error('Primary failed'));
 
-      const client = new (await import('../services/stellarClient.js')).default;
+      const client = new (await import('../services/stellarClient.js')).default();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {
@@ -206,15 +205,17 @@ describe('Stellar Client with Horizon Failover', () => {
       };
       client.nodeHealth.set('https://primary.stellar.org', health);
 
-      await expect(client.executeWithFailover(async (server) => {
-        return await server.getLatestLedger();
-      })).rejects.toThrow('All Stellar endpoints failed');
+      await expect(
+        client.executeWithFailover(async (server) => {
+          return await server.getLatestLedger();
+        }),
+      ).rejects.toThrow('All Stellar endpoints failed');
     });
 
     it('logs error when all nodes fail', async () => {
       primaryServer.getLatestLedger.mockRejectedValue(new Error('Service unavailable'));
 
-      const client = new (await import('../services/stellarClient.js')).default;
+      const client = new (await import('../services/stellarClient.js')).default();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {
@@ -236,14 +237,14 @@ describe('Stellar Client with Horizon Failover', () => {
       expect(loggerMock.error).toHaveBeenCalledWith(
         expect.objectContaining({
           message: 'all_endpoints_failed',
-        })
+        }),
       );
     });
 
     it('does not crash when error occurs', async () => {
       primaryServer.getLatestLedger.mockRejectedValue(new Error('Fatal error'));
 
-      const client = new (await import('../services/stellarClient.js')).default;
+      const client = new (await import('../services/stellarClient.js')).default();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {
@@ -355,13 +356,10 @@ describe('Stellar Client with Horizon Failover', () => {
     it('times out slow queries', async () => {
       // Mock slow response
       primaryServer.getLatestLedger.mockImplementation(
-        () =>
-          new Promise((resolve) =>
-            setTimeout(() => resolve({ sequence: 60000 }), 60000)
-          )
+        () => new Promise((resolve) => setTimeout(() => resolve({ sequence: 60000 }), 60000)),
       );
 
-      const client = new (await import('../services/stellarClient.js')).default;
+      const client = new (await import('../services/stellarClient.js')).default();
       client.endpoints = ['https://primary.stellar.org'];
       client.nodeHealth.clear();
       const health = {

@@ -118,9 +118,7 @@ export default function NotificationPreferencesPage() {
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Notification Preferences</h1>
-        <p className="text-gray-400 mt-1 text-sm">
-          Choose how and when you receive notifications.
-        </p>
+        <p className="text-gray-400 mt-1 text-sm">Choose how and when you receive notifications.</p>
       </div>
 
       {!isConnected && (
@@ -169,9 +167,7 @@ export default function NotificationPreferencesPage() {
                   <td className="py-4 px-2">
                     <div className="flex flex-col">
                       <span className="text-white font-medium">{event.label}</span>
-                      <span className="text-gray-500 text-xs mt-0.5">
-                        {event.description}
-                      </span>
+                      <span className="text-gray-500 text-xs mt-0.5">{event.description}</span>
                     </div>
                   </td>
                   {CHANNELS.map((channel) => {
@@ -214,9 +210,7 @@ export default function NotificationPreferencesPage() {
             {isSubmitting ? 'Saving...' : 'Save Preferences'}
           </button>
           {!isConnected && (
-            <p className="text-xs text-gray-500">
-              Connect your wallet to enable saving.
-            </p>
+            <p className="text-xs text-gray-500">Connect your wallet to enable saving.</p>
           )}
         </div>
       </form>

@@ -74,8 +74,8 @@ describe('hasPermission', () => {
 describe('checkPermission middleware', () => {
   it('calls next() when role and action are permitted', () => {
     const next = jest.fn();
-    const req  = makeReq([ROLES.CLIENT]);
-    const res  = makeRes();
+    const req = makeReq([ROLES.CLIENT]);
+    const res = makeRes();
 
     checkPermission(ROLES.CLIENT, 'create_escrow')(req, res, next);
 
@@ -85,8 +85,8 @@ describe('checkPermission middleware', () => {
 
   it('returns 403 when user has no roles', () => {
     const next = jest.fn();
-    const req  = { user: { address: 'GABC' }, path: '/test' }; // no roles field
-    const res  = makeRes();
+    const req = { user: { address: 'GABC' }, path: '/test' }; // no roles field
+    const res = makeRes();
 
     checkPermission(ROLES.CLIENT, 'create_escrow')(req, res, next);
 
@@ -96,8 +96,8 @@ describe('checkPermission middleware', () => {
 
   it('returns 403 when user lacks the required role', () => {
     const next = jest.fn();
-    const req  = makeReq([ROLES.FREELANCER]);
-    const res  = makeRes();
+    const req = makeReq([ROLES.FREELANCER]);
+    const res = makeRes();
 
     checkPermission(ROLES.CLIENT, 'create_escrow')(req, res, next);
 
@@ -111,8 +111,8 @@ describe('checkPermission middleware', () => {
   it('returns 403 when role is present but action is not permitted', () => {
     const next = jest.fn();
     // Freelancer holds the role but cannot resolve_dispute
-    const req  = makeReq([ROLES.FREELANCER]);
-    const res  = makeRes();
+    const req = makeReq([ROLES.FREELANCER]);
+    const res = makeRes();
 
     checkPermission(ROLES.FREELANCER, 'resolve_dispute')(req, res, next);
 
@@ -122,8 +122,8 @@ describe('checkPermission middleware', () => {
 
   it('Admin bypasses all permission checks', () => {
     const next = jest.fn();
-    const req  = makeReq([ROLES.ADMIN]);
-    const res  = makeRes();
+    const req = makeReq([ROLES.ADMIN]);
+    const res = makeRes();
 
     checkPermission(ROLES.CLIENT, 'create_escrow')(req, res, next);
 
@@ -132,8 +132,8 @@ describe('checkPermission middleware', () => {
 
   it('supports multi-role users — passes if any role satisfies the check', () => {
     const next = jest.fn();
-    const req  = makeReq([ROLES.FREELANCER, ROLES.ARBITRATOR]);
-    const res  = makeRes();
+    const req = makeReq([ROLES.FREELANCER, ROLES.ARBITRATOR]);
+    const res = makeRes();
 
     checkPermission(ROLES.ARBITRATOR, 'resolve_dispute')(req, res, next);
 
@@ -142,8 +142,8 @@ describe('checkPermission middleware', () => {
 
   it('falls back to req.user.role (singular) for legacy tokens', () => {
     const next = jest.fn();
-    const req  = { user: { address: 'GABC', role: ROLES.CLIENT }, path: '/test' };
-    const res  = makeRes();
+    const req = { user: { address: 'GABC', role: ROLES.CLIENT }, path: '/test' };
+    const res = makeRes();
 
     checkPermission(ROLES.CLIENT, 'create_escrow')(req, res, next);
 
@@ -152,8 +152,8 @@ describe('checkPermission middleware', () => {
 
   it('returns 403 when req.user is absent', () => {
     const next = jest.fn();
-    const req  = { path: '/test' };
-    const res  = makeRes();
+    const req = { path: '/test' };
+    const res = makeRes();
 
     checkPermission(ROLES.CLIENT, 'create_escrow')(req, res, next);
 

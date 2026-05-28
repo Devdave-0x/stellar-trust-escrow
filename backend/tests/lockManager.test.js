@@ -7,10 +7,10 @@ import { jest } from '@jest/globals';
 // ── Mock ioredis ──────────────────────────────────────────────────────────────
 
 const mockRedis = {
-  set:  jest.fn(),
+  set: jest.fn(),
   eval: jest.fn(),
   quit: jest.fn().mockResolvedValue(undefined),
-  on:   jest.fn(),
+  on: jest.fn(),
 };
 
 jest.unstable_mockModule('ioredis', () => ({
@@ -41,13 +41,7 @@ describe('LockManager.acquire', () => {
     const lock = await LockManager.acquire('test_lock', 5000, { autoRenew: false });
 
     expect(lock).not.toBeNull();
-    expect(mockRedis.set).toHaveBeenCalledWith(
-      'test_lock',
-      expect.any(String),
-      'PX',
-      5000,
-      'NX',
-    );
+    expect(mockRedis.set).toHaveBeenCalledWith('test_lock', expect.any(String), 'PX', 5000, 'NX');
   });
 
   it('returns null when the lock is already held (SET NX returns null)', async () => {

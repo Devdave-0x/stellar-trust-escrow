@@ -25,7 +25,7 @@ export const up = async (prisma) => {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
   `;
@@ -62,15 +62,15 @@ export const up = async (prisma) => {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_methods_user_tenant ON mfa_methods(user_id, tenant_id);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_methods_user_active ON mfa_methods(user_id, is_active);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_methods_type_active ON mfa_methods(type, is_active);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_methods_credential ON mfa_methods(credential_id);
   `;
@@ -94,15 +94,15 @@ export const up = async (prisma) => {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_attempts_user_created ON mfa_attempts(user_id, created_at DESC);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_attempts_user_success ON mfa_attempts(user_id, success, created_at DESC);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_attempts_ip ON mfa_attempts(ip_address, created_at DESC);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_attempts_created ON mfa_attempts(created_at);
   `;
@@ -125,7 +125,7 @@ export const up = async (prisma) => {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_lockouts_user_until ON mfa_lockouts(user_id, locked_until);
   `;
-  
+
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS idx_mfa_lockouts_until ON mfa_lockouts(locked_until);
   `;

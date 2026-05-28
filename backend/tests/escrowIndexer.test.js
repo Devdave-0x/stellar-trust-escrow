@@ -9,9 +9,9 @@ jest.unstable_mockModule('../config/logger.js', () => ({
 
 // Redis mock — tracks SET NX PX calls and eval (Lua CAS delete)
 const redisMock = {
-  set:  jest.fn(),
+  set: jest.fn(),
   eval: jest.fn(),
-  on:   jest.fn(),
+  on: jest.fn(),
 };
 jest.unstable_mockModule('ioredis', () => ({
   Redis: jest.fn(() => redisMock),
@@ -24,12 +24,12 @@ const prismaMock = {
     update: jest.fn(),
   },
   contractEvent: { upsert: jest.fn() },
-  milestone:     { updateMany: jest.fn() },
-  escrow:        { updateMany: jest.fn() },
-  dispute:       { upsert: jest.fn() },
+  milestone: { updateMany: jest.fn() },
+  escrow: { updateMany: jest.fn() },
+  dispute: { upsert: jest.fn() },
   reputationRecord: { upsert: jest.fn() },
-  $transaction:  jest.fn(async (ops) => (Array.isArray(ops) ? Promise.all(ops) : ops)),
-  $executeRaw:   jest.fn(),
+  $transaction: jest.fn(async (ops) => (Array.isArray(ops) ? Promise.all(ops) : ops)),
+  $executeRaw: jest.fn(),
 };
 jest.unstable_mockModule('../lib/prisma.js', () => ({ default: prismaMock }));
 
@@ -45,14 +45,14 @@ const { startIndexer } = await import('../workers/escrowIndexer.js');
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function setupEnv(overrides = {}) {
-  process.env.ESCROW_CONTRACT_ID         = overrides.contractId   ?? 'CONTRACT123';
-  process.env.SOROBAN_RPC_URL            = overrides.rpcUrl       ?? 'https://rpc.example.com';
-  process.env.INDEXER_POLL_INTERVAL_MS   = '999999'; // prevent real polling
-  process.env.INDEXER_BATCH_SIZE         = overrides.batchSize    ?? '10';
-  process.env.INDEXER_LOCK_TTL_MS        = overrides.lockTtl      ?? '30000';
-  process.env.INDEXER_LOCK_RETRY_COUNT   = overrides.retryCount   ?? '3';
+  process.env.ESCROW_CONTRACT_ID = overrides.contractId ?? 'CONTRACT123';
+  process.env.SOROBAN_RPC_URL = overrides.rpcUrl ?? 'https://rpc.example.com';
+  process.env.INDEXER_POLL_INTERVAL_MS = '999999'; // prevent real polling
+  process.env.INDEXER_BATCH_SIZE = overrides.batchSize ?? '10';
+  process.env.INDEXER_LOCK_TTL_MS = overrides.lockTtl ?? '30000';
+  process.env.INDEXER_LOCK_RETRY_COUNT = overrides.retryCount ?? '3';
   process.env.INDEXER_LOCK_RETRY_DELAY_MS = '0';
-  process.env.INDEXER_START_LEDGER       = '0';
+  process.env.INDEXER_START_LEDGER = '0';
 }
 
 beforeEach(() => {
@@ -83,8 +83,22 @@ describe('escrowIndexer — distributed Redis locking', () => {
           json: async () => ({
             result: {
               events: [
-                { topic: ['esc_crt', '1'], value: ['addr1', 'addr2', '100'], txHash: 'tx1', id: 0, ledger: 1, ledgerClosedAt: new Date().toISOString() },
-                { topic: ['esc_crt', '2'], value: ['addr3', 'addr4', '200'], txHash: 'tx2', id: 1, ledger: 2, ledgerClosedAt: new Date().toISOString() },
+                {
+                  topic: ['esc_crt', '1'],
+                  value: ['addr1', 'addr2', '100'],
+                  txHash: 'tx1',
+                  id: 0,
+                  ledger: 1,
+                  ledgerClosedAt: new Date().toISOString(),
+                },
+                {
+                  topic: ['esc_crt', '2'],
+                  value: ['addr3', 'addr4', '200'],
+                  txHash: 'tx2',
+                  id: 1,
+                  ledger: 2,
+                  ledgerClosedAt: new Date().toISOString(),
+                },
               ],
             },
           }),
@@ -121,7 +135,9 @@ describe('escrowIndexer — distributed Redis locking', () => {
       const eventCalls = global.fetch.mock.calls.filter(([, opts]) => {
         try {
           return JSON.parse(opts.body).method === 'getEvents';
-        } catch { return false; }
+        } catch {
+          return false;
+        }
       });
       expect(eventCalls).toHaveLength(0);
 
@@ -269,7 +285,11 @@ describe('escrowIndexer — distributed Redis locking', () => {
 
       // No getEvents call — batch was skipped
       const eventCalls = global.fetch.mock.calls.filter(([, opts]) => {
-        try { return JSON.parse(opts.body).method === 'getEvents'; } catch { return false; }
+        try {
+          return JSON.parse(opts.body).method === 'getEvents';
+        } catch {
+          return false;
+        }
       });
       expect(eventCalls).toHaveLength(0);
     });

@@ -7,13 +7,16 @@ This PR implements a comprehensive automated accessibility scanner using Playwri
 ## Changes
 
 ### Core Implementation
+
 - ✅ Created `scripts/accessibility-scan.js` - Automated scanner that checks all major pages for WCAG Level AA violations
 - ✅ Installed `@axe-core/playwright` dependency for accessibility testing
 - ✅ Added `test:a11y:scan` npm script to frontend package.json
 - ✅ Installed `wait-on` dependency for CI server startup coordination
 
 ### Pages Scanned
+
 The scanner automatically checks these routes:
+
 1. Landing Page (`/`)
 2. Dashboard (`/dashboard`)
 3. Explorer (`/explorer`)
@@ -21,6 +24,7 @@ The scanner automatically checks these routes:
 5. Profile (`/profile`)
 
 ### CI/CD Integration
+
 - ✅ Enhanced `.github/workflows/ci.yml` accessibility job
 - ✅ Automated scanner runs on every PR and push to develop
 - ✅ Builds frontend, starts server, and runs comprehensive scans
@@ -28,10 +32,11 @@ The scanner automatically checks these routes:
 - ✅ Blocks PRs that exceed violation thresholds
 
 ### Thresholds
+
 Custom thresholds configured to fail CI on critical violations:
 
 | Impact Level | Local | CI Mode |
-|--------------|-------|---------|
+| ------------ | ----- | ------- |
 | Critical     | 0     | 0       |
 | Serious      | 5     | 0       |
 | Moderate     | 10    | 5       |
@@ -40,6 +45,7 @@ Custom thresholds configured to fail CI on critical violations:
 **CI mode is stricter** to prevent regressions from being merged.
 
 ### Documentation
+
 - ✅ Created `scripts/README-ACCESSIBILITY.md` with comprehensive guide
 - ✅ Local testing instructions
 - ✅ Common issues and fixes
@@ -47,6 +53,7 @@ Custom thresholds configured to fail CI on critical violations:
 - ✅ Troubleshooting guide
 
 ### Configuration
+
 - ✅ Added `frontend/accessibility-reports/` to .gitignore
 - ✅ Configured Axe to check WCAG 2.0 Level A, AA and WCAG 2.1 Level A, AA
 - ✅ HTML reports generated with detailed violation information
@@ -54,6 +61,7 @@ Custom thresholds configured to fail CI on critical violations:
 ## Testing
 
 ### Local Testing
+
 ```bash
 cd frontend
 npm run build
@@ -64,11 +72,13 @@ npm run test:a11y:scan
 ```
 
 ### CI Testing
+
 The scanner runs automatically in the CI pipeline when frontend files change.
 
 ## Reports
 
 The scanner generates detailed HTML reports including:
+
 - Summary of violations by severity
 - Detailed information for each violation
 - Affected HTML elements with code snippets
@@ -86,6 +96,7 @@ The scanner generates detailed HTML reports including:
 ## Usage
 
 Run locally:
+
 ```bash
 npm run test:a11y:scan
 ```
@@ -95,6 +106,7 @@ View reports in `frontend/accessibility-reports/`
 ## Documentation
 
 See `scripts/README-ACCESSIBILITY.md` for:
+
 - Complete setup instructions
 - Understanding violation severity
 - Common issues and fixes

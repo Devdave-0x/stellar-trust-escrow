@@ -110,7 +110,7 @@ const eventWorker = new Worker(
             attemptsMade: job.attemptsMade,
             failedAt: new Date().toISOString(),
           },
-          { removeOnComplete: false }
+          { removeOnComplete: false },
         );
         logger.warn(`[EventQueue] Job ${job.id} moved to DLQ after exhausting retries`);
       }
@@ -122,7 +122,7 @@ const eventWorker = new Worker(
   {
     connection: redisConnection,
     concurrency: 1, // Process events sequentially
-  }
+  },
 );
 
 // Event listeners for monitoring
@@ -147,7 +147,7 @@ export async function enqueueBlockchainEvent(
   eventType,
   eventPayload,
   blockHeight = null,
-  txHash = null
+  txHash = null,
 ) {
   const job = await eventQueue.add('process-event', {
     eventType,

@@ -9,20 +9,18 @@ import { useToast } from '../../../contexts/ToastContext';
 // Simple JSON syntax highlighter
 function JsonHighlight({ code }) {
   const formatted = JSON.stringify(code, null, 2);
-  const highlighted = formatted
-    .split('\n')
-    .map((line, i) => {
-      let color = 'text-gray-400';
-      if (line.includes('"') && line.includes(':')) color = 'text-indigo-400';
-      if (line.match(/:\s*(true|false|null)/)) color = 'text-emerald-400';
-      if (line.match(/:\s*\d+/)) color = 'text-amber-400';
-      if (line.match(/:\s*"/)) color = 'text-green-400';
-      return (
-        <div key={i} className={color}>
-          {line}
-        </div>
-      );
-    });
+  const highlighted = formatted.split('\n').map((line, i) => {
+    let color = 'text-gray-400';
+    if (line.includes('"') && line.includes(':')) color = 'text-indigo-400';
+    if (line.match(/:\s*(true|false|null)/)) color = 'text-emerald-400';
+    if (line.match(/:\s*\d+/)) color = 'text-amber-400';
+    if (line.match(/:\s*"/)) color = 'text-green-400';
+    return (
+      <div key={i} className={color}>
+        {line}
+      </div>
+    );
+  });
 
   return <div className="font-mono text-xs whitespace-pre-wrap">{highlighted}</div>;
 }
@@ -319,11 +317,15 @@ export default function ConsolePage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-gray-800/50 p-3 rounded-lg">
                         <p className="text-xs text-gray-400 mb-1">Gas Used</p>
-                        <p className="text-lg font-mono text-emerald-400">{gasUsed.toLocaleString()}</p>
+                        <p className="text-lg font-mono text-emerald-400">
+                          {gasUsed.toLocaleString()}
+                        </p>
                       </div>
                       <div className="bg-gray-800/50 p-3 rounded-lg">
                         <p className="text-xs text-gray-400 mb-1">Status</p>
-                        <p className="text-lg font-mono text-emerald-400">{result.status.toUpperCase()}</p>
+                        <p className="text-lg font-mono text-emerald-400">
+                          {result.status.toUpperCase()}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -332,7 +334,9 @@ export default function ConsolePage() {
                   <div className="bg-gray-800/50 p-3 rounded-lg">
                     <p className="text-xs text-gray-400 mb-2">Transaction Hash</p>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 text-xs text-gray-300 overflow-auto">{result.txHash}</code>
+                      <code className="flex-1 text-xs text-gray-300 overflow-auto">
+                        {result.txHash}
+                      </code>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(result.txHash);
@@ -349,7 +353,9 @@ export default function ConsolePage() {
                   <div>
                     <p className="text-xs text-gray-400 mb-2">Response</p>
                     <div className="bg-gray-950 p-3 rounded-lg overflow-auto max-h-40">
-                      <JsonHighlight code={result.output !== null ? { output: result.output } : {}} />
+                      <JsonHighlight
+                        code={result.output !== null ? { output: result.output } : {}}
+                      />
                     </div>
                   </div>
                 </div>

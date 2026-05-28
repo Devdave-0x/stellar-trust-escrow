@@ -1,6 +1,6 @@
 /**
  * Migration: Add refresh tokens table for token rotation
- * 
+ *
  * This migration creates a dedicated refresh_tokens table to support:
  * - Multiple concurrent refresh tokens per user
  * - Token rotation tracking

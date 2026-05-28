@@ -180,8 +180,14 @@ router.delete('/cache', requireMfa, async (req, res) => {
     }
     // Full flush — invalidate all known top-level tags
     await cache.invalidateTags([
-      'escrows', 'disputes', 'reputation', 'reputation:leaderboard',
-      'events', 'events:stats', 'events:types', 'milestones',
+      'escrows',
+      'disputes',
+      'reputation',
+      'reputation:leaderboard',
+      'events',
+      'events:stats',
+      'events:types',
+      'milestones',
     ]);
     res.json({ ok: true, invalidated: 'all' });
   } catch (err) {

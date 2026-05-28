@@ -13,6 +13,7 @@ This document outlines the security measures implemented in the StellarTrustEscr
 **Issue**: `settle_rent_for_access` is called by read functions like `load_escrow_meta_with_rent` to lazily collect rent on every access. An adversary could potentially make thousands of view calls to drain rent faster than the normal schedule.
 
 **Analysis**: The function is safe from rent manipulation because:
+
 - `collect_rent_due` checks that enough time has passed (`elapsed_periods > 0`) before charging rent
 - `last_rent_collection_at` is updated after each collection, preventing double-charging within the same period
 - Even if called 1000x in the same block, only the first call collects rent (subsequent calls return 0)
@@ -27,11 +28,13 @@ This document outlines the security measures implemented in the StellarTrustEscr
 **Issue**: `create_escrow` did not validate that tokens are approved for use as escrow tokens, allowing registered-but-unapproved wrapped tokens to bypass approval gates.
 
 **Fix**: Added `validate_escrow_token` call at the start of `create_escrow` to ensure:
+
 - Registered wrapped tokens with `is_approved = false` are rejected with `BridgeError (54)`
 - Registered wrapped tokens with `is_approved = true` are accepted
 - Native (non-registered) Stellar tokens bypass the check and are always accepted
 
-**Implementation**: 
+**Implementation**:
+
 ```rust
 ContractStorage::validate_escrow_token(&env, &token)?;
 ```
@@ -43,11 +46,13 @@ ContractStorage::validate_escrow_token(&env, &token)?;
 **Issue**: `collect_rent_due` performs timestamp arithmetic that could underflow if ledger timestamps are inconsistent, causing panics in debug mode or wrapping in release mode.
 
 **Fixes Applied**:
+
 - Replaced `now - last_collection` with `now.saturating_sub(last_collection)` to prevent underflow
 - Replaced bare multiplication with `checked_mul` for rent calculations
 - Added arithmetic safety comment explaining the approach
 
 **Code Changes**:
+
 ```rust
 let time_since_last = now.saturating_sub(meta.last_rent_collection_at);
 let due = rent_per_period
@@ -62,25 +67,28 @@ let due = rent_per_period
 **Issue**: `MetaTransaction.nonce` lacked enforcement of strictly monotonically increasing nonces, allowing replay attacks and gap attacks.
 
 **Fixes Applied**:
+
 - Added `DataKey::MetaTxNonce(Address)` to track the last used nonce per signer
 - Implemented `validate_and_update_nonce` function that enforces `nonce > last_nonce`
 - Updated `MetaTransaction` documentation to explain the security strategy
 
 **Security Guarantees**:
+
 - **Replay Prevention**: Same nonce cannot be reused (nonce must be > last_nonce)
 - **Gap Attack Prevention**: Non-sequential nonces are rejected (nonce must be > last_nonce, not just different)
 - **Per-Signer Tracking**: Each signer has independent nonce state
 
 **Code**:
+
 ```rust
 fn validate_and_update_nonce(env: &Env, signer: &Address, nonce: u64) -> Result<(), EscrowError> {
     let key = DataKey::MetaTxNonce(signer.clone());
     let last_nonce: u64 = env.storage().persistent().get(&key).unwrap_or(0);
-    
+
     if nonce <= last_nonce {
         return Err(EscrowError::Unauthorized);
     }
-    
+
     env.storage().persistent().set(&key, &nonce);
     Self::bump_persistent_ttl(env, &key);
     Ok(())
@@ -99,6 +107,7 @@ All security fixes include comprehensive unit tests:
 - `test_meta_transaction_nonce_enforcement`: Tests sequential nonces, replay rejection, and gap rejection
 
 Run all tests with:
+
 ```bash
 cargo test -p escrow_contract
 ```
@@ -117,6 +126,7 @@ cargo test -p escrow_contract
 ## Reporting Security Issues
 
 If you discover a security vulnerability, please email security@stellartrustescrow.dev with:
+
 - Description of the vulnerability
 - Steps to reproduce
 - Potential impact

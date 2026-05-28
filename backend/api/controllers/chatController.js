@@ -28,7 +28,11 @@ export const distributeRoomKey = async (req, res) => {
     });
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
 
-    const participants = [escrow.clientAddress, escrow.freelancerAddress, escrow.arbiterAddress].filter(Boolean);
+    const participants = [
+      escrow.clientAddress,
+      escrow.freelancerAddress,
+      escrow.arbiterAddress,
+    ].filter(Boolean);
     if (!participants.includes(req.user.address)) {
       return res.status(403).json({ error: 'Not a participant in this escrow' });
     }
@@ -80,13 +84,24 @@ export const sendMessage = async (req, res) => {
       return res.status(409).json({ error: 'Chat only available for disputed escrows' });
     }
 
-    const participants = [escrow.clientAddress, escrow.freelancerAddress, escrow.arbiterAddress].filter(Boolean);
+    const participants = [
+      escrow.clientAddress,
+      escrow.freelancerAddress,
+      escrow.arbiterAddress,
+    ].filter(Boolean);
     if (!participants.includes(req.user.address)) {
       return res.status(403).json({ error: 'Not a participant in this escrow' });
     }
 
     const message = await prisma.chatMessage.create({
-      data: { roomId: `dispute:${escrowId}`, senderAddress: req.user.address, ciphertext, iv, tag, sentAt: new Date() },
+      data: {
+        roomId: `dispute:${escrowId}`,
+        senderAddress: req.user.address,
+        ciphertext,
+        iv,
+        tag,
+        sentAt: new Date(),
+      },
       select: { id: true, senderAddress: true, sentAt: true },
     });
 
@@ -108,15 +123,29 @@ export const getMessages = async (req, res) => {
     });
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
 
-    const participants = [escrow.clientAddress, escrow.freelancerAddress, escrow.arbiterAddress].filter(Boolean);
+    const participants = [
+      escrow.clientAddress,
+      escrow.freelancerAddress,
+      escrow.arbiterAddress,
+    ].filter(Boolean);
     if (!participants.includes(req.user.address)) {
       return res.status(403).json({ error: 'Not a participant in this escrow' });
     }
 
     const [data, total] = await prisma.$transaction([
       prisma.chatMessage.findMany({
-        where: { roomId }, skip, take: limit, orderBy: { sentAt: 'asc' },
-        select: { id: true, senderAddress: true, ciphertext: true, iv: true, tag: true, sentAt: true },
+        where: { roomId },
+        skip,
+        take: limit,
+        orderBy: { sentAt: 'asc' },
+        select: {
+          id: true,
+          senderAddress: true,
+          ciphertext: true,
+          iv: true,
+          tag: true,
+          sentAt: true,
+        },
       }),
       prisma.chatMessage.count({ where: { roomId } }),
     ]);

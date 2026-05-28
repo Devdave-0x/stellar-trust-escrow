@@ -41,7 +41,7 @@ describe('MFA Service', () => {
         mockUserId,
         mockTenantId,
         mockEmail,
-        'My Authenticator'
+        'My Authenticator',
       );
 
       expect(result).toHaveProperty('secret');
@@ -50,14 +50,14 @@ describe('MFA Service', () => {
       expect(result.secret).toHaveLength(32);
       expect(result.otpauth).toContain('otpauth://totp/');
       expect(result.otpauth).toContain(mockEmail);
-      
+
       expect(cache.set).toHaveBeenCalledWith(
         `mfa:totp:setup:${mockUserId}`,
         expect.objectContaining({
           secret: result.secret,
           methodName: 'My Authenticator',
         }),
-        600
+        600,
       );
     });
 
@@ -86,7 +86,7 @@ describe('MFA Service', () => {
         mockTenantId,
         code,
         mockIp,
-        mockUserAgent
+        mockUserAgent,
       );
 
       expect(result).toHaveProperty('method');
@@ -104,7 +104,7 @@ describe('MFA Service', () => {
             isActive: true,
             isPrimary: true,
           }),
-        })
+        }),
       );
 
       expect(prisma.user.update).toHaveBeenCalledWith({
@@ -130,8 +130,8 @@ describe('MFA Service', () => {
           mockTenantId,
           '000000', // Invalid code
           mockIp,
-          mockUserAgent
-        )
+          mockUserAgent,
+        ),
       ).rejects.toThrow('Invalid verification code');
 
       expect(prisma.mfaAttempt.create).toHaveBeenCalledWith(
@@ -140,7 +140,7 @@ describe('MFA Service', () => {
             success: false,
             failureReason: 'Invalid TOTP code during setup',
           }),
-        })
+        }),
       );
     });
 
@@ -148,13 +148,7 @@ describe('MFA Service', () => {
       cache.get.mockResolvedValue(null);
 
       await expect(
-        mfaService.verifyAndRegisterTOTP(
-          mockUserId,
-          mockTenantId,
-          '123456',
-          mockIp,
-          mockUserAgent
-        )
+        mfaService.verifyAndRegisterTOTP(mockUserId, mockTenantId, '123456', mockIp, mockUserAgent),
       ).rejects.toThrow('TOTP setup not found or expired');
     });
   });
@@ -185,7 +179,7 @@ describe('MFA Service', () => {
         mockTenantId,
         code,
         mockIp,
-        mockUserAgent
+        mockUserAgent,
       );
 
       expect(result.verified).toBe(true);
@@ -207,13 +201,7 @@ describe('MFA Service', () => {
       });
 
       await expect(
-        mfaService.verifyTOTP(
-          mockUserId,
-          mockTenantId,
-          '000000',
-          mockIp,
-          mockUserAgent
-        )
+        mfaService.verifyTOTP(mockUserId, mockTenantId, '000000', mockIp, mockUserAgent),
       ).rejects.toThrow(/locked for \d+ minutes/);
 
       expect(prisma.mfaLockout.upsert).toHaveBeenCalled();
@@ -221,26 +209,20 @@ describe('MFA Service', () => {
 
     it('should reject verification when user is locked out', async () => {
       const lockedUntil = new Date(Date.now() + 10 * 60 * 1000);
-      
+
       prisma.mfaLockout.findUnique.mockResolvedValue({
         userId: mockUserId,
         lockedUntil,
       });
 
       await expect(
-        mfaService.verifyTOTP(
-          mockUserId,
-          mockTenantId,
-          '123456',
-          mockIp,
-          mockUserAgent
-        )
+        mfaService.verifyTOTP(mockUserId, mockTenantId, '123456', mockIp, mockUserAgent),
       ).rejects.toThrow(/Account locked/);
     });
 
     it('should clear lockout after expiration', async () => {
       const expiredLockout = new Date(Date.now() - 1000);
-      
+
       prisma.mfaLockout.findUnique.mockResolvedValue({
         userId: mockUserId,
         lockedUntil: expiredLockout,
@@ -255,13 +237,7 @@ describe('MFA Service', () => {
 
       // Should not throw lockout error
       await expect(
-        mfaService.verifyTOTP(
-          mockUserId,
-          mockTenantId,
-          '123456',
-          mockIp,
-          mockUserAgent
-        )
+        mfaService.verifyTOTP(mockUserId, mockTenantId, '123456', mockIp, mockUserAgent),
       ).rejects.toThrow('Invalid verification code'); // Different error
 
       expect(prisma.mfaLockout.delete).toHaveBeenCalledWith({
@@ -296,7 +272,7 @@ describe('MFA Service', () => {
         mockTenantId,
         backupCode,
         mockIp,
-        mockUserAgent
+        mockUserAgent,
       );
 
       expect(result.verified).toBe(true);
@@ -334,7 +310,7 @@ describe('MFA Service', () => {
         mockUserId,
         mockTenantId,
         mockEmail,
-        'YubiKey'
+        'YubiKey',
       );
 
       expect(result).toHaveProperty('challenge');
@@ -344,7 +320,7 @@ describe('MFA Service', () => {
           challenge: 'mock-challenge',
           methodName: 'YubiKey',
         }),
-        300
+        300,
       );
     });
 
@@ -388,7 +364,7 @@ describe('MFA Service', () => {
         mockTenantId,
         mockResponse,
         mockIp,
-        mockUserAgent
+        mockUserAgent,
       );
 
       expect(result).toHaveProperty('method');
@@ -437,11 +413,7 @@ describe('MFA Service', () => {
       prisma.mfaMethod.count.mockResolvedValue(2); // Has other methods
       prisma.mfaMethod.delete.mockResolvedValue({});
 
-      const result = await mfaService.removeMfaMethod(
-        mockUserId,
-        mockTenantId,
-        'method-123'
-      );
+      const result = await mfaService.removeMfaMethod(mockUserId, mockTenantId, 'method-123');
 
       expect(result.success).toBe(true);
       expect(prisma.mfaMethod.delete).toHaveBeenCalledWith({
@@ -496,7 +468,7 @@ describe('MFA Service', () => {
     it('should handle concurrent verification attempts', async () => {
       // Simulate race condition
       prisma.mfaAttempt.count.mockResolvedValue(4);
-      
+
       // Multiple attempts should be tracked correctly
       expect(prisma.mfaAttempt.count).toBeDefined();
     });
@@ -505,11 +477,7 @@ describe('MFA Service', () => {
       // Secrets should never be stored in plaintext
       cache.set.mockResolvedValue(true);
 
-      const result = await mfaService.initializeTOTP(
-        mockUserId,
-        mockTenantId,
-        mockEmail
-      );
+      const result = await mfaService.initializeTOTP(mockUserId, mockTenantId, mockEmail);
 
       // Secret returned to user is plaintext for QR code
       expect(result.secret).toMatch(/^[A-Z2-7]{32}$/);
@@ -518,7 +486,7 @@ describe('MFA Service', () => {
     it('should prevent replay attacks with WebAuthn counter', async () => {
       // Counter should increment with each authentication
       prisma.mfaMethod.update.mockResolvedValue({});
-      
+
       expect(prisma.mfaMethod.update).toBeDefined();
     });
 
@@ -526,7 +494,7 @@ describe('MFA Service', () => {
       prisma.mfaMethod.findFirst.mockResolvedValue(null);
 
       await expect(
-        mfaService.removeMfaMethod(mockUserId, mockTenantId, 'nonexistent')
+        mfaService.removeMfaMethod(mockUserId, mockTenantId, 'nonexistent'),
       ).rejects.toThrow('MFA method not found');
     });
   });

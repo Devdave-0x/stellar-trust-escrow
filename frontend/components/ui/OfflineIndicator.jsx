@@ -45,9 +45,10 @@ export default function OfflineIndicator() {
         flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl
         border backdrop-blur-md text-sm font-medium
         transition-all duration-300
-        ${justReconnected
-          ? 'bg-emerald-900/80 border-emerald-500/40 text-emerald-300'
-          : 'bg-gray-900/90 border-gray-700/60 text-gray-200'
+        ${
+          justReconnected
+            ? 'bg-emerald-900/80 border-emerald-500/40 text-emerald-300'
+            : 'bg-gray-900/90 border-gray-700/60 text-gray-200'
         }
       `}
     >
@@ -58,7 +59,9 @@ export default function OfflineIndicator() {
           aria-hidden="true"
         />
       ) : justReconnected ? (
-        <span className="text-emerald-400" aria-hidden="true">✓</span>
+        <span className="text-emerald-400" aria-hidden="true">
+          ✓
+        </span>
       ) : (
         <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
       )}
@@ -66,7 +69,8 @@ export default function OfflineIndicator() {
       {/* Message */}
       {isSyncing ? (
         <span>
-          Syncing{pendingCount > 0 ? ` ${pendingCount} pending action${pendingCount > 1 ? 's' : ''}` : ''}…
+          Syncing
+          {pendingCount > 0 ? ` ${pendingCount} pending action${pendingCount > 1 ? 's' : ''}` : ''}…
         </span>
       ) : justReconnected ? (
         <span>Back online</span>

@@ -1,6 +1,6 @@
 /**
  * API Deprecation Middleware
- * 
+ *
  * Provides comprehensive deprecation strategy with:
  * - Version headers
  * - Deprecation notices
@@ -20,13 +20,13 @@
 
 /**
  * Middleware to mark an endpoint or route as deprecated
- * 
+ *
  * @param {DeprecationConfig} config - Deprecation configuration
  * @returns {Function} Express middleware
- * 
+ *
  * @example
  * // Deprecate a specific endpoint
- * router.get('/old-endpoint', 
+ * router.get('/old-endpoint',
  *   deprecate({
  *     version: 'v1',
  *     sunsetDate: new Date('2026-12-31'),
@@ -69,14 +69,14 @@ export const deprecate = (config) => {
       warningMessage += `. Use ${replacement} instead`;
     }
     warningMessage += `. Sunset date: ${sunsetDate.toISOString().split('T')[0]}`;
-    
+
     res.setHeader('Warning', `299 - "${warningMessage}"`);
 
     // Add custom headers for easier client parsing
     res.setHeader('X-API-Deprecated', 'true');
     res.setHeader('X-API-Deprecated-Version', version);
     res.setHeader('X-API-Sunset-Date', sunsetDate.toISOString());
-    
+
     if (replacement) {
       res.setHeader('X-API-Replacement', replacement);
     }
@@ -97,10 +97,10 @@ export const deprecate = (config) => {
 
 /**
  * Middleware to deprecate an entire API version
- * 
+ *
  * @param {DeprecationConfig} config - Deprecation configuration
  * @returns {Function} Express middleware
- * 
+ *
  * @example
  * // Deprecate all v1 routes
  * app.use('/api/v1', deprecateVersion({
@@ -117,10 +117,10 @@ export const deprecateVersion = (config) => {
 /**
  * Middleware to check if a deprecated endpoint has passed its sunset date
  * Returns 410 Gone if the sunset date has passed
- * 
+ *
  * @param {Date} sunsetDate - The sunset date
  * @returns {Function} Express middleware
- * 
+ *
  * @example
  * router.get('/old-endpoint',
  *   enforceSunset(new Date('2026-06-01')),
@@ -134,7 +134,7 @@ export const enforceSunset = (sunsetDate) => {
 
   return (req, res, next) => {
     const now = new Date();
-    
+
     if (now > sunsetDate) {
       return res.status(410).json({
         error: 'Gone',
@@ -176,13 +176,13 @@ export const deprecationPresets = {
 /**
  * Utility to create a deprecation notice response body
  * Can be used in endpoint responses to provide detailed migration info
- * 
+ *
  * @param {DeprecationConfig} config - Deprecation configuration
  * @returns {Object} Deprecation notice object
  */
 export const createDeprecationNotice = (config) => {
   const { version, sunsetDate, replacement, message, documentationUrl } = config;
-  
+
   return {
     deprecated: true,
     version,
@@ -198,17 +198,17 @@ export const createDeprecationNotice = (config) => {
 /**
  * Middleware to add deprecation info to response body
  * Useful for JSON API responses
- * 
+ *
  * @param {DeprecationConfig} config - Deprecation configuration
  * @returns {Function} Express middleware
  */
 export const addDeprecationToResponse = (config) => {
   const notice = createDeprecationNotice(config);
-  
+
   return (req, res, next) => {
     // Store original json method
     const originalJson = res.json.bind(res);
-    
+
     // Override json method to inject deprecation notice
     res.json = function (data) {
       // Add deprecation notice to response
@@ -216,10 +216,10 @@ export const addDeprecationToResponse = (config) => {
         ...data,
         _deprecation: notice,
       };
-      
+
       return originalJson(responseWithNotice);
     };
-    
+
     next();
   };
 };

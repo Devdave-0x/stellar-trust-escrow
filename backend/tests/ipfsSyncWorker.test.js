@@ -14,8 +14,8 @@ jest.unstable_mockModule('../lib/prisma.js', () => ({
 
 jest.unstable_mockModule('../config/logger.js', () => ({
   createModuleLogger: () => ({
-    info:  jest.fn(),
-    warn:  jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
     error: jest.fn(),
     debug: jest.fn(),
   }),
@@ -35,7 +35,7 @@ function validMetadata(overrides = {}) {
 
 function mockGatewayOk(data = validMetadata()) {
   mockFetch.mockResolvedValue({
-    ok:   true,
+    ok: true,
     json: async () => data,
   });
 }
@@ -70,7 +70,7 @@ describe('syncCid — valid metadata', () => {
     expect(mockUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { ipfsCid: 'Qmvalid123', description: null },
-        data:  expect.objectContaining({ description: 'Evidence A' }),
+        data: expect.objectContaining({ description: 'Evidence A' }),
       }),
     );
   });
@@ -79,7 +79,7 @@ describe('syncCid — valid metadata', () => {
 describe('syncCid — invalid metadata', () => {
   it('does not write to DB when metadata is missing required fields', async () => {
     mockFetch.mockResolvedValue({
-      ok:   true,
+      ok: true,
       json: async () => ({ someOtherField: 'x' }), // missing description + evidenceType
     });
 

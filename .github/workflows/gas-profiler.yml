@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write   # needed to post PR comments
+  pull-requests: write # needed to post PR comments
 
 env:
   HUSKY: 0
@@ -47,7 +47,7 @@ jobs:
 
       - name: Run gas analyzer (PR branch)
         run: bash scripts/gas-analyzer.sh --save-baseline
-        continue-on-error: true   # capture output even on failure
+        continue-on-error: true # capture output even on failure
 
       - name: Save PR analysis
         run: cp gas-analysis.json gas-analysis-pr.json

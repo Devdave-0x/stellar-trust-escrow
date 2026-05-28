@@ -31,11 +31,14 @@ export async function up(prisma) {
     CREATE TABLE IF NOT EXISTS ${next} (LIKE escrows INCLUDING ALL)
   `);
 
-  await prisma.$executeRawUnsafe(`
+  await prisma.$executeRawUnsafe(
+    `
     INSERT INTO escrow_partition_manifest (partition_name, month_start, month_end)
     VALUES ($1, date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC') + INTERVAL '1 month')
     ON CONFLICT (partition_name) DO NOTHING
-  `, current);
+  `,
+    current,
+  );
 }
 
 /**

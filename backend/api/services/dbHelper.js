@@ -21,9 +21,9 @@ const log = createModuleLogger('dbHelper');
 /** PostgreSQL error codes that indicate a retryable concurrency conflict. */
 export const DEADLOCK_CODES = new Set(['40P01', '40001']);
 
-const MAX_RETRIES   = parseInt(process.env.DB_RETRY_MAX     || '3',   10);
-const BASE_DELAY_MS = parseInt(process.env.DB_RETRY_BASE_MS || '50',  10);
-const MAX_DELAY_MS  = parseInt(process.env.DB_RETRY_MAX_MS  || '200', 10);
+const MAX_RETRIES = parseInt(process.env.DB_RETRY_MAX || '3', 10);
+const BASE_DELAY_MS = parseInt(process.env.DB_RETRY_BASE_MS || '50', 10);
+const MAX_DELAY_MS = parseInt(process.env.DB_RETRY_MAX_MS || '200', 10);
 
 /**
  * Returns true when the error is a retryable deadlock / serialization failure.
@@ -45,11 +45,10 @@ export function isDeadlockError(err) {
  * @param {string} [opts.isolationLevel] — Prisma isolation level
  * @returns {Promise<T>}
  */
-export async function withRetryTransaction(fn, {
-  maxRetries     = MAX_RETRIES,
-  baseDelayMs    = BASE_DELAY_MS,
-  isolationLevel = 'ReadCommitted',
-} = {}) {
+export async function withRetryTransaction(
+  fn,
+  { maxRetries = MAX_RETRIES, baseDelayMs = BASE_DELAY_MS, isolationLevel = 'ReadCommitted' } = {},
+) {
   let attempt = 0;
 
   while (true) {
@@ -70,7 +69,7 @@ export async function withRetryTransaction(fn, {
         throw err;
       }
 
-      const base   = Math.min(baseDelayMs * 2 ** (attempt - 1), MAX_DELAY_MS);
+      const base = Math.min(baseDelayMs * 2 ** (attempt - 1), MAX_DELAY_MS);
       const jitter = base + Math.random() * base; // uniform jitter: [base, 2*base]
 
       log.warn({

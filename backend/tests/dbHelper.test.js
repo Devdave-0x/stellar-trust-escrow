@@ -62,9 +62,7 @@ describe('withRetryTransaction', () => {
   });
 
   it('retries on deadlock and succeeds on second attempt', async () => {
-    mockTransaction
-      .mockRejectedValueOnce(deadlockError('40P01'))
-      .mockResolvedValue('ok');
+    mockTransaction.mockRejectedValueOnce(deadlockError('40P01')).mockResolvedValue('ok');
 
     const result = await withRetryTransaction(() => {}, { maxRetries: 3, baseDelayMs: 1 });
 
@@ -73,9 +71,7 @@ describe('withRetryTransaction', () => {
   });
 
   it('retries on serialization failure (40001)', async () => {
-    mockTransaction
-      .mockRejectedValueOnce(deadlockError('40001'))
-      .mockResolvedValue('ok');
+    mockTransaction.mockRejectedValueOnce(deadlockError('40001')).mockResolvedValue('ok');
 
     const result = await withRetryTransaction(() => {}, { maxRetries: 3, baseDelayMs: 1 });
 
@@ -88,7 +84,9 @@ describe('withRetryTransaction', () => {
     err.code = 'P2002';
     mockTransaction.mockRejectedValue(err);
 
-    await expect(withRetryTransaction(() => {}, { maxRetries: 3 })).rejects.toThrow('unique constraint');
+    await expect(withRetryTransaction(() => {}, { maxRetries: 3 })).rejects.toThrow(
+      'unique constraint',
+    );
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
@@ -96,7 +94,7 @@ describe('withRetryTransaction', () => {
     mockTransaction.mockRejectedValue(deadlockError('40P01'));
 
     await expect(
-      withRetryTransaction(() => {}, { maxRetries: 3, baseDelayMs: 1 })
+      withRetryTransaction(() => {}, { maxRetries: 3, baseDelayMs: 1 }),
     ).rejects.toMatchObject({ code: '40P01' });
     // 1 initial + 3 retries = 4 total calls
     expect(mockTransaction).toHaveBeenCalledTimes(4);

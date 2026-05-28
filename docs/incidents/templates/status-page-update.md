@@ -57,6 +57,7 @@ We apologise for the disruption. A full post-mortem will be published within 5 b
 We will be performing scheduled maintenance on **[Date]** from **HH:MM to HH:MM UTC**.
 
 During this window:
+
 - [Feature X] will be unavailable
 - [Feature Y] will be in read-only mode
 

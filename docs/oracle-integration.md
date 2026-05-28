@@ -45,10 +45,10 @@ oracles deployed on Stellar.
 
 ## Constants
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
+| Constant                    | Value           | Meaning                                                                                      |
+| --------------------------- | --------------- | -------------------------------------------------------------------------------------------- |
 | `PRICE_STALENESS_THRESHOLD` | `3_600` seconds | Maximum age of a price before it is considered stale. Prices older than 1 hour are rejected. |
-| `PRICE_DECIMALS` | `7` | Number of decimal places in price values. A price of `10_000_000` represents $1.00. |
+| `PRICE_DECIMALS`            | `7`             | Number of decimal places in price values. A price of `10_000_000` represents $1.00.          |
 
 ---
 
@@ -63,8 +63,8 @@ pub trait OracleInterface {
 }
 ```
 
-| Method | Description |
-|--------|-------------|
+| Method                  | Description                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
 | `lastprice(env, asset)` | Returns the most recent price for `asset` as `Some(PriceData)`, or `None` if the asset is not supported. |
 
 The contract calls `lastprice` via a cross-contract call to the registered
@@ -82,10 +82,10 @@ pub struct PriceData {
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `price` | USD price of the asset. Divide by `10^PRICE_DECIMALS` (i.e. `10^7`) to get the human-readable price. A value of `10_000_000` = $1.00. |
-| `timestamp` | Ledger timestamp when the oracle last updated this price. Used for the staleness check. |
+| Field       | Description                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `price`     | USD price of the asset. Divide by `10^PRICE_DECIMALS` (i.e. `10^7`) to get the human-readable price. A value of `10_000_000` = $1.00. |
+| `timestamp` | Ledger timestamp when the oracle last updated this price. Used for the staleness check.                                               |
 
 Example: XLM at $0.12 → `price = 1_200_000` (0.12 × 10^7).
 
@@ -95,9 +95,9 @@ Example: XLM at $0.12 → `price = 1_200_000` (0.12 × 10^7).
 
 The contract stores two oracle addresses in instance storage:
 
-| Key | Description |
-|-----|-------------|
-| `DataKey::OracleAddress` | Primary oracle. Queried first. |
+| Key                              | Description                                                          |
+| -------------------------------- | -------------------------------------------------------------------- |
+| `DataKey::OracleAddress`         | Primary oracle. Queried first.                                       |
 | `DataKey::FallbackOracleAddress` | Fallback oracle. Queried only if primary is stale or returns `None`. |
 
 Both are optional. If neither is set, `get_price_usd` returns
@@ -182,6 +182,7 @@ Both prices are fetched with the primary/fallback failover logic.
 If either asset's price is unavailable or stale, the call reverts.
 
 Example: Convert 100 XLM to USDC equivalent.
+
 - XLM price: $0.12 → `from_price = 1_200_000`
 - USDC price: $1.00 → `to_price = 10_000_000`
 - `result = 100 * 1_200_000 / 10_000_000 = 12` USDC units
@@ -288,11 +289,11 @@ deserialization to succeed.
 
 ## Error Reference
 
-| Code | Name | Cause | Resolution |
-|------|------|-------|-----------|
-| 48 | `OracleNotConfigured` | `set_oracle` has not been called. | Call `set_oracle` with a valid oracle address. |
-| 49 | `OraclePriceStale` | Both primary and fallback prices are older than `PRICE_STALENESS_THRESHOLD`. | Ensure your oracle updates prices at least every hour. Check oracle contract health. |
-| 50 | `OracleInvalidPrice` | Oracle returned a price ≤ 0. | Check oracle contract logic. Prices must be positive integers. |
+| Code | Name                  | Cause                                                                        | Resolution                                                                           |
+| ---- | --------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 48   | `OracleNotConfigured` | `set_oracle` has not been called.                                            | Call `set_oracle` with a valid oracle address.                                       |
+| 49   | `OraclePriceStale`    | Both primary and fallback prices are older than `PRICE_STALENESS_THRESHOLD`. | Ensure your oracle updates prices at least every hour. Check oracle contract health. |
+| 50   | `OracleInvalidPrice`  | Oracle returned a price ≤ 0.                                                 | Check oracle contract logic. Prices must be positive integers.                       |
 
 ---
 

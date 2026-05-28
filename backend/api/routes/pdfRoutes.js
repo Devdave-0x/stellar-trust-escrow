@@ -20,6 +20,6 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post('/:id/generate-pdf', validateEscrowId, generatePdf);
-router.post('/:id/sign-pdf',     validateEscrowId, validateSignPdf, signPdfHandler);
+router.post('/:id/sign-pdf', validateEscrowId, validateSignPdf, signPdfHandler);
 
 export default router;

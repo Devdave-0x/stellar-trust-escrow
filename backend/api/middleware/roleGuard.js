@@ -21,10 +21,10 @@ const log = createModuleLogger('roleGuard');
 // ── Role definitions ──────────────────────────────────────────────────────────
 
 export const ROLES = Object.freeze({
-  CLIENT:     'Client',
+  CLIENT: 'Client',
   FREELANCER: 'Freelancer',
   ARBITRATOR: 'Arbitrator',
-  ADMIN:      'Admin',
+  ADMIN: 'Admin',
 });
 
 /**
@@ -39,16 +39,8 @@ const PERMISSIONS = {
     'raise_dispute',
     'view_own_escrow',
   ]),
-  [ROLES.FREELANCER]: new Set([
-    'submit_milestone',
-    'raise_dispute',
-    'view_own_escrow',
-  ]),
-  [ROLES.ARBITRATOR]: new Set([
-    'resolve_dispute',
-    'view_dispute',
-    'view_own_escrow',
-  ]),
+  [ROLES.FREELANCER]: new Set(['submit_milestone', 'raise_dispute', 'view_own_escrow']),
+  [ROLES.ARBITRATOR]: new Set(['resolve_dispute', 'view_dispute', 'view_own_escrow']),
   [ROLES.ADMIN]: new Set([
     // Admin is handled as a wildcard below — this set is for documentation only
     '*',
@@ -87,7 +79,7 @@ export function hasPermission(roles, action) {
  */
 export function checkPermission(requiredRole, action) {
   return (req, res, next) => {
-    const user  = req.user;
+    const user = req.user;
     const roles = user?.roles ?? (user?.role ? [user.role] : []);
 
     if (!user || roles.length === 0) {

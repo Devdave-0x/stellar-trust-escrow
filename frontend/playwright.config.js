@@ -9,7 +9,11 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI
-    ? [['html', { open: 'never' }], ['github'], ['junit', { outputFile: 'test-results/e2e-junit.xml' }]]
+    ? [
+        ['html', { open: 'never' }],
+        ['github'],
+        ['junit', { outputFile: 'test-results/e2e-junit.xml' }],
+      ]
     : 'html',
   expect: {
     toHaveScreenshot: {

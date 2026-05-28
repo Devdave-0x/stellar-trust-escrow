@@ -19,6 +19,7 @@ npm install
 ```
 
 New packages added:
+
 - `otplib` - TOTP generation and verification
 - `qrcode` - QR code generation for TOTP setup
 - `@simplewebauthn/server` - WebAuthn server implementation
@@ -83,17 +84,9 @@ app.use('/api/mfa', mfaRoutes);
 import { requireMfa } from './api/middleware/mfaAuth.js';
 
 // Require MFA for sensitive admin operations
-router.post('/admin/users/:id/ban', 
-  authMiddleware, 
-  requireMfa, 
-  adminController.banUser
-);
+router.post('/admin/users/:id/ban', authMiddleware, requireMfa, adminController.banUser);
 
-router.patch('/admin/settings', 
-  authMiddleware, 
-  requireMfa, 
-  adminController.updateSettings
-);
+router.patch('/admin/settings', authMiddleware, requireMfa, adminController.updateSettings);
 ```
 
 ### Protect High-Value Operations
@@ -102,10 +95,11 @@ router.patch('/admin/settings',
 import { requireMfaForHighValue } from './api/middleware/mfaAuth.js';
 
 // Automatically require MFA for transactions above threshold
-router.post('/escrow/:id/release', 
-  authMiddleware, 
-  requireMfaForHighValue, 
-  escrowController.release
+router.post(
+  '/escrow/:id/release',
+  authMiddleware,
+  requireMfaForHighValue,
+  escrowController.release,
 );
 ```
 
@@ -115,10 +109,10 @@ router.post('/escrow/:id/release',
 // Mark admin users as requiring MFA
 await prisma.user.update({
   where: { id: adminUserId },
-  data: { 
+  data: {
     role: 'admin',
-    mfaEnforced: true 
-  }
+    mfaEnforced: true,
+  },
 });
 ```
 
@@ -206,6 +200,7 @@ curl -X POST http://localhost:3001/api/admin/users/GTEST123/ban \
 ### "MFA_ENCRYPTION_KEY not set"
 
 Generate and set the encryption key:
+
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
@@ -225,6 +220,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ### "Account locked"
 
 Wait 15 minutes or manually unlock:
+
 ```javascript
 await prisma.mfaLockout.delete({
   where: { userId: <user-id> }
@@ -252,17 +248,17 @@ await prisma.mfaLockout.delete({
 
 ```sql
 -- Failed MFA attempts in last hour
-SELECT * FROM mfa_attempts 
-WHERE success = false 
+SELECT * FROM mfa_attempts
+WHERE success = false
   AND created_at > NOW() - INTERVAL '1 hour'
 ORDER BY created_at DESC;
 
 -- Current lockouts
-SELECT * FROM mfa_lockouts 
+SELECT * FROM mfa_lockouts
 WHERE locked_until > NOW();
 
 -- MFA adoption rate
-SELECT 
+SELECT
   COUNT(*) FILTER (WHERE mfa_enabled) as enabled,
   COUNT(*) as total,
   ROUND(100.0 * COUNT(*) FILTER (WHERE mfa_enabled) / COUNT(*), 2) as percentage
@@ -280,6 +276,7 @@ FROM users;
 ## Support
 
 For issues or questions:
+
 - Check [MFA_IMPLEMENTATION.md](./docs/MFA_IMPLEMENTATION.md) troubleshooting section
 - Review test files for usage examples
 - Check audit logs for detailed error information

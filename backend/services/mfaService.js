@@ -104,7 +104,15 @@ async function checkLockout(userId, tenantId) {
 /**
  * Record MFA attempt and enforce lockout policy
  */
-async function recordAttempt(userId, tenantId, methodType, success, ipAddress, userAgent, failureReason = null) {
+async function recordAttempt(
+  userId,
+  tenantId,
+  methodType,
+  success,
+  ipAddress,
+  userAgent,
+  failureReason = null,
+) {
   // Record the attempt
   await prisma.mfaAttempt.create({
     data: {
@@ -136,7 +144,7 @@ async function recordAttempt(userId, tenantId, methodType, success, ipAddress, u
 
   if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
     const lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
-    
+
     await prisma.mfaLockout.upsert({
       where: { userId },
       create: {
@@ -202,13 +210,21 @@ async function verifyAndRegisterTOTP(userId, tenantId, code, ipAddress, userAgen
   });
 
   if (!isValid) {
-    await recordAttempt(userId, tenantId, 'TOTP', false, ipAddress, userAgent, 'Invalid TOTP code during setup');
+    await recordAttempt(
+      userId,
+      tenantId,
+      'TOTP',
+      false,
+      ipAddress,
+      userAgent,
+      'Invalid TOTP code during setup',
+    );
     throw new Error('Invalid verification code');
   }
 
   // Generate backup codes
   const backupCodes = generateBackupCodes();
-  const hashedBackupCodes = backupCodes.map(code => encrypt(hashBackupCode(code)));
+  const hashedBackupCodes = backupCodes.map((code) => encrypt(hashBackupCode(code)));
 
   // Save the method
   const method = await prisma.mfaMethod.create({
@@ -253,7 +269,9 @@ async function verifyTOTP(userId, tenantId, code, ipAddress, userAgent) {
   // Check lockout
   const lockout = await checkLockout(userId, tenantId);
   if (lockout.locked) {
-    throw new Error(`Account locked due to too many failed attempts. Try again in ${Math.ceil(lockout.remainingMs / 60000)} minutes.`);
+    throw new Error(
+      `Account locked due to too many failed attempts. Try again in ${Math.ceil(lockout.remainingMs / 60000)} minutes.`,
+    );
   }
 
   // Get active TOTP method
@@ -291,10 +309,10 @@ async function verifyTOTP(userId, tenantId, code, ipAddress, userAgent) {
 
   // Try backup codes
   const backupCodeHash = hashBackupCode(code.replace('-', ''));
-  const hashedCodes = method.totpBackupCodes.map(encrypted => decrypt(encrypted));
-  
-  const backupIndex = hashedCodes.findIndex(hash => hash === backupCodeHash);
-  
+  const hashedCodes = method.totpBackupCodes.map((encrypted) => decrypt(encrypted));
+
+  const backupIndex = hashedCodes.findIndex((hash) => hash === backupCodeHash);
+
   if (backupIndex !== -1) {
     // Remove used backup code
     const updatedCodes = [...method.totpBackupCodes];
@@ -309,7 +327,7 @@ async function verifyTOTP(userId, tenantId, code, ipAddress, userAgent) {
     });
 
     await recordAttempt(userId, tenantId, 'TOTP', true, ipAddress, userAgent);
-    
+
     return {
       verified: true,
       method: 'TOTP_BACKUP',
@@ -318,10 +336,20 @@ async function verifyTOTP(userId, tenantId, code, ipAddress, userAgent) {
   }
 
   // Failed verification
-  const result = await recordAttempt(userId, tenantId, 'TOTP', false, ipAddress, userAgent, 'Invalid TOTP code');
-  
+  const result = await recordAttempt(
+    userId,
+    tenantId,
+    'TOTP',
+    false,
+    ipAddress,
+    userAgent,
+    'Invalid TOTP code',
+  );
+
   if (result.locked) {
-    throw new Error(`Too many failed attempts. Account locked for ${Math.ceil(result.remainingMs / 60000)} minutes.`);
+    throw new Error(
+      `Too many failed attempts. Account locked for ${Math.ceil(result.remainingMs / 60000)} minutes.`,
+    );
   }
 
   throw new Error(`Invalid verification code. ${result.attemptsRemaining} attempts remaining.`);
@@ -332,7 +360,12 @@ async function verifyTOTP(userId, tenantId, code, ipAddress, userAgent) {
 /**
  * Generate WebAuthn registration options
  */
-async function generateWebAuthnRegistration(userId, tenantId, userEmail, methodName = 'Security Key') {
+async function generateWebAuthnRegistration(
+  userId,
+  tenantId,
+  userEmail,
+  methodName = 'Security Key',
+) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -348,8 +381,8 @@ async function generateWebAuthnRegistration(userId, tenantId, userEmail, methodN
 
   // Get existing credentials to exclude
   const excludeCredentials = user.mfaMethods
-    .filter(m => m.credentialId)
-    .map(m => ({
+    .filter((m) => m.credentialId)
+    .map((m) => ({
       id: Buffer.from(m.credentialId, 'base64'),
       type: 'public-key',
       transports: m.transports,
@@ -401,7 +434,15 @@ async function verifyWebAuthnRegistration(userId, tenantId, response, ipAddress,
   }
 
   if (!verification.verified || !verification.registrationInfo) {
-    await recordAttempt(userId, tenantId, 'WEBAUTHN', false, ipAddress, userAgent, 'Verification failed');
+    await recordAttempt(
+      userId,
+      tenantId,
+      'WEBAUTHN',
+      false,
+      ipAddress,
+      userAgent,
+      'Verification failed',
+    );
     throw new Error('WebAuthn registration verification failed');
   }
 
@@ -461,7 +502,7 @@ async function generateWebAuthnAuthentication(userId, tenantId) {
     throw new Error('No WebAuthn credentials registered');
   }
 
-  const allowCredentials = methods.map(m => ({
+  const allowCredentials = methods.map((m) => ({
     id: Buffer.from(m.credentialId, 'base64'),
     type: 'public-key',
     transports: m.transports,
@@ -487,7 +528,9 @@ async function verifyWebAuthnAuthentication(userId, tenantId, response, ipAddres
   // Check lockout
   const lockout = await checkLockout(userId, tenantId);
   if (lockout.locked) {
-    throw new Error(`Account locked due to too many failed attempts. Try again in ${Math.ceil(lockout.remainingMs / 60000)} minutes.`);
+    throw new Error(
+      `Account locked due to too many failed attempts. Try again in ${Math.ceil(lockout.remainingMs / 60000)} minutes.`,
+    );
   }
 
   const challengeKey = `mfa:webauthn:auth:${userId}`;
@@ -510,7 +553,15 @@ async function verifyWebAuthnAuthentication(userId, tenantId, response, ipAddres
   });
 
   if (!method) {
-    await recordAttempt(userId, tenantId, 'WEBAUTHN', false, ipAddress, userAgent, 'Credential not found');
+    await recordAttempt(
+      userId,
+      tenantId,
+      'WEBAUTHN',
+      false,
+      ipAddress,
+      userAgent,
+      'Credential not found',
+    );
     throw new Error('Credential not found');
   }
 
@@ -528,22 +579,42 @@ async function verifyWebAuthnAuthentication(userId, tenantId, response, ipAddres
       },
     });
   } catch (error) {
-    const result = await recordAttempt(userId, tenantId, 'WEBAUTHN', false, ipAddress, userAgent, error.message);
-    
+    const result = await recordAttempt(
+      userId,
+      tenantId,
+      'WEBAUTHN',
+      false,
+      ipAddress,
+      userAgent,
+      error.message,
+    );
+
     if (result.locked) {
-      throw new Error(`Too many failed attempts. Account locked for ${Math.ceil(result.remainingMs / 60000)} minutes.`);
+      throw new Error(
+        `Too many failed attempts. Account locked for ${Math.ceil(result.remainingMs / 60000)} minutes.`,
+      );
     }
-    
+
     throw new Error(`WebAuthn authentication failed: ${error.message}`);
   }
 
   if (!verification.verified) {
-    const result = await recordAttempt(userId, tenantId, 'WEBAUTHN', false, ipAddress, userAgent, 'Verification failed');
-    
+    const result = await recordAttempt(
+      userId,
+      tenantId,
+      'WEBAUTHN',
+      false,
+      ipAddress,
+      userAgent,
+      'Verification failed',
+    );
+
     if (result.locked) {
-      throw new Error(`Too many failed attempts. Account locked for ${Math.ceil(result.remainingMs / 60000)} minutes.`);
+      throw new Error(
+        `Too many failed attempts. Account locked for ${Math.ceil(result.remainingMs / 60000)} minutes.`,
+      );
     }
-    
+
     throw new Error('WebAuthn authentication verification failed');
   }
 
@@ -641,13 +712,13 @@ export default {
   initializeTOTP,
   verifyAndRegisterTOTP,
   verifyTOTP,
-  
+
   // WebAuthn
   generateWebAuthnRegistration,
   verifyWebAuthnRegistration,
   generateWebAuthnAuthentication,
   verifyWebAuthnAuthentication,
-  
+
   // Management
   listMfaMethods,
   removeMfaMethod,

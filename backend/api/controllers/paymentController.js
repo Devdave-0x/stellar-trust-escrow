@@ -26,7 +26,9 @@ const createCheckout = async (req, res) => {
       return res.status(400).json({ error: 'Valid Stellar address required' });
     }
     if (address !== walletAddress) {
-      return res.status(403).json({ error: 'Forbidden: cannot create checkout for another wallet.' });
+      return res
+        .status(403)
+        .json({ error: 'Forbidden: cannot create checkout for another wallet.' });
     }
     if (!amountUsd || typeof amountUsd !== 'number' || amountUsd <= 0) {
       return res.status(400).json({ error: 'amountUsd must be a positive number' });
@@ -75,7 +77,9 @@ const listByAddress = async (req, res) => {
       return res.status(400).json({ error: 'Invalid Stellar address' });
     }
     if (address !== walletAddress) {
-      return res.status(403).json({ error: 'Forbidden: cannot access another wallet payment history.' });
+      return res
+        .status(403)
+        .json({ error: 'Forbidden: cannot access another wallet payment history.' });
     }
     const payments = await paymentService.getByAddress(address);
     res.json(payments);

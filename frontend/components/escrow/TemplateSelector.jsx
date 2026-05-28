@@ -267,7 +267,8 @@ export default function TemplateSelector({
                     {template.milestones.length} milestones
                   </span>
                   <span className="px-2 py-1 rounded-full bg-gray-800 text-gray-300 border border-gray-700">
-                    {template.totalAmount || '—'} {String(template.tokenAddress || 'USDC').toUpperCase()}
+                    {template.totalAmount || '—'}{' '}
+                    {String(template.tokenAddress || 'USDC').toUpperCase()}
                   </span>
                 </div>
               </div>
@@ -276,7 +277,9 @@ export default function TemplateSelector({
         </div>
 
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
-          {!selectedTemplate && <p className="text-sm text-gray-500">Select a template to preview it.</p>}
+          {!selectedTemplate && (
+            <p className="text-sm text-gray-500">Select a template to preview it.</p>
+          )}
 
           {selectedTemplate && (
             <>
@@ -299,7 +302,10 @@ export default function TemplateSelector({
                 <p className="text-sm font-medium text-gray-300">Milestone preview</p>
                 <ul className="space-y-2">
                   {selectedTemplate.milestones.map((milestone, index) => (
-                    <li key={`${selectedTemplate.id}-${index}`} className="text-xs text-gray-400 border-l-2 border-gray-700 pl-3">
+                    <li
+                      key={`${selectedTemplate.id}-${index}`}
+                      className="text-xs text-gray-400 border-l-2 border-gray-700 pl-3"
+                    >
                       <p className="text-gray-200">{milestone.title || `Milestone ${index + 1}`}</p>
                       <p>{milestone.description || 'No description provided.'}</p>
                     </li>
@@ -311,7 +317,11 @@ export default function TemplateSelector({
                 <Button type="button" onClick={() => onApplyTemplate?.(selectedTemplate)}>
                   Use This Template
                 </Button>
-                <Button type="button" variant="secondary" href={getTemplateQuickStartHref(selectedTemplate)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  href={getTemplateQuickStartHref(selectedTemplate)}
+                >
                   Quick Start
                 </Button>
               </div>
@@ -337,13 +347,13 @@ export default function TemplateSelector({
             aria-label="Template category"
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
           >
-            {Array.from(new Set(['Custom', ...categories.filter((category) => category !== 'All')])).map(
-              (category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ),
-            )}
+            {Array.from(
+              new Set(['Custom', ...categories.filter((category) => category !== 'All')]),
+            ).map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
           </select>
           <Button type="button" variant="secondary" onClick={handleSaveCustomTemplate}>
             Save Template

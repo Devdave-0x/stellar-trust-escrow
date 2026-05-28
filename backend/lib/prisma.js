@@ -25,8 +25,10 @@ const TENANT_SCOPED_MODELS = new Set([
   'UserProfile',
   'ContractEvent',
   'Payment',
-  'KycVerification',  'WebhookSubscription',
-  'WebhookDelivery',  'AdminAuditLog',
+  'KycVerification',
+  'WebhookSubscription',
+  'WebhookDelivery',
+  'AdminAuditLog',
   'AuditLog',
 ]);
 

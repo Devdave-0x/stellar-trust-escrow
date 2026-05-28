@@ -2,9 +2,9 @@
 
 ## Objectives
 
-| Metric | Target |
-|--------|--------|
-| RTO (Recovery Time Objective) | < 1 hour for SEV1, < 4 hours for SEV2 |
+| Metric                         | Target                                                  |
+| ------------------------------ | ------------------------------------------------------- |
+| RTO (Recovery Time Objective)  | < 1 hour for SEV1, < 4 hours for SEV2                   |
 | RPO (Recovery Point Objective) | < 24 hours (daily backups), < 1 hour with WAL archiving |
 
 ---
@@ -69,19 +69,23 @@ bash scripts/restore_pitr.sh /var/backups/stellar-trust/basebackup_YYYYMMDDTHHMM
 **Tip:** `scripts/backup.sh` uploads using SSE AES256 and verifies in-place with `pg_restore --list`.
 
 # 2. Restore to a fresh DB
-createdb stellar_trust_escrow_restored
+
+createdb stellar*trust_escrow_restored
 pg_restore \
-  --host=$DB_HOST --port=$DB_PORT \
-  --username=$DB_USER \
-  --dbname=stellar_trust_escrow_restored \
-  /var/backups/stellar-trust/backup_<TIMESTAMP>.dump
+ --host=$DB_HOST --port=$DB_PORT \
+ --username=$DB_USER \
+ --dbname=stellar_trust_escrow_restored \
+ /var/backups/stellar-trust/backup*<TIMESTAMP>.dump
 
 # 3. Verify checksum before restoring
-sha256sum -c /var/backups/stellar-trust/backup_<TIMESTAMP>.dump.sha256
+
+sha256sum -c /var/backups/stellar-trust/backup\_<TIMESTAMP>.dump.sha256
 
 # 4. Update DATABASE_URL in Vault / .env to point to restored DB
-# 5. Restart backend: pm2 restart all  OR  docker compose restart api
-```
+
+# 5. Restart backend: pm2 restart all OR docker compose restart api
+
+````
 
 **Runbook:** `docs/incidents/runbooks/database-outage.md`
 
@@ -104,7 +108,7 @@ pm2 restart all
 docker compose logs --tail=100 api
 # or
 pm2 logs --lines 100
-```
+````
 
 If the server itself is gone, redeploy from the last known-good image:
 
@@ -143,6 +147,7 @@ bash scripts/deploy.sh
 3. Monitor `GET /health` until Stellar connectivity is confirmed.
 
 Backup RPC endpoints (testnet):
+
 - `https://soroban-testnet.stellar.org` (official)
 - `https://rpc-futurenet.stellar.org` (fallback for testing)
 
@@ -175,10 +180,10 @@ Rotate all affected secrets before bringing services back online. See `backend/c
 
 Backups are managed by `scripts/backup.sh` and scheduled via `scripts/backup.cron`.
 
-| Frequency | Retention | Storage |
-|-----------|-----------|---------|
-| Daily (cron) | 7 days local | `/var/backups/stellar-trust` |
-| Daily (cron) | 30 days remote | S3 (`BACKUP_S3_BUCKET`) |
+| Frequency    | Retention      | Storage                      |
+| ------------ | -------------- | ---------------------------- |
+| Daily (cron) | 7 days local   | `/var/backups/stellar-trust` |
+| Daily (cron) | 30 days remote | S3 (`BACKUP_S3_BUCKET`)      |
 
 To run a manual backup with restore verification:
 
@@ -192,12 +197,12 @@ Backup health is monitored by `backend/services/backupMonitor.js` — alerts fir
 
 ## DR Test Schedule
 
-| Test | Frequency | Owner |
-|------|-----------|-------|
-| Backup restore drill | Monthly | On-call engineer |
-| Full failover simulation | Quarterly | Engineering lead |
-| Secret rotation drill | Quarterly | Security lead |
-| Runbook walkthrough | After each SEV1/SEV2 | Incident commander |
+| Test                     | Frequency            | Owner              |
+| ------------------------ | -------------------- | ------------------ |
+| Backup restore drill     | Monthly              | On-call engineer   |
+| Full failover simulation | Quarterly            | Engineering lead   |
+| Secret rotation drill    | Quarterly            | Security lead      |
+| Runbook walkthrough      | After each SEV1/SEV2 | Incident commander |
 
 To run a restore drill:
 
@@ -211,11 +216,11 @@ Document results in `docs/incidents/` as a post-mortem entry.
 
 ## Communication Plan
 
-| Audience | Channel | Who |
-|----------|---------|-----|
-| Engineering team | `#incidents` Slack | On-call engineer |
-| Stakeholders | Email / status page | Engineering lead |
-| Users | Status page update | Engineering lead |
+| Audience         | Channel             | Who              |
+| ---------------- | ------------------- | ---------------- |
+| Engineering team | `#incidents` Slack  | On-call engineer |
+| Stakeholders     | Email / status page | Engineering lead |
+| Users            | Status page update  | Engineering lead |
 
 Templates: `docs/incidents/templates/`
 

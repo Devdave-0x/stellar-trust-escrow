@@ -84,6 +84,7 @@ model MfaLockout {
 ### Setup & Management
 
 #### Get MFA Status
+
 ```http
 GET /api/mfa/status
 Authorization: Bearer <token>
@@ -105,12 +106,14 @@ Response:
 ```
 
 #### List MFA Methods
+
 ```http
 GET /api/mfa/methods
 Authorization: Bearer <token>
 ```
 
 #### Remove MFA Method
+
 ```http
 DELETE /api/mfa/methods/:methodId
 Authorization: Bearer <token>
@@ -120,6 +123,7 @@ X-MFA-Token: <mfa-token>
 ### TOTP Setup
 
 #### Initialize TOTP Setup
+
 ```http
 POST /api/mfa/totp/setup
 Authorization: Bearer <token>
@@ -139,6 +143,7 @@ Response:
 ```
 
 #### Verify TOTP Setup
+
 ```http
 POST /api/mfa/totp/verify-setup
 Authorization: Bearer <token>
@@ -187,6 +192,7 @@ Response:
 ### WebAuthn Setup
 
 #### Generate Registration Options
+
 ```http
 POST /api/mfa/webauthn/register-options
 Authorization: Bearer <token>
@@ -206,6 +212,7 @@ Response:
 ```
 
 #### Verify Registration
+
 ```http
 POST /api/mfa/webauthn/register-verify
 Authorization: Bearer <token>
@@ -224,12 +231,14 @@ Content-Type: application/json
 ### WebAuthn Authentication
 
 #### Generate Authentication Options
+
 ```http
 POST /api/mfa/webauthn/auth-options
 Authorization: Bearer <token>
 ```
 
 #### Verify Authentication
+
 ```http
 POST /api/mfa/webauthn/auth-verify
 Authorization: Bearer <token>
@@ -257,36 +266,36 @@ Response:
 ### Protecting Routes
 
 #### Require MFA for All Requests
+
 ```javascript
 import { requireMfa } from './api/middleware/mfaAuth.js';
 
-router.post('/admin/users/:id/ban', 
-  authMiddleware, 
-  requireMfa, 
-  adminController.banUser
-);
+router.post('/admin/users/:id/ban', authMiddleware, requireMfa, adminController.banUser);
 ```
 
 #### Require MFA for High-Value Operations
+
 ```javascript
 import { requireMfaForHighValue } from './api/middleware/mfaAuth.js';
 
-router.post('/escrow/:id/release', 
-  authMiddleware, 
-  requireMfaForHighValue, 
-  escrowController.release
+router.post(
+  '/escrow/:id/release',
+  authMiddleware,
+  requireMfaForHighValue,
+  escrowController.release,
 );
 ```
 
 ### Client-Side Flow
 
 #### TOTP Setup Flow
+
 ```javascript
 // 1. Initialize setup
 const { qrCode, secret } = await fetch('/api/mfa/totp/setup', {
   method: 'POST',
-  headers: { 'Authorization': `Bearer ${token}` }
-}).then(r => r.json());
+  headers: { Authorization: `Bearer ${token}` },
+}).then((r) => r.json());
 
 // 2. Display QR code to user
 displayQRCode(qrCode);
@@ -297,18 +306,19 @@ const code = getUserInput();
 // 4. Verify setup
 const { backupCodes } = await fetch('/api/mfa/totp/verify-setup', {
   method: 'POST',
-  headers: { 
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
   },
-  body: JSON.stringify({ code })
-}).then(r => r.json());
+  body: JSON.stringify({ code }),
+}).then((r) => r.json());
 
 // 5. Display backup codes
 displayBackupCodes(backupCodes);
 ```
 
 #### TOTP Verification Flow
+
 ```javascript
 // 1. User attempts protected action
 // 2. Server returns 403 with mfaRequired: true
@@ -318,32 +328,33 @@ const code = getUserInput();
 // 4. Verify MFA
 const { mfaToken } = await fetch('/api/mfa/totp/verify', {
   method: 'POST',
-  headers: { 
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
   },
-  body: JSON.stringify({ code })
-}).then(r => r.json());
+  body: JSON.stringify({ code }),
+}).then((r) => r.json());
 
 // 5. Retry original request with MFA token
 await fetch('/admin/users/123/ban', {
   method: 'POST',
-  headers: { 
-    'Authorization': `Bearer ${token}`,
-    'X-MFA-Token': mfaToken
-  }
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'X-MFA-Token': mfaToken,
+  },
 });
 ```
 
 #### WebAuthn Setup Flow
+
 ```javascript
 import { startRegistration } from '@simplewebauthn/browser';
 
 // 1. Get registration options
 const options = await fetch('/api/mfa/webauthn/register-options', {
   method: 'POST',
-  headers: { 'Authorization': `Bearer ${token}` }
-}).then(r => r.json());
+  headers: { Authorization: `Bearer ${token}` },
+}).then((r) => r.json());
 
 // 2. Prompt user to use security key
 const response = await startRegistration(options);
@@ -351,11 +362,11 @@ const response = await startRegistration(options);
 // 3. Verify registration
 await fetch('/api/mfa/webauthn/register-verify', {
   method: 'POST',
-  headers: { 
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
   },
-  body: JSON.stringify({ response })
+  body: JSON.stringify({ response }),
 });
 ```
 
@@ -384,9 +395,9 @@ JWT_SECRET=<your-secret>
 Edit `services/mfaService.js`:
 
 ```javascript
-const MAX_FAILED_ATTEMPTS = 5;        // Attempts before lockout
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000;  // 15 minutes
-const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;    // 10 minute window
+const MAX_FAILED_ATTEMPTS = 5; // Attempts before lockout
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const ATTEMPT_WINDOW_MS = 10 * 60 * 1000; // 10 minute window
 ```
 
 ## Security Considerations
@@ -458,15 +469,17 @@ const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;    // 10 minute window
 ### Audit Logging
 
 All MFA events are logged to `mfa_attempts` table:
+
 - Setup attempts
 - Verification attempts (success/failure)
 - Method additions/removals
 - Lockout events
 
 Query recent failed attempts:
+
 ```sql
-SELECT * FROM mfa_attempts 
-WHERE success = false 
+SELECT * FROM mfa_attempts
+WHERE success = false
   AND created_at > NOW() - INTERVAL '1 hour'
 ORDER BY created_at DESC;
 ```
@@ -476,19 +489,23 @@ ORDER BY created_at DESC;
 ### Common Issues
 
 #### "TOTP setup not found or expired"
+
 - Setup session expired (5 minutes)
 - User needs to restart setup process
 
 #### "Account locked due to too many failed attempts"
+
 - Wait 15 minutes or contact admin
 - Check `mfa_lockouts` table for details
 
 #### "WebAuthn registration failed"
+
 - Ensure HTTPS in production
 - Verify RP_ID matches domain
 - Check browser compatibility
 
 #### "Invalid verification code"
+
 - Check device time synchronization
 - Verify correct authenticator app
 - Try backup code if available
@@ -496,6 +513,7 @@ ORDER BY created_at DESC;
 ### Admin Operations
 
 #### Unlock User Account
+
 ```javascript
 await prisma.mfaLockout.delete({
   where: { userId: <user-id> }
@@ -503,6 +521,7 @@ await prisma.mfaLockout.delete({
 ```
 
 #### Disable MFA for User (Emergency)
+
 ```javascript
 await prisma.user.update({
   where: { id: <user-id> },
@@ -516,14 +535,15 @@ await prisma.mfaMethod.updateMany({
 ```
 
 #### View User's MFA Status
+
 ```javascript
 const user = await prisma.user.findUnique({
   where: { id: <user-id> },
   include: {
     mfaMethods: { where: { isActive: true } },
-    mfaAttempts: { 
-      take: 10, 
-      orderBy: { createdAt: 'desc' } 
+    mfaAttempts: {
+      take: 10,
+      orderBy: { createdAt: 'desc' }
     }
   }
 });

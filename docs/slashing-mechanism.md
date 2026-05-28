@@ -47,10 +47,10 @@ called to execute the transfer. If they dispute, an admin calls
 
 ## Constants
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
+| Constant               | Value                             | Meaning                                                                                   |
+| ---------------------- | --------------------------------- | ----------------------------------------------------------------------------------------- |
 | `SLASH_DISPUTE_PERIOD` | `51_840` ledger seconds (~6 days) | How long the slashed party has to call `dispute_slash` before the slash can be finalized. |
-| `SLASH_PERCENTAGE` | `10` | Percentage of `remaining_balance` taken as the slash amount. |
+| `SLASH_PERCENTAGE`     | `10`                              | Percentage of `remaining_balance` taken as the slash amount.                              |
 
 ---
 
@@ -68,15 +68,15 @@ pub struct SlashRecord {
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `escrow_id` | The escrow this slash belongs to. |
-| `slashed_user` | The address being penalized (the cancellation requester). |
-| `recipient` | The address that will receive the slashed funds if the slash is upheld (typically the other party). |
-| `amount` | Token amount to be transferred, calculated by `calculate_slash_amount`. |
-| `reason` | Human-readable string explaining why the slash was applied. |
-| `slashed_at` | Ledger timestamp when the slash was created. Used to enforce `SLASH_DISPUTE_PERIOD`. |
-| `disputed` | `true` once `dispute_slash` has been called. Prevents double-disputing and blocks `finalize_slash`. |
+| Field          | Description                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| `escrow_id`    | The escrow this slash belongs to.                                                                   |
+| `slashed_user` | The address being penalized (the cancellation requester).                                           |
+| `recipient`    | The address that will receive the slashed funds if the slash is upheld (typically the other party). |
+| `amount`       | Token amount to be transferred, calculated by `calculate_slash_amount`.                             |
+| `reason`       | Human-readable string explaining why the slash was applied.                                         |
+| `slashed_at`   | Ledger timestamp when the slash was created. Used to enforce `SLASH_DISPUTE_PERIOD`.                |
+| `disputed`     | `true` once `dispute_slash` has been called. Prevents double-disputing and blocks `finalize_slash`. |
 
 ---
 
@@ -157,11 +157,13 @@ Callable by anyone after `SLASH_DISPUTE_PERIOD` has elapsed and
 to `SlashRecord.recipient` and removes the `SlashRecord` from storage.
 
 **Preconditions:**
+
 - `SlashRecord` exists for `escrow_id`.
 - `now >= slashed_at + SLASH_DISPUTE_PERIOD`.
 - `disputed == false`.
 
 **Errors:**
+
 - `SlashNotFound` (38) — no slash record for this escrow.
 - `CancellationDisputePeriodActive` (35) — dispute window still open.
 - `SlashAlreadyDisputed` (39) — `dispute_slash` was already called.
@@ -183,11 +185,13 @@ the slash. Sets `SlashRecord.disputed = true`. After this call, only
 `resolve_slash_dispute` (admin) can settle the outcome.
 
 **Preconditions:**
+
 - `caller == SlashRecord.slashed_user`.
 - `now < slashed_at + SLASH_DISPUTE_PERIOD`.
 - `disputed == false`.
 
 **Errors:**
+
 - `SlashNotFound` (38).
 - `SlashAlreadyDisputed` (39).
 - `SlashDisputeDeadlineExpired` (40) — called after the window closed.
@@ -216,6 +220,7 @@ Admin-only. Resolves a disputed slash:
 In both cases the `SlashRecord` is removed from storage after resolution.
 
 **Errors:**
+
 - `SlashNotFound` (38).
 - `AdminOnly` (4) — caller is not the admin.
 
@@ -225,20 +230,20 @@ In both cases the `SlashRecord` is removed from storage after resolution.
 
 The `ReputationRecord` tracks slash history via two fields:
 
-| Field | Type | Updated when |
-|-------|------|-------------|
-| `slash_count` | `u32` | Incremented by 1 when a slash is **upheld** by `resolve_slash_dispute` or finalized by `finalize_slash`. |
-| `total_slashed` | `i128` | Increased by `SlashRecord.amount` when a slash is upheld or finalized. |
+| Field           | Type   | Updated when                                                                                             |
+| --------------- | ------ | -------------------------------------------------------------------------------------------------------- |
+| `slash_count`   | `u32`  | Incremented by 1 when a slash is **upheld** by `resolve_slash_dispute` or finalized by `finalize_slash`. |
+| `total_slashed` | `i128` | Increased by `SlashRecord.amount` when a slash is upheld or finalized.                                   |
 
 When a slash is **reversed** by `resolve_slash_dispute`, neither
 `slash_count` nor `total_slashed` is incremented — the record is clean.
 
 The `total_score` in `ReputationRecord` is also affected:
 
-| Outcome | Score change |
-|---------|-------------|
-| Slash upheld | `total_score` reduced (exact formula defined in `_update_reputation_internal`). |
-| Slash reversed | No score change. |
+| Outcome        | Score change                                                                    |
+| -------------- | ------------------------------------------------------------------------------- |
+| Slash upheld   | `total_score` reduced (exact formula defined in `_update_reputation_internal`). |
+| Slash reversed | No score change.                                                                |
 
 See [reputation-scoring.md](./reputation-scoring.md) for the full
 scoring formula.
@@ -247,9 +252,9 @@ scoring formula.
 
 ## Error Codes
 
-| Code | Name | Meaning |
-|------|------|---------|
-| 38 | `SlashNotFound` | No `SlashRecord` exists for the given `escrow_id`. |
-| 39 | `SlashAlreadyDisputed` | `dispute_slash` was already called; cannot dispute again or finalize. |
-| 40 | `SlashDisputeDeadlineExpired` | The `SLASH_DISPUTE_PERIOD` window has closed; `dispute_slash` can no longer be called. |
-| 41 | `InvalidSlashAmount` | The calculated slash amount is zero or negative (e.g. `remaining_balance` is zero). |
+| Code | Name                          | Meaning                                                                                |
+| ---- | ----------------------------- | -------------------------------------------------------------------------------------- |
+| 38   | `SlashNotFound`               | No `SlashRecord` exists for the given `escrow_id`.                                     |
+| 39   | `SlashAlreadyDisputed`        | `dispute_slash` was already called; cannot dispute again or finalize.                  |
+| 40   | `SlashDisputeDeadlineExpired` | The `SLASH_DISPUTE_PERIOD` window has closed; `dispute_slash` can no longer be called. |
+| 41   | `InvalidSlashAmount`          | The calculated slash amount is zero or negative (e.g. `remaining_balance` is zero).    |

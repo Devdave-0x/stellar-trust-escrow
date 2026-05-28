@@ -10,7 +10,7 @@ jest.unstable_mockModule('../config/logger.js', () => ({
 // sharp mock — returns a chainable object
 const sharpMock = jest.fn(() => ({
   resize: jest.fn().mockReturnThis(),
-  jpeg:   jest.fn().mockReturnThis(),
+  jpeg: jest.fn().mockReturnThis(),
   toBuffer: jest.fn().mockResolvedValue(Buffer.from('thumb')),
   metadata: jest.fn().mockResolvedValue({ width: 100, height: 100, format: 'jpeg' }),
 }));
@@ -63,7 +63,7 @@ describe('ipfsService — encryption', () => {
     // by encrypting a known buffer and decrypting it
     const crypto = await import('node:crypto');
     const keyBuf = Buffer.from(key, 'hex');
-    const ivBuf  = Buffer.from(iv, 'hex');
+    const ivBuf = Buffer.from(iv, 'hex');
     const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, ivBuf);
     const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     const tag = cipher.getAuthTag();
@@ -81,7 +81,7 @@ describe('ipfsService — encryption', () => {
     const { key, iv } = ipfsService.getDecryptionKey(cid, 'ADDR_B');
 
     expect(Buffer.from(key, 'hex')).toHaveLength(32); // 256-bit
-    expect(Buffer.from(iv, 'hex')).toHaveLength(12);  // 96-bit GCM IV
+    expect(Buffer.from(iv, 'hex')).toHaveLength(12); // 96-bit GCM IV
   });
 });
 
@@ -101,9 +101,9 @@ describe('ipfsService — Pinata upload', () => {
 
   it('throws when PINATA_JWT is not set', async () => {
     delete process.env.PINATA_JWT;
-    await expect(
-      ipfsService.pinFile(Buffer.from('x'), 'image/jpeg', 'x.jpg', []),
-    ).rejects.toThrow('PINATA_JWT');
+    await expect(ipfsService.pinFile(Buffer.from('x'), 'image/jpeg', 'x.jpg', [])).rejects.toThrow(
+      'PINATA_JWT',
+    );
   });
 
   it('throws when Pinata returns a non-OK status', async () => {
@@ -112,9 +112,9 @@ describe('ipfsService — Pinata upload', () => {
       status: 401,
       text: async () => 'Unauthorized',
     });
-    await expect(
-      ipfsService.pinFile(Buffer.from('x'), 'image/jpeg', 'x.jpg', []),
-    ).rejects.toThrow('Pinata upload failed');
+    await expect(ipfsService.pinFile(Buffer.from('x'), 'image/jpeg', 'x.jpg', [])).rejects.toThrow(
+      'Pinata upload failed',
+    );
   });
 });
 
@@ -158,9 +158,9 @@ describe('ipfsService — file validation', () => {
   it('rejects files exceeding MAX_FILE_SIZE', async () => {
     process.env.MAX_FILE_SIZE = '10';
     const big = Buffer.alloc(11);
-    await expect(
-      ipfsService.pinFile(big, 'image/jpeg', 'big.jpg', []),
-    ).rejects.toThrow(expect.objectContaining({ code: 'FILE_TOO_LARGE' }));
+    await expect(ipfsService.pinFile(big, 'image/jpeg', 'big.jpg', [])).rejects.toThrow(
+      expect.objectContaining({ code: 'FILE_TOO_LARGE' }),
+    );
   });
 
   it('rejects disallowed MIME types', async () => {

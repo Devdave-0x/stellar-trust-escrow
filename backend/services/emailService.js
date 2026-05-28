@@ -1,10 +1,6 @@
 import crypto from 'crypto';
 
-import {
-  __resetForTests,
-  enqueueEvent,
-  getQueueSnapshot,
-} from '../queues/emailQueue.js';
+import { __resetForTests, enqueueEvent, getQueueSnapshot } from '../queues/emailQueue.js';
 
 import disputeRaisedTemplate from '../templates/emails/disputeRaised.js';
 import escrowStatusChangedTemplate from '../templates/emails/escrowStatusChanged.js';

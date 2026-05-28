@@ -11,6 +11,7 @@ The accessibility scanner automatically checks all major pages of the applicatio
 ### Prerequisites
 
 1. Install dependencies:
+
    ```bash
    npm ci
    cd frontend && npm ci
@@ -44,6 +45,7 @@ node scripts/accessibility-scan.js
 - `CI` - Set to `true` to enable stricter CI thresholds
 
 Example:
+
 ```bash
 BASE_URL=http://localhost:3000 npm run test:a11y:scan
 ```
@@ -63,11 +65,11 @@ The scanner checks the following pages:
 The scanner uses different thresholds for local development vs CI:
 
 | Impact Level | Local Threshold | CI Threshold |
-|--------------|----------------|--------------|
-| Critical     | 0              | 0            |
-| Serious      | 5              | 0            |
-| Moderate     | 10             | 5            |
-| Minor        | 20             | 10           |
+| ------------ | --------------- | ------------ |
+| Critical     | 0               | 0            |
+| Serious      | 5               | 0            |
+| Moderate     | 10              | 5            |
+| Minor        | 20              | 10           |
 
 **CI mode is stricter** to prevent accessibility regressions from being merged.
 
@@ -113,6 +115,7 @@ The accessibility scanner runs automatically in the CI pipeline:
 **Issue**: Text doesn't have sufficient contrast with background.
 
 **Fix**: Use colors that meet WCAG AA contrast ratios:
+
 - Normal text: 4.5:1
 - Large text (18pt+): 3:1
 
@@ -121,6 +124,7 @@ The accessibility scanner runs automatically in the CI pipeline:
 **Issue**: Images missing `alt` attributes.
 
 **Fix**: Add descriptive alt text to all images:
+
 ```jsx
 <img src="logo.png" alt="Stellar Trust Escrow Logo" />
 ```
@@ -130,6 +134,7 @@ The accessibility scanner runs automatically in the CI pipeline:
 **Issue**: Form inputs missing associated labels.
 
 **Fix**: Use proper label associations:
+
 ```jsx
 <label htmlFor="email">Email</label>
 <input id="email" type="email" />
@@ -140,6 +145,7 @@ The accessibility scanner runs automatically in the CI pipeline:
 **Issue**: Interactive elements not keyboard accessible.
 
 **Fix**: Ensure all interactive elements can be focused and activated via keyboard:
+
 ```jsx
 <button onClick={handleClick}>Click Me</button>
 // Not: <div onClick={handleClick}>Click Me</div>
@@ -150,6 +156,7 @@ The accessibility scanner runs automatically in the CI pipeline:
 **Issue**: Incorrect or missing ARIA attributes.
 
 **Fix**: Use semantic HTML first, ARIA as enhancement:
+
 ```jsx
 // Good
 <button>Submit</button>
@@ -180,8 +187,9 @@ The accessibility scanner runs automatically in the CI pipeline:
 If the scanner times out waiting for pages to load:
 
 1. Increase timeout in `accessibility-scan.js`:
+
    ```javascript
-   timeout: 60000  // Increase from 30000
+   timeout: 60000; // Increase from 30000
    ```
 
 2. Check that the frontend server is running on the correct port
@@ -197,6 +205,7 @@ If you encounter false positives:
 ### Server Not Starting
 
 Ensure the frontend builds successfully:
+
 ```bash
 cd frontend
 npm run build
@@ -204,6 +213,7 @@ npm run start:test
 ```
 
 Check that port 3000 is not already in use:
+
 ```bash
 lsof -i :3000
 ```

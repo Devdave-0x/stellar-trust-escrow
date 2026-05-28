@@ -12,19 +12,19 @@ Although Slither was originally designed for Solidity/EVM contracts, many of its
 
 The following detectors are enabled in `slither.config.json`. All others are excluded to reduce noise.
 
-| Detector | Severity | Why it matters for Soroban contracts |
-|---|---|---|
-| `reentrancy-eth` | High | Cross-contract calls in Soroban (e.g. `token_client.transfer()`) can re-enter the calling contract if state is not committed first. This detector flags call-before-state-update patterns. |
-| `reentrancy-no-eth` | Medium | Same as above but for non-ETH value flows — relevant when a Soroban contract calls another contract and reads shared storage. |
-| `integer-overflow` | High | Unchecked arithmetic on `i128`/`u32` fields can wrap silently. The project uses `checked_*` methods throughout; this detector catches any path that bypasses them. |
-| `unchecked-transfer` | High | Token transfers whose return value is not checked can silently fail, leaving the contract in an inconsistent state. |
-| `arbitrary-send` | High | Flags code paths where an attacker-controlled address can receive funds — critical for escrow release logic. |
-| `controlled-delegatecall` | High | Delegatecall with a caller-controlled target is a common proxy exploit. Flags any such pattern in the contract. |
-| `suicidal` | High | Detects functions that allow an arbitrary caller to destroy the contract, wiping all escrow state. |
-| `uninitialized-state` | High | State variables read before being written can return zero/default values, breaking invariants (e.g. `remaining_balance` read before `fund_escrow` is called). |
-| `uninitialized-storage` | High | Storage pointers that are not initialised before use can corrupt adjacent storage slots. |
-| `locked-ether` | Medium | Flags contracts that can receive native tokens but have no withdrawal path — relevant if the contract ever accepts XLM directly. |
-| `tx-origin` | Medium | Using `tx.origin` for authentication is bypassable via a forwarding contract. Soroban's `require_auth()` is the correct pattern; this detector catches any `tx.origin` usage that slips in. |
+| Detector                  | Severity | Why it matters for Soroban contracts                                                                                                                                                        |
+| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reentrancy-eth`          | High     | Cross-contract calls in Soroban (e.g. `token_client.transfer()`) can re-enter the calling contract if state is not committed first. This detector flags call-before-state-update patterns.  |
+| `reentrancy-no-eth`       | Medium   | Same as above but for non-ETH value flows — relevant when a Soroban contract calls another contract and reads shared storage.                                                               |
+| `integer-overflow`        | High     | Unchecked arithmetic on `i128`/`u32` fields can wrap silently. The project uses `checked_*` methods throughout; this detector catches any path that bypasses them.                          |
+| `unchecked-transfer`      | High     | Token transfers whose return value is not checked can silently fail, leaving the contract in an inconsistent state.                                                                         |
+| `arbitrary-send`          | High     | Flags code paths where an attacker-controlled address can receive funds — critical for escrow release logic.                                                                                |
+| `controlled-delegatecall` | High     | Delegatecall with a caller-controlled target is a common proxy exploit. Flags any such pattern in the contract.                                                                             |
+| `suicidal`                | High     | Detects functions that allow an arbitrary caller to destroy the contract, wiping all escrow state.                                                                                          |
+| `uninitialized-state`     | High     | State variables read before being written can return zero/default values, breaking invariants (e.g. `remaining_balance` read before `fund_escrow` is called).                               |
+| `uninitialized-storage`   | High     | Storage pointers that are not initialised before use can corrupt adjacent storage slots.                                                                                                    |
+| `locked-ether`            | Medium   | Flags contracts that can receive native tokens but have no withdrawal path — relevant if the contract ever accepts XLM directly.                                                            |
+| `tx-origin`               | Medium   | Using `tx.origin` for authentication is bypassable via a forwarding contract. Soroban's `require_auth()` is the correct pattern; this detector catches any `tx.origin` usage that slips in. |
 
 Detectors excluded globally: `naming-convention`, `solc-version`, `low-level-calls` — these produce high-volume false positives for Rust/WASM compilation artefacts and are not actionable.
 

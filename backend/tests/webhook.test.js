@@ -21,7 +21,9 @@ describe('Webhook Service and Worker', () => {
     jest.resetModules();
     jest.clearAllMocks();
     jest.unstable_mockModule('../lib/prisma.js', () => ({ default: prismaMock }));
-    jest.unstable_mockModule('../queues/webhookQueue.js', () => ({ enqueueWebhookDelivery: queueMock.enqueueWebhookDelivery }));
+    jest.unstable_mockModule('../queues/webhookQueue.js', () => ({
+      enqueueWebhookDelivery: queueMock.enqueueWebhookDelivery,
+    }));
   });
 
   it('creates a webhook subscription and returns a secret', async () => {
@@ -64,7 +66,10 @@ describe('Webhook Service and Worker', () => {
     const payload = { ledger: '100' };
     const result = await webhookService.queueEventWebhooks('esc_crt', payload);
 
-    expect(result).toEqual({ queued: 1, deliveries: [{ subscriptionId: 'sub_1', deliveryId: 'delivery_1' }] });
+    expect(result).toEqual({
+      queued: 1,
+      deliveries: [{ subscriptionId: 'sub_1', deliveryId: 'delivery_1' }],
+    });
     expect(prismaMock.webhookDelivery.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -126,7 +131,11 @@ describe('Webhook Service and Worker', () => {
     await expect(processWebhookJob(job)).rejects.toThrow('network error');
     expect(prismaMock.webhookDelivery.update).toHaveBeenCalledWith({
       where: { id: 'delivery_1' },
-      data: expect.objectContaining({ status: 'failed', attempts: 3, errorMessage: expect.stringContaining('network error') }),
+      data: expect.objectContaining({
+        status: 'failed',
+        attempts: 3,
+        errorMessage: expect.stringContaining('network error'),
+      }),
     });
   });
 });

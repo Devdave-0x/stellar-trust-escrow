@@ -15,6 +15,7 @@ This runs all accessibility tests using jest-axe and axe-core. Tests must pass w
 ### 2. Manual Testing with Screen Reader
 
 #### Using NVDA (Windows)
+
 1. Download and install NVDA from https://www.nvaccess.org/
 2. Open the dashboard page
 3. Press `Insert + H` to open Element List
@@ -23,6 +24,7 @@ This runs all accessibility tests using jest-axe and axe-core. Tests must pass w
 6. Check that dynamic content is announced via aria-live regions
 
 #### Using JAWS (Windows/Mac)
+
 1. Open the dashboard
 2. Press `Insert + Space` to open Virtual Cursor mode
 3. Use arrow keys to navigate through content
@@ -30,6 +32,7 @@ This runs all accessibility tests using jest-axe and axe-core. Tests must pass w
 5. Verify landmarks with `;` key
 
 #### Using VoiceOver (Mac/iOS)
+
 1. Enable VoiceOver: `Cmd + F5`
 2. Navigate with `VO + Right Arrow` (next item)
 3. Use Web Rotor: `VO + U` to see all headings and regions
@@ -93,34 +96,38 @@ All charts and visualizations include visually hidden tables:
 ```
 
 Screen reader users can access this data with Table Navigation:
+
 - NVDA: `T` to jump between tables
 - JAWS: `T` for next table, `Shift + T` for previous
 - VoiceOver: Use Web Rotor to navigate tables
 
 ## Common Issues and Fixes
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| Content not announced | Missing aria-live | Add `aria-live="polite" aria-atomic="true"` |
+| Issue                   | Cause                  | Fix                                         |
+| ----------------------- | ---------------------- | ------------------------------------------- |
+| Content not announced   | Missing aria-live      | Add `aria-live="polite" aria-atomic="true"` |
 | Focus indicator missing | No focus-visible state | Use `:focus-visible` and high-contrast ring |
-| Chart not accessible | No data table | Add sr-only table with chart data |
-| Confusing navigation | Wrong tab order | Use semantic HTML or set tabindex |
-| Color-only information | Red/green dots | Add icons or text labels |
+| Chart not accessible    | No data table          | Add sr-only table with chart data           |
+| Confusing navigation    | Wrong tab order        | Use semantic HTML or set tabindex           |
+| Color-only information  | Red/green dots         | Add icons or text labels                    |
 
 ## Browser DevTools Tips
 
 ### Lighthouse Accessibility Audit
+
 1. Open DevTools: `F12`
 2. Lighthouse tab → Check "Accessibility"
 3. Run audit
 4. Target: 90+ score with zero critical/serious issues
 
 ### Accessibility Inspector (Firefox)
+
 1. DevTools → Accessibility tab
 2. View accessibility tree
 3. Check for missing labels, roles, and landmarks
 
 ### Color Vision Deficiency Simulator (Chrome)
+
 1. DevTools → Rendering
 2. Emulate vision deficiencies
 3. Verify contrast and visual clarity
@@ -135,9 +142,7 @@ import { axe, toHaveNoViolations } from 'jest-axe';
 expect.extend(toHaveNoViolations);
 
 test('StatWidgets has no accessibility violations', async () => {
-  const { container } = render(
-    <StatWidgets address="GTEST..." />
-  );
+  const { container } = render(<StatWidgets address="GTEST..." />);
   const results = await axe(container);
   expect(results).toHaveNoViolations();
 });

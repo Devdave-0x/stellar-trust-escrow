@@ -68,10 +68,19 @@ All collection endpoints return a standard envelope:
     { name: 'KYC', description: 'Know-Your-Customer verification via Sumsub' },
     { name: 'Events', description: 'Indexed Stellar contract events' },
     { name: 'Search', description: 'Full-text search over escrows via Elasticsearch' },
-    { name: 'Notifications', description: 'Email notification dispatch and subscription management' },
+    {
+      name: 'Notifications',
+      description: 'Email notification dispatch and subscription management',
+    },
     { name: 'Relayer', description: 'Meta-transaction relaying for gasless interactions' },
-    { name: 'Audit', description: 'Admin-only audit log search and export (requires x-admin-api-key)' },
-    { name: 'Admin', description: 'Platform administration — users, disputes, settings (requires x-admin-api-key)' },
+    {
+      name: 'Audit',
+      description: 'Admin-only audit log search and export (requires x-admin-api-key)',
+    },
+    {
+      name: 'Admin',
+      description: 'Platform administration — users, disputes, settings (requires x-admin-api-key)',
+    },
     { name: 'Health', description: 'Liveness and readiness probes' },
   ],
   components: {
@@ -121,7 +130,15 @@ All collection endpoints return a standard envelope:
       },
       PaginatedResponse: {
         type: 'object',
-        required: ['data', 'page', 'limit', 'total', 'totalPages', 'hasNextPage', 'hasPreviousPage'],
+        required: [
+          'data',
+          'page',
+          'limit',
+          'total',
+          'totalPages',
+          'hasNextPage',
+          'hasPreviousPage',
+        ],
         properties: {
           data: { type: 'array', items: {} },
           page: { type: 'integer', example: 1 },
@@ -138,7 +155,11 @@ All collection endpoints return a standard envelope:
           id: { type: 'integer', example: 0 },
           title: { type: 'string', example: 'Initial Designs' },
           amount: { type: 'string', example: '500000000', description: 'Amount in stroops' },
-          status: { type: 'string', enum: ['Pending', 'Submitted', 'Approved', 'Disputed'], example: 'Approved' },
+          status: {
+            type: 'string',
+            enum: ['Pending', 'Submitted', 'Approved', 'Disputed'],
+            example: 'Approved',
+          },
           submittedAt: { type: 'string', format: 'date-time', nullable: true },
           resolvedAt: { type: 'string', format: 'date-time', nullable: true },
         },
@@ -153,11 +174,15 @@ All collection endpoints return a standard envelope:
           tokenAddress: { type: 'string', example: 'USDC_CONTRACT' },
           totalAmount: { type: 'string', example: '2000000000', description: 'Total in stroops' },
           remainingBalance: { type: 'string', example: '1500000000' },
-          status: { type: 'string', enum: ['Active', 'Completed', 'Disputed', 'Cancelled'], example: 'Active' },
+          status: {
+            type: 'string',
+            enum: ['Active', 'Completed', 'Disputed', 'Cancelled'],
+            example: 'Active',
+          },
           briefHash: { type: 'string', nullable: true, example: 'QmIPFSHash...' },
           deadline: { type: 'string', format: 'date-time', nullable: true },
           createdAt: { type: 'string', format: 'date-time', example: '2025-03-01T00:00:00Z' },
-          milestones: { type: 'array', items: { '$ref': '#/components/schemas/Milestone' } },
+          milestones: { type: 'array', items: { $ref: '#/components/schemas/Milestone' } },
         },
       },
       ReputationRecord: {
@@ -182,23 +207,46 @@ All collection endpoints return a standard envelope:
     responses: {
       Unauthorized: {
         description: 'Missing or invalid JWT token',
-        content: { 'application/json': { schema: { '$ref': '#/components/schemas/Error' }, example: { error: 'Access denied. No token provided.' } } },
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+            example: { error: 'Access denied. No token provided.' },
+          },
+        },
       },
       Forbidden: {
         description: 'Insufficient permissions',
-        content: { 'application/json': { schema: { '$ref': '#/components/schemas/Error' }, example: { error: 'Forbidden' } } },
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+            example: { error: 'Forbidden' },
+          },
+        },
       },
       NotFound: {
         description: 'Resource not found',
-        content: { 'application/json': { schema: { '$ref': '#/components/schemas/Error' }, example: { error: 'Not found' } } },
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+            example: { error: 'Not found' },
+          },
+        },
       },
       TooManyRequests: {
         description: 'Rate limit exceeded',
-        content: { 'application/json': { schema: { '$ref': '#/components/schemas/Error' }, example: { error: 'Too many API requests, please slow down and try again in a minute.', code: 'RATE_LIMIT_EXCEEDED' } } },
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+            example: {
+              error: 'Too many API requests, please slow down and try again in a minute.',
+              code: 'RATE_LIMIT_EXCEEDED',
+            },
+          },
+        },
       },
       InternalError: {
         description: 'Unexpected server error',
-        content: { 'application/json': { schema: { '$ref': '#/components/schemas/Error' } } },
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
       },
     },
   },
@@ -206,10 +254,7 @@ All collection endpoints return a standard envelope:
 
 export const swaggerOptions = {
   definition: swaggerDefinition,
-  apis: [
-    './api/routes/*.js',
-    './api/docs/paths/*.js',
-  ],
+  apis: ['./api/routes/*.js', './api/docs/paths/*.js'],
 };
 
 export default swaggerDefinition;

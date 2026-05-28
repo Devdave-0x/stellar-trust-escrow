@@ -41,17 +41,17 @@ pub struct ReputationRecord {
 }
 ```
 
-| Field | Unit | Increment rule | Decrement rule |
-|-------|------|----------------|----------------|
-| `address` | — | Set at record creation; never changes. | — |
-| `total_score` | points | +10 base on completion; +1 per 1 000 units of volume (capped at +10 bonus); +3 on winning a dispute. | −5 on disputed escrow; reduced on upheld slash. |
-| `completed_escrows` | count | +1 when an escrow reaches `Completed` status and this address was a party. | Never decremented. |
-| `disputed_escrows` | count | +1 when a dispute is raised on an escrow this address was party to. | Never decremented. |
-| `disputes_won` | count | +1 when `resolve_dispute` is called and this address is on the winning side. | Never decremented. |
-| `total_volume` | token base units (stroops) | Increased by the escrow's `total_amount` on successful completion. | Never decremented. |
-| `slash_count` | count | +1 when a slash against this address is upheld (finalized or resolved upheld). | Never decremented. |
-| `total_slashed` | token base units | Increased by `SlashRecord.amount` when a slash is upheld. | Never decremented. |
-| `last_updated` | ledger timestamp | Updated on every call to `_update_reputation_internal`. | — |
+| Field               | Unit                       | Increment rule                                                                                       | Decrement rule                                  |
+| ------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `address`           | —                          | Set at record creation; never changes.                                                               | —                                               |
+| `total_score`       | points                     | +10 base on completion; +1 per 1 000 units of volume (capped at +10 bonus); +3 on winning a dispute. | −5 on disputed escrow; reduced on upheld slash. |
+| `completed_escrows` | count                      | +1 when an escrow reaches `Completed` status and this address was a party.                           | Never decremented.                              |
+| `disputed_escrows`  | count                      | +1 when a dispute is raised on an escrow this address was party to.                                  | Never decremented.                              |
+| `disputes_won`      | count                      | +1 when `resolve_dispute` is called and this address is on the winning side.                         | Never decremented.                              |
+| `total_volume`      | token base units (stroops) | Increased by the escrow's `total_amount` on successful completion.                                   | Never decremented.                              |
+| `slash_count`       | count                      | +1 when a slash against this address is upheld (finalized or resolved upheld).                       | Never decremented.                              |
+| `total_slashed`     | token base units           | Increased by `SlashRecord.amount` when a slash is upheld.                                            | Never decremented.                              |
+| `last_updated`      | ledger timestamp           | Updated on every call to `_update_reputation_internal`.                                              | —                                               |
 
 ---
 
@@ -59,11 +59,11 @@ pub struct ReputationRecord {
 
 `_update_reputation_internal` is called in three situations:
 
-| Trigger | `completed` | `disputed` | `volume` |
-|---------|-------------|------------|---------|
-| All milestones approved → escrow `Completed` | `true` | `false` | escrow `total_amount` |
-| `resolve_dispute` distributes funds | `false` | `true` | party's received amount |
-| Slash upheld by `finalize_slash` or `resolve_slash_dispute` | `false` | `false` | `0` (slash fields updated separately) |
+| Trigger                                                     | `completed` | `disputed` | `volume`                              |
+| ----------------------------------------------------------- | ----------- | ---------- | ------------------------------------- |
+| All milestones approved → escrow `Completed`                | `true`      | `false`    | escrow `total_amount`                 |
+| `resolve_dispute` distributes funds                         | `false`     | `true`     | party's received amount               |
+| Slash upheld by `finalize_slash` or `resolve_slash_dispute` | `false`     | `false`    | `0` (slash fields updated separately) |
 
 The public `update_reputation` function is a thin wrapper that calls
 `_update_reputation_internal` and is also available for admin use.

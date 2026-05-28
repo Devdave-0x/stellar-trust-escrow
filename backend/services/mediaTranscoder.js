@@ -187,10 +187,7 @@ class MediaTranscoder {
     return new Promise((resolve) => {
       setImmediate(async () => {
         try {
-          const result = await this.transcodeImageFile(
-            attachment.buffer,
-            attachment.filename
-          );
+          const result = await this.transcodeImageFile(attachment.buffer, attachment.filename);
           resolve(result);
         } catch (error) {
           logger.error({

@@ -97,7 +97,7 @@ jobs:
         with:
           name: release-contract-artifacts-${{ github.sha }}
           path: test-artifacts/
-          retention-days: 90         # keep release artifacts longer
+          retention-days: 90 # keep release artifacts longer
 
   # ─────────────────────────────────────────
   # ⚙️ Backend (Node 20 only for release)

@@ -19,7 +19,7 @@ import { Zap, Clock, AlertTriangle, RefreshCw, CheckCircle } from 'lucide-react'
 
 const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 const REFRESH_INTERVAL_MS = 15_000; // 15 s — fee stats change quickly under congestion
-const BASE_RESERVE_XLM = 0.5;       // minimum base reserve per entry (informational)
+const BASE_RESERVE_XLM = 0.5; // minimum base reserve per entry (informational)
 const STROOPS_PER_XLM = 10_000_000;
 
 /**
@@ -107,18 +107,18 @@ function formatStroops(n) {
 }
 
 const CONGESTION_CONFIG = {
-  normal:  { label: 'Normal',  color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-  medium:  { label: 'Moderate', color: 'text-amber-400',  bg: 'bg-amber-400/10'  },
-  high:    { label: 'High',    color: 'text-red-400',     bg: 'bg-red-400/10'    },
+  normal: { label: 'Normal', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+  medium: { label: 'Moderate', color: 'text-amber-400', bg: 'bg-amber-400/10' },
+  high: { label: 'High', color: 'text-red-400', bg: 'bg-red-400/10' },
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function GasEstimator({ onFeeSelect, className = '' }) {
-  const [feeStats, setFeeStats]     = useState(null);
-  const [selected, setSelected]     = useState('standard');
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
+  const [feeStats, setFeeStats] = useState(null);
+  const [selected, setSelected] = useState('standard');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const timerRef = useRef(null);
 
@@ -184,15 +184,18 @@ export default function GasEstimator({ onFeeSelect, className = '' }) {
         >
           <AlertTriangle size={13} aria-hidden="true" />
           <span>
-            <strong>{congestion.label} network congestion</strong> — fees are elevated.
-            Consider using Standard or High for reliable inclusion.
+            <strong>{congestion.label} network congestion</strong> — fees are elevated. Consider
+            using Standard or High for reliable inclusion.
           </span>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-400/10 rounded-lg px-3 py-2" role="alert">
+        <div
+          className="flex items-center gap-2 text-xs text-amber-400 bg-amber-400/10 rounded-lg px-3 py-2"
+          role="alert"
+        >
           <AlertTriangle size={13} aria-hidden="true" />
           Could not fetch fee stats: {error}
         </div>
@@ -213,9 +216,10 @@ export default function GasEstimator({ onFeeSelect, className = '' }) {
               onClick={() => setSelected(tier.id)}
               className={`rounded-xl p-3 text-left border transition-all duration-200 focus:outline-none
                           focus-visible:ring-2 focus-visible:ring-indigo-500
-                          ${isSelected
-                            ? `${tier.selectedBorder} ${tier.selectedBg}`
-                            : `${tier.border} ${tier.bg} hover:border-opacity-70`
+                          ${
+                            isSelected
+                              ? `${tier.selectedBorder} ${tier.selectedBg}`
+                              : `${tier.border} ${tier.bg} hover:border-opacity-70`
                           }`}
             >
               <div className={`flex items-center gap-1.5 mb-2 ${tier.color}`}>
@@ -233,9 +237,7 @@ export default function GasEstimator({ onFeeSelect, className = '' }) {
                       {formatStroops(fee)}
                       <span className="text-gray-500 text-xs font-normal ml-1">str</span>
                     </p>
-                    <p className="text-gray-500 text-xs tabular-nums">
-                      {stroopsToXlm(fee)} XLM
-                    </p>
+                    <p className="text-gray-500 text-xs tabular-nums">{stroopsToXlm(fee)} XLM</p>
                   </>
                 ) : (
                   <p className="text-gray-600 text-xs">—</p>
@@ -253,16 +255,19 @@ export default function GasEstimator({ onFeeSelect, className = '' }) {
       {feeStats && (
         <div className="flex items-center justify-between text-xs text-gray-600 pt-1 border-t border-gray-800">
           <span>
-            Base fee: <span className="text-gray-400">{formatStroops(feeStats.ledgerBaseFee)} str</span>
+            Base fee:{' '}
+            <span className="text-gray-400">{formatStroops(feeStats.ledgerBaseFee)} str</span>
             {' · '}
             Congestion:{' '}
-            <span className={congestion?.color ?? 'text-gray-400'}>
-              {congestion?.label ?? '—'}
-            </span>
+            <span className={congestion?.color ?? 'text-gray-400'}>{congestion?.label ?? '—'}</span>
           </span>
           {lastUpdated && (
             <span>
-              {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {lastUpdated.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              })}
             </span>
           )}
         </div>
