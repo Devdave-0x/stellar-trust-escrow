@@ -136,63 +136,6 @@ pub struct GovConfig {
     pub approval_threshold_bps: u32,
 }
 
-// ── Jury Voting Pool Types ────────────────────────────────────────────────────
-
-/// Resolution outcome for a jury pool.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum JuryResolution {
-    /// Pending resolution (voting in progress).
-    Pending,
-    /// Resolved in favor of the client.
-    ClientWins,
-    /// Resolved in favor of the freelancer.
-    FreelancerWins,
-}
-
-/// A single vote cast in a jury pool.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct JuryVote {
-    pub voter: Address,
-    pub locked_tokens: i128,
-    pub for_client: bool,
-    pub cast_at: u64,
-}
-
-/// Jury voting pool for milestone dispute resolution.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct JuryPool {
-    pub pool_id: u64,
-    pub milestone_id: u64,
-    pub escrow_id: u64,
-    pub client: Address,
-    pub freelancer: Address,
-    pub disputed_amount: i128,
-    pub token: Address,
-    pub voting_start: u64,
-    pub voting_end: u64,
-    pub weight_for_client: i128,
-    pub weight_for_freelancer: i128,
-    pub total_locked_tokens: i128,
-    pub resolution: JuryResolution,
-    pub resolved_at: Option<u64>,
-    pub created_at: u64,
-}
-
-/// Jury pool configuration.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct JuryPoolConfig {
-    /// Voting period duration in seconds (default: 7 days).
-    pub voting_period: u64,
-    /// Minimum locked tokens to participate in voting.
-    pub min_locked_tokens: i128,
-    /// Minimum total weight required for quorum (basis points).
-    pub quorum_bps: u32,
-}
-
 /// Storage keys.
 #[contracttype]
 pub enum DataKey {
@@ -211,13 +154,25 @@ pub enum DataKey {
     WithdrawCooldown(Address),
     /// Slash record counter
     SlashCounter,
-    // ── Jury Voting Pool ──────────────────────────────────────────────────────
-    /// Jury pool counter
-    JuryPoolCounter,
-    /// Jury voting pool — key: pool_id, value: JuryPool
-    JuryPool(u64),
-    /// Whether `voter` has voted on jury pool `id`: (pool_id, voter)
-    JuryVoted(u64, Address),
-    /// Jury pool configuration
-    JuryConfig,
+    // ── ve-token (voting escrow) ──────────────────────────────────────────────
+    /// Active lock for an address — key: Address, value: VeLock
+    VeLock(Address),
+}
+
+// ── ve-token types ────────────────────────────────────────────────────────────
+
+/// A time-locked token position that grants time-weighted voting power.
+///
+/// voting_power = locked_amount * (remaining_duration / MAX_LOCK_DURATION)
+///
+/// Power decays linearly as `unlock_time` approaches.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct VeLock {
+    /// Amount of governance tokens locked.
+    pub amount: i128,
+    /// Ledger timestamp when the lock expires and tokens can be withdrawn.
+    pub unlock_time: u64,
+    /// Ledger timestamp when the lock was created or last extended.
+    pub locked_at: u64,
 }

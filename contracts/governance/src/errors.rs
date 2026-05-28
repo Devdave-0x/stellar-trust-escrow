@@ -17,11 +17,11 @@ pub enum GovError {
     ProposalNotActive = 6,
     ProposalNotPassed = 7,
     ProposalAlreadyExecuted = 8,
+    ProposalAlreadyCancelled = 21,
     ProposalExpired = 9,
     TimelockNotElapsed = 10,
     InvalidProposalType = 11,
     EmptyDescription = 12,
-    ProposalAlreadyCancelled = 27,
 
     // Voting
     AlreadyVoted = 13,
@@ -45,13 +45,12 @@ pub enum GovError {
     NoStakeToWithdraw = 25,
     SlashExceedsStake = 26,
 
-    // Jury Voting Pool
-    JuryPoolNotFound = 27,
-    JuryPoolAlreadyResolved = 28,
-    JuryVotingNotStarted = 29,
-    JuryVotingClosed = 30,
-    JuryAlreadyVoted = 31,
-    JuryQuorumNotReached = 32,
-    JuryInsufficientLockedTokens = 33,
-    JuryPoolNotResolved = 34,
+    // ve-token (voting escrow)
+    LockDurationTooShort = 27,
+    LockDurationTooLong = 28,
+    LockAlreadyExists = 29,
+    NoLockFound = 30,
+    LockNotExpired = 31,
+    NewUnlockTimeTooEarly = 32,
+    ZeroLockAmount = 33,
 }
