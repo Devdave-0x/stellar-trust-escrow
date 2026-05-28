@@ -297,6 +297,10 @@ pub struct Milestone {
     /// Optional price-based release condition. When set, funds are released
     /// automatically via `trigger_oracle_release` once the condition is met.
     pub price_condition: OptionalPriceCondition,
+
+    /// Optional prerequisite milestone ID that must be Approved or Released
+    /// before this milestone can be submitted or paid out.
+    pub depends_on: Option<u32>,
 }
 
 /// Configuration for a recurring/subscription escrow.
@@ -662,6 +666,10 @@ pub enum DataKey {
     Reputation(Address),
     /// Contract admin address — value: Address
     Admin,
+    /// Admin signer set for threshold authorization — value: Vec<Address>
+    AdminSigners,
+    /// Required number of admin signatures — value: u32
+    AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
@@ -712,4 +720,6 @@ pub enum DataKey {
     PlatformFeeTiers,
     /// Applied fee snapshot for an escrow â€” key: u64, value: EscrowFeeSnapshot
     PlatformFeeSnapshot(u64),
+    /// Escrow frozen flag (security freeze) — key: u64, value: bool
+    EscrowFrozen(u64),
 }

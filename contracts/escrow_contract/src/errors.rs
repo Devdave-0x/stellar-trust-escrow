@@ -140,4 +140,12 @@ pub enum EscrowError {
 
     // ── Admin Transfer ───────────────────────────────────────────────────────
     // Note: discriminant 59 is reserved / unused.
+
+    // ── Security Freeze / Admin Multisig ─────────────────────────────────────
+    /// Escrow is frozen; state-mutating operations are blocked.
+    EscrowFrozen = 60,
+    /// Provided admin signatures did not meet the configured threshold.
+    InsufficientAdminSignatures = 61,
+    /// Invalid admin multisig threshold configuration.
+    InvalidAdminThreshold = 62,
 }
