@@ -28,6 +28,7 @@
 #![deny(warnings)]
 #![allow(clippy::too_many_arguments)]
 
+pub mod arbitrators;
 mod errors;
 mod events;
 mod tests;
@@ -716,5 +717,113 @@ impl GovernanceContract {
         env.storage().persistent()
             .get(&DataKey::ArbitratorStake(address))
             .unwrap_or(0)
+    }
+
+    // ── Arbitrator selection pools (Issue #897) ───────────────────────────────
+
+    /// Admin adds an arbitrator to the selection registry.
+    ///
+    /// The arbitrator must already be whitelisted (staked via `stake_arbitrator`).
+    pub fn registry_add_arbitrator(
+        env: Env,
+        caller: Address,
+        arbitrator: Address,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        caller.require_auth();
+        let admin = Storage::admin(&env)?;
+        if caller != admin {
+            return Err(GovError::AdminOnly);
+        }
+        if !env
+            .storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::Arbitrator(arbitrator.clone()))
+            .unwrap_or(false)
+        {
+            return Err(GovError::NotArbitrator);
+        }
+        arbitrators::registry_add(&env, &arbitrator);
+        Ok(())
+    }
+
+    /// Admin removes an arbitrator from the selection registry.
+    pub fn registry_remove_arbitrator(
+        env: Env,
+        caller: Address,
+        arbitrator: Address,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        caller.require_auth();
+        let admin = Storage::admin(&env)?;
+        if caller != admin {
+            return Err(GovError::AdminOnly);
+        }
+        arbitrators::registry_remove(&env, &arbitrator);
+        Ok(())
+    }
+
+    /// Select a three-member arbitrator panel for `dispute_id`.
+    ///
+    /// Uses ledger sequence XOR dispute_id as a pseudo-random seed.
+    /// Prefers lowest-load arbitrators; no duplicate in the same panel.
+    ///
+    /// # Returns
+    /// The created panel, or `Err(GovError::NotArbitrator)` if fewer than 3
+    /// arbitrators are registered.
+    pub fn select_dispute_panel(
+        env: Env,
+        dispute_id: u64,
+    ) -> Result<arbitrators::ArbitratorPanel, GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrators::select_panel(&env, dispute_id).ok_or(GovError::NotArbitrator)
+    }
+
+    /// Selected arbitrator accepts their assignment.
+    pub fn accept_arbitration(
+        env: Env,
+        arbitrator: Address,
+        dispute_id: u64,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrator.require_auth();
+        arbitrators::accept_arbitration(&env, dispute_id, &arbitrator)
+            .map_err(|_| GovError::Unauthorized)
+    }
+
+    /// Selected arbitrator declines their assignment (triggers auto-rotation).
+    pub fn decline_arbitration(
+        env: Env,
+        arbitrator: Address,
+        dispute_id: u64,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrator.require_auth();
+        arbitrators::decline_arbitration(&env, dispute_id, &arbitrator)
+            .map_err(|_| GovError::Unauthorized)
+    }
+
+    /// Rotate a timed-out slot (anyone can call after the 48-hour deadline).
+    pub fn rotate_timed_out_slot(
+        env: Env,
+        dispute_id: u64,
+        slot_idx: u32,
+    ) -> Result<(), GovError> {
+        Storage::require_initialized(&env)?;
+        arbitrators::rotate_timed_out(&env, dispute_id, slot_idx)
+            .map_err(|_| GovError::Unauthorized)
+    }
+
+    /// Returns the arbitrator panel for a dispute.
+    pub fn get_dispute_panel(
+        env: Env,
+        dispute_id: u64,
+    ) -> Option<arbitrators::ArbitratorPanel> {
+        arbitrators::get_panel(&env, dispute_id)
+    }
+
+    /// Returns whether `address` is in the selection registry.
+    pub fn is_in_registry(env: Env, address: Address) -> bool {
+        arbitrators::registry_contains(&env, &address)
     }
 }
