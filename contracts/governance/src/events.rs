@@ -79,14 +79,23 @@ pub fn emit_jury_pool_resolved(
     );
 }
 
-pub fn emit_jury_funds_distributed(
-    env: &Env,
-    pool_id: u64,
-    recipient: &Address,
-    amount: i128,
-) {
+pub fn emit_jury_funds_distributed(env: &Env, pool_id: u64, recipient: &Address, amount: i128) {
     env.events().publish(
         (symbol_short!("jury_pay"), pool_id),
         (recipient.clone(), amount),
+    );
+}
+
+pub fn emit_deposit_refunded(env: &Env, proposal_id: u64, proposer: &Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("dep_ref"), proposal_id),
+        (proposer.clone(), amount),
+    );
+}
+
+pub fn emit_deposit_slashed(env: &Env, proposal_id: u64, treasury: &Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("dep_slh"), proposal_id),
+        (treasury.clone(), amount),
     );
 }

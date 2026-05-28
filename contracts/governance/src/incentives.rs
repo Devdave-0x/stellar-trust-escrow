@@ -73,9 +73,7 @@ pub fn compute_bonus_tokens(locked_amount: i128, multiplier: u64) -> i128 {
     if multiplier <= SCALE {
         return 0;
     }
-    locked_amount
-        .saturating_mul((multiplier - SCALE) as i128)
-        / SCALE as i128
+    locked_amount.saturating_mul((multiplier - SCALE) as i128) / SCALE as i128
 }
 
 // ── Storage operations ────────────────────────────────────────────────────────
@@ -148,9 +146,10 @@ pub fn apply_lock_extension_bonus(
     }
 
     // Deduct from pool
-    env.storage()
-        .instance()
-        .set(&IncentivesKey::IncentivesPool, &(pool_balance - bonus_tokens));
+    env.storage().instance().set(
+        &IncentivesKey::IncentivesPool,
+        &(pool_balance - bonus_tokens),
+    );
 
     // Update staker record
     let now = env.ledger().timestamp();
@@ -215,7 +214,10 @@ mod incentive_tests {
     #[test]
     fn test_compute_multiplier_full_max() {
         // extension == max → 1.0 + 1.0 = 2.0
-        assert_eq!(compute_multiplier(MAX_LOCK_DURATION, MAX_LOCK_DURATION), 2 * SCALE);
+        assert_eq!(
+            compute_multiplier(MAX_LOCK_DURATION, MAX_LOCK_DURATION),
+            2 * SCALE
+        );
     }
 
     #[test]
@@ -260,8 +262,8 @@ mod incentive_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             let staker = Address::generate(&env);
-            let bonus = apply_lock_extension_bonus(&env, &staker, 0, ONE_YEAR_SECS - 1, 10_000)
-                .unwrap();
+            let bonus =
+                apply_lock_extension_bonus(&env, &staker, 0, ONE_YEAR_SECS - 1, 10_000).unwrap();
             assert_eq!(bonus, 0);
         });
     }
@@ -300,8 +302,7 @@ mod incentive_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             let staker = Address::generate(&env);
-            let result =
-                apply_lock_extension_bonus(&env, &staker, 1_000, 500, 10_000);
+            let result = apply_lock_extension_bonus(&env, &staker, 1_000, 500, 10_000);
             assert_eq!(result, Err(ExtensionError::InvalidExtension));
         });
     }
@@ -313,8 +314,7 @@ mod incentive_tests {
             let staker = Address::generate(&env);
             deposit_to_pool(&env, 200_000).unwrap();
 
-            let b1 =
-                apply_lock_extension_bonus(&env, &staker, 0, ONE_YEAR_SECS, 100_000).unwrap();
+            let b1 = apply_lock_extension_bonus(&env, &staker, 0, ONE_YEAR_SECS, 100_000).unwrap();
             let b2 = apply_lock_extension_bonus(
                 &env,
                 &staker,
@@ -348,10 +348,8 @@ mod incentive_tests {
             let s2 = Address::generate(&env);
             deposit_to_pool(&env, 1_000_000).unwrap();
 
-            let b1 =
-                apply_lock_extension_bonus(&env, &s1, 0, ONE_YEAR_SECS, 100_000).unwrap();
-            let b2 =
-                apply_lock_extension_bonus(&env, &s2, 0, ONE_YEAR_SECS, 200_000).unwrap();
+            let b1 = apply_lock_extension_bonus(&env, &s1, 0, ONE_YEAR_SECS, 100_000).unwrap();
+            let b2 = apply_lock_extension_bonus(&env, &s2, 0, ONE_YEAR_SECS, 200_000).unwrap();
 
             // Staker with 2× locked gets 2× bonus
             assert_eq!(b2, 2 * b1);

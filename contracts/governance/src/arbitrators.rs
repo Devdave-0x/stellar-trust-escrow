@@ -217,7 +217,9 @@ pub fn select_panel(env: &Env, dispute_id: u64) -> Option<ArbitratorPanel> {
             let load = get_load(env, &addr);
             // Prefer lower load; use seed-derived offset for tie-breaking
             let tiebreak = seed_index(seed ^ i as u64, n);
-            if load < best_load || (load == best_load && tiebreak < seed_index(seed ^ best_idx as u64, n)) {
+            if load < best_load
+                || (load == best_load && tiebreak < seed_index(seed ^ best_idx as u64, n))
+            {
                 best_load = load;
                 best_idx = i;
             }
@@ -290,10 +292,8 @@ pub fn accept_arbitration(
     panel.slots = new_slots;
     save_panel(env, &panel);
 
-    env.events().publish(
-        (symbol_short!("arb_acc"), dispute_id),
-        arbitrator.clone(),
-    );
+    env.events()
+        .publish((symbol_short!("arb_acc"), dispute_id), arbitrator.clone());
     Ok(())
 }
 
@@ -374,7 +374,9 @@ fn rotate_slot(
         }
         let load = get_load(env, &addr);
         let tiebreak = seed_index(seed ^ i as u64, n);
-        if load < best_load || (load == best_load && tiebreak < seed_index(seed ^ best_load as u64, n)) {
+        if load < best_load
+            || (load == best_load && tiebreak < seed_index(seed ^ best_load as u64, n))
+        {
             best_load = load;
             replacement = Some(addr);
         }

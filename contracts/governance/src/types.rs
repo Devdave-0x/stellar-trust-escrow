@@ -136,6 +136,46 @@ pub struct GovConfig {
     pub approval_threshold_bps: u32,
 }
 
+// ── ve-token types ────────────────────────────────────────────────────────────
+
+/// A time-locked token position that grants time-weighted voting power.
+///
+/// voting_power = locked_amount * (remaining_duration / MAX_LOCK_DURATION)
+///
+/// Power decays linearly as `unlock_time` approaches.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct VeLock {
+    /// Amount of governance tokens locked.
+    pub amount: i128,
+    /// Ledger timestamp when the lock expires and tokens can be withdrawn.
+    pub unlock_time: u64,
+    /// Ledger timestamp when the lock was created or last extended.
+    pub locked_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct JuryPool {
+    pub pool_id: u64,
+    pub escrow_id: u64,
+    pub milestone_id: u64,
+    pub created_at: u64,
+    pub voting_end: u64,
+    pub resolved: bool,
+    pub weight_for_client: i128,
+    pub weight_for_freelancer: i128,
+    pub total_locked: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct JuryVote {
+    pub voter: Address,
+    pub locked_tokens: i128,
+    pub for_client: bool,
+}
+
 /// Storage keys.
 #[contracttype]
 pub enum DataKey {
@@ -154,25 +194,16 @@ pub enum DataKey {
     WithdrawCooldown(Address),
     /// Slash record counter
     SlashCounter,
+    /// Fee deposit locked for a proposal — key: proposal_id, value: i128
+    ProposalDeposit(u64),
+    /// Treasury address for slashed fee deposits — instance storage
+    Treasury,
     // ── ve-token (voting escrow) ──────────────────────────────────────────────
     /// Active lock for an address — key: Address, value: VeLock
     VeLock(Address),
-}
-
-// ── ve-token types ────────────────────────────────────────────────────────────
-
-/// A time-locked token position that grants time-weighted voting power.
-///
-/// voting_power = locked_amount * (remaining_duration / MAX_LOCK_DURATION)
-///
-/// Power decays linearly as `unlock_time` approaches.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct VeLock {
-    /// Amount of governance tokens locked.
-    pub amount: i128,
-    /// Ledger timestamp when the lock expires and tokens can be withdrawn.
-    pub unlock_time: u64,
-    /// Ledger timestamp when the lock was created or last extended.
-    pub locked_at: u64,
+    IncentivesPool,
+    JuryPoolCounter,
+    JuryPool(u64),
+    JuryVote(u64, Address),
+    JuryVoterStake(u64, Address),
 }
