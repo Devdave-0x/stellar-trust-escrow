@@ -1,370 +1,653 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useWallet } from '../../hooks/useWallet';
+import { useToast } from '../../contexts/ToastContext';
+import {
+  ThumbsUp,
+  ThumbsDown,
+  Plus,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  Users,
+  TrendingUp,
+  Loader2,
+} from 'lucide-react';
 
-// ─── Mock data (replace with on-chain contract calls) ──────────────────────
-const MOCK_PROPOSALS = [
-  {
-    id: "prop-001",
-    title: "Increase dispute resolution window to 14 days",
-    description:
-      "Extend the default dispute resolution period from 7 to 14 days to give arbitrators more time for complex cases.",
-    status: "active",
-    votesFor: 18420,
-    votesAgainst: 4310,
-    totalShares: 30000,
-    endsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    proposer: "GABC...X7YZ",
-    userVote: null,
-  },
-  {
-    id: "prop-002",
-    title: "Reduce platform fee from 1.5% to 1.0%",
-    description: "Lower escrow service fees to improve competitiveness against centralized alternatives.",
-    status: "active",
-    votesFor: 9800,
-    votesAgainst: 12200,
-    totalShares: 30000,
-    endsAt: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString(),
-    proposer: "GDEF...A3BC",
-    userVote: null,
-  },
-  {
-    id: "prop-003",
-    title: "Add multi-sig arbitrator approval for disputes >$50k",
-    description: "Require 3-of-5 arbitrator signatures for high-value dispute resolutions.",
-    status: "passed",
-    votesFor: 24100,
-    votesAgainst: 3200,
-    totalShares: 30000,
-    endsAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    proposer: "GHIJ...K9LM",
-    userVote: "for",
-  },
-  {
-    id: "prop-004",
-    title: "Emergency pause mechanism for security incidents",
-    description: "Allow a 4-of-7 guardian council to pause contract interactions during active exploits.",
-    status: "rejected",
-    votesFor: 8000,
-    votesAgainst: 19000,
-    totalShares: 30000,
-    endsAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    proposer: "GNOP...Q2RS",
-    userVote: "against",
-  },
-];
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-const USER_SHARES = 450;
-// ──────────────────────────────────────────────────────────────────────────
+const PROPOSAL_TYPES = {
+  ParameterChange: 'Parameter Change',
+  ContractUpgrade: 'Contract Upgrade',
+  FundAllocation: 'Fund Allocation',
+  TextProposal: 'Text Proposal',
+};
 
-function useCountdown(isoDate) {
-  const [display, setDisplay] = useState("");
+const PROPOSAL_STATUS_ICONS = {
+  Active: Clock,
+  Passed: CheckCircle,
+  Defeated: XCircle,
+  Queued: AlertCircle,
+  Executed: CheckCircle,
+  Cancelled: XCircle,
+};
+
+const PROPOSAL_STATUS_COLORS = {
+  Active: 'text-blue-400 bg-blue-500/10',
+  Passed: 'text-emerald-400 bg-emerald-500/10',
+  Defeated: 'text-red-400 bg-red-500/10',
+  Queued: 'text-amber-400 bg-amber-500/10',
+  Executed: 'text-emerald-400 bg-emerald-500/10',
+  Cancelled: 'text-gray-400 bg-gray-500/10',
+};
+
+function CountdownTimer({ endTime, onTimeUp }) {
+  const [timeLeft, setTimeLeft] = useState(null);
+
   useEffect(() => {
-    function calc() {
-      const diff = new Date(isoDate) - Date.now();
-      if (diff <= 0) return setDisplay("Ended");
-      const d = Math.floor(diff / 86400000);
-      const h = Math.floor((diff % 86400000) / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      setDisplay(`${d}d ${h}h ${m}m`);
-    }
-    calc();
-    const id = setInterval(calc, 60000);
-    return () => clearInterval(id);
-  }, [isoDate]);
-  return display;
+    const interval = setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = Math.max(0, endTime - now);
+      setTimeLeft(remaining);
+
+      if (remaining === 0) {
+        clearInterval(interval);
+        onTimeUp?.();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [endTime, onTimeUp]);
+
+  if (timeLeft === null) return <span>Loading...</span>;
+
+  const days = Math.floor(timeLeft / 86400);
+  const hours = Math.floor((timeLeft % 86400) / 3600);
+  const minutes = Math.floor((timeLeft % 3600) / 60);
+  const seconds = timeLeft % 60;
+
+  if (timeLeft === 0) return <span className="text-red-400 font-semibold">Voting Ended</span>;
+
+  return (
+    <span className="text-sm text-amber-400 font-semibold" role="timer">
+      {days}d {hours}h {minutes}m {seconds}s remaining
+    </span>
+  );
 }
 
-function VoteBar({ votesFor, votesAgainst, totalShares }) {
-  const forPct = totalShares ? ((votesFor / totalShares) * 100).toFixed(1) : 0;
-  const againstPct = totalShares ? ((votesAgainst / totalShares) * 100).toFixed(1) : 0;
+function VotingResultBar({ voteCount, totalVotes, support }) {
+  const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+  const color = support ? 'bg-emerald-500' : 'bg-red-500';
+
   return (
-    <div aria-label={`${forPct}% for, ${againstPct}% against`}>
-      <div className="flex justify-between text-xs text-gray-400 mb-1">
-        <span>For: {forPct}%</span>
-        <span>Against: {againstPct}%</span>
+    <div className="space-y-2">
+      <div className="flex justify-between items-center text-sm">
+        <span className={support ? 'text-emerald-400' : 'text-red-400'}>
+          {support ? 'For' : 'Against'}
+        </span>
+        <span className="text-gray-300">
+          {voteCount} votes ({percentage.toFixed(1)}%)
+        </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+      <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-700"
-          style={{ width: `${forPct}%` }}
+          className={`h-full ${color} transition-all duration-300`}
+          style={{ width: `${percentage}%` }}
           role="progressbar"
-          aria-valuenow={forPct}
-          aria-valuemin={0}
-          aria-valuemax={100}
+          aria-valuenow={Math.round(percentage)}
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-label={`${support ? 'For' : 'Against'} votes: ${percentage.toFixed(1)}%`}
         />
       </div>
     </div>
   );
 }
 
-function ProposalCard({ proposal, onVote }) {
-  const countdown = useCountdown(proposal.endsAt);
-  const isActive = proposal.status === "active";
-  const statusColors = {
-    active: "bg-blue-500/20 text-blue-300",
-    passed: "bg-green-500/20 text-green-300",
-    rejected: "bg-red-500/20 text-red-300",
-  };
-
-  return (
-    <article
-      aria-labelledby={`prop-title-${proposal.id}`}
-      className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm transition hover:border-white/20"
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <h3 id={`prop-title-${proposal.id}`} className="font-semibold text-white leading-snug">
-          {proposal.title}
-        </h3>
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[proposal.status]}`}
-          aria-label={`Status: ${proposal.status}`}
-        >
-          {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
-        </span>
-      </div>
-
-      <p className="mb-4 text-sm text-gray-400 leading-relaxed">{proposal.description}</p>
-
-      <VoteBar
-        votesFor={proposal.votesFor}
-        votesAgainst={proposal.votesAgainst}
-        totalShares={proposal.totalShares}
-      />
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500">
-        <span>
-          Proposed by <span className="font-mono text-gray-400">{proposal.proposer}</span>
-        </span>
-        <span aria-live="polite" aria-label={`Time remaining: ${countdown}`}>
-          ⏱ {countdown}
-        </span>
-      </div>
-
-      {isActive && (
-        <div className="mt-4 flex gap-3" role="group" aria-label={`Vote on: ${proposal.title}`}>
-          {["for", "against"].map((side) => (
-            <button
-              key={side}
-              onClick={() => onVote(proposal.id, side)}
-              disabled={!!proposal.userVote}
-              aria-pressed={proposal.userVote === side}
-              className={`flex-1 rounded-xl py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
-                side === "for"
-                  ? "bg-green-600/30 text-green-300 hover:bg-green-600/50 focus:ring-green-500"
-                  : "bg-red-600/30 text-red-300 hover:bg-red-600/50 focus:ring-red-500"
-              } ${proposal.userVote === side ? "ring-2" : ""}`}
-            >
-              {side === "for" ? "✓ Vote For" : "✗ Vote Against"}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {proposal.userVote && (
-        <p className="mt-3 text-center text-xs text-gray-500" aria-live="polite">
-          You voted <strong className="text-gray-300">{proposal.userVote}</strong> with {USER_SHARES.toLocaleString()} shares.
-        </p>
-      )}
-    </article>
-  );
-}
-
-const CREATE_SCHEMA = {
-  title: { label: "Title", placeholder: "Short, clear proposal title", maxLength: 80 },
-  description: { label: "Description", placeholder: "Explain the change and its rationale (min 50 chars)", minLength: 50 },
-};
-
-function CreateProposalModal({ onClose, onCreate }) {
-  const [form, setForm] = useState({ title: "", description: "" });
-  const [errors, setErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
-
-  const validate = () => {
-    const e = {};
-    if (!form.title.trim()) e.title = "Title is required.";
-    else if (form.title.length > 80) e.title = "Max 80 characters.";
-    if (form.description.length < 50) e.description = "Minimum 50 characters required.";
-    return e;
-  };
-
-  const handleSubmit = async () => {
-    const e = validate();
-    if (Object.keys(e).length) return setErrors(e);
-    setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 900)); // simulate tx
-    onCreate({ ...form, id: `prop-${Date.now()}`, status: "active", votesFor: 0, votesAgainst: 0, totalShares: 30000, endsAt: new Date(Date.now() + 7 * 86400000).toISOString(), proposer: "You", userVote: null });
-    setSubmitting(false);
-    onClose();
-  };
+function ProposalCard({ proposal, onVote, onExpand, isExpanded, userVoting }) {
+  const StatusIcon = PROPOSAL_STATUS_ICONS[proposal.status] || AlertCircle;
+  const totalVotes = proposal.votes_for + proposal.votes_against;
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      className="card hover:shadow-lg hover:shadow-blue-500/20 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"
+      role="article"
+      aria-label={`Proposal ${proposal.id}: ${proposal.title}`}
     >
-      <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-gray-900 p-6 shadow-2xl">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 id="modal-title" className="text-lg font-semibold text-white">Create Proposal</h2>
-          <button onClick={onClose} aria-label="Close modal" className="text-gray-400 hover:text-white">✕</button>
-        </div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 mb-2">
+            <StatusIcon
+              size={20}
+              className={PROPOSAL_STATUS_COLORS[proposal.status]}
+              aria-hidden="true"
+            />
+            <h3 className="text-lg font-semibold text-white truncate">{proposal.title}</h3>
+          </div>
 
-        {Object.entries(CREATE_SCHEMA).map(([key, meta]) => (
-          <div key={key} className="mb-4">
-            <label htmlFor={`field-${key}`} className="mb-1.5 block text-sm font-medium text-gray-300">
-              {meta.label}
-            </label>
-            {key === "description" ? (
-              <textarea
-                id={`field-${key}`}
-                rows={4}
-                placeholder={meta.placeholder}
-                value={form[key]}
-                onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))}
-                className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
-                aria-describedby={errors[key] ? `err-${key}` : undefined}
-                aria-invalid={!!errors[key]}
-              />
-            ) : (
-              <input
-                id={`field-${key}`}
-                type="text"
-                maxLength={meta.maxLength}
-                placeholder={meta.placeholder}
-                value={form[key]}
-                onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
-                aria-describedby={errors[key] ? `err-${key}` : undefined}
-                aria-invalid={!!errors[key]}
-              />
-            )}
-            {errors[key] && (
-              <p id={`err-${key}`} role="alert" className="mt-1 text-xs text-red-400">{errors[key]}</p>
+          <p className="text-sm text-gray-400 mb-3 line-clamp-2">{proposal.description}</p>
+
+          <div className="flex flex-wrap gap-2 mb-3 text-xs">
+            <span className="px-2 py-1 rounded bg-gray-700 text-gray-300">
+              {PROPOSAL_TYPES[proposal.proposal_type] || proposal.proposal_type}
+            </span>
+            <span className={`px-2 py-1 rounded ${PROPOSAL_STATUS_COLORS[proposal.status]}`}>
+              {proposal.status}
+            </span>
+            {proposal.status === 'Active' && (
+              <div className="px-2 py-1 rounded bg-blue-500/10 text-blue-400">
+                <CountdownTimer
+                  endTime={proposal.vote_end}
+                  onTimeUp={() => window.location.reload()}
+                />
+              </div>
             )}
           </div>
-        ))}
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose} className="rounded-xl border border-white/10 px-5 py-2 text-sm text-gray-300 hover:bg-white/5">
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            aria-busy={submitting}
-            className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
-          >
-            {submitting ? "Submitting…" : "Submit Proposal"}
-          </button>
         </div>
+
+        <button
+          onClick={() => onExpand(proposal.id)}
+          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+          aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+          aria-expanded={isExpanded}
+        >
+          {isExpanded ? (
+            <ChevronUp size={20} className="text-gray-400" />
+          ) : (
+            <ChevronDown size={20} className="text-gray-400" />
+          )}
+        </button>
       </div>
+
+      {isExpanded && (
+        <div className="mt-4 pt-4 border-t border-gray-700 space-y-4 animate-in fade-in slide-in-from-top-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Voting Stats</p>
+              <div className="space-y-3">
+                <VotingResultBar
+                  voteCount={proposal.votes_for}
+                  totalVotes={totalVotes}
+                  support={true}
+                />
+                <VotingResultBar
+                  voteCount={proposal.votes_against}
+                  totalVotes={totalVotes}
+                  support={false}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-gray-400 uppercase tracking-wide">Details</p>
+              <div className="text-sm space-y-1">
+                <p>
+                  <span className="text-gray-400">Proposer:</span>
+                  <span className="text-gray-300 ml-2">{proposal.proposer.slice(0, 8)}...</span>
+                </p>
+                <p>
+                  <span className="text-gray-400">Total Votes:</span>
+                  <span className="text-gray-300 ml-2">{totalVotes}</span>
+                </p>
+                <p>
+                  <span className="text-gray-400">Voting Share:</span>
+                  <span className="text-blue-400 ml-2 font-semibold">{proposal.user_voting_share || '0'}%</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {proposal.status === 'Active' && (
+            <div className="pt-4 border-t border-gray-700 flex gap-2">
+              <button
+                onClick={() => onVote(proposal.id, true)}
+                disabled={userVoting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:text-gray-400 text-white font-semibold rounded-lg transition-colors"
+                aria-label={`Vote for proposal ${proposal.id}`}
+              >
+                {userVoting ? <Loader2 size={16} className="animate-spin" /> : <ThumbsUp size={16} />}
+                Vote For
+              </button>
+              <button
+                onClick={() => onVote(proposal.id, false)}
+                disabled={userVoting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:text-gray-400 text-white font-semibold rounded-lg transition-colors"
+                aria-label={`Vote against proposal ${proposal.id}`}
+              >
+                {userVoting ? <Loader2 size={16} className="animate-spin" /> : <ThumbsDown size={16} />}
+                Vote Against
+              </button>
+            </div>
+          )}
+
+          {proposal.voters && proposal.voters.length > 0 && (
+            <div className="pt-4 border-t border-gray-700">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+                <Users size={14} />
+                Recent Voters
+              </p>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {proposal.voters.slice(0, 5).map((voter, idx) => (
+                  <div key={idx} className="text-xs text-gray-300 flex items-center justify-between">
+                    <span>{voter.address.slice(0, 10)}...</span>
+                    <span className={voter.support ? 'text-emerald-400' : 'text-red-400'}>
+                      {voter.support ? '✓ For' : '✗ Against'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-export default function GovernancePage() {
-  const [proposals, setProposals] = useState(MOCK_PROPOSALS);
-  const [filter, setFilter] = useState("all");
-  const [showCreate, setShowCreate] = useState(false);
-  const [toast, setToast] = useState(null);
+function ProposalForm({ onSubmit, isSubmitting }) {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    type: 'TextProposal',
+    paramKey: '',
+    paramValue: '',
+  });
+  const [errors, setErrors] = useState({});
 
-  const filtered = useMemo(
-    () => (filter === "all" ? proposals : proposals.filter((p) => p.status === filter)),
-    [proposals, filter]
-  );
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.title.trim()) newErrors.title = 'Title required';
+    if (!formData.description.trim()) newErrors.description = 'Description required';
+    if (formData.type === 'ParameterChange') {
+      if (!formData.paramKey.trim()) newErrors.paramKey = 'Parameter key required';
+      if (!formData.paramValue.trim()) newErrors.paramValue = 'Parameter value required';
+      if (isNaN(parseInt(formData.paramValue))) newErrors.paramValue = 'Must be a number';
+    }
+    return newErrors;
+  };
 
-  const handleVote = useCallback((id, side) => {
-    setProposals((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        return {
-          ...p,
-          votesFor: side === "for" ? p.votesFor + USER_SHARES : p.votesFor,
-          votesAgainst: side === "against" ? p.votesAgainst + USER_SHARES : p.votesAgainst,
-          userVote: side,
-        };
-      })
-    );
-    setToast(`Vote cast ${side === "for" ? "✓" : "✗"} successfully.`);
-    setTimeout(() => setToast(null), 3500);
-  }, []);
-
-  const handleCreate = useCallback((proposal) => {
-    setProposals((prev) => [proposal, ...prev]);
-    setToast("Proposal submitted on-chain.");
-    setTimeout(() => setToast(null), 3500);
-  }, []);
-
-  const tabs = ["all", "active", "passed", "rejected"];
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newErrors = validateForm();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    onSubmit(formData);
+    setFormData({ title: '', description: '', type: 'TextProposal', paramKey: '', paramValue: '' });
+    setErrors({});
+  };
 
   return (
-    <main className="min-h-screen bg-gray-950 px-4 py-10 text-gray-100">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Governance</h1>
-            <p className="mt-1 text-sm text-gray-400">
-              Your shares: <span className="font-semibold text-white">{USER_SHARES.toLocaleString()}</span>
-            </p>
-          </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
-          >
-            + New Proposal
-          </button>
-        </header>
+    <form onSubmit={handleSubmit} className="card space-y-4" role="form" aria-label="Create proposal">
+      <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+        <Plus size={24} className="text-blue-400" />
+        Create Proposal
+      </h2>
 
-        {/* Filter tabs */}
-        <div role="tablist" aria-label="Filter proposals" className="mb-6 flex gap-2 flex-wrap">
-          {tabs.map((t) => (
-            <button
-              key={t}
-              role="tab"
-              aria-selected={filter === t}
-              onClick={() => setFilter(t)}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium capitalize transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                filter === t
-                  ? "bg-blue-600 text-white"
-                  : "bg-white/5 text-gray-400 hover:bg-white/10"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Proposal list */}
-        <section aria-label="Proposal list" aria-live="polite">
-          {filtered.length === 0 ? (
-            <p className="text-center text-sm text-gray-500 py-16">No proposals in this category.</p>
-          ) : (
-            <div className="space-y-4">
-              {filtered.map((p) => (
-                <ProposalCard key={p.id} proposal={p} onVote={handleVote} />
-              ))}
-            </div>
-          )}
-        </section>
+      <div>
+        <label htmlFor="title" className="block text-sm font-semibold text-gray-300 mb-2">
+          Title
+        </label>
+        <input
+          id="title"
+          type="text"
+          value={formData.title}
+          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+          className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Proposal title"
+          aria-invalid={!!errors.title}
+          aria-describedby={errors.title ? 'title-error' : undefined}
+        />
+        {errors.title && (
+          <p id="title-error" className="text-red-400 text-xs mt-1">
+            {errors.title}
+          </p>
+        )}
       </div>
 
-      {showCreate && (
-        <CreateProposalModal onClose={() => setShowCreate(false)} onCreate={handleCreate} />
+      <div>
+        <label htmlFor="description" className="block text-sm font-semibold text-gray-300 mb-2">
+          Description
+        </label>
+        <textarea
+          id="description"
+          value={formData.description}
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-vertical"
+          placeholder="Proposal details"
+          rows="3"
+          aria-invalid={!!errors.description}
+          aria-describedby={errors.description ? 'description-error' : undefined}
+        />
+        {errors.description && (
+          <p id="description-error" className="text-red-400 text-xs mt-1">
+            {errors.description}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="type" className="block text-sm font-semibold text-gray-300 mb-2">
+          Proposal Type
+        </label>
+        <select
+          id="type"
+          value={formData.type}
+          onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+          className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {Object.entries(PROPOSAL_TYPES).map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {formData.type === 'ParameterChange' && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="paramKey" className="block text-sm font-semibold text-gray-300 mb-2">
+                Parameter Key
+              </label>
+              <input
+                id="paramKey"
+                type="text"
+                value={formData.paramKey}
+                onChange={(e) => setFormData({ ...formData, paramKey: e.target.value })}
+                className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. platform_fee"
+                aria-invalid={!!errors.paramKey}
+                aria-describedby={errors.paramKey ? 'paramKey-error' : undefined}
+              />
+              {errors.paramKey && (
+                <p id="paramKey-error" className="text-red-400 text-xs mt-1">
+                  {errors.paramKey}
+                </p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="paramValue" className="block text-sm font-semibold text-gray-300 mb-2">
+                Value
+              </label>
+              <input
+                id="paramValue"
+                type="text"
+                value={formData.paramValue}
+                onChange={(e) => setFormData({ ...formData, paramValue: e.target.value })}
+                className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 100"
+                aria-invalid={!!errors.paramValue}
+                aria-describedby={errors.paramValue ? 'paramValue-error' : undefined}
+              />
+              {errors.paramValue && (
+                <p id="paramValue-error" className="text-red-400 text-xs mt-1">
+                  {errors.paramValue}
+                </p>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 rounded-xl bg-gray-800 border border-white/10 px-5 py-3 text-sm text-white shadow-xl"
-        >
-          {toast}
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 text-white font-semibold rounded-lg transition-colors"
+        aria-busy={isSubmitting}
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 size={20} className="animate-spin" />
+            Submitting...
+          </>
+        ) : (
+          <>
+            <Send size={20} />
+            Submit Proposal
+          </>
+        )}
+      </button>
+    </form>
+  );
+}
+
+export default function GovernancePage() {
+  const { isConnected, address, signTx } = useWallet();
+  const { showToast } = useToast();
+  const [proposals, setProposals] = useState([]);
+  const [userVotingShare, setUserVotingShare] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userVoting, setUserVoting] = useState(false);
+  const [expandedProposal, setExpandedProposal] = useState(null);
+  const [filter, setFilter] = useState('active');
+  const liveRegionRef = useRef(null);
+
+  const announceToScreenReader = (message) => {
+    if (liveRegionRef.current) {
+      liveRegionRef.current.textContent = message;
+    }
+  };
+
+  useEffect(() => {
+    const fetchProposals = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${API_BASE}/api/governance/proposals`);
+        if (response.ok) {
+          const data = await response.json();
+          setProposals(Array.isArray(data) ? data : data.proposals || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch proposals:', error);
+        showToast('Failed to load proposals', 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const fetchUserVotingShare = async () => {
+      if (isConnected && address) {
+        try {
+          const response = await fetch(`${API_BASE}/api/governance/voting-share/${address}`);
+          if (response.ok) {
+            const data = await response.json();
+            setUserVotingShare(data.votingShare || 0);
+          }
+        } catch (error) {
+          console.error('Failed to fetch voting share:', error);
+        }
+      }
+    };
+
+    fetchProposals();
+    fetchUserVotingShare();
+  }, [isConnected, address, showToast]);
+
+  const handleVote = async (proposalId, support) => {
+    if (!isConnected || !address) {
+      showToast('Please connect your wallet', 'warning');
+      return;
+    }
+
+    if (!signTx) {
+      showToast('Wallet signing not available', 'error');
+      return;
+    }
+
+    setUserVoting(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/governance/proposals/${proposalId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voter: address, support }),
+      });
+
+      if (response.ok) {
+        setProposals((prev) =>
+          prev.map((p) =>
+            p.id === proposalId
+              ? {
+                  ...p,
+                  votes_for: support ? p.votes_for + 1 : p.votes_for,
+                  votes_against: !support ? p.votes_against + 1 : p.votes_against,
+                }
+              : p
+          )
+        );
+        const action = support ? 'for' : 'against';
+        showToast(`Vote cast ${action} proposal`, 'success');
+        announceToScreenReader(`Your vote ${action} proposal ${proposalId} has been recorded`);
+      } else {
+        showToast('Failed to cast vote', 'error');
+      }
+    } catch (error) {
+      console.error('Vote error:', error);
+      showToast('Error casting vote', 'error');
+    } finally {
+      setUserVoting(false);
+    }
+  };
+
+  const handleCreateProposal = async (formData) => {
+    if (!isConnected || !address) {
+      showToast('Please connect your wallet', 'warning');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        proposer: address,
+        title: formData.title,
+        description: formData.description,
+        proposalType: formData.type,
+        ...(formData.type === 'ParameterChange' && {
+          paramKey: formData.paramKey,
+          paramValue: parseInt(formData.paramValue),
+        }),
+      };
+
+      const response = await fetch(`${API_BASE}/api/governance/proposals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const newProposal = await response.json();
+        setProposals((prev) => [newProposal, ...prev]);
+        showToast('Proposal created successfully', 'success');
+        announceToScreenReader('New proposal created successfully');
+      } else {
+        showToast('Failed to create proposal', 'error');
+      }
+    } catch (error) {
+      console.error('Proposal creation error:', error);
+      showToast('Error creating proposal', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const filteredProposals = proposals.filter((p) => {
+    if (filter === 'active') return p.status === 'Active';
+    if (filter === 'resolved')
+      return ['Executed', 'Defeated', 'Cancelled'].includes(p.status);
+    return true;
+  });
+
+  if (!isConnected) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 px-4 py-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="card text-center py-12">
+            <AlertCircle size={48} className="mx-auto mb-4 text-amber-400" />
+            <h2 className="text-2xl font-bold text-white mb-2">Connect Your Wallet</h2>
+            <p className="text-gray-400 mb-6">Please connect your wallet to access governance features</p>
+          </div>
         </div>
-      )}
-    </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 px-4 py-8">
+      <div
+        ref={liveRegionRef}
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      />
+
+      <div className="max-w-6xl mx-auto space-y-8">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
+              <TrendingUp size={32} className="text-blue-400" />
+              Governance Portal
+            </h1>
+            <p className="text-gray-400">
+              Your voting share: <span className="text-blue-400 font-semibold">{userVotingShare}%</span>
+            </p>
+          </div>
+
+          <div className="flex gap-2 bg-gray-800 rounded-lg p-1">
+            {['active', 'resolved', 'all'].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-4 py-2 rounded font-semibold capitalize transition-colors ${
+                  filter === f
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                aria-pressed={filter === f}
+              >
+                {f === 'all' ? 'All Proposals' : f === 'active' ? 'Active' : 'Resolved'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-4">
+            {loading ? (
+              <div className="card flex items-center justify-center py-12">
+                <Loader2 size={32} className="animate-spin text-blue-400" />
+              </div>
+            ) : filteredProposals.length === 0 ? (
+              <div className="card text-center py-12">
+                <p className="text-gray-400">No {filter} proposals</p>
+              </div>
+            ) : (
+              filteredProposals.map((proposal) => (
+                <ProposalCard
+                  key={proposal.id}
+                  proposal={proposal}
+                  onVote={handleVote}
+                  onExpand={setExpandedProposal}
+                  isExpanded={expandedProposal === proposal.id}
+                  userVoting={userVoting}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="lg:col-span-1">
+            <ProposalForm onSubmit={handleCreateProposal} isSubmitting={isSubmitting} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

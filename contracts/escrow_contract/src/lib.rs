@@ -1296,6 +1296,7 @@ impl EscrowContract {
         defaults
     }
 
+    #[allow(dead_code)]
     fn calculate_platform_fee(
         env: &Env,
         total_amount: i128,
@@ -1450,7 +1451,7 @@ impl EscrowContract {
         )
     }
 
-    pub fn create_escrow_with_dispute_timeout(
+    pub fn create_escrow_dispute_timeout(
         env: Env,
         client: Address,
         freelancer: Address,

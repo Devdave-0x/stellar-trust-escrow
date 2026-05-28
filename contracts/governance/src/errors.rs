@@ -17,11 +17,11 @@ pub enum GovError {
     ProposalNotActive = 6,
     ProposalNotPassed = 7,
     ProposalAlreadyExecuted = 8,
-    ProposalAlreadyCancelled = 21,
     ProposalExpired = 9,
     TimelockNotElapsed = 10,
     InvalidProposalType = 11,
     EmptyDescription = 12,
+    ProposalAlreadyCancelled = 27,
 
     // Voting
     AlreadyVoted = 13,
