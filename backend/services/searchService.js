@@ -5,6 +5,8 @@
  * unavailable by querying Prisma directly.
  */
 
+import { listArchiveTables } from './escrowArchiveService.js';
+
 const analytics = {
   totalSearches: 0,
   topQueries: new Map(),
@@ -68,6 +70,53 @@ function buildWhere(filters) {
   return where;
 }
 
+function matchesArchiveRow(row, filters) {
+  const q = String(filters.q || '').trim();
+  const statusFilter = String(filters.status || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (statusFilter.length && !statusFilter.includes(row.status)) return false;
+  if (filters.client && row.clientAddress !== filters.client) return false;
+  if (filters.freelancer && row.freelancerAddress !== filters.freelancer) return false;
+  if (filters.minAmount && Number(row.totalAmount) < Number(filters.minAmount)) return false;
+  if (filters.maxAmount && Number(row.totalAmount) > Number(filters.maxAmount)) return false;
+  if (filters.dateFrom && new Date(row.createdAt) < new Date(filters.dateFrom)) return false;
+  if (filters.dateTo) {
+    const upper = new Date(filters.dateTo);
+    upper.setHours(23, 59, 59, 999);
+    if (new Date(row.createdAt) > upper) return false;
+  }
+
+  if (!q) return true;
+
+  const numericId = /^\d+$/.test(q) ? BigInt(q) : null;
+  return (
+    (numericId != null && row.id === numericId) ||
+    row.clientAddress?.toLowerCase().includes(q.toLowerCase()) ||
+    row.freelancerAddress?.toLowerCase().includes(q.toLowerCase())
+  );
+}
+
+async function searchArchiveFallback(filters = {}) {
+  const prisma = (await import('../lib/prisma.js')).default;
+  const tables = await listArchiveTables(prisma);
+
+  if (!tables.length) return { data: [], total: 0 };
+
+  const rawRows = await prisma.$queryRawUnsafe(
+    tables
+      .map(
+        (table) => `SELECT id, client_address AS "clientAddress", freelancer_address AS "freelancerAddress", status, total_amount AS "totalAmount", created_at AS "createdAt" FROM ${table}`,
+      )
+      .join(' UNION ALL '),
+  );
+
+  const filtered = rawRows.filter((row) => matchesArchiveRow(row, filters));
+  return { data: filtered, total: filtered.length };
+}
+
 async function search(filters = {}) {
   analytics.totalSearches += 1;
   recordQuery(analytics.topQueries, filters.q?.trim());
@@ -100,15 +149,25 @@ async function search(filters = {}) {
     prisma.escrow.count({ where }),
   ]);
 
-  if (total === 0) recordQuery(analytics.zeroResultQueries, filters.q?.trim());
+  let fallbackData = data;
+  let fallbackTotal = total;
+
+  if (total === 0) {
+    const archived = await searchArchiveFallback(filters);
+    if (archived.total > 0) {
+      fallbackData = archived.data.slice(skip, skip + limit);
+      fallbackTotal = archived.total;
+    }
+    recordQuery(analytics.zeroResultQueries, filters.q?.trim());
+  }
 
   return {
-    data,
-    total,
+    data: fallbackData,
+    total: fallbackTotal,
     page,
     limit,
-    totalPages: Math.ceil(total / limit) || 1,
-    hasNextPage: skip + data.length < total,
+    totalPages: Math.ceil(fallbackTotal / limit) || 1,
+    hasNextPage: skip + fallbackData.length < fallbackTotal,
     hasPreviousPage: page > 1,
   };
 }
