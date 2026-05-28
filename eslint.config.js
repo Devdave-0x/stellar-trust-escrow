@@ -32,7 +32,7 @@ export default [
 
   // Backend
   {
-    files: ['backend/**/*.js', 'scripts/**/*.js'],
+    files: ['backend/**/*.js', 'scripts/**/*.js', 'load-tests/**/*.js'],
     languageOptions: {
       globals: { ...globals.node, ...globals.es2022 },
     },
@@ -44,13 +44,7 @@ export default [
 
   // Root scripts/config files
   {
-    files: [
-      '*.js',
-      '*.cjs',
-      '*.mjs',
-      '.*.js',
-      '.*/**/*.{js,cjs,mjs}',
-    ],
+    files: ['*.js', '*.cjs', '*.mjs', '.*.js', '.*/**/*.{js,cjs,mjs}'],
     ignores: ['frontend/**/*', 'backend/**/*', 'mobile/**/*', 'scripts/**/*'],
     languageOptions: {
       globals: { ...globals.node, ...globals.es2022 },
@@ -139,7 +133,10 @@ export default [
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-require-imports': 'warn',
