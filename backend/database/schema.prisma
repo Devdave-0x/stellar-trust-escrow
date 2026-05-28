@@ -355,6 +355,44 @@ model ContractEvent {
   @@map("contract_events")
 }
 
+model WebhookSubscription {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  url        String
+  secret     String
+  eventTypes String[] @default([])
+  isActive   Boolean  @default(true) @map("is_active")
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  deliveries WebhookDelivery[]
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([createdBy])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  subscriptionId String   @map("subscription_id")
+  eventType      String   @map("event_type")
+  payload        Json
+  status         String   @default("pending")
+  attempts       Int      @default(0)
+  responseCode   Int?     @map("response_code")
+  errorMessage   String?  @map("error_message")
+  lastAttemptAt  DateTime? @map("last_attempt_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([eventType])
+  @@map("webhook_deliveries")
+}
+
 // ── Indexer State ─────────────────────────────────────────────────────────────
 
 /// Tracks the last ledger processed so the indexer can resume after restart.

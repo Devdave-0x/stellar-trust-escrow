@@ -31,6 +31,7 @@ import { getContractEvents, getLatestLedger } from './stellarService.js';
 import { broadcastEscrowEvent } from '../api/websocket/handlers.js';
 import { broadcastEscrowUpdate } from './escrowRealtime.js';
 import { indexRecord } from './reputationSearchService.js';
+import webhookService from './webhookService.js';
 
 const log = createModuleLogger('eventIndexer');
 
@@ -407,6 +408,22 @@ const dispatchEvent = async (rawEvent) => {
 
   try {
     await handler(rawEvent, meta);
+
+    const webhookPayload = {
+      eventType,
+      ledger: String(meta.ledger),
+      ledgerAt: meta.ledgerAt.toISOString(),
+      contractId: meta.contractId,
+      escrowId: rawEvent.topic[1] != null ? String(rawEvent.topic[1]) : null,
+      topics: rawEvent.topic,
+      data: rawEvent.value,
+      txHash: meta.txHash,
+      eventIndex: meta.eventIndex,
+    };
+
+    webhookService.queueEventWebhooks(eventType, webhookPayload).catch((err) => {
+      console.warn('[Indexer] webhook dispatch failed:', err.message);
+    });
 
     if (eventType !== 'rep_upd' && rawEvent.topic[1] != null) {
       try {
