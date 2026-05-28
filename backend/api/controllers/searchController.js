@@ -85,7 +85,10 @@ const getSuggestions = async (req, res) => {
       return res.status(400).json({ error: 'q is required' });
     }
 
-    const suggestions = await searchService.suggest(q.trim(), Math.min(parseInt(size, 10) || 5, 20));
+    const suggestions = await searchService.suggest(
+      q.trim(),
+      Math.min(parseInt(size, 10) || 5, 20),
+    );
     res.json({ suggestions });
   } catch (err) {
     console.error('[Search] getSuggestions error:', err.message);

@@ -25,14 +25,16 @@ pub enum EscrowError {
     // Note: discriminant 6 is reserved / unused.
 
     // ── Escrow State ──────────────────────────────────────────────────────────
-    // Note: discriminants 7 is reserved / unused.
+    /// Reserved for future use.
+    Reserved7 = 7,
     /// No escrow exists for the given `escrow_id`.
     EscrowNotFound = 8,
     /// Operation requires the escrow to be in `Active` status.
     EscrowNotActive = 9,
     /// Operation requires the escrow to be in `Disputed` status.
     EscrowNotDisputed = 10,
-    // Note: discriminant 11 is reserved / unused.
+    /// Reserved for future use.
+    Reserved11 = 11,
     /// Escrow cannot be cancelled while milestone funds are pending release.
     PendingFunds = 12,
 
@@ -55,9 +57,12 @@ pub enum EscrowError {
     /// Deposited amount does not match the sum of milestone amounts.
     AmountMismatch = 20,
     // ── Dispute ───────────────────────────────────────────────────────────────
-    // Note: discriminant 22 is reserved / unused.
-    // Note: discriminant 24 is reserved / unused.
-    // Note: discriminant 23 is reserved / unused.
+    /// Reentrant outbound token flow was blocked by the contract guard.
+    ReentrancyBlocked = 22,
+    /// Dispute timeout has not yet elapsed for this escrow.
+    DisputeTimeoutNotReached = 23,
+    /// Reserved for future use.
+    Reserved24 = 24,
 
     // ── Deadline ──────────────────────────────────────────────────────────────
     // Note: discriminant 25 is reserved / unused.
@@ -131,8 +136,24 @@ pub enum EscrowError {
     // ── Input Validation ─────────────────────────────────────────────────────
     /// A string argument exceeds MAX_STRING_LEN or is empty.
     StringTooLong = 55,
-    // Note: discriminants 56-58 are reserved / unused.
 
-    // ── Admin Transfer ───────────────────────────────────────────────────────
-    // Note: discriminant 59 is reserved / unused.
+    // ── Oracle Fallback Dispute Resolution ───────────────────────────────────
+    /// Grace period has not yet elapsed; oracle fallback not yet available.
+    GracePeriodNotElapsed = 56,
+    /// Oracle resolution payload signature is invalid.
+    OracleSignatureInvalid = 57,
+    /// Oracle resolution payload is stale (submitted after max age).
+    OraclePayloadStale = 58,
+    /// Oracle payout percentages do not sum to 100.
+    OraclePayoutInvalid = 59,
+    /// Dispute start ledger was not recorded for this escrow.
+    DisputeStartNotRecorded = 60,
+
+    // ── Security Freeze / Admin Multisig ─────────────────────────────────────
+    /// Escrow is frozen; state-mutating operations are blocked.
+    EscrowFrozen = 61,
+    /// Provided admin signatures did not meet the configured threshold.
+    InsufficientAdminSignatures = 62,
+    /// Invalid admin multisig threshold configuration.
+    InvalidAdminThreshold = 63,
 }

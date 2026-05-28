@@ -4,7 +4,13 @@ import CurrencySelector from './CurrencySelector';
 export default {
   title: 'UI/CurrencySelector',
   component: CurrencySelector,
-  decorators: [(Story) => <CurrencyProvider><Story /></CurrencyProvider>],
+  decorators: [
+    (Story) => (
+      <CurrencyProvider>
+        <Story />
+      </CurrencyProvider>
+    ),
+  ],
   tags: ['autodocs'],
 };
 

@@ -14,7 +14,15 @@ const cacheMock = {
   invalidate: jest.fn(),
   invalidatePrefix: jest.fn(),
   invalidateTags: jest.fn(),
-  analytics: jest.fn(() => ({ hits: 0, misses: 0, sets: 0, invalidations: 0, hitRate: '0', backend: 'memory', memSize: 0 })),
+  analytics: jest.fn(() => ({
+    hits: 0,
+    misses: 0,
+    sets: 0,
+    invalidations: 0,
+    hitRate: '0',
+    backend: 'memory',
+    memSize: 0,
+  })),
   size: jest.fn(),
 };
 

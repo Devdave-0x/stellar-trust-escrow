@@ -52,25 +52,24 @@ const CACHE_TTL_MS = parseInt(
   10,
 );
 const RATES_URL =
-  process.env.NEXT_PUBLIC_EXCHANGE_RATE_API_URL ||
-  'https://open.er-api.com/v6/latest/USD';
+  process.env.NEXT_PUBLIC_EXCHANGE_RATE_API_URL || 'https://open.er-api.com/v6/latest/USD';
 
 export const SUPPORTED_CURRENCIES = [
-  { code: 'USD', symbol: '$',  name: 'US Dollar',         locale: 'en-US' },
-  { code: 'EUR', symbol: '€',  name: 'Euro',              locale: 'de-DE' },
-  { code: 'GBP', symbol: '£',  name: 'British Pound',     locale: 'en-GB' },
-  { code: 'JPY', symbol: '¥',  name: 'Japanese Yen',      locale: 'ja-JP' },
-  { code: 'CAD', symbol: 'CA$',name: 'Canadian Dollar',   locale: 'en-CA' },
+  { code: 'USD', symbol: '$', name: 'US Dollar', locale: 'en-US' },
+  { code: 'EUR', symbol: '€', name: 'Euro', locale: 'de-DE' },
+  { code: 'GBP', symbol: '£', name: 'British Pound', locale: 'en-GB' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen', locale: 'ja-JP' },
+  { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar', locale: 'en-CA' },
   { code: 'AUD', symbol: 'A$', name: 'Australian Dollar', locale: 'en-AU' },
-  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc',       locale: 'de-CH' },
-  { code: 'CNY', symbol: '¥',  name: 'Chinese Yuan',      locale: 'zh-CN' },
-  { code: 'INR', symbol: '₹',  name: 'Indian Rupee',      locale: 'en-IN' },
-  { code: 'BRL', symbol: 'R$', name: 'Brazilian Real',    locale: 'pt-BR' },
-  { code: 'MXN', symbol: 'MX$',name: 'Mexican Peso',      locale: 'es-MX' },
-  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar',  locale: 'en-SG' },
-  { code: 'KRW', symbol: '₩',  name: 'South Korean Won',  locale: 'ko-KR' },
-  { code: 'NGN', symbol: '₦',  name: 'Nigerian Naira',    locale: 'en-NG' },
-  { code: 'ZAR', symbol: 'R',  name: 'South African Rand',locale: 'en-ZA' },
+  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc', locale: 'de-CH' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan', locale: 'zh-CN' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee', locale: 'en-IN' },
+  { code: 'BRL', symbol: 'R$', name: 'Brazilian Real', locale: 'pt-BR' },
+  { code: 'MXN', symbol: 'MX$', name: 'Mexican Peso', locale: 'es-MX' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar', locale: 'en-SG' },
+  { code: 'KRW', symbol: '₩', name: 'South Korean Won', locale: 'ko-KR' },
+  { code: 'NGN', symbol: '₦', name: 'Nigerian Naira', locale: 'en-NG' },
+  { code: 'ZAR', symbol: 'R', name: 'South African Rand', locale: 'en-ZA' },
 ];
 
 const DEFAULT_CURRENCY = 'USD';
@@ -255,7 +254,17 @@ export function CurrencyProvider({ children }) {
       formatUSDC,
       supportedCurrencies: SUPPORTED_CURRENCIES,
     }),
-    [currency, setCurrency, rates, ratesLoading, ratesError, convert, format, formatAmount, formatUSDC],
+    [
+      currency,
+      setCurrency,
+      rates,
+      ratesLoading,
+      ratesError,
+      convert,
+      format,
+      formatAmount,
+      formatUSDC,
+    ],
   );
 
   return <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>;

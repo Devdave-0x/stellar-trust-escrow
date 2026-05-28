@@ -186,6 +186,19 @@ pub fn emit_dispute_resolved(
     );
 }
 
+pub fn emit_dispute_timeout_claimed(
+    env: &Env,
+    escrow_id: u64,
+    claimed_by: &Address,
+    client_amount: i128,
+    freelancer_amount: i128,
+) {
+    env.events().publish(
+        (ev::DISPUTE_TIMEOUT_CLAIMED, escrow_id),
+        (claimed_by.clone(), client_amount, freelancer_amount),
+    );
+}
+
 pub fn emit_reputation_updated(env: &Env, address: &Address, new_score: u64) {
     env.events()
         .publish((ev::REPUTATION_UPDATED,), (address.clone(), new_score));
@@ -421,5 +434,18 @@ pub fn emit_dispute_escalated_to_governance(
     env.events().publish(
         (symbol_short!("gov_esc"), escrow_id),
         (initiator.clone(), proposal_id, amount),
+    );
+}
+
+/// Emitted when a referrer receives a reward from the platform fee.
+///
+/// # Arguments
+/// * `escrow_id` - The escrow ID
+/// * `referrer` - The address of the referrer
+/// * `amount` - The referral payout amount
+pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("ref_pay"), escrow_id),
+        (referrer.clone(), amount),
     );
 }

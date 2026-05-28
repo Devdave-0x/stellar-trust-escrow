@@ -10,6 +10,7 @@ import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js
 import { uploadEvidence } from '../middleware/fileUpload.js';
 import ipfsService from '../../services/ipfsService.js';
 import { broadcastToDispute } from '../websocket/handlers.js';
+import { verifyFile, merkleRoot, hashFile } from '../../services/ipfsHashService.js';
 
 /**
  * List and get handlers assume query/params are already validated by
@@ -29,7 +30,7 @@ const listDisputes = async (req, res) => {
     } = req.query;
 
     const where = {
-      tenantId: req.tenant.id
+      tenantId: req.tenant.id,
     };
 
     if (status === 'resolved') {
@@ -54,8 +55,8 @@ const listDisputes = async (req, res) => {
               clientAddress: true,
               freelancerAddress: true,
               totalAmount: true,
-              status: true
-            }
+              status: true,
+            },
           },
           evidence: {
             select: {
@@ -66,19 +67,19 @@ const listDisputes = async (req, res) => {
               filename: true,
               ipfsCid: true,
               thumbnailCid: true,
-              scanStatus: true
+              scanStatus: true,
             },
-            orderBy: { submittedAt: 'desc' }
+            orderBy: { submittedAt: 'desc' },
           },
           _count: {
-            select: { evidence: true, appeals: true }
-          }
+            select: { evidence: true, appeals: true },
+          },
         },
         orderBy: { [sortBy]: sortOrder },
         skip,
-        take: limit
+        take: limit,
       }),
-      prisma.dispute.count({ where })
+      prisma.dispute.count({ where }),
     ]);
 
     const response = buildPaginatedResponse(disputes, {
@@ -102,7 +103,7 @@ const getDispute = async (req, res) => {
     const dispute = await prisma.dispute.findFirst({
       where: {
         escrowId: escrowIdBigInt,
-        tenantId: req.tenant.id
+        tenantId: req.tenant.id,
       },
       include: {
         escrow: {
@@ -115,19 +116,19 @@ const getDispute = async (req, res) => {
             remainingBalance: true,
             status: true,
             deadline: true,
-            createdAt: true
-          }
+            createdAt: true,
+          },
         },
         evidence: {
           include: {
-            _count: true
+            _count: true,
           },
-          orderBy: { submittedAt: 'desc' }
+          orderBy: { submittedAt: 'desc' },
         },
         appeals: {
-          orderBy: { createdAt: 'desc' }
-        }
-      }
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
 
     if (!dispute) {
@@ -144,12 +145,12 @@ const getDispute = async (req, res) => {
           evidenceData.thumbnailUrl = await ipfsService.getFileUrl(evidence.thumbnailCid);
         }
         return evidenceData;
-      })
+      }),
     );
 
     res.json({
       ...dispute,
-      evidence: evidenceWithUrls
+      evidence: evidenceWithUrls,
     });
   } catch (error) {
     console.error('Error getting dispute:', error);
@@ -171,17 +172,17 @@ const postEvidence = async (req, res) => {
     const scanResults = req.virusScanResults || [];
 
     if (uploadResults.length === 0 && !description) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'No evidence provided',
-        message: 'Either files or text description is required'
+        message: 'Either files or text description is required',
       });
     }
 
     const evidenceRecords = [];
 
     for (const uploadResult of uploadResults) {
-      const scanResult = scanResults.find(s => s.originalname === uploadResult.originalname);
-      
+      const scanResult = scanResults.find((s) => s.originalname === uploadResult.originalname);
+
       const evidenceRecord = await prisma.disputeEvidence.create({
         data: {
           tenantId: req.tenant.id,
@@ -197,8 +198,8 @@ const postEvidence = async (req, res) => {
           ipfsCid: uploadResult.ipfsCid,
           thumbnailCid: uploadResult.thumbnailCid,
           scanStatus: scanResult?.status || 'pending',
-          scanResult: JSON.stringify(scanResult) || null
-        }
+          scanResult: JSON.stringify(scanResult) || null,
+        },
       });
 
       evidenceRecords.push(evidenceRecord);
@@ -213,8 +214,8 @@ const postEvidence = async (req, res) => {
           role: role || determineUserRole(dispute, userAddress),
           evidenceType: 'text',
           content: description,
-          description: null
-        }
+          description: null,
+        },
       });
 
       evidenceRecords.push(textEvidence);
@@ -230,7 +231,7 @@ const postEvidence = async (req, res) => {
           evidenceData.thumbnailUrl = await ipfsService.getFileUrl(evidence.thumbnailCid);
         }
         return evidenceData;
-      })
+      }),
     );
 
     broadcastToDispute(dispute.id, {
@@ -238,15 +239,14 @@ const postEvidence = async (req, res) => {
       disputeId: dispute.id,
       evidence: evidenceWithUrls,
       submittedBy: userAddress,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     res.status(201).json({
       message: 'Evidence uploaded successfully',
       evidence: evidenceWithUrls,
-      count: evidenceRecords.length
+      count: evidenceRecords.length,
     });
-
   } catch (error) {
     console.error('Error posting evidence:', error);
     res.status(500).json({ error: 'Failed to post evidence' });
@@ -261,7 +261,7 @@ const listEvidence = async (req, res) => {
 
     const where = {
       tenantId: req.tenant.id,
-      disputeId: parseInt(id)
+      disputeId: parseInt(id),
     };
 
     if (evidenceType) where.evidenceType = evidenceType;
@@ -272,9 +272,9 @@ const listEvidence = async (req, res) => {
         where,
         orderBy: { submittedAt: 'desc' },
         skip,
-        take: limit
+        take: limit,
       }),
-      prisma.disputeEvidence.count({ where })
+      prisma.disputeEvidence.count({ where }),
     ]);
 
     const evidenceWithUrls = await Promise.all(
@@ -287,7 +287,7 @@ const listEvidence = async (req, res) => {
           evidenceData.thumbnailUrl = await ipfsService.getFileUrl(evidenceItem.thumbnailCid);
         }
         return evidenceData;
-      })
+      }),
     );
 
     const response = buildPaginatedResponse(evidenceWithUrls, {
@@ -314,20 +314,20 @@ const autoResolve = async (req, res) => {
         resolvedBy: 'system',
         resolutionType: 'AUTO',
         autoResolved: true,
-        resolution: 'Automatically resolved based on evidence and contract terms'
-      }
+        resolution: 'Automatically resolved based on evidence and contract terms',
+      },
     });
 
     broadcastToDispute(dispute.id, {
       type: 'dispute_resolved',
       disputeId: dispute.id,
       resolution: resolution,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     res.json({
       message: 'Dispute auto-resolved successfully',
-      resolution
+      resolution,
     });
   } catch (error) {
     console.error('Error auto-resolving dispute:', error);
@@ -342,9 +342,9 @@ const getRecommendation = async (req, res) => {
     const evidence = await prisma.disputeEvidence.findMany({
       where: {
         disputeId: dispute.id,
-        tenantId: req.tenant.id
+        tenantId: req.tenant.id,
       },
-      orderBy: { submittedAt: 'desc' }
+      orderBy: { submittedAt: 'desc' },
     });
 
     const recommendation = generateResolutionRecommendation(dispute, evidence);
@@ -353,7 +353,7 @@ const getRecommendation = async (req, res) => {
       disputeId: dispute.id,
       recommendation,
       evidenceCount: evidence.length,
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
     });
   } catch (error) {
     console.error('Error getting recommendation:', error);
@@ -377,8 +377,8 @@ const postAppeal = async (req, res) => {
         tenantId: req.tenant.id,
         disputeId: dispute.id,
         appealedBy: userAddress,
-        reason: reason.trim()
-      }
+        reason: reason.trim(),
+      },
     });
 
     broadcastToDispute(dispute.id, {
@@ -386,12 +386,12 @@ const postAppeal = async (req, res) => {
       disputeId: dispute.id,
       appealId: appeal.id,
       appealedBy: userAddress,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     res.status(201).json({
       message: 'Appeal filed successfully',
-      appeal
+      appeal,
     });
   } catch (error) {
     console.error('Error posting appeal:', error);
@@ -408,8 +408,8 @@ const patchAppeal = async (req, res) => {
     const appeal = await prisma.disputeAppeal.findFirst({
       where: {
         id: parseInt(appealId),
-        tenantId: req.tenant.id
-      }
+        tenantId: req.tenant.id,
+      },
     });
 
     if (!appeal) {
@@ -422,13 +422,13 @@ const patchAppeal = async (req, res) => {
         status,
         reviewNotes,
         reviewedBy: userAddress,
-        resolvedAt: status === 'approved' || status === 'rejected' ? new Date() : null
-      }
+        resolvedAt: status === 'approved' || status === 'rejected' ? new Date() : null,
+      },
     });
 
     res.json({
       message: 'Appeal updated successfully',
-      appeal: updatedAppeal
+      appeal: updatedAppeal,
     });
   } catch (error) {
     console.error('Error updating appeal:', error);
@@ -444,27 +444,27 @@ const getResolutionHistory = async (req, res) => {
       prisma.dispute.findMany({
         where: {
           tenantId: req.tenant.id,
-          resolvedAt: { not: null }
+          resolvedAt: { not: null },
         },
         include: {
           escrow: {
             select: {
               clientAddress: true,
               freelancerAddress: true,
-              totalAmount: true
-            }
-          }
+              totalAmount: true,
+            },
+          },
         },
         orderBy: { resolvedAt: 'desc' },
         skip,
-        take: limit
+        take: limit,
       }),
       prisma.dispute.count({
         where: {
           tenantId: req.tenant.id,
-          resolvedAt: { not: null }
-        }
-      })
+          resolvedAt: { not: null },
+        },
+      }),
     ]);
 
     const response = buildPaginatedResponse({
@@ -472,13 +472,64 @@ const getResolutionHistory = async (req, res) => {
       total,
       page,
       limit,
-      request: req
+      request: req,
     });
 
     res.json(response);
   } catch (error) {
     console.error('Error getting resolution history:', error);
     res.status(500).json({ error: 'Failed to get resolution history' });
+  }
+};
+
+/**
+ * POST /api/disputes/verify-evidence
+ * Body: multipart/form-data with files[] + evidenceIds[]
+ *
+ * Re-uploads files and verifies their SHA-256 hashes against stored values.
+ * Also recomputes the Merkle root and compares against the stored root.
+ */
+const verifyEvidence = async (req, res) => {
+  try {
+    const { evidenceIds } = req.body;
+    const files = req.files ?? [];
+
+    if (!evidenceIds || !files.length) {
+      return res.status(400).json({ error: 'evidenceIds and files are required' });
+    }
+
+    const ids = (Array.isArray(evidenceIds) ? evidenceIds : [evidenceIds]).map(Number);
+
+    const records = await prisma.disputeEvidence.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, fileHash: true, merkleRoot: true, filename: true },
+    });
+
+    if (records.length !== files.length) {
+      return res.status(400).json({ error: 'File count must match evidenceIds count' });
+    }
+
+    const fileResults = files.map((file, i) => {
+      const record = records[i];
+      if (!record?.fileHash) return { id: record?.id, valid: false, reason: 'No stored hash' };
+      const { hex } = hashFile(file.buffer);
+      return { id: record.id, filename: file.originalname, valid: hex === record.fileHash };
+    });
+
+    const storedHashes = records.map((r) => r.fileHash).filter(Boolean);
+    const recomputedRoot = merkleRoot(storedHashes);
+    const storedRoot = records[0]?.merkleRoot ?? null;
+    const rootMatch = storedRoot ? recomputedRoot === storedRoot : null;
+
+    return res.json({
+      allValid: fileResults.every((r) => r.valid),
+      fileResults,
+      merkleRoot: recomputedRoot,
+      storedMerkleRoot: storedRoot,
+      rootMatch,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -492,14 +543,16 @@ function determineUserRole(dispute, userAddress) {
 }
 
 function generateResolutionRecommendation(dispute, evidence) {
-  const clientEvidence = evidence.filter(e => e.role === 'client').length;
-  const freelancerEvidence = evidence.filter(e => e.role === 'freelancer').length;
-  const fileEvidence = evidence.filter(e => e.evidenceType === 'file' || e.evidenceType === 'image').length;
+  const clientEvidence = evidence.filter((e) => e.role === 'client').length;
+  const freelancerEvidence = evidence.filter((e) => e.role === 'freelancer').length;
+  const fileEvidence = evidence.filter(
+    (e) => e.evidenceType === 'file' || e.evidenceType === 'image',
+  ).length;
 
   let recommendation = {
     suggestedOutcome: 'manual_review',
     confidence: 0.5,
-    reasoning: []
+    reasoning: [],
   };
 
   if (fileEvidence > 0) {
@@ -532,5 +585,6 @@ export default {
   postAppeal,
   patchAppeal,
   getResolutionHistory,
-  uploadEvidence
+  uploadEvidence,
+  verifyEvidence,
 };

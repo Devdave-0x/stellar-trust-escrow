@@ -17,9 +17,9 @@ class VirusScanner {
           host: process.env.CLAMAV_HOST || 'localhost',
           port: parseInt(process.env.CLAMAV_PORT) || 3310,
           timeout: 30000,
-          local_fallback: false
+          local_fallback: false,
         },
-        preference: 'clamdscan'
+        preference: 'clamdscan',
       });
 
       this.initialized = true;
@@ -36,7 +36,7 @@ class VirusScanner {
       return {
         isInfected: false,
         status: 'skipped',
-        reason: 'Scanner not available'
+        reason: 'Scanner not available',
       };
     }
 
@@ -48,7 +48,7 @@ class VirusScanner {
       await fs.writeFile(tempPath, buffer);
 
       const scanResult = await this.clamscan.scanFile(tempPath);
-      
+
       await fs.unlink(tempPath);
 
       if (scanResult.isInfected) {
@@ -56,16 +56,15 @@ class VirusScanner {
           isInfected: true,
           status: 'infected',
           viruses: scanResult.viruses || [],
-          reason: 'Malicious content detected'
+          reason: 'Malicious content detected',
         };
       }
 
       return {
         isInfected: false,
         status: 'clean',
-        reason: 'No threats detected'
+        reason: 'No threats detected',
       };
-
     } catch (error) {
       try {
         await fs.unlink(tempPath);
@@ -78,7 +77,7 @@ class VirusScanner {
         return {
           isInfected: false,
           status: 'error',
-          reason: 'Scanner unavailable'
+          reason: 'Scanner unavailable',
         };
       }
 
@@ -86,7 +85,7 @@ class VirusScanner {
       return {
         isInfected: false,
         status: 'error',
-        reason: error.message
+        reason: error.message,
       };
     }
   }
@@ -96,7 +95,7 @@ class VirusScanner {
       return {
         isInfected: false,
         status: 'error',
-        reason: 'Empty file'
+        reason: 'Empty file',
       };
     }
 
@@ -104,7 +103,7 @@ class VirusScanner {
       return {
         isInfected: false,
         status: 'skipped',
-        reason: 'File too large for scanning'
+        reason: 'File too large for scanning',
       };
     }
 
@@ -113,7 +112,11 @@ class VirusScanner {
 
   isEICAR(buffer) {
     const eicarSignature = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
-    const bufferString = buffer.toString('ascii', 0, Math.min(buffer.length, eicarSignature.length));
+    const bufferString = buffer.toString(
+      'ascii',
+      0,
+      Math.min(buffer.length, eicarSignature.length),
+    );
     return bufferString.includes(eicarSignature);
   }
 
@@ -123,7 +126,7 @@ class VirusScanner {
         isInfected: true,
         status: 'infected',
         viruses: ['EICAR-Test-File'],
-        reason: 'EICAR test signature detected'
+        reason: 'EICAR test signature detected',
       };
     }
 

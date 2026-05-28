@@ -1,313 +1,204 @@
-/* eslint-disable no-unused-vars */
-import bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
+/**
+ * Auth Controller — Wallet Signature Verification
+ *
+ * Implements challenge-response authentication for Stellar wallet addresses and
+ * issues short-lived JWTs with optional server-side session tracking.
+ */
+
+import crypto, { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
-import prisma from '../../lib/prisma.js';
-import refreshTokenService from '../../services/refreshTokenService.js';
-import tokenBlacklistService from '../../services/tokenBlacklistService.js';
-import tokenMetricsService from '../../services/tokenMetricsService.js';
-import cookieUtils from '../../lib/cookieUtils.js';
+import { Keypair, StrKey } from '@stellar/stellar-sdk';
+import sessionService from '../../services/sessionService.js';
 
-const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+const JWT_SECRET = process.env.JWT_SECRET || 'change_this_in_production';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const NONCE_TTL_MS = 5 * 60 * 1000;
 
-function normalizeWalletAddress(body = {}) {
-  return body.walletAddress || body.stellarAddress || null;
+const nonceStore = new Map();
+
+function isValidStellarAddress(address) {
+  try {
+    return StrKey.isValidEd25519PublicKey(address);
+  } catch {
+    return false;
+  }
 }
 
-// Helper to generate access token
-const generateAccessToken = (user) => {
-  return jwt.sign(
-    {
-      userId: user.id,
-      tenantId: user.tenantId,
-      type: 'access',
-      jti: randomUUID(),
-    },
-    process.env.JWT_ACCESS_SECRET || 'fallback_access_secret',
-    { expiresIn: process.env.JWT_ACCESS_EXPIRATION || '15m' },
-  );
-};
+function generateNonce() {
+  return crypto.randomBytes(32).toString('hex');
+}
 
-export const register = async (req, res) => {
+function buildChallengeMessage(address, nonce) {
+  return `Sign this message to authenticate with StellarTrustEscrow.\n\nAddress: ${address}\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
+}
+
+function verifySignature(address, message, signature) {
   try {
-    const { email, password, walletAddress } = req.body;
-    const tenantId = req.tenant?.id;
-
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant context is required' });
-    }
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    if (walletAddress && !STELLAR_ADDRESS_RE.test(walletAddress)) {
-      return res.status(400).json({ error: 'Invalid Stellar wallet address' });
-    }
-
-    // Check if user exists
-    const existingUser = await prisma.user.findFirst({
-      where: { email, tenantId },
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    if (walletAddress) {
-      const existingWalletUser = await prisma.user.findFirst({
-        where: { tenantId, walletAddress },
-        select: { id: true },
-      });
-
-      if (existingWalletUser) {
-        return res.status(400).json({ error: 'Wallet address is already linked to another user' });
-      }
-    }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        tenantId,
-        email,
-        walletAddress,
-        password: hashedPassword,
-      },
-    });
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      userId: user.id,
-      tenant: { id: req.tenant.id, slug: req.tenant.slug },
-    });
-  } catch (error) {
-    console.error('[Register] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return Keypair.fromPublicKey(address).verify(
+      Buffer.from(message, 'utf8'),
+      Buffer.from(signature, 'base64'),
+    );
+  } catch {
+    return false;
   }
-};
+}
 
-export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const tenantId = req.tenant?.id;
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? '';
+}
 
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant context is required' });
-    }
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    // Find user
-    const user = await prisma.user.findFirst({
-      where: { email, tenantId },
-    });
-
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    // Verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    // Generate access token
-    const accessToken = generateAccessToken(user);
-
-    // Create refresh token with rotation support
-    const deviceInfo = {
-      type: 'web',
-      trustLevel: 'trusted',
-    };
-
-    const refreshTokenData = await refreshTokenService.createRefreshToken(
-      user,
-      deviceInfo,
-      req.ip,
-      req.get('User-Agent'),
-    );
-
-    // Record metrics
-    await tokenMetricsService.recordTokenGeneration(user.id, user.tenantId, 'access', deviceInfo);
-    await tokenMetricsService.recordTokenGeneration(user.id, user.tenantId, 'refresh', deviceInfo);
-
-    res.json({
-      accessToken,
-      refreshToken: refreshTokenData.refreshToken,
-      userId: user.id,
-      tenant: { id: req.tenant.id, slug: req.tenant.slug },
-    });
-  } catch (error) {
-    console.error('[Login] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+async function createSessionJti(address, req) {
+  if (typeof sessionService?.createSession !== 'function') {
+    return randomUUID();
   }
+
+  return sessionService.createSession({
+    address,
+    userAgent: req.headers['user-agent'],
+    ipAddress: getClientIp(req),
+    expiresIn: JWT_EXPIRES_IN,
+  });
+}
+
+export const getNonce = (req, res) => {
+  const { address } = req.body;
+
+  if (!address || !isValidStellarAddress(address)) {
+    return res.status(400).json({ error: 'Valid Stellar address required' });
+  }
+
+  const nonce = generateNonce();
+  const message = buildChallengeMessage(address, nonce);
+  const expiresAt = Date.now() + NONCE_TTL_MS;
+
+  nonceStore.set(address, { nonce, message, expiresAt });
+  setTimeout(() => nonceStore.delete(address), NONCE_TTL_MS);
+
+  return res.json({ address, nonce, message, expiresIn: NONCE_TTL_MS / 1000 });
 };
 
-export const refresh = async (req, res) => {
-  const tenantId = req.tenant?.id;
+export const verifySignatureAndLogin = async (req, res) => {
+  const { address, signature } = req.body;
+
+  if (!address || !isValidStellarAddress(address)) {
+    return res.status(400).json({ error: 'Valid Stellar address required' });
+  }
+  if (!signature || typeof signature !== 'string') {
+    return res.status(400).json({ error: 'Signature required' });
+  }
+
+  const stored = nonceStore.get(address);
+  if (!stored) {
+    return res.status(401).json({ error: 'No pending nonce for this address. Request a new one.' });
+  }
+  if (Date.now() > stored.expiresAt) {
+    nonceStore.delete(address);
+    return res.status(401).json({ error: 'Nonce expired. Request a new one.' });
+  }
+
+  const valid = verifySignature(address, stored.message, signature);
+  nonceStore.delete(address);
+
+  if (!valid) {
+    return res.status(401).json({ error: 'Signature verification failed' });
+  }
+
+  const jti = await createSessionJti(address, req);
+  const token = jwt.sign({ address, jti, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, {
+    expiresIn: JWT_EXPIRES_IN,
+  });
+
+  return res.json({ token, address, expiresIn: JWT_EXPIRES_IN });
+};
+
+export const refreshToken = async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Bearer token required' });
+  }
 
   try {
-    const { refreshToken } = req.body;
-
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant context is required' });
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    if (payload.jti && typeof sessionService?.revokeSession === 'function') {
+      await sessionService.revokeSession(payload.jti);
     }
 
-    if (!refreshToken) {
-      return res.status(401).json({ error: 'Refresh token is required' });
-    }
+    const jti = await createSessionJti(payload.address, req);
+    const token = jwt.sign({ address: payload.address, jti }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES_IN,
+    });
 
-    // Extract device info from request for rotation tracking
-    const deviceInfo = {
-      type: 'web',
-      trustLevel: 'trusted',
-    };
-
-    // Rotate refresh token and get new access token
-    const tokens = await refreshTokenService.rotateRefreshToken(
-      refreshToken,
-      deviceInfo,
-      req.ip,
-      req.get('User-Agent'),
-    );
-    const decoded = jwt.decode(tokens.accessToken);
-
-    // Record successful refresh metrics
-    await tokenMetricsService.recordTokenRefresh(
-      decoded.userId,
-      decoded.tenantId,
-      true,
-      'rotation',
-    );
-    await tokenMetricsService.recordTokenGeneration(
-      decoded.userId,
-      decoded.tenantId,
-      'access',
-      deviceInfo,
-    );
-    await tokenMetricsService.recordTokenGeneration(
-      decoded.userId,
-      decoded.tenantId,
-      'refresh',
-      deviceInfo,
-    );
-
-    res.json(tokens);
-  } catch (error) {
-    console.error('[Refresh] Error:', error.message);
-
-    // Record failed refresh attempt
-    if (error.message.includes('blacklisted')) {
-      await tokenMetricsService.recordTokenRefresh('unknown', tenantId, false, error.message);
-      await tokenMetricsService.recordSuspiciousActivity(
-        'unknown',
-        tenantId,
-        'blacklisted_refresh_token',
-        { error: error.message },
-      );
-      return res.status(403).json({ error: 'Token has been revoked for security reasons' });
-    }
-    if (error.message.includes('Invalid') || error.message.includes('expired')) {
-      await tokenMetricsService.recordTokenRefresh('unknown', tenantId, false, error.message);
-      return res.status(403).json({ error: 'Invalid or expired refresh token' });
-    }
-    if (error.message.includes('revoked')) {
-      await tokenMetricsService.recordTokenRefresh('unknown', tenantId, false, error.message);
-      await tokenMetricsService.recordSuspiciousActivity(
-        'unknown',
-        tenantId,
-        'revoked_token_attempt',
-        { error: error.message },
-      );
-      return res.status(403).json({ error: 'All tokens have been revoked' });
-    }
-
-    res.status(500).json({ error: 'Internal server error' });
+    return res.json({ token, address: payload.address, expiresIn: JWT_EXPIRES_IN });
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 
 export const logout = async (req, res) => {
+  const authHeader = req.headers.authorization;
+
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+      if (payload.jti && typeof sessionService?.revokeSession === 'function') {
+        await sessionService.revokeSession(payload.jti);
+      }
+    } catch {
+      // Logout is idempotent; invalid tokens are treated as already logged out.
+    }
+  }
+
+  return res.json({ ok: true });
+};
+
+export const listSessions = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
-    const tenantId = req.tenant?.id;
+    const address = req.user?.address ?? req.user?.userId;
+    if (!address) return res.status(401).json({ error: 'Authentication required' });
 
-    if (refreshToken) {
-      // Revoke the specific refresh token
-      await refreshTokenService.revokeRefreshToken(refreshToken, 'logout');
-
-      // Record revocation metrics
-      await tokenMetricsService.recordTokenRevocation('unknown', tenantId, 'logout');
-    }
-
-    // If user is authenticated, we could also revoke all their tokens
-    // for a complete logout across all devices
-    if (req.user && req.body.logoutAll) {
-      await refreshTokenService.revokeAllUserTokens(req.user.userId, tenantId, 'logout_all');
-
-      await tokenMetricsService.recordTokenRevocation(req.user.userId, tenantId, 'logout_all');
-    }
-
-    res.json({ message: 'Logged out successfully' });
-  } catch (error) {
-    console.error('[Logout] Error:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    const sessions =
+      typeof sessionService?.listSessions === 'function'
+        ? await sessionService.listSessions(address)
+        : [];
+    return res.json({ data: sessions });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
 
-// New endpoint to revoke all user tokens (emergency logout)
-export const revokeAll = async (req, res) => {
+export const revokeSession = async (req, res) => {
   try {
-    const tenantId = req.tenant?.id;
-
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required' });
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'Session id required' });
+    if (typeof sessionService?.revokeSession === 'function') {
+      await sessionService.revokeSession(id);
     }
-
-    await refreshTokenService.revokeAllUserTokens(req.user.userId, tenantId, 'user_request');
-
-    await tokenMetricsService.recordTokenRevocation(req.user.userId, tenantId, 'user_request');
-
-    res.json({ message: 'All tokens revoked successfully' });
-  } catch (error) {
-    console.error('[RevokeAll] Error:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
 
-// New endpoint to list active sessions
-export const sessions = async (req, res) => {
+export const revokeAllSessions = async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required' });
+    const address = req.user?.address ?? req.user?.userId;
+    if (!address) return res.status(401).json({ error: 'Authentication required' });
+
+    if (typeof sessionService?.revokeAllSessions === 'function') {
+      await sessionService.revokeAllSessions(address);
     }
-
-    const activeTokens = await refreshTokenService.getUserActiveTokens(
-      req.user.userId,
-      req.tenant?.id,
-    );
-
-    res.json({
-      sessions: activeTokens.map((token) => ({
-        id: token.id,
-        deviceInfo: token.deviceInfo,
-        ipAddress: token.ipAddress,
-        userAgent: token.userAgent,
-        createdAt: token.createdAt,
-        lastUsedAt: token.lastUsedAt,
-        expiresAt: token.expiresAt,
-      })),
-    });
-  } catch (error) {
-    console.error('[Sessions] Error:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
 
-export default { register, login, refresh, logout, revokeAll, sessions };
+export default {
+  getNonce,
+  verifySignatureAndLogin,
+  refreshToken,
+  logout,
+  listSessions,
+  revokeSession,
+  revokeAllSessions,
+};

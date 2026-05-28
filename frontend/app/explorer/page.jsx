@@ -28,7 +28,9 @@ function normaliseEscrow(e) {
     status: e.status,
     totalAmount: `${Number(e.totalAmount).toLocaleString()} USDC`,
     milestoneProgress: '0 / 0',
-    counterparty: e.clientAddress ? `${e.clientAddress.slice(0, 4)}…${e.clientAddress.slice(-4)}` : '—',
+    counterparty: e.clientAddress
+      ? `${e.clientAddress.slice(0, 4)}…${e.clientAddress.slice(-4)}`
+      : '—',
     role: 'client',
   };
 }
@@ -57,7 +59,9 @@ function filtersFromUrl(sp) {
     maxAmount: sp.get('maxAmount') || '',
     dateFrom: sp.get('dateFrom') || '',
     dateTo: sp.get('dateTo') || '',
-    sort: sp.get('sortBy') ? `${sp.get('sortBy')}:${sp.get('sortOrder') || 'desc'}` : 'createdAt:desc',
+    sort: sp.get('sortBy')
+      ? `${sp.get('sortBy')}:${sp.get('sortOrder') || 'desc'}`
+      : 'createdAt:desc',
   };
 }
 
@@ -72,7 +76,12 @@ function ExplorerContent() {
   const [page, setPage] = useState(Number(searchParams.get('page') || 1));
   const [showFilters, setShowFilters] = useState(false);
   const [escrows, setEscrows] = useState([]);
-  const [meta, setMeta] = useState({ total: 0, totalPages: 0, hasNextPage: false, hasPreviousPage: false });
+  const [meta, setMeta] = useState({
+    total: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -203,7 +212,9 @@ function ExplorerContent() {
               actionHref={activeFilterCount > 0 ? undefined : '/escrow/create'}
             />
           ) : (
-            <div className={`grid gap-4 ${showFilters ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'}`}>
+            <div
+              className={`grid gap-4 ${showFilters ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'}`}
+            >
               {escrows.map((escrow) => (
                 <EscrowCard key={escrow.id} escrow={escrow} />
               ))}
@@ -214,12 +225,24 @@ function ExplorerContent() {
 
       {!loading && meta.totalPages > 1 && (
         <div className="flex items-center justify-center gap-3 pt-2">
-          <Button variant="secondary" size="sm" disabled={!meta.hasPreviousPage} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!meta.hasPreviousPage}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
             <ChevronLeft size={14} />
             Prev
           </Button>
-          <span className="text-sm text-gray-400">Page {page} of {meta.totalPages || 1}</span>
-          <Button variant="secondary" size="sm" disabled={!meta.hasNextPage} onClick={() => setPage((p) => p + 1)}>
+          <span className="text-sm text-gray-400">
+            Page {page} of {meta.totalPages || 1}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!meta.hasNextPage}
+            onClick={() => setPage((p) => p + 1)}
+          >
             Next
             <ChevronRight size={14} />
           </Button>

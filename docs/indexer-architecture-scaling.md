@@ -100,27 +100,27 @@ graph TD
 
 ### File Map
 
-| File | Role |
-|------|------|
-| `backend/services/eventIndexer.js` | Core indexer — polling loop, dispatch, all handlers |
-| `backend/services/escrowIndexer.js` | Stub / contributor scaffold (Issue #27) |
-| `backend/services/stellarService.js` | `getContractEvents`, `getLatestLedger` wrappers |
-| `backend/lib/retryUtils.js` | Exponential backoff + circuit breaker for DB ops |
-| `backend/lib/circuitBreaker.js` | Circuit breaker implementation |
-| `backend/lib/metrics.js` | Prometheus counters/histograms |
-| `backend/lib/prisma.js` | Prisma client singleton |
-| `backend/api/websocket/handlers.js` | `broadcastEscrowEvent` |
-| `backend/services/reputationSearchService.js` | `indexRecord` for Elasticsearch |
+| File                                          | Role                                                |
+| --------------------------------------------- | --------------------------------------------------- |
+| `backend/services/eventIndexer.js`            | Core indexer — polling loop, dispatch, all handlers |
+| `backend/services/escrowIndexer.js`           | Stub / contributor scaffold (Issue #27)             |
+| `backend/services/stellarService.js`          | `getContractEvents`, `getLatestLedger` wrappers     |
+| `backend/lib/retryUtils.js`                   | Exponential backoff + circuit breaker for DB ops    |
+| `backend/lib/circuitBreaker.js`               | Circuit breaker implementation                      |
+| `backend/lib/metrics.js`                      | Prometheus counters/histograms                      |
+| `backend/lib/prisma.js`                       | Prisma client singleton                             |
+| `backend/api/websocket/handlers.js`           | `broadcastEscrowEvent`                              |
+| `backend/services/reputationSearchService.js` | `indexRecord` for Elasticsearch                     |
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ESCROW_CONTRACT_ID` | _(required)_ | Deployed Soroban contract address |
-| `SOROBAN_RPC_URL` | _(required)_ | Soroban RPC endpoint |
-| `INDEXER_POLL_INTERVAL_MS` | `5000` | Milliseconds between polling ticks |
-| `INDEXER_START_LEDGER` | `0` | Ledger to start from on first run |
-| `DATABASE_URL` | _(required)_ | PostgreSQL connection string |
+| Variable                   | Default      | Description                        |
+| -------------------------- | ------------ | ---------------------------------- |
+| `ESCROW_CONTRACT_ID`       | _(required)_ | Deployed Soroban contract address  |
+| `SOROBAN_RPC_URL`          | _(required)_ | Soroban RPC endpoint               |
+| `INDEXER_POLL_INTERVAL_MS` | `5000`       | Milliseconds between polling ticks |
+| `INDEXER_START_LEDGER`     | `0`          | Ledger to start from on first run  |
+| `DATABASE_URL`             | _(required)_ | PostgreSQL connection string       |
 
 ---
 
@@ -178,19 +178,19 @@ Each raw Soroban event from `getContractEvents` has this shape:
 
 ### Event → Handler Mapping
 
-| Topic[0] | Handler | Business Mutation | contract_events row |
-|----------|---------|-------------------|---------------------|
-| `esc_crt` | `handleEscrowCreated` | `escrow.upsert` | ✓ |
-| `mil_add` | `handleMilestoneAdded` | `milestone.upsert` | ✓ |
-| `mil_sub` | `handleMilestoneSubmitted` | `milestone.updateMany` | ✓ |
-| `mil_apr` | `handleMilestoneApproved` | `milestone.updateMany` | ✓ |
-| `mil_rej` | `handleMilestoneRejected` | `milestone.updateMany` | ✓ |
-| `mil_dis` | `handleMilestoneDisputed` | `milestone.updateMany` | ✓ |
-| `funds_rel` | `handleFundsReleased` | `$executeRaw` balance decrement | ✓ |
-| `esc_can` | `handleEscrowCancelled` | `escrow.updateMany` | ✓ |
-| `dis_rai` | `handleDisputeRaised` | `escrow.updateMany` + `dispute.upsert` | ✓ |
-| `dis_res` | `handleDisputeResolved` | `escrow.updateMany` + `dispute.updateMany` | ✓ |
-| `rep_upd` | `handleReputationUpdated` | `reputationRecord.upsert` | ✓ |
+| Topic[0]    | Handler                    | Business Mutation                          | contract_events row |
+| ----------- | -------------------------- | ------------------------------------------ | ------------------- |
+| `esc_crt`   | `handleEscrowCreated`      | `escrow.upsert`                            | ✓                   |
+| `mil_add`   | `handleMilestoneAdded`     | `milestone.upsert`                         | ✓                   |
+| `mil_sub`   | `handleMilestoneSubmitted` | `milestone.updateMany`                     | ✓                   |
+| `mil_apr`   | `handleMilestoneApproved`  | `milestone.updateMany`                     | ✓                   |
+| `mil_rej`   | `handleMilestoneRejected`  | `milestone.updateMany`                     | ✓                   |
+| `mil_dis`   | `handleMilestoneDisputed`  | `milestone.updateMany`                     | ✓                   |
+| `funds_rel` | `handleFundsReleased`      | `$executeRaw` balance decrement            | ✓                   |
+| `esc_can`   | `handleEscrowCancelled`    | `escrow.updateMany`                        | ✓                   |
+| `dis_rai`   | `handleDisputeRaised`      | `escrow.updateMany` + `dispute.upsert`     | ✓                   |
+| `dis_res`   | `handleDisputeResolved`    | `escrow.updateMany` + `dispute.updateMany` | ✓                   |
+| `rep_upd`   | `handleReputationUpdated`  | `reputationRecord.upsert`                  | ✓                   |
 
 ### Idempotency
 
@@ -213,15 +213,15 @@ try {
 
 ### Failure Taxonomy
 
-| Error Type | Behaviour | Recovery |
-|------------|-----------|----------|
-| Unknown event type | `console.warn`, skip | Automatic |
-| Duplicate event (`P2002`) | Silent skip | Automatic |
-| Transient DB error (`P1001`, `ECONNRESET`, etc.) | Retry with backoff via `retryUtils` | Automatic (3 attempts) |
-| Circuit open (`CircuitOpenError`) | Fail fast, log | Waits for circuit half-open (30 s) |
-| Non-retryable DB error | Log + re-throw, tick fails | Next tick retries from same ledger |
-| RPC unavailable | Log + tick fails | Next tick retries from same ledger |
-| `ESCROW_CONTRACT_ID` not set | `console.warn`, skip fetch | Fix config |
+| Error Type                                       | Behaviour                           | Recovery                           |
+| ------------------------------------------------ | ----------------------------------- | ---------------------------------- |
+| Unknown event type                               | `console.warn`, skip                | Automatic                          |
+| Duplicate event (`P2002`)                        | Silent skip                         | Automatic                          |
+| Transient DB error (`P1001`, `ECONNRESET`, etc.) | Retry with backoff via `retryUtils` | Automatic (3 attempts)             |
+| Circuit open (`CircuitOpenError`)                | Fail fast, log                      | Waits for circuit half-open (30 s) |
+| Non-retryable DB error                           | Log + re-throw, tick fails          | Next tick retries from same ledger |
+| RPC unavailable                                  | Log + tick fails                    | Next tick retries from same ledger |
+| `ESCROW_CONTRACT_ID` not set                     | `console.warn`, skip fetch          | Fix config                         |
 
 ### Retry Flow (retryUtils.js)
 
@@ -299,12 +299,12 @@ This gives you zero-downtime restarts: the standby takes over within one `POLL_I
 
 ### Scaling Checklist
 
-| Step | Action |
-|------|--------|
-| 1 → 2 | Add advisory lock; deploy second instance as standby |
-| 2 → 4 | Switch to shard-based partitioning; one `indexer_state` row per shard |
-| 4 → 10 | Extract indexer into a dedicated service (separate Docker container); scale independently of the API |
-| 10+ | Consider a message queue (Redis Streams / Kafka): one fetcher writes raw events, N workers process them |
+| Step   | Action                                                                                                  |
+| ------ | ------------------------------------------------------------------------------------------------------- |
+| 1 → 2  | Add advisory lock; deploy second instance as standby                                                    |
+| 2 → 4  | Switch to shard-based partitioning; one `indexer_state` row per shard                                   |
+| 4 → 10 | Extract indexer into a dedicated service (separate Docker container); scale independently of the API    |
+| 10+    | Consider a message queue (Redis Streams / Kafka): one fetcher writes raw events, N workers process them |
 
 ### Dedicated Indexer Service
 
@@ -372,14 +372,14 @@ try {
 
 ### Grafana Dashboard Panels
 
-| Panel | Query | Alert Threshold |
-|-------|-------|-----------------|
-| Events/min | `rate(indexer_events_processed_total[1m])` | < 0 for 5 min (stalled) |
-| Ledger lag | `indexer_ledger_lag` | > 1000 ledgers (~83 min) |
-| Failed events | `rate(indexer_events_failed_total[5m])` | > 0 sustained |
-| Poll duration p99 | `histogram_quantile(0.99, indexer_poll_duration_ms_bucket)` | > 4000ms |
-| DB circuit state | `circuit_breaker_state{name="database"}` | == 1 (OPEN) |
-| DB retry rate | `rate(db_connection_errors_total[5m])` | > 1/min |
+| Panel             | Query                                                       | Alert Threshold          |
+| ----------------- | ----------------------------------------------------------- | ------------------------ |
+| Events/min        | `rate(indexer_events_processed_total[1m])`                  | < 0 for 5 min (stalled)  |
+| Ledger lag        | `indexer_ledger_lag`                                        | > 1000 ledgers (~83 min) |
+| Failed events     | `rate(indexer_events_failed_total[5m])`                     | > 0 sustained            |
+| Poll duration p99 | `histogram_quantile(0.99, indexer_poll_duration_ms_bucket)` | > 4000ms                 |
+| DB circuit state  | `circuit_breaker_state{name="database"}`                    | == 1 (OPEN)              |
+| DB retry rate     | `rate(db_connection_errors_total[5m])`                      | > 1/min                  |
 
 ### Prometheus Alert Rules
 
@@ -394,7 +394,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Indexer has not processed events in 10 minutes"
+          summary: 'Indexer has not processed events in 10 minutes'
 
       - alert: IndexerHighLedgerLag
         expr: indexer_ledger_lag > 1000
@@ -402,7 +402,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Indexer is more than 1000 ledgers behind ({{ $value }} ledgers)"
+          summary: 'Indexer is more than 1000 ledgers behind ({{ $value }} ledgers)'
 
       - alert: IndexerEventFailures
         expr: rate(indexer_events_failed_total[5m]) > 0
@@ -410,7 +410,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Indexer is failing to process events"
+          summary: 'Indexer is failing to process events'
 ```
 
 ---
@@ -438,11 +438,11 @@ Use parallel batches only after verifying your DB connection pool can handle the
 
 ### Poll Interval
 
-| `INDEXER_POLL_INTERVAL_MS` | Ledger lag | RPC calls/hour | Recommended for |
-|---------------------------|------------|----------------|-----------------|
-| `5000` (default) | ~5s | 720 | Production |
-| `2000` | ~2s | 1800 | High-frequency contracts |
-| `15000` | ~15s | 240 | Low-traffic / cost-sensitive |
+| `INDEXER_POLL_INTERVAL_MS` | Ledger lag | RPC calls/hour | Recommended for              |
+| -------------------------- | ---------- | -------------- | ---------------------------- |
+| `5000` (default)           | ~5s        | 720            | Production                   |
+| `2000`                     | ~2s        | 1800           | High-frequency contracts     |
+| `15000`                    | ~15s       | 240            | Low-traffic / cost-sensitive |
 
 Stellar closes a ledger every ~5 seconds, so polling faster than 5000ms yields no benefit.
 
@@ -651,12 +651,12 @@ open http://localhost:3001  # admin / admin
 
 Baseline measurements on a 2-core / 4 GB VM with PostgreSQL on the same host:
 
-| Scenario | Events/sec | Poll duration p50 | Poll duration p99 |
-|----------|-----------|-------------------|-------------------|
-| Idle (0 new events) | — | 45ms | 120ms |
-| Normal load (10 events/tick) | ~2 | 180ms | 400ms |
-| Burst (500 events/tick) | ~100 | 1200ms | 2800ms |
-| Burst + parallel batches (50) | ~400 | 350ms | 900ms |
+| Scenario                      | Events/sec | Poll duration p50 | Poll duration p99 |
+| ----------------------------- | ---------- | ----------------- | ----------------- |
+| Idle (0 new events)           | —          | 45ms              | 120ms             |
+| Normal load (10 events/tick)  | ~2         | 180ms             | 400ms             |
+| Burst (500 events/tick)       | ~100       | 1200ms            | 2800ms            |
+| Burst + parallel batches (50) | ~400       | 350ms             | 900ms             |
 
 **To reproduce:**
 

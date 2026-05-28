@@ -34,7 +34,8 @@ export default function EscrowCard({ escrow, isLoading = false }) {
   const { t } = useI18n();
   const cardRef = useRef(null);
   if (isLoading) return <EscrowCardSkeleton />;
-  const { id, title, status, totalAmount, milestoneProgress, counterparty, role, transactionHash } = escrow;
+  const { id, title, status, totalAmount, milestoneProgress, counterparty, role, transactionHash } =
+    escrow;
 
   const [done, total] = milestoneProgress?.split(' / ').map(Number) ?? [0, 0];
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -66,7 +67,9 @@ export default function EscrowCard({ escrow, isLoading = false }) {
           <p className="text-xs text-gray-500 mt-0.5">
             {role === 'client' ? 'Freelancer:' : 'Client:'}{' '}
             <TruncatedAddress address={counterparty} />
-            {role === 'client' ? `${t('escrow.fields.freelancer')}:` : `${t('escrow.fields.client')}:`}{' '}
+            {role === 'client'
+              ? `${t('escrow.fields.freelancer')}:`
+              : `${t('escrow.fields.client')}:`}{' '}
             <span className="font-mono">{counterparty}</span>
           </p>
         </div>
@@ -95,7 +98,9 @@ export default function EscrowCard({ escrow, isLoading = false }) {
         <div className="mt-3 pt-3 border-t border-gray-800">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-gray-500">TX:</span>
-            <span className="text-xs font-mono text-gray-400 truncate">{transactionHash.slice(0, 16)}...</span>
+            <span className="text-xs font-mono text-gray-400 truncate">
+              {transactionHash.slice(0, 16)}...
+            </span>
             <div onClick={(e) => e.preventDefault()}>
               <CopyButton text={transactionHash} label="Copy" />
             </div>

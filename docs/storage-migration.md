@@ -131,12 +131,12 @@ impl StorageManager {
 }
 ```
 
-| Function | Description |
-|----------|-------------|
-| `get_version` | Reads `StorageKey::Version` from instance storage. Returns `1` if absent (legacy contract). |
-| `needs_migration` | Returns `true` if `get_version() < STORAGE_VERSION`. |
-| `migrate` | Runs all pending migrations in order. Called by `upgrade`. |
-| `init_version` | Sets version to `STORAGE_VERSION` on a fresh deploy. No migration needed. |
+| Function          | Description                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| `get_version`     | Reads `StorageKey::Version` from instance storage. Returns `1` if absent (legacy contract). |
+| `needs_migration` | Returns `true` if `get_version() < STORAGE_VERSION`.                                        |
+| `migrate`         | Runs all pending migrations in order. Called by `upgrade`.                                  |
+| `init_version`    | Sets version to `STORAGE_VERSION` on a fresh deploy. No migration needed.                   |
 
 ---
 
@@ -353,8 +353,8 @@ There is no path to convert v2 storage back to v1.
 
 `EscrowError::StorageMigrationFailed = 42`
 
-| Cause | What to do |
-|-------|-----------|
-| `current_version > STORAGE_VERSION` — running WASM is older than stored data | Deploy the correct (newer) WASM version. Do not attempt to run v1 code on v2 storage. |
-| Corrupted v1 data that cannot be deserialised as `EscrowStateV1` | Inspect the raw storage entry. If the data is unrecoverable, the escrow must be treated as lost. Contact the team immediately. |
-| `migrate_v1_to_v2` panics mid-loop | Soroban transactions are atomic — no partial writes will have been committed. Re-run `upgrade` after diagnosing the cause. |
+| Cause                                                                        | What to do                                                                                                                     |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `current_version > STORAGE_VERSION` — running WASM is older than stored data | Deploy the correct (newer) WASM version. Do not attempt to run v1 code on v2 storage.                                          |
+| Corrupted v1 data that cannot be deserialised as `EscrowStateV1`             | Inspect the raw storage entry. If the data is unrecoverable, the escrow must be treated as lost. Contact the team immediately. |
+| `migrate_v1_to_v2` panics mid-loop                                           | Soroban transactions are atomic — no partial writes will have been committed. Re-run `upgrade` after diagnosing the cause.     |

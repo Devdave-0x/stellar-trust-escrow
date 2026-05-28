@@ -26,10 +26,17 @@ const getReputation = async (req, res) => {
       return res.status(400).json({ error: 'Invalid Stellar address' });
     }
     const record = await prisma.reputationRecord.findUnique({ where: { address } });
-    res.json(record ?? {
-      address, totalScore: 0, completedEscrows: 0,
-      disputedEscrows: 0, disputesWon: 0, totalVolume: '0', lastUpdated: null,
-    });
+    res.json(
+      record ?? {
+        address,
+        totalScore: 0,
+        completedEscrows: 0,
+        disputedEscrows: 0,
+        disputesWon: 0,
+        totalVolume: '0',
+        lastUpdated: null,
+      },
+    );
   } catch (err) {
     logControllerError('reputation.getReputation', err, req);
     res.status(500).json({ error: err.message });
@@ -42,7 +49,9 @@ const getLeaderboard = async (req, res) => {
     const tenantId = req.tenant?.id;
 
     const { hits, total, source } = await reputationSearch.leaderboard({
-      tenantId, limit, from: skip,
+      tenantId,
+      limit,
+      from: skip,
     });
 
     const data = hits.map((r, i) => ({
@@ -76,7 +85,9 @@ const search = async (req, res) => {
     const tenantId = req.tenant?.id;
 
     const { hits, total, source } = await reputationSearch.search(q, {
-      tenantId, limit, from,
+      tenantId,
+      limit,
+      from,
     });
 
     res.set('X-Data-Source', source);

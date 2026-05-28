@@ -122,8 +122,7 @@ export const disputeApi = {
 };
 
 export const searchApi = {
-  search: (params: Record<string, string | number>) =>
-    api.get('/api/search', { params }),
+  search: (params: Record<string, string | number>) => api.get('/api/search', { params }),
   suggest: (q: string) => api.get('/api/search/suggest', { params: { q } }),
 };
 

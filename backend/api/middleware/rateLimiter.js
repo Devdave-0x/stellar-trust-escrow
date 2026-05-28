@@ -200,7 +200,9 @@ export function createSlidingWindowRateLimiter({
         res.set('Retry-After', String(Math.ceil(burstWindowMs / 1000)));
         res.set('X-RateLimit-Limit', String(effectiveMax));
         res.set('X-RateLimit-Remaining', '0');
-        return res.status(429).json({ error: message, code: 'RATE_LIMIT_EXCEEDED', reason: 'burst' });
+        return res
+          .status(429)
+          .json({ error: message, code: 'RATE_LIMIT_EXCEEDED', reason: 'burst' });
       }
       slidingStore.record(burstKey, burstWindowMs, now);
     }

@@ -23,41 +23,41 @@ This pass standardizes protection as follows:
 
 ## Protected Endpoint Matrix
 
-| Route Group | Protection | Notes |
-| --- | --- | --- |
-| `/api/auth/register` | Public | Tenant-scoped registration |
-| `/api/auth/login` | Public | Returns JWT with wallet address claim when linked |
-| `/api/auth/refresh` | Public | Refresh token validation required |
-| `/api/auth/logout` | Bearer JWT | Logout is no longer open |
-| `/api/tenant` | Public | Tenant discovery only |
-| `/api/health` and `/health` | Public | Operational health endpoints |
-| `/api/escrows/*` | Bearer JWT | Router-level protection |
-| `/api/users/:address` | Bearer JWT | Authenticated profile access |
-| `/api/users/:address/export*` | Bearer JWT + wallet ownership | Export/import/file download restricted to the authenticated wallet |
-| `/api/reputation/*` | Public | Public reputation data |
-| `/api/disputes/*` | Bearer JWT | Router-level protection |
-| `/api/events/*` | Public | Indexed on-chain event data |
-| `/api/search` and `/api/search/suggest` | Public | Public discovery endpoints |
-| `/api/search/analytics` and `/api/search/reindex` | Admin API key | Admin only |
-| `/api/kyc/token` | Bearer JWT + wallet ownership | Caller can only mint a token for their own wallet |
-| `/api/kyc/status/:address` | Bearer JWT + wallet ownership | Caller can only read their own KYC status |
-| `/api/kyc/webhook` | Provider signature | Sumsub signature verification |
-| `/api/kyc/admin` | Admin API key | Admin only |
-| `/api/payments/checkout` | Bearer JWT + wallet ownership | Caller can only create checkout for their own wallet |
-| `/api/payments/status/:sessionId` | Bearer JWT + payment ownership | Session lookup must belong to the authenticated wallet |
-| `/api/payments/:address` | Bearer JWT + wallet ownership | Caller can only list their own payments |
-| `/api/payments/:paymentId/refund` | Bearer JWT + payment ownership | Refund limited to owner of the payment |
-| `/api/payments/webhook` | Provider signature | Stripe webhook signature verification |
-| `/api/notifications/events` | Admin API key | Internal dispatch endpoint |
-| `/api/notifications/queue` | Admin API key | Queue inspection is no longer public |
-| `/api/notifications/unsubscribe` | Unsubscribe token | Link/API token validation |
-| `/api/notifications/subscribe` | Resubscribe token | Resubscribe now requires the email token |
-| `/api/relayer/execute` and `/api/relayer/fee-estimate` | Bearer JWT | Prevents anonymous relayer abuse |
-| `/api/relayer/status` | Public | Operational status only |
-| `/api/audit/*` | Admin API key | Admin only |
-| `/api/compliance/*` | Admin API key | Admin only |
-| `/api/incidents/*` | Admin API key | Admin only |
-| `/api/admin/*` | Admin API key | Admin only |
+| Route Group                                            | Protection                     | Notes                                                              |
+| ------------------------------------------------------ | ------------------------------ | ------------------------------------------------------------------ |
+| `/api/auth/register`                                   | Public                         | Tenant-scoped registration                                         |
+| `/api/auth/login`                                      | Public                         | Returns JWT with wallet address claim when linked                  |
+| `/api/auth/refresh`                                    | Public                         | Refresh token validation required                                  |
+| `/api/auth/logout`                                     | Bearer JWT                     | Logout is no longer open                                           |
+| `/api/tenant`                                          | Public                         | Tenant discovery only                                              |
+| `/api/health` and `/health`                            | Public                         | Operational health endpoints                                       |
+| `/api/escrows/*`                                       | Bearer JWT                     | Router-level protection                                            |
+| `/api/users/:address`                                  | Bearer JWT                     | Authenticated profile access                                       |
+| `/api/users/:address/export*`                          | Bearer JWT + wallet ownership  | Export/import/file download restricted to the authenticated wallet |
+| `/api/reputation/*`                                    | Public                         | Public reputation data                                             |
+| `/api/disputes/*`                                      | Bearer JWT                     | Router-level protection                                            |
+| `/api/events/*`                                        | Public                         | Indexed on-chain event data                                        |
+| `/api/search` and `/api/search/suggest`                | Public                         | Public discovery endpoints                                         |
+| `/api/search/analytics` and `/api/search/reindex`      | Admin API key                  | Admin only                                                         |
+| `/api/kyc/token`                                       | Bearer JWT + wallet ownership  | Caller can only mint a token for their own wallet                  |
+| `/api/kyc/status/:address`                             | Bearer JWT + wallet ownership  | Caller can only read their own KYC status                          |
+| `/api/kyc/webhook`                                     | Provider signature             | Sumsub signature verification                                      |
+| `/api/kyc/admin`                                       | Admin API key                  | Admin only                                                         |
+| `/api/payments/checkout`                               | Bearer JWT + wallet ownership  | Caller can only create checkout for their own wallet               |
+| `/api/payments/status/:sessionId`                      | Bearer JWT + payment ownership | Session lookup must belong to the authenticated wallet             |
+| `/api/payments/:address`                               | Bearer JWT + wallet ownership  | Caller can only list their own payments                            |
+| `/api/payments/:paymentId/refund`                      | Bearer JWT + payment ownership | Refund limited to owner of the payment                             |
+| `/api/payments/webhook`                                | Provider signature             | Stripe webhook signature verification                              |
+| `/api/notifications/events`                            | Admin API key                  | Internal dispatch endpoint                                         |
+| `/api/notifications/queue`                             | Admin API key                  | Queue inspection is no longer public                               |
+| `/api/notifications/unsubscribe`                       | Unsubscribe token              | Link/API token validation                                          |
+| `/api/notifications/subscribe`                         | Resubscribe token              | Resubscribe now requires the email token                           |
+| `/api/relayer/execute` and `/api/relayer/fee-estimate` | Bearer JWT                     | Prevents anonymous relayer abuse                                   |
+| `/api/relayer/status`                                  | Public                         | Operational status only                                            |
+| `/api/audit/*`                                         | Admin API key                  | Admin only                                                         |
+| `/api/compliance/*`                                    | Admin API key                  | Admin only                                                         |
+| `/api/incidents/*`                                     | Admin API key                  | Admin only                                                         |
+| `/api/admin/*`                                         | Admin API key                  | Admin only                                                         |
 
 ## Implementation Notes
 

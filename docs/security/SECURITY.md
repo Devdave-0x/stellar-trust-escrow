@@ -19,16 +19,16 @@ The following are eligible for bounty rewards:
 
 Specifically, the escrow contract functions are in scope:
 
-| Function | Description |
-|---|---|
-| `create_escrow` | Escrow initialisation |
-| `fund_escrow` / `add_milestone` | Milestone allocation |
-| `submit_milestone` | Freelancer submission |
-| `approve_milestone` | Client approval |
-| `release_funds` | Fund disbursement |
-| `dispute_escrow` | Dispute initiation |
-| `resolve_dispute` | Dispute resolution |
-| `cancel_escrow` | Cancellation flow |
+| Function                        | Description           |
+| ------------------------------- | --------------------- |
+| `create_escrow`                 | Escrow initialisation |
+| `fund_escrow` / `add_milestone` | Milestone allocation  |
+| `submit_milestone`              | Freelancer submission |
+| `approve_milestone`             | Client approval       |
+| `release_funds`                 | Fund disbursement     |
+| `dispute_escrow`                | Dispute initiation    |
+| `resolve_dispute`               | Dispute resolution    |
+| `cancel_escrow`                 | Cancellation flow     |
 
 ### Out-of-Scope
 
@@ -47,12 +47,12 @@ The following are **not** eligible for bounty rewards:
 
 Rewards are assigned based on the severity of the finding, assessed using the criteria in [`docs/security/audit-report-template.md`](audit-report-template.md).
 
-| Severity | Criteria Summary | Reward Range |
-|---|---|---|
+| Severity     | Criteria Summary                                                           | Reward Range     |
+| ------------ | -------------------------------------------------------------------------- | ---------------- |
 | **Critical** | Direct fund loss or theft possible; exploitable without special conditions | $5,000 – $10,000 |
-| **High** | Significant fund loss or access control bypass under realistic conditions | $1,000 – $5,000 |
-| **Medium** | Partial fund loss, griefing, or logic error with limited impact | $200 – $1,000 |
-| **Low** | Best-practice deviation; no direct fund impact | $50 – $200 |
+| **High**     | Significant fund loss or access control bypass under realistic conditions  | $1,000 – $5,000  |
+| **Medium**   | Partial fund loss, griefing, or logic error with limited impact            | $200 – $1,000    |
+| **Low**      | Best-practice deviation; no direct fund impact                             | $50 – $200       |
 
 > Informational findings (code quality, gas optimisation suggestions) are not eligible for monetary rewards but may be acknowledged in release notes.
 
@@ -77,12 +77,12 @@ Exact reward amounts within each tier are determined at the discretion of the ma
 
 ## Disclosure Timeline
 
-| Milestone | Timeframe |
-|---|---|
-| Acknowledgement of report | Within 72 hours of receipt |
-| Initial severity assessment | Within 7 business days |
-| Fix deployed to mainnet | Within 90 days of acknowledgement |
-| Public disclosure | After fix deployment, coordinated with researcher |
+| Milestone                   | Timeframe                                         |
+| --------------------------- | ------------------------------------------------- |
+| Acknowledgement of report   | Within 72 hours of receipt                        |
+| Initial severity assessment | Within 7 business days                            |
+| Fix deployed to mainnet     | Within 90 days of acknowledgement                 |
+| Public disclosure           | After fix deployment, coordinated with researcher |
 
 If exceptional circumstances require more than 90 days, we will communicate this to the researcher and agree on an extended timeline. We will not request indefinite embargo.
 
@@ -115,9 +115,9 @@ We will not pursue legal action against researchers who:
 
 ## Contact
 
-| Channel | Use |
-|---|---|
+| Channel                                                                                   | Use                               |
+| ----------------------------------------------------------------------------------------- | --------------------------------- |
 | [security@stellartrustescrow.example.com](mailto:security@stellartrustescrow.example.com) | Vulnerability reports (preferred) |
-| [GitHub Discussions](../../discussions) | General security questions |
+| [GitHub Discussions](../../discussions)                                                   | General security questions        |
 
 PGP key available on request.

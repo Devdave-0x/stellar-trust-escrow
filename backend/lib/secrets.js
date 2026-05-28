@@ -46,10 +46,7 @@ const VAULT_ADDR = process.env.VAULT_ADDR || 'http://127.0.0.1:8200';
 const VAULT_KV_PATH = process.env.VAULT_KV_PATH || 'stellar-trust/app';
 const VAULT_NAMESPACE = process.env.VAULT_NAMESPACE || '';
 const CACHE_TTL_MS = parseInt(process.env.SECRETS_CACHE_TTL_MS || '300000', 10);
-const ROTATION_INTERVAL_MS = parseInt(
-  process.env.SECRETS_ROTATION_INTERVAL_MS || '3600000',
-  10,
-);
+const ROTATION_INTERVAL_MS = parseInt(process.env.SECRETS_ROTATION_INTERVAL_MS || '3600000', 10);
 
 // ── In-process encrypted cache ────────────────────────────────────────────────
 // Secrets are AES-256-GCM encrypted in memory so they aren't sitting as
@@ -223,7 +220,10 @@ async function loadSecrets() {
   try {
     if (BACKEND === 'vault') {
       secrets = await fetchFromVault();
-      audit('read', `Loaded ${Object.keys(secrets).length} secrets from Vault path=${VAULT_KV_PATH}`);
+      audit(
+        'read',
+        `Loaded ${Object.keys(secrets).length} secrets from Vault path=${VAULT_KV_PATH}`,
+      );
     } else {
       secrets = fetchFromEnv();
       audit('read', `Loaded ${Object.keys(secrets).length} secrets from env`);
@@ -361,4 +361,13 @@ export async function assertSecretsPresent(required) {
   }
 }
 
-export default { initSecrets, getSecret, getSecrets, rotateSecrets, startRotation, stopRotation, assertSecretsPresent, getAuditLog };
+export default {
+  initSecrets,
+  getSecret,
+  getSecrets,
+  rotateSecrets,
+  startRotation,
+  stopRotation,
+  assertSecretsPresent,
+  getAuditLog,
+};

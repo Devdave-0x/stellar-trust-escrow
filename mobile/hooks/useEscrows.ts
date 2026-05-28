@@ -40,7 +40,15 @@ export function useEscrowList(params?: Record<string, string | number>) {
     queryFn: async () => {
       const net = await NetInfo.fetch();
       if (!net.isConnected) {
-        return { data: getCachedEscrows() as Escrow[], total: 0, page: 1, limit: 20, totalPages: 1, hasNextPage: false, hasPreviousPage: false };
+        return {
+          data: getCachedEscrows() as Escrow[],
+          total: 0,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        };
       }
       const { data } = await escrowApi.list(params);
       data.data.forEach((e) => cacheEscrow(e as unknown as Record<string, unknown>));

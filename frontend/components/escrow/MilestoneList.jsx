@@ -46,7 +46,9 @@ export default function MilestoneList({ milestones = [], role, onApprove, onReje
           <span className="text-gray-400 font-medium">
             {approvedCount} of {totalCount} milestones complete
           </span>
-          <span className="text-white font-bold">{Math.round((approvedCount / totalCount) * 100)}%</span>
+          <span className="text-white font-bold">
+            {Math.round((approvedCount / totalCount) * 100)}%
+          </span>
         </div>
         {/* Progress bar with gradient and animation */}
         <div className="relative w-full h-3 bg-gray-800 rounded-full overflow-hidden shadow-inner">

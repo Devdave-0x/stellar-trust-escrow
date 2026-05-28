@@ -1,6 +1,6 @@
 /**
  * Refresh Token Service
- * 
+ *
  * Manages refresh token creation, rotation, and validation.
  * Supports multiple concurrent sessions and secure token handling.
  */
@@ -26,17 +26,17 @@ function generateTokenId() {
 async function createRefreshToken(user, deviceInfo = {}, ipAddress = null, userAgent = null) {
   const tokenId = generateTokenId();
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-  
+
   // Create JWT with token ID for identification
   const refreshToken = jwt.sign(
-    { 
-      userId: user.id, 
+    {
+      userId: user.id,
       tenantId: user.tenantId,
       tokenId,
-      type: 'refresh'
+      type: 'refresh',
     },
     process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret',
-    { expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d` }
+    { expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d` },
   );
 
   // Hash the token for secure storage
@@ -51,8 +51,8 @@ async function createRefreshToken(user, deviceInfo = {}, ipAddress = null, userA
       userId: user.id,
       tenantId: user.tenantId,
       isActive: true,
-      expiresAt: { gt: new Date() }
-    }
+      expiresAt: { gt: new Date() },
+    },
   });
 
   // Deactivate oldest tokens if limit exceeded
@@ -62,17 +62,17 @@ async function createRefreshToken(user, deviceInfo = {}, ipAddress = null, userA
         userId: user.id,
         tenantId: user.tenantId,
         isActive: true,
-        expiresAt: { gt: new Date() }
+        expiresAt: { gt: new Date() },
       },
       orderBy: { lastUsedAt: 'asc' },
-      take: activeTokenCount - MAX_ACTIVE_TOKENS_PER_USER + 1
+      take: activeTokenCount - MAX_ACTIVE_TOKENS_PER_USER + 1,
     });
 
     await prisma.refreshToken.updateMany({
       where: {
-        id: { in: oldestTokens.map(t => t.id) }
+        id: { in: oldestTokens.map((t) => t.id) },
       },
-      data: { isActive: false }
+      data: { isActive: false },
     });
   }
 
@@ -86,8 +86,8 @@ async function createRefreshToken(user, deviceInfo = {}, ipAddress = null, userA
       ipAddress,
       userAgent,
       isActive: true,
-      expiresAt
-    }
+      expiresAt,
+    },
   });
 
   console.log(`[RefreshToken] Created token ${tokenId} for user ${user.id}`);
@@ -95,17 +95,25 @@ async function createRefreshToken(user, deviceInfo = {}, ipAddress = null, userA
   return {
     refreshToken,
     tokenId: tokenRecord.id,
-    expiresAt: tokenRecord.expiresAt
+    expiresAt: tokenRecord.expiresAt,
   };
 }
 
 /**
  * Validate and rotate a refresh token
  */
-async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = null, userAgent = null) {
+async function rotateRefreshToken(
+  oldRefreshToken,
+  deviceInfo = {},
+  ipAddress = null,
+  userAgent = null,
+) {
   try {
     // First check if token is blacklisted
-    const isBlacklisted = await tokenBlacklistService.isTokenBlacklisted(oldRefreshToken, 'refresh');
+    const isBlacklisted = await tokenBlacklistService.isTokenBlacklisted(
+      oldRefreshToken,
+      'refresh',
+    );
     if (isBlacklisted) {
       const metadata = await tokenBlacklistService.getBlacklistMetadata(oldRefreshToken, 'refresh');
       throw new Error(`Token is blacklisted: ${metadata?.reason || 'security issue'}`);
@@ -116,7 +124,7 @@ async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = 
     try {
       decoded = jwt.verify(
         oldRefreshToken,
-        process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret'
+        process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret',
       );
     } catch (_err) {
       throw new Error('Invalid or expired refresh token');
@@ -134,11 +142,11 @@ async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = 
         userId: decoded.userId,
         tenantId: decoded.tenantId,
         isActive: true,
-        expiresAt: { gt: new Date() }
+        expiresAt: { gt: new Date() },
       },
       include: {
-        user: true
-      }
+        user: true,
+      },
     });
 
     if (!tokenRecord) {
@@ -147,8 +155,8 @@ async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = 
 
     // Check if all user tokens are blacklisted
     const allTokensBlacklisted = await tokenBlacklistService.areAllUserTokensBlacklisted(
-      decoded.userId, 
-      decoded.tenantId
+      decoded.userId,
+      decoded.tenantId,
     );
     if (allTokensBlacklisted) {
       throw new Error('All user tokens have been revoked');
@@ -160,17 +168,17 @@ async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = 
     // Deactivate the old token record
     await prisma.refreshToken.update({
       where: { id: tokenRecord.id },
-      data: { isActive: false }
+      data: { isActive: false },
     });
 
     // Update last used timestamp
     await prisma.refreshToken.update({
       where: { id: tokenRecord.id },
-      data: { 
+      data: {
         lastUsedAt: new Date(),
         ipAddress,
-        userAgent
-      }
+        userAgent,
+      },
     });
 
     // Create new refresh token
@@ -178,18 +186,18 @@ async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = 
       tokenRecord.user,
       deviceInfo,
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     // Generate new access token
     const accessToken = jwt.sign(
-      { 
-        userId: tokenRecord.user.id, 
+      {
+        userId: tokenRecord.user.id,
         tenantId: tokenRecord.user.tenantId,
-        type: 'access'
+        type: 'access',
       },
       process.env.JWT_ACCESS_SECRET || 'fallback_access_secret',
-      { expiresIn: process.env.JWT_ACCESS_EXPIRATION || '15m' }
+      { expiresIn: process.env.JWT_ACCESS_EXPIRATION || '15m' },
     );
 
     console.log(`[RefreshToken] Rotated token for user ${tokenRecord.user.id}`);
@@ -197,9 +205,8 @@ async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = 
     return {
       accessToken,
       refreshToken: newTokenData.refreshToken,
-      expiresAt: newTokenData.expiresAt
+      expiresAt: newTokenData.expiresAt,
     };
-
   } catch (error) {
     console.error('[RefreshToken] Rotation failed:', error.message);
     throw error;
@@ -212,14 +219,14 @@ async function rotateRefreshToken(oldRefreshToken, deviceInfo = {}, ipAddress = 
 async function revokeRefreshToken(refreshToken, reason = 'logout') {
   try {
     const tokenHash = tokenBlacklistService.hashToken(refreshToken);
-    
+
     // Blacklist the token
     await tokenBlacklistService.blacklistToken(refreshToken, 'refresh', reason);
 
     // Deactivate the token record
     await prisma.refreshToken.updateMany({
       where: { tokenHash },
-      data: { isActive: false }
+      data: { isActive: false },
     });
 
     console.log(`[RefreshToken] Revoked token: ${reason}`);
@@ -240,12 +247,12 @@ async function revokeAllUserTokens(userId, tenantId, reason = 'security') {
 
     // Deactivate all token records
     await prisma.refreshToken.updateMany({
-      where: { 
-        userId, 
+      where: {
+        userId,
         tenantId,
-        isActive: true 
+        isActive: true,
       },
-      data: { isActive: false }
+      data: { isActive: false },
     });
 
     console.log(`[RefreshToken] Revoked all tokens for user ${userId}: ${reason}`);
@@ -265,8 +272,8 @@ async function cleanupExpiredTokens(userId, tenantId) {
       where: {
         userId,
         tenantId,
-        expiresAt: { lt: new Date() }
-      }
+        expiresAt: { lt: new Date() },
+      },
     });
 
     if (result.count > 0) {
@@ -286,7 +293,7 @@ async function getUserActiveTokens(userId, tenantId) {
       userId,
       tenantId,
       isActive: true,
-      expiresAt: { gt: new Date() }
+      expiresAt: { gt: new Date() },
     },
     select: {
       id: true,
@@ -295,9 +302,9 @@ async function getUserActiveTokens(userId, tenantId) {
       userAgent: true,
       createdAt: true,
       lastUsedAt: true,
-      expiresAt: true
+      expiresAt: true,
     },
-    orderBy: { lastUsedAt: 'desc' }
+    orderBy: { lastUsedAt: 'desc' },
   });
 }
 
@@ -308,5 +315,5 @@ export default {
   revokeAllUserTokens,
   cleanupExpiredTokens,
   getUserActiveTokens,
-  generateTokenId
+  generateTokenId,
 };

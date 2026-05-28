@@ -165,6 +165,26 @@ pub enum OptionalTimelock {
     Some(Timelock),
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeTier {
+    /// Minimum escrow amount at which this tier becomes active.
+    pub min_total_amount: i128,
+    /// Fee rate in basis points (100 bps = 1%).
+    pub fee_bps: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowFeeSnapshot {
+    /// Applied fee rate in basis points for this escrow.
+    pub fee_bps: u32,
+    /// Total fee amount reserved for this escrow lifecycle.
+    pub fee_amount: i128,
+    /// Whether the fee has already been sent to treasury.
+    pub collected: bool,
+}
+
 impl From<Option<Timelock>> for OptionalTimelock {
     fn from(opt: Option<Timelock>) -> Self {
         match opt {
@@ -277,6 +297,10 @@ pub struct Milestone {
     /// Optional price-based release condition. When set, funds are released
     /// automatically via `trigger_oracle_release` once the condition is met.
     pub price_condition: OptionalPriceCondition,
+
+    /// Optional prerequisite milestone ID that must be Approved or Released
+    /// before this milestone can be submitted or paid out.
+    pub depends_on: Option<u32>,
 }
 
 /// Configuration for a recurring/subscription escrow.
@@ -384,6 +408,12 @@ pub struct EscrowState {
     /// Optional timelock payload for buyer remorse protection.
     pub timelock: OptionalTimelock,
 
+    /// Optional dispute timeout measured in ledger sequence increments.
+    pub dispute_timeout_ledger: Option<u32>,
+
+    /// Ledger sequence at which the current dispute was raised.
+    pub dispute_started_ledger: Option<u32>,
+
     /// IPFS hash of the full project brief / agreement document.
     pub brief_hash: BytesN<32>,
 
@@ -475,6 +505,30 @@ pub struct CancellationRequest {
     /// Whether the counterparty (non-requester) has explicitly approved the cancellation.
     /// When true, `execute_cancellation` skips the dispute window check.
     pub counterparty_approved: bool,
+}
+
+/// Oracle-signed resolution payload for fallback dispute resolution.
+///
+/// Submitted by any caller once the grace period has elapsed.
+/// The contract verifies the Ed25519 signature over the canonical
+/// message `escrow_id || client_bps || freelancer_bps || expires_at`
+/// before distributing funds.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct OracleResolutionPayload {
+    /// Escrow this resolution applies to.
+    pub escrow_id: u64,
+    /// Client share in basis points (0–10000). Must sum to 10000 with freelancer_bps.
+    pub client_bps: u32,
+    /// Freelancer share in basis points (0–10000).
+    pub freelancer_bps: u32,
+    /// Ledger timestamp after which this payload is considered stale.
+    pub expires_at: u64,
+    /// Ed25519 signature over `escrow_id || client_bps || freelancer_bps || expires_at`
+    /// produced by the trusted oracle key.
+    pub signature: BytesN<64>,
+    /// Ed25519 public key of the oracle signer (must match stored trusted key).
+    pub oracle_pubkey: BytesN<32>,
 }
 
 /// A slash record for tracking penalties.
@@ -636,6 +690,10 @@ pub enum DataKey {
     Reputation(Address),
     /// Contract admin address — value: Address
     Admin,
+    /// Admin signer set for threshold authorization — value: Vec<Address>
+    AdminSigners,
+    /// Required number of admin signatures — value: u32
+    AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
@@ -678,4 +736,18 @@ pub enum DataKey {
     MinArbiterReputation,
     /// Governance contract address for dispute escalation — value: Address
     GovernanceContract,
+    /// Reentrancy guard flag for outbound token flows — value: bool
+    ReentrancyLock,
+    /// Treasury address for platform fee settlement — value: Address
+    PlatformTreasury,
+    /// Configured dynamic platform fee tiers — value: Vec<FeeTier>
+    PlatformFeeTiers,
+    /// Applied fee snapshot for an escrow — key: u64, value: EscrowFeeSnapshot
+    PlatformFeeSnapshot(u64),
+    /// Escrow frozen flag (security freeze) — key: u64, value: bool
+    EscrowFrozen(u64),
+    /// Dispute resolution oracle payload by escrow ID — key: u64, value: OracleResolutionPayload
+    OracleResolution(u64),
+    /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
+    TrustedOracleKey,
 }

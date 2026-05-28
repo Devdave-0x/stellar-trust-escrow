@@ -62,6 +62,6 @@
 
 ## Sign-off
 
-- GitHub handle: @___
+- GitHub handle: @\_\_\_
 - Date of review: YYYY-MM-DD
 - Commit reviewed: `abc1234`

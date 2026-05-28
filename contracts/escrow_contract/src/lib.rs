@@ -82,10 +82,11 @@ mod upgrade_tests;
 pub use errors::EscrowError;
 use storage::StorageManager;
 pub use types::{
-    ApprovalRecord, DataKey, EscrowState, EscrowStatus, EscrowTemplate, Milestone, MilestoneStatus,
-    MilestoneTemplate, MultisigConfig, OptionalBytesN32, OptionalPriceCondition, OptionalTimelock,
-    PriceCondition, PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord,
-    Timelock, MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
+    ApprovalRecord, DataKey, EscrowFeeSnapshot, EscrowState, EscrowStatus, EscrowTemplate, FeeTier,
+    Milestone, MilestoneStatus, MilestoneTemplate, MultisigConfig, OptionalBytesN32,
+    OptionalPriceCondition, OptionalTimelock, OracleResolutionPayload, PriceCondition,
+    PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord, Timelock,
+    MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
 };
 use types::{CancellationRequest, RecurringPaymentConfig, SlashRecord};
 use types::{FundPayload, ProposalPayload, ProposalType};
@@ -94,6 +95,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, symbol_short, token, Address, BytesN,
     Env, IntoVal, String, Vec,
 };
+use stellar_trust_shared::auth as shared_auth;
 use stellar_trust_shared::{
     bump_instance_ttl as shared_bump_instance_ttl,
     bump_persistent_ttl as shared_bump_persistent_ttl,
@@ -223,11 +225,17 @@ pub struct EscrowMeta {
     pub lock_time_extension: Option<u64>,
     /// Optional timelock controls release window after approval.
     pub timelock: OptionalTimelock,
+    /// Optional dispute timeout measured in ledger sequence increments.
+    pub dispute_timeout_ledger: Option<u32>,
+    /// Ledger sequence at which the current dispute was raised.
+    pub dispute_started_ledger: Option<u32>,
     pub brief_hash: BytesN<32>,
     /// Prepaid storage rent reserve held by the contract in the escrow token.
     pub rent_balance: i128,
     /// Timestamp of the last successful rent collection checkpoint.
     pub last_rent_collection_at: u64,
+    /// Ledger timestamp when the dispute was raised. None if not disputed.
+    pub dispute_start_ledger: Option<u64>,
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -240,6 +248,11 @@ impl ContractStorage {
             return Err(EscrowError::AlreadyInitialized);
         }
         instance.set(&DataKey::Admin, admin);
+        // Default admin multisig: 1-of-1 (initializer).
+        let mut signers: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(env);
+        signers.push_back(admin.clone());
+        instance.set(&DataKey::AdminSigners, &signers);
+        instance.set(&DataKey::AdminThreshold, &1_u32);
         instance.set(&DataKey::EscrowCounter, &0_u64);
         // Initialize storage version for upgradeable storage
         StorageManager::init_version(env);
@@ -265,6 +278,20 @@ impl ContractStorage {
             .ok_or(EscrowError::NotInitialized)?;
         if *caller != admin {
             return Err(EscrowError::AdminOnly);
+        }
+        Ok(())
+    }
+
+    fn is_escrow_frozen(env: &Env, escrow_id: u64) -> bool {
+        env.storage()
+            .persistent()
+            .get(&DataKey::EscrowFrozen(escrow_id))
+            .unwrap_or(false)
+    }
+
+    fn require_not_frozen(env: &Env, escrow_id: u64) -> Result<(), EscrowError> {
+        if Self::is_escrow_frozen(env, escrow_id) {
+            return Err(EscrowError::EscrowFrozen);
         }
         Ok(())
     }
@@ -323,6 +350,51 @@ impl ContractStorage {
         env.storage()
             .persistent()
             .remove(&PackedDataKey::EscrowMeta(escrow_id));
+    }
+
+    fn load_fee_snapshot(env: &Env, escrow_id: u64) -> EscrowFeeSnapshot {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PlatformFeeSnapshot(escrow_id))
+            .unwrap_or(EscrowFeeSnapshot {
+                fee_bps: 0,
+                fee_amount: 0,
+                collected: true,
+            })
+    }
+
+    fn save_fee_snapshot(env: &Env, escrow_id: u64, snapshot: &EscrowFeeSnapshot) {
+        let key = DataKey::PlatformFeeSnapshot(escrow_id);
+        env.storage().persistent().set(&key, snapshot);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    fn remove_fee_snapshot(env: &Env, escrow_id: u64) {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PlatformFeeSnapshot(escrow_id));
+    }
+
+    fn with_reentrancy_guard<T, F>(env: &Env, f: F) -> Result<T, EscrowError>
+    where
+        F: FnOnce() -> Result<T, EscrowError>,
+    {
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::ReentrancyLock)
+            .unwrap_or(false)
+        {
+            panic_with_error!(env, EscrowError::ReentrancyBlocked);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyLock, &true);
+        Self::bump_instance_ttl(env);
+        let result = f();
+        env.storage().instance().remove(&DataKey::ReentrancyLock);
+        result
     }
 
     // ── Milestones ────────────────────────────────────────────────────────────
@@ -407,6 +479,8 @@ impl ContractStorage {
             lock_time: meta.lock_time,
             lock_time_extension: meta.lock_time_extension,
             timelock: meta.timelock,
+            dispute_timeout_ledger: meta.dispute_timeout_ledger,
+            dispute_started_ledger: meta.dispute_started_ledger,
             brief_hash: meta.brief_hash,
             // EscrowMeta uses buyer_signers for multisig; expose via EscrowState view fields
             multisig_approvers: meta.buyer_signers.clone(),
@@ -902,6 +976,150 @@ impl EscrowContract {
         ContractStorage::initialize(&env, &admin)
     }
 
+    pub fn set_admin_multisig(
+        env: Env,
+        caller: Address,
+        admin_signers: soroban_sdk::Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        if threshold == 0 || threshold > admin_signers.len() {
+            return Err(EscrowError::InvalidAdminThreshold);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::AdminSigners, &admin_signers);
+        env.storage()
+            .instance()
+            .set(&DataKey::AdminThreshold, &threshold);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    pub fn freeze_escrow(
+        env: Env,
+        escrow_id: u64,
+        admin_signers: soroban_sdk::Vec<Address>,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::ensure_live_escrow(&env, escrow_id)?;
+
+        let configured: soroban_sdk::Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::AdminSigners)
+            .unwrap_or(soroban_sdk::Vec::new(&env));
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AdminThreshold)
+            .unwrap_or(1);
+
+        if shared_auth::require_admin_threshold(&env, &configured, threshold, &admin_signers)
+            .is_err()
+        {
+            return Err(EscrowError::InsufficientAdminSignatures);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::EscrowFrozen(escrow_id), &true);
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::EscrowFrozen(escrow_id));
+
+        env.events().publish(
+            (symbol_short!("escrow_frozen"), escrow_id),
+            (
+                admin_signers,
+                env.ledger().sequence(),
+                env.ledger().timestamp(),
+                true,
+            ),
+        );
+        Ok(())
+    }
+
+    pub fn unfreeze_escrow(
+        env: Env,
+        escrow_id: u64,
+        admin_signers: soroban_sdk::Vec<Address>,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::ensure_live_escrow(&env, escrow_id)?;
+
+        let configured: soroban_sdk::Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::AdminSigners)
+            .unwrap_or(soroban_sdk::Vec::new(&env));
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AdminThreshold)
+            .unwrap_or(1);
+
+        if shared_auth::require_admin_threshold(&env, &configured, threshold, &admin_signers)
+            .is_err()
+        {
+            return Err(EscrowError::InsufficientAdminSignatures);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::EscrowFrozen(escrow_id), &false);
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::EscrowFrozen(escrow_id));
+
+        env.events().publish(
+            (symbol_short!("escrow_unfrozen"), escrow_id),
+            (
+                admin_signers,
+                env.ledger().sequence(),
+                env.ledger().timestamp(),
+                false,
+            ),
+        );
+        Ok(())
+    }
+
+    /// Ensures any configured milestone dependency is satisfied.
+    ///
+    /// Gas overhead: one additional persistent milestone read for the prerequisite.
+    fn require_dependency_satisfied(
+        env: &Env,
+        escrow_id: u64,
+        milestone: &Milestone,
+    ) -> Result<(), EscrowError> {
+        if let Some(prereq_id) = milestone.depends_on {
+            let prereq = ContractStorage::load_milestone(env, escrow_id, prereq_id)?;
+            if prereq.status != MS_APPROVED && prereq.status != MS_RELEASED {
+                return Err(EscrowError::InvalidMilestoneState);
+            }
+        }
+        Ok(())
+    }
+
+    /// Emits an event for each milestone that becomes unlocked by `prereq_id`.
+    ///
+    /// Gas overhead: up to `milestone_count` additional milestone reads (max 20)
+    /// to discover dependents.
+    fn emit_dependents_unlocked(env: &Env, escrow_id: u64, prereq_id: u32) {
+        let meta = match ContractStorage::load_escrow_meta_with_rent(env, escrow_id) {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        for mid in 0..meta.milestone_count {
+            if let Ok(m) = ContractStorage::load_milestone(env, escrow_id, mid) {
+                if m.depends_on == Some(prereq_id) {
+                    env.events().publish(
+                        (symbol_short!("milestone_unlocked"), escrow_id),
+                        (mid, prereq_id),
+                    );
+                }
+            }
+        }
+    }
+
     // ── Oracle Configuration ──────────────────────────────────────────────────
 
     /// Set the primary price oracle contract address. Admin only.
@@ -1207,6 +1425,166 @@ impl EscrowContract {
         env.storage().instance().get(&DataKey::GovernanceContract)
     }
 
+    fn validate_fee_tiers(tiers: &Vec<FeeTier>) -> Result<(), EscrowError> {
+        if tiers.is_empty() {
+            return Err(EscrowError::InvalidEscrowAmount);
+        }
+
+        let mut last_threshold: Option<i128> = None;
+        for i in 0..tiers.len() {
+            let tier = tiers.get(i).ok_or(EscrowError::InvalidEscrowAmount)?;
+            if tier.min_total_amount < 0 || tier.fee_bps > 10_000 {
+                return Err(EscrowError::InvalidEscrowAmount);
+            }
+            if let Some(prev) = last_threshold {
+                if tier.min_total_amount <= prev {
+                    return Err(EscrowError::InvalidEscrowAmount);
+                }
+            }
+            last_threshold = Some(tier.min_total_amount);
+        }
+
+        Ok(())
+    }
+
+    fn default_platform_fee_tiers(env: &Env) -> Vec<FeeTier> {
+        let mut defaults = Vec::new(env);
+        defaults.push_back(FeeTier {
+            min_total_amount: 0,
+            fee_bps: 200,
+        });
+        defaults.push_back(FeeTier {
+            min_total_amount: 1_000,
+            fee_bps: 150,
+        });
+        defaults.push_back(FeeTier {
+            min_total_amount: 10_000,
+            fee_bps: 100,
+        });
+        defaults
+    }
+
+    #[allow(dead_code)]
+    fn calculate_platform_fee(
+        env: &Env,
+        total_amount: i128,
+    ) -> Result<EscrowFeeSnapshot, EscrowError> {
+        let tiers: Vec<FeeTier> = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformFeeTiers)
+            .unwrap_or_else(|| Self::default_platform_fee_tiers(env));
+        Self::validate_fee_tiers(&tiers)?;
+
+        let mut selected_bps = 0_u32;
+        for i in 0..tiers.len() {
+            let tier = tiers.get(i).ok_or(EscrowError::InvalidEscrowAmount)?;
+            if total_amount >= tier.min_total_amount {
+                selected_bps = tier.fee_bps;
+            }
+        }
+
+        let fee_amount = total_amount
+            .checked_mul(i128::from(selected_bps))
+            .ok_or(EscrowError::AmountMismatch)?
+            / 10_000;
+
+        Ok(EscrowFeeSnapshot {
+            fee_bps: selected_bps,
+            fee_amount,
+            collected: fee_amount == 0,
+        })
+    }
+
+    fn collect_platform_fee(
+        env: &Env,
+        escrow_id: u64,
+        token: &Address,
+        snapshot: &mut EscrowFeeSnapshot,
+    ) -> Result<i128, EscrowError> {
+        if snapshot.collected || snapshot.fee_amount == 0 {
+            return Ok(0);
+        }
+
+        let treasury: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformTreasury)
+            .ok_or(EscrowError::NotInitialized)?;
+
+        token::Client::new(env, token).transfer(
+            &env.current_contract_address(),
+            &treasury,
+            &snapshot.fee_amount,
+        );
+        snapshot.collected = true;
+        ContractStorage::save_fee_snapshot(env, escrow_id, snapshot);
+        Ok(snapshot.fee_amount)
+    }
+
+    fn settle_completion_fee_from_single_payout(
+        env: &Env,
+        escrow_id: u64,
+        token: &Address,
+        gross_amount: i128,
+    ) -> Result<(i128, i128), EscrowError> {
+        let mut snapshot = ContractStorage::load_fee_snapshot(env, escrow_id);
+        let collected_fee = Self::collect_platform_fee(env, escrow_id, token, &mut snapshot)?;
+        Ok((gross_amount, collected_fee))
+    }
+
+    fn settle_completion_fee_from_split_payout(
+        env: &Env,
+        escrow_id: u64,
+        token: &Address,
+        client_amount: i128,
+        freelancer_amount: i128,
+    ) -> Result<(i128, i128, i128), EscrowError> {
+        let mut snapshot = ContractStorage::load_fee_snapshot(env, escrow_id);
+        let collected_fee = Self::collect_platform_fee(env, escrow_id, token, &mut snapshot)?;
+        Ok((client_amount, freelancer_amount, collected_fee))
+    }
+
+    pub fn set_platform_treasury(
+        env: Env,
+        caller: Address,
+        treasury: Address,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformTreasury, &treasury);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    pub fn get_platform_treasury(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PlatformTreasury)
+    }
+
+    pub fn set_platform_fee_tiers(
+        env: Env,
+        caller: Address,
+        tiers: Vec<FeeTier>,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        Self::validate_fee_tiers(&tiers)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformFeeTiers, &tiers);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    pub fn get_platform_fee_tiers(env: Env) -> Vec<FeeTier> {
+        env.storage()
+            .instance()
+            .get(&DataKey::PlatformFeeTiers)
+            .unwrap_or_else(|| Self::default_platform_fee_tiers(&env))
+    }
+
     // ── Escrow Lifecycle ──────────────────────────────────────────────────────
 
     /// Creates a new escrow and locks funds in the contract.
@@ -1238,6 +1616,34 @@ impl EscrowContract {
             arbiter,
             deadline,
             lock_time,
+            None,
+            None,
+        )
+    }
+
+    pub fn create_escrow_dispute_timeout(
+        env: Env,
+        client: Address,
+        freelancer: Address,
+        token: Address,
+        total_amount: i128,
+        brief_hash: BytesN<32>,
+        arbiter: Option<Address>,
+        deadline: Option<u64>,
+        lock_time: Option<u64>,
+        dispute_timeout_ledger: u32,
+    ) -> Result<u64, EscrowError> {
+        Self::create_escrow_internal(
+            env,
+            client,
+            freelancer,
+            token,
+            total_amount,
+            brief_hash,
+            arbiter,
+            deadline,
+            lock_time,
+            Some(dispute_timeout_ledger),
             None,
         )
     }
@@ -1275,6 +1681,7 @@ impl EscrowContract {
             deadline,
             lock_time,
             None,
+            None,
         )?;
         events::emit_nft_gated_escrow_created(&env, escrow_id, &nft_contract, token_id);
         Ok(escrow_id)
@@ -1305,6 +1712,7 @@ impl EscrowContract {
             arbiter,
             deadline,
             lock_time,
+            None,
             Some(buyer_signers),
         )
     }
@@ -1352,6 +1760,7 @@ impl EscrowContract {
         arbiter: Option<Address>,
         deadline: Option<u64>,
         lock_time: Option<u64>,
+        dispute_timeout_ledger: Option<u32>,
         buyer_signers: Option<soroban_sdk::Vec<Address>>,
     ) -> Result<u64, EscrowError> {
         // Auth + validation before any storage I/O
@@ -1446,9 +1855,12 @@ impl EscrowContract {
                 lock_time,
                 lock_time_extension: None,
                 timelock: OptionalTimelock::None,
+                dispute_timeout_ledger,
+                dispute_started_ledger: None,
                 brief_hash,
                 rent_balance: rent_reserve,
                 last_rent_collection_at: now,
+                dispute_start_ledger: None,
             },
         );
 
@@ -1550,9 +1962,12 @@ impl EscrowContract {
             lock_time: None,
             lock_time_extension: None,
             timelock: OptionalTimelock::None,
+            dispute_timeout_ledger: None,
+            dispute_started_ledger: None,
             brief_hash,
             rent_balance: base_rent_reserve,
             last_rent_collection_at: now,
+            dispute_start_ledger: None,
         };
         ContractStorage::charge_entry_rent(&env, &mut meta, &client, 1)?;
         ContractStorage::save_escrow_meta(&env, &meta);
@@ -1617,6 +2032,7 @@ impl EscrowContract {
     ) -> Result<u32, EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         if amount <= 0 {
             return Err(EscrowError::InvalidMilestoneAmount);
@@ -1674,6 +2090,7 @@ impl EscrowContract {
                 approvals: soroban_sdk::Vec::new(&env),
                 rejection_reason: OptionalBytesN32::None,
                 price_condition: OptionalPriceCondition::None,
+                depends_on: None,
             },
         );
         ContractStorage::save_escrow_meta(&env, &meta);
@@ -1746,6 +2163,7 @@ impl EscrowContract {
                 approvals: soroban_sdk::Vec::new(env),
                 rejection_reason: OptionalBytesN32::None,
                 price_condition: OptionalPriceCondition::None,
+                depends_on: None,
             },
         );
         ContractStorage::save_escrow_meta(env, &meta);
@@ -1811,6 +2229,7 @@ impl EscrowContract {
     ) -> Result<u32, EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let n = titles.len();
         if n == 0 || n != description_hashes.len() || n != amounts.len() {
@@ -1887,6 +2306,7 @@ impl EscrowContract {
                     approvals: soroban_sdk::Vec::new(&env),
                     rejection_reason: OptionalBytesN32::None,
                     price_condition: OptionalPriceCondition::None,
+                    depends_on: None,
                 },
             );
             events::emit_milestone_added(
@@ -1948,6 +2368,7 @@ impl EscrowContract {
             if m.status != MS_SUBMITTED {
                 return Err(EscrowError::InvalidMilestoneState);
             }
+            Self::require_dependency_satisfied(&env, escrow_id, &m)?;
             total_amount = total_amount
                 .checked_add(m.amount)
                 .ok_or(EscrowError::AmountMismatch)?;
@@ -1964,6 +2385,7 @@ impl EscrowContract {
                 MS_APPROVED
             };
             ContractStorage::save_milestone(&env, escrow_id, &m);
+            Self::emit_dependents_unlocked(&env, escrow_id, mid);
 
             meta.approved_count = meta
                 .approved_count
@@ -2018,67 +2440,89 @@ impl EscrowContract {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(EscrowError::NotInitialized)?;
-        if caller != admin {
-            return Err(EscrowError::AdminOnly);
-        }
-
-        if milestone_ids.is_empty() {
-            return Err(EscrowError::InvalidMilestoneAmount);
-        }
-
-        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
-
-        let mut total_amount: i128 = 0;
-
-        // Pass 1: validate all milestones.
-        for i in 0..milestone_ids.len() {
-            let mid = milestone_ids.get(i).ok_or(EscrowError::MilestoneNotFound)?;
-            let m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
-            if m.status != MS_APPROVED {
-                return Err(EscrowError::InvalidMilestoneState);
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(EscrowError::NotInitialized)?;
+            if caller != admin {
+                return Err(EscrowError::AdminOnly);
             }
-            total_amount = total_amount
-                .checked_add(m.amount)
+
+            if milestone_ids.is_empty() {
+                return Err(EscrowError::InvalidMilestoneAmount);
+            }
+
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
+
+            let mut total_amount: i128 = 0;
+            for i in 0..milestone_ids.len() {
+                let mid = milestone_ids.get(i).ok_or(EscrowError::MilestoneNotFound)?;
+                let m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+                if m.status != MS_APPROVED {
+                    return Err(EscrowError::InvalidMilestoneState);
+                }
+                total_amount = total_amount
+                    .checked_add(m.amount)
+                    .ok_or(EscrowError::AmountMismatch)?;
+            }
+
+            for i in 0..milestone_ids.len() {
+                let mid = milestone_ids.get(i).ok_or(EscrowError::MilestoneNotFound)?;
+                let mut m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+                m.status = MS_RELEASED;
+                ContractStorage::save_milestone(&env, escrow_id, &m);
+                meta.released_count = meta
+                    .released_count
+                    .checked_add(1)
+                    .ok_or(EscrowError::AmountMismatch)?;
+                events::emit_funds_released(&env, escrow_id, &meta.freelancer, m.amount);
+            }
+
+            meta.remaining_balance = meta
+                .remaining_balance
+                .checked_sub(total_amount)
                 .ok_or(EscrowError::AmountMismatch)?;
-        }
 
-        // Pass 2: mark released.
-        for i in 0..milestone_ids.len() {
-            let mid = milestone_ids.get(i).ok_or(EscrowError::MilestoneNotFound)?;
-            let mut m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
-            m.status = MS_RELEASED;
-            ContractStorage::save_milestone(&env, escrow_id, &m);
-            meta.released_count = meta
-                .released_count
-                .checked_add(1)
-                .ok_or(EscrowError::AmountMismatch)?;
-            events::emit_funds_released(&env, escrow_id, &meta.freelancer, m.amount);
-        }
+            let completes_escrow =
+                meta.released_count == meta.milestone_count && meta.milestone_count > 0;
+            let (payout_amount, _) = if completes_escrow {
+                Self::settle_completion_fee_from_single_payout(
+                    &env,
+                    escrow_id,
+                    &meta.token,
+                    total_amount,
+                )?
+            } else {
+                (total_amount, 0)
+            };
 
-        // Single transfer.
-        meta.remaining_balance = meta
-            .remaining_balance
-            .checked_sub(total_amount)
-            .ok_or(EscrowError::AmountMismatch)?;
-        token::Client::new(&env, &meta.token).transfer(
-            &env.current_contract_address(),
-            &meta.freelancer,
-            &total_amount,
-        );
+            token::Client::new(&env, &meta.token).transfer(
+                &env.current_contract_address(),
+                &meta.freelancer,
+                &payout_amount,
+            );
 
-        if meta.released_count == meta.milestone_count && meta.milestone_count > 0 {
-            meta.status = EscrowStatus::Completed;
-            events::emit_escrow_completed(&env, escrow_id);
-        }
+            if completes_escrow {
+                meta.status = EscrowStatus::Completed;
+                Self::remove_from_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Active),
+                    escrow_id,
+                );
+                Self::append_to_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+                    escrow_id,
+                );
+                events::emit_escrow_completed(&env, escrow_id);
+            }
 
-        ContractStorage::save_escrow_meta(&env, &meta);
-        Ok(total_amount)
+            ContractStorage::save_escrow_meta(&env, &meta);
+            Ok(payout_amount)
+        })
     }
 
     /// Releases all recurring payments that are due at the current ledger timestamp.
@@ -2152,6 +2596,7 @@ impl EscrowContract {
                     approvals: soroban_sdk::Vec::new(&env),
                     rejection_reason: OptionalBytesN32::None,
                     price_condition: OptionalPriceCondition::None,
+                    depends_on: None,
                 },
             );
 
@@ -2218,6 +2663,7 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         // Load meta only to verify freelancer identity and track submitted_count.
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
@@ -2243,6 +2689,8 @@ impl EscrowContract {
         if milestone.status != MS_PENDING && milestone.status != MS_REJECTED {
             return Err(EscrowError::InvalidMilestoneState);
         }
+
+        Self::require_dependency_satisfied(&env, escrow_id, &milestone)?;
 
         milestone.status = MS_SUBMITTED;
         milestone.submitted_at = Some(env.ledger().timestamp());
@@ -2273,6 +2721,7 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
         if meta.status != EscrowStatus::Active {
@@ -2291,6 +2740,8 @@ impl EscrowContract {
         if milestone.status != MS_SUBMITTED {
             return Err(EscrowError::InvalidMilestoneState);
         }
+
+        Self::require_dependency_satisfied(&env, escrow_id, &milestone)?;
 
         let now = env.ledger().timestamp();
         let amount = milestone.amount;
@@ -2325,6 +2776,7 @@ impl EscrowContract {
         }
 
         ContractStorage::save_milestone(&env, escrow_id, &milestone);
+        Self::emit_dependents_unlocked(&env, escrow_id, milestone_id);
 
         if meta.approved_count == meta.milestone_count
             && meta.milestone_count > 0
@@ -2361,6 +2813,7 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
         if caller != meta.client {
@@ -2510,74 +2963,90 @@ impl EscrowContract {
         ContractStorage::require_initialized(&env)?;
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(EscrowError::NotInitialized)?;
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(EscrowError::NotInitialized)?;
+            let mut milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
+            if milestone.status != MS_APPROVED {
+                return Err(EscrowError::InvalidMilestoneState);
+            }
+            Self::require_dependency_satisfied(&env, escrow_id, &milestone)?;
 
-        let mut milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
-        if milestone.status != MS_APPROVED {
-            return Err(EscrowError::InvalidMilestoneState);
-        }
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            let is_admin = caller == admin;
+            let timelock_ok =
+                ContractStorage::check_timelock_expired(&env, escrow_id, meta.timelock.clone())
+                    .is_ok();
 
-        let is_admin = caller == admin;
-        let timelock_ok =
-            ContractStorage::check_timelock_expired(&env, escrow_id, meta.timelock.clone()).is_ok();
+            if !is_admin && !timelock_ok {
+                return Err(EscrowError::TimelockNotExpired);
+            }
 
-        if !is_admin && !timelock_ok {
-            return Err(EscrowError::TimelockNotExpired);
-        }
+            ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
-        // Legacy lock_time also required if present.
-        ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
+            let amount = milestone.amount;
+            let completes_escrow =
+                meta.released_count + 1 == meta.milestone_count && meta.milestone_count > 0;
+            let (payout_amount, _) = if completes_escrow {
+                Self::settle_completion_fee_from_single_payout(
+                    &env,
+                    escrow_id,
+                    &meta.token,
+                    amount,
+                )?
+            } else {
+                (amount, 0)
+            };
 
-        let amount = milestone.amount;
-
-        token::Client::new(&env, &meta.token).transfer(
-            &env.current_contract_address(),
-            &meta.freelancer,
-            &amount,
-        );
-
-        milestone.status = MS_RELEASED;
-        ContractStorage::save_milestone(&env, escrow_id, &milestone);
-
-        meta.remaining_balance = meta
-            .remaining_balance
-            .checked_sub(amount)
-            .ok_or(EscrowError::AmountMismatch)?;
-        meta.released_count = meta
-            .released_count
-            .checked_add(1)
-            .ok_or(EscrowError::AmountMismatch)?;
-
-        if meta.released_count == meta.milestone_count && meta.milestone_count > 0 {
-            meta.status = EscrowStatus::Completed;
-            Self::remove_from_vec_index(
-                &env,
-                &DataKey::EscrowsByStatus(EscrowStatus::Active),
-                escrow_id,
+            token::Client::new(&env, &meta.token).transfer(
+                &env.current_contract_address(),
+                &meta.freelancer,
+                &payout_amount,
             );
-            Self::append_to_vec_index(
-                &env,
-                &DataKey::EscrowsByStatus(EscrowStatus::Completed),
-                escrow_id,
-            );
-            events::emit_escrow_completed(&env, escrow_id);
-        }
 
-        ContractStorage::save_escrow_meta(&env, &meta);
+            milestone.status = MS_RELEASED;
+            ContractStorage::save_milestone(&env, escrow_id, &milestone);
+            Self::emit_dependents_unlocked(&env, escrow_id, milestone_id);
 
-        events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
-        if timelock_ok && !is_admin {
-            events::emit_timelock_released(&env, escrow_id, env.ledger().timestamp());
-        }
+            meta.remaining_balance = meta
+                .remaining_balance
+                .checked_sub(amount)
+                .ok_or(EscrowError::AmountMismatch)?;
+            meta.released_count = meta
+                .released_count
+                .checked_add(1)
+                .ok_or(EscrowError::AmountMismatch)?;
 
-        Ok(())
+            if meta.released_count == meta.milestone_count && meta.milestone_count > 0 {
+                meta.status = EscrowStatus::Completed;
+                Self::remove_from_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Active),
+                    escrow_id,
+                );
+                Self::append_to_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+                    escrow_id,
+                );
+                events::emit_escrow_completed(&env, escrow_id);
+            }
+
+            ContractStorage::save_escrow_meta(&env, &meta);
+
+            events::emit_funds_released(&env, escrow_id, &meta.freelancer, payout_amount);
+            if timelock_ok && !is_admin {
+                events::emit_timelock_released(&env, escrow_id, env.ledger().timestamp());
+            }
+
+            Ok(())
+        })
     }
 
     /// Transfers the client role to a new address.
@@ -2620,45 +3089,101 @@ impl EscrowContract {
     pub fn cancel_escrow(env: Env, caller: Address, escrow_id: u64) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            if caller != meta.client {
+                return Err(EscrowError::ClientOnly);
+            }
+            if meta.status != EscrowStatus::Active {
+                return Err(EscrowError::EscrowNotActive);
+            }
 
-        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::ClientOnly);
-        }
-        if meta.status != EscrowStatus::Active {
-            return Err(EscrowError::EscrowNotActive);
-        }
+            // Stage-based cancellation split:
+            // - Deduct platform fee from the remaining escrow balance first.
+            // - Pay any Approved (but not yet Released) milestone amounts to the freelancer.
+            // - Refund the rest to the client.
+            let mut snapshot = Self::calculate_platform_fee(&env, meta.total_amount)?;
+            let mut fee_amount = snapshot.fee_amount;
+            if fee_amount > meta.remaining_balance {
+                fee_amount = meta.remaining_balance;
+            }
 
-        // O(1) check: if any milestone is Submitted or Approved, block cancellation.
-        // `submitted_count` and `approved_count` are maintained incrementally on
-        // every submit/approve/reject, so no storage iteration is needed here.
-        if meta.submitted_count > 0 || meta.approved_count > meta.released_count {
-            return Err(EscrowError::PendingFunds);
-        }
+            let mut approved_due: i128 = 0;
+            for mid in 0..meta.milestone_count {
+                let m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+                if m.status == MS_APPROVED {
+                    approved_due = approved_due
+                        .checked_add(m.amount)
+                        .ok_or(EscrowError::AmountMismatch)?;
+                }
+            }
 
-        let returned = meta.remaining_balance;
-        token::Client::new(&env, &meta.token).transfer(
-            &env.current_contract_address(),
-            &meta.client,
-            &returned,
-        );
+            let available_after_fee = meta
+                .remaining_balance
+                .checked_sub(fee_amount)
+                .ok_or(EscrowError::AmountMismatch)?;
+            if approved_due > available_after_fee {
+                return Err(EscrowError::AmountMismatch);
+            }
 
-        meta.remaining_balance = 0;
-        meta.status = EscrowStatus::Cancelled;
-        Self::remove_from_vec_index(
-            &env,
-            &DataKey::EscrowsByStatus(EscrowStatus::Active),
-            escrow_id,
-        );
-        Self::append_to_vec_index(
-            &env,
-            &DataKey::EscrowsByStatus(EscrowStatus::Cancelled),
-            escrow_id,
-        );
-        ContractStorage::save_escrow_meta(&env, &meta);
+            let freelancer_payout = approved_due;
+            let client_refund = available_after_fee
+                .checked_sub(approved_due)
+                .ok_or(EscrowError::AmountMismatch)?;
 
-        events::emit_escrow_cancelled(&env, escrow_id, returned);
-        Ok(())
+            if fee_amount > 0 {
+                let treasury: Address = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::PlatformTreasury)
+                    .ok_or(EscrowError::NotInitialized)?;
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &treasury,
+                    &fee_amount,
+                );
+                snapshot.collected = true;
+            }
+
+            if freelancer_payout > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.freelancer,
+                    &freelancer_payout,
+                );
+            }
+
+            if client_refund > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.client,
+                    &client_refund,
+                );
+            }
+
+            meta.remaining_balance = 0;
+            meta.status = EscrowStatus::Cancelled;
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Active),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Cancelled),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
+            ContractStorage::remove_fee_snapshot(&env, escrow_id);
+
+            env.events().publish(
+                (symbol_short!("escrow_cancelled_breakdown"), escrow_id),
+                (freelancer_payout, client_refund, fee_amount),
+            );
+            events::emit_escrow_cancelled(&env, escrow_id, client_refund);
+            Ok(())
+        })
     }
 
     /// Splits the unallocated balance of an active escrow into two new child escrows.
@@ -2701,6 +3226,7 @@ impl EscrowContract {
             meta.arbiter.clone(),
             meta.deadline,
             meta.lock_time,
+            meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
         )?;
 
@@ -2715,6 +3241,7 @@ impl EscrowContract {
             meta.arbiter.clone(),
             meta.deadline,
             meta.lock_time,
+            meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
         )?;
 
@@ -2737,36 +3264,37 @@ impl EscrowContract {
     pub fn partial_cancel(env: Env, caller: Address, escrow_id: u64) -> Result<i128, EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            if caller != meta.client {
+                return Err(EscrowError::ClientOnly);
+            }
+            if meta.status != EscrowStatus::Active {
+                return Err(EscrowError::EscrowNotActive);
+            }
 
-        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::ClientOnly);
-        }
-        if meta.status != EscrowStatus::Active {
-            return Err(EscrowError::EscrowNotActive);
-        }
+            let unallocated = meta.remaining_balance.saturating_sub(meta.allocated_amount);
+            if unallocated <= 0 {
+                return Ok(0);
+            }
 
-        // Calculate unallocated balance (remaining - allocated)
-        let unallocated = meta.remaining_balance.saturating_sub(meta.allocated_amount);
-        if unallocated <= 0 {
-            return Ok(0);
-        }
+            token::Client::new(&env, &meta.token).transfer(
+                &env.current_contract_address(),
+                &meta.client,
+                &unallocated,
+            );
 
-        // Refund unallocated amount to client
-        token::Client::new(&env, &meta.token).transfer(
-            &env.current_contract_address(),
-            &meta.client,
-            &unallocated,
-        );
+            meta.remaining_balance = meta
+                .remaining_balance
+                .checked_sub(unallocated)
+                .ok_or(EscrowError::AmountMismatch)?;
+            ContractStorage::save_escrow_meta(&env, &meta);
 
-        // Update remaining balance
-        meta.remaining_balance -= unallocated;
-        ContractStorage::save_escrow_meta(&env, &meta);
+            events::emit_partial_cancellation(&env, escrow_id, unallocated);
 
-        // Emit partial cancellation event
-        events::emit_partial_cancellation(&env, escrow_id, unallocated);
-
-        Ok(unallocated)
+            Ok(unallocated)
+        })
     }
 
     /// Starts a timed release window for the escrow.
@@ -2782,6 +3310,7 @@ impl EscrowContract {
         caller.require_auth();
         ContractStorage::require_initialized(&env)?;
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         if duration_ledger == 0 || duration_ledger > 30 * 24 * 60 * 60 {
             return Err(EscrowError::InvalidTimelock);
@@ -2865,6 +3394,7 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
         if caller != meta.client && caller != meta.freelancer {
@@ -2878,6 +3408,8 @@ impl EscrowContract {
         }
 
         meta.status = EscrowStatus::Disputed;
+        meta.dispute_started_ledger = Some(env.ledger().sequence());
+        meta.dispute_start_ledger = Some(env.ledger().timestamp());
         Self::remove_from_vec_index(
             &env,
             &DataKey::EscrowsByStatus(EscrowStatus::Active),
@@ -2912,6 +3444,87 @@ impl EscrowContract {
         Ok(())
     }
 
+    pub fn claim_dispute_timeout(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            if caller != meta.client && caller != meta.freelancer {
+                return Err(EscrowError::Unauthorized);
+            }
+            if meta.status != EscrowStatus::Disputed {
+                return Err(EscrowError::EscrowNotDisputed);
+            }
+
+            let timeout = meta
+                .dispute_timeout_ledger
+                .ok_or(EscrowError::DisputeTimeoutNotReached)?;
+            let started = meta
+                .dispute_started_ledger
+                .ok_or(EscrowError::DisputeTimeoutNotReached)?;
+            let deadline = started
+                .checked_add(timeout)
+                .ok_or(EscrowError::AmountMismatch)?;
+            if env.ledger().sequence() < deadline {
+                return Err(EscrowError::DisputeTimeoutNotReached);
+            }
+
+            let client_amount = meta.remaining_balance / 2;
+            let freelancer_amount = meta
+                .remaining_balance
+                .checked_sub(client_amount)
+                .ok_or(EscrowError::AmountMismatch)?;
+            let (client_payout, freelancer_payout, _) =
+                Self::settle_completion_fee_from_split_payout(
+                    &env,
+                    escrow_id,
+                    &meta.token,
+                    client_amount,
+                    freelancer_amount,
+                )?;
+
+            let token = token::Client::new(&env, &meta.token);
+            let contract_addr = env.current_contract_address();
+            if client_payout > 0 {
+                token.transfer(&contract_addr, &meta.client, &client_payout);
+            }
+            if freelancer_payout > 0 {
+                token.transfer(&contract_addr, &meta.freelancer, &freelancer_payout);
+            }
+
+            meta.remaining_balance = 0;
+            meta.status = EscrowStatus::Completed;
+            meta.dispute_started_ledger = None;
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Disputed),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
+
+            events::emit_dispute_timeout_claimed(
+                &env,
+                escrow_id,
+                &caller,
+                client_payout,
+                freelancer_payout,
+            );
+            events::emit_escrow_completed(&env, escrow_id);
+            Ok(())
+        })
+    }
+
     /// Resolves a dispute by distributing remaining funds.
     ///
     /// # Gas notes
@@ -2926,53 +3539,69 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            let is_arbiter = meta.arbiter.as_ref().is_some_and(|a| *a == caller);
+            if !is_arbiter {
+                ContractStorage::require_admin(&env, &caller)?;
+            }
 
-        // Caller must be arbiter or admin
-        let is_arbiter = meta.arbiter.as_ref().is_some_and(|a| *a == caller);
-        if !is_arbiter {
-            ContractStorage::require_admin(&env, &caller)?;
-        }
+            if meta.status != EscrowStatus::Disputed {
+                return Err(EscrowError::EscrowNotDisputed);
+            }
+            if client_amount + freelancer_amount != meta.remaining_balance {
+                return Err(EscrowError::AmountMismatch);
+            }
 
-        if meta.status != EscrowStatus::Disputed {
-            return Err(EscrowError::EscrowNotDisputed);
-        }
-        if client_amount + freelancer_amount != meta.remaining_balance {
-            return Err(EscrowError::AmountMismatch);
-        }
+            let (client_payout, freelancer_payout, _) =
+                Self::settle_completion_fee_from_split_payout(
+                    &env,
+                    escrow_id,
+                    &meta.token,
+                    client_amount,
+                    freelancer_amount,
+                )?;
 
-        let token = token::Client::new(&env, &meta.token);
-        let contract_addr = env.current_contract_address();
+            let token = token::Client::new(&env, &meta.token);
+            let contract_addr = env.current_contract_address();
 
-        if client_amount > 0 {
-            token.transfer(&contract_addr, &meta.client, &client_amount);
-        }
-        if freelancer_amount > 0 {
-            token.transfer(&contract_addr, &meta.freelancer, &freelancer_amount);
-        }
+            if client_payout > 0 {
+                token.transfer(&contract_addr, &meta.client, &client_payout);
+            }
+            if freelancer_payout > 0 {
+                token.transfer(&contract_addr, &meta.freelancer, &freelancer_payout);
+            }
 
-        meta.remaining_balance = 0;
-        meta.status = EscrowStatus::Completed;
-        Self::remove_from_vec_index(
-            &env,
-            &DataKey::EscrowsByStatus(EscrowStatus::Disputed),
-            escrow_id,
-        );
-        Self::append_to_vec_index(
-            &env,
-            &DataKey::EscrowsByStatus(EscrowStatus::Completed),
-            escrow_id,
-        );
-        ContractStorage::save_escrow_meta(&env, &meta);
+            meta.remaining_balance = 0;
+            meta.status = EscrowStatus::Completed;
+            meta.dispute_started_ledger = None;
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Disputed),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
 
-        events::emit_dispute_resolved(&env, escrow_id, client_amount, freelancer_amount);
+            events::emit_dispute_resolved(&env, escrow_id, client_payout, freelancer_payout);
 
-        // Update reputation for both parties
-        Self::_update_reputation_internal(&env, &meta.client, false, true, client_amount);
-        Self::_update_reputation_internal(&env, &meta.freelancer, false, true, freelancer_amount);
+            Self::_update_reputation_internal(&env, &meta.client, false, true, client_payout);
+            Self::_update_reputation_internal(
+                &env,
+                &meta.freelancer,
+                false,
+                true,
+                freelancer_payout,
+            );
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Escalates a disputed escrow to governance for DAO resolution.
@@ -3046,6 +3675,135 @@ impl EscrowContract {
         );
 
         Ok(proposal_id)
+    }
+
+    // ── Oracle Fallback Dispute Resolution ───────────────────────────────────
+
+    /// Admin-only: register the trusted oracle Ed25519 public key used to
+    /// verify fallback resolution payloads.
+    pub fn set_trusted_oracle_key(
+        env: Env,
+        caller: Address,
+        pubkey: BytesN<32>,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        env.storage()
+            .instance()
+            .set(&types::DataKey::TrustedOracleKey, &pubkey);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Resolve a stalled dispute via a signed oracle payload.
+    ///
+    /// Callable by anyone once `dispute_start_ledger + grace_period_seconds`
+    /// has elapsed without the assigned arbiter acting.
+    ///
+    /// # Verification steps
+    /// 1. Escrow must be `Disputed` and grace period must have elapsed.
+    /// 2. Payload `expires_at` must be in the future (not stale).
+    /// 3. `client_bps + freelancer_bps` must equal 10 000.
+    /// 4. Ed25519 signature over the canonical message must verify against
+    ///    the stored trusted oracle public key.
+    ///
+    /// On success, funds are distributed and the escrow is marked Completed.
+    pub fn oracle_resolve_dispute(
+        env: Env,
+        escrow_id: u64,
+        payload: types::OracleResolutionPayload,
+        grace_period_seconds: u64,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_not_paused(&env)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+        if meta.status != EscrowStatus::Disputed {
+            return Err(EscrowError::EscrowNotDisputed);
+        }
+
+        // 1. Grace period check
+        let dispute_start = meta
+            .dispute_start_ledger
+            .ok_or(EscrowError::DisputeStartNotRecorded)?;
+        let now = env.ledger().timestamp();
+        if now < dispute_start.saturating_add(grace_period_seconds) {
+            return Err(EscrowError::GracePeriodNotElapsed);
+        }
+
+        // 2. Payload freshness
+        if now > payload.expires_at {
+            return Err(EscrowError::OraclePayloadStale);
+        }
+
+        // 3. Payout percentages must sum to 10 000 bps
+        if payload.client_bps.saturating_add(payload.freelancer_bps) != 10_000 {
+            return Err(EscrowError::OraclePayoutInvalid);
+        }
+
+        // 4. Signature verification
+        // Canonical message: escrow_id (8 bytes LE) || client_bps (4 bytes LE)
+        //                  || freelancer_bps (4 bytes LE) || expires_at (8 bytes LE)
+        let trusted_key: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&types::DataKey::TrustedOracleKey)
+            .ok_or(EscrowError::OracleNotConfigured)?;
+
+        if payload.oracle_pubkey != trusted_key {
+            return Err(EscrowError::OracleSignatureInvalid);
+        }
+
+        // Build the 24-byte message buffer
+        let mut msg = [0u8; 24];
+        msg[0..8].copy_from_slice(&payload.escrow_id.to_le_bytes());
+        msg[8..12].copy_from_slice(&payload.client_bps.to_le_bytes());
+        msg[12..16].copy_from_slice(&payload.freelancer_bps.to_le_bytes());
+        msg[16..24].copy_from_slice(&payload.expires_at.to_le_bytes());
+
+        env.crypto().ed25519_verify(
+            &payload.oracle_pubkey,
+            &soroban_sdk::Bytes::from_slice(&env, &msg),
+            &payload.signature,
+        );
+
+        // 5. Distribute funds
+        let total = meta.remaining_balance;
+        let client_amount = (total * i128::from(payload.client_bps)) / 10_000;
+        let freelancer_amount = total - client_amount;
+
+        let token = token::Client::new(&env, &meta.token);
+        let contract_addr = env.current_contract_address();
+
+        if client_amount > 0 {
+            token.transfer(&contract_addr, &meta.client, &client_amount);
+        }
+        if freelancer_amount > 0 {
+            token.transfer(&contract_addr, &meta.freelancer, &freelancer_amount);
+        }
+
+        meta.remaining_balance = 0;
+        meta.status = EscrowStatus::Completed;
+        ContractStorage::save_escrow_meta(&env, &meta);
+
+        // Update status index: Disputed → Completed
+        Self::remove_from_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::Disputed),
+            escrow_id,
+        );
+        Self::append_to_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+            escrow_id,
+        );
+
+        events::emit_dispute_resolved(&env, escrow_id, client_amount, freelancer_amount);
+
+        Self::_update_reputation_internal(&env, &meta.client, false, true, client_amount);
+        Self::_update_reputation_internal(&env, &meta.freelancer, false, true, freelancer_amount);
+
+        Ok(())
     }
 
     // ── Reputation ────────────────────────────────────────────────────────────
@@ -3289,6 +4047,7 @@ impl EscrowContract {
             arbiter.clone(),
             deadline,
             None, // lock_time
+            None, // dispute_timeout_ledger
             None, // buyer_signers
         )?;
 
@@ -3756,84 +4515,70 @@ impl EscrowContract {
     pub fn execute_cancellation(env: Env, escrow_id: u64) -> Result<(), EscrowError> {
         ContractStorage::require_initialized(&env)?;
         ContractStorage::require_not_paused(&env)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            let request = ContractStorage::load_cancellation_request(&env, escrow_id)?;
 
-        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        let request = ContractStorage::load_cancellation_request(&env, escrow_id)?;
+            let now = env.ledger().timestamp();
+            if !request.counterparty_approved && now < request.dispute_deadline {
+                return Err(EscrowError::CancelPeriodActive);
+            }
 
-        // Check if dispute period has passed (skipped when counterparty already approved)
-        let now = env.ledger().timestamp();
-        if !request.counterparty_approved && now < request.dispute_deadline {
-            return Err(EscrowError::CancelPeriodActive);
-        }
+            if request.disputed {
+                return Err(EscrowError::CancellationDisputed);
+            }
 
-        // Check if disputed
-        if request.disputed {
-            return Err(EscrowError::CancellationDisputed);
-        }
+            let slash_amount = Self::calculate_slash_amount(meta.remaining_balance);
+            let client_amount = meta.remaining_balance - slash_amount;
 
-        // Calculate slash amount
-        let slash_amount = Self::calculate_slash_amount(meta.remaining_balance);
-        let client_amount = meta.remaining_balance - slash_amount;
+            let slash_recipient = if request.requester == meta.client {
+                meta.freelancer.clone()
+            } else {
+                meta.client.clone()
+            };
 
-        // Determine who gets the slash (the non-requesting party)
-        let slash_recipient = if request.requester == meta.client {
-            meta.freelancer.clone()
-        } else {
-            meta.client.clone()
-        };
+            let reason = String::from_str(&env, "Escrow cancellation");
+            Self::apply_slash(
+                &env,
+                &request.requester,
+                &slash_recipient,
+                slash_amount,
+                &reason,
+                escrow_id,
+            );
 
-        // Apply slash (records reputation hit + slash record; funds held in contract)
-        let reason = String::from_str(&env, "Escrow cancellation");
-        Self::apply_slash(
-            &env,
-            &request.requester,
-            &slash_recipient,
-            slash_amount,
-            &reason,
-            escrow_id,
-        );
+            let token = token::Client::new(&env, &meta.token);
+            let contract_addr = env.current_contract_address();
 
-        // Transfer funds
-        let token = token::Client::new(&env, &meta.token);
-        let contract_addr = env.current_contract_address();
+            if client_amount > 0 {
+                token.transfer(&contract_addr, &request.requester, &client_amount);
+            }
 
-        // NOTE: slash_amount is intentionally held in the contract until the
-        // slash dispute period expires. Call `finalize_slash` after
-        // SLASH_DISPUTE_PERIOD to release it to the recipient, or
-        // `dispute_slash` + `resolve_slash_dispute` to reverse it.
+            meta.status = EscrowStatus::Cancelled;
+            meta.remaining_balance = 0;
+            Self::remove_from_address_index(
+                &env,
+                &DataKey::CancellationsByRequester(request.requester.clone()),
+                escrow_id,
+            );
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::CancellationPending),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Cancelled),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
+            ContractStorage::remove_fee_snapshot(&env, escrow_id);
+            ContractStorage::remove_cancellation_request(&env, escrow_id);
 
-        // Return remaining funds (after slash) to requester
-        if client_amount > 0 {
-            token.transfer(&contract_addr, &request.requester, &client_amount);
-        }
+            events::emit_cancellation_executed(&env, escrow_id, client_amount, slash_amount);
 
-        // Update escrow status
-        meta.status = EscrowStatus::Cancelled;
-        meta.remaining_balance = 0;
-        Self::remove_from_address_index(
-            &env,
-            &DataKey::CancellationsByRequester(request.requester.clone()),
-            escrow_id,
-        );
-        Self::remove_from_vec_index(
-            &env,
-            &DataKey::EscrowsByStatus(EscrowStatus::CancellationPending),
-            escrow_id,
-        );
-        Self::append_to_vec_index(
-            &env,
-            &DataKey::EscrowsByStatus(EscrowStatus::Cancelled),
-            escrow_id,
-        );
-        ContractStorage::save_escrow_meta(&env, &meta);
-
-        // Clean up cancellation request
-        ContractStorage::remove_cancellation_request(&env, escrow_id);
-
-        // Emit event
-        events::emit_cancellation_executed(&env, escrow_id, client_amount, slash_amount);
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Disputes a cancellation request.
@@ -4253,6 +4998,346 @@ mod tests {
 
     fn advance(env: &Env, seconds: u64) {
         env.ledger().with_mut(|ledger| ledger.timestamp += seconds);
+    }
+
+    fn set_depends_on(
+        env: &Env,
+        contract_id: &Address,
+        escrow_id: u64,
+        milestone_id: u32,
+        prereq: u32,
+    ) {
+        env.as_contract(contract_id, || {
+            let mut m = ContractStorage::load_milestone(env, escrow_id, milestone_id).unwrap();
+            m.depends_on = Some(prereq);
+            ContractStorage::save_milestone(env, escrow_id, &m);
+        });
+    }
+
+    fn set_milestone_status(
+        env: &Env,
+        contract_id: &Address,
+        escrow_id: u64,
+        milestone_id: u32,
+        status: MilestoneStatus,
+    ) {
+        env.as_contract(contract_id, || {
+            let mut m = ContractStorage::load_milestone(env, escrow_id, milestone_id).unwrap();
+            m.status = status;
+            ContractStorage::save_milestone(env, escrow_id, &m);
+        });
+    }
+
+    #[test]
+    fn test_freeze_requires_threshold_and_blocks_operations() {
+        let (env, admin, _contract_id, client) = setup();
+        client.initialize(&admin);
+
+        let admin2 = Address::generate(&env);
+        let admin3 = Address::generate(&env);
+
+        let mut admins: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&env);
+        admins.push_back(admin.clone());
+        admins.push_back(admin2.clone());
+        admins.push_back(admin3.clone());
+        client.set_admin_multisig(&admin, &admins, &2_u32);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+
+        token_admin.mint(
+            &escrow_client,
+            &(1_000_i128 + ContractStorage::reserve_for_entries(1)),
+        );
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &1_000_i128,
+            &BytesN::from_array(&env, &[90; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        // Freeze with insufficient signers should fail
+        let mut one: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&env);
+        one.push_back(admin.clone());
+        assert_eq!(
+            client
+                .try_freeze_escrow(&escrow_id, &one)
+                .unwrap_err()
+                .unwrap(),
+            EscrowError::InsufficientAdminSignatures
+        );
+
+        // Freeze with 2-of-3 should succeed
+        let mut two: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&env);
+        two.push_back(admin.clone());
+        two.push_back(admin2.clone());
+        client.freeze_escrow(&escrow_id, &two);
+
+        // Mutating operation should be blocked
+        let err = client
+            .try_add_milestone(
+                &escrow_client,
+                &escrow_id,
+                &String::from_str(&env, "Blocked"),
+                &BytesN::from_array(&env, &[1; 32]),
+                &1_000_i128,
+            )
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(err, EscrowError::EscrowFrozen);
+
+        // Unfreeze with insufficient signers rejected
+        assert_eq!(
+            client
+                .try_unfreeze_escrow(&escrow_id, &one)
+                .unwrap_err()
+                .unwrap(),
+            EscrowError::InsufficientAdminSignatures
+        );
+
+        // Unfreeze with threshold signers restores operations
+        client.unfreeze_escrow(&escrow_id, &two);
+
+        let mid = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "Ok"),
+            &BytesN::from_array(&env, &[2; 32]),
+            &1_000_i128,
+        );
+        assert_eq!(mid, 0_u32);
+    }
+
+    #[test]
+    fn test_dependency_linear_chain_activation_rejected_until_satisfied() {
+        let (env, admin, contract_id, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+
+        token_admin.mint(
+            &escrow_client,
+            &(3_000_i128 + (2 * ContractStorage::reserve_for_entries(1))),
+        );
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &3_000_i128,
+            &BytesN::from_array(&env, &[50; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let a = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "A"),
+            &BytesN::from_array(&env, &[1; 32]),
+            &1_000_i128,
+        );
+        let b = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "B"),
+            &BytesN::from_array(&env, &[2; 32]),
+            &1_000_i128,
+        );
+        let c = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "C"),
+            &BytesN::from_array(&env, &[3; 32]),
+            &1_000_i128,
+        );
+
+        set_depends_on(&env, &contract_id, escrow_id, b, a);
+        set_depends_on(&env, &contract_id, escrow_id, c, b);
+
+        // Cannot submit B before A is approved/released
+        let err = client
+            .try_submit_milestone(&freelancer, &escrow_id, &b)
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(err, EscrowError::InvalidMilestoneState);
+
+        // Submit and approve A
+        client.submit_milestone(&freelancer, &escrow_id, &a);
+        client.approve_milestone(&escrow_client, &escrow_id, &a);
+
+        // Now B can be submitted
+        client.submit_milestone(&freelancer, &escrow_id, &b);
+    }
+
+    #[test]
+    fn test_dependency_branched_dependencies() {
+        let (env, admin, contract_id, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+
+        token_admin.mint(
+            &escrow_client,
+            &(4_000_i128 + (2 * ContractStorage::reserve_for_entries(1))),
+        );
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &4_000_i128,
+            &BytesN::from_array(&env, &[51; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let a = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "A"),
+            &BytesN::from_array(&env, &[4; 32]),
+            &1_000_i128,
+        );
+        let b = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "B"),
+            &BytesN::from_array(&env, &[5; 32]),
+            &1_000_i128,
+        );
+        let c = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "C"),
+            &BytesN::from_array(&env, &[6; 32]),
+            &1_000_i128,
+        );
+        let d = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "D"),
+            &BytesN::from_array(&env, &[7; 32]),
+            &1_000_i128,
+        );
+
+        // B and C both depend on A; D depends on B
+        set_depends_on(&env, &contract_id, escrow_id, b, a);
+        set_depends_on(&env, &contract_id, escrow_id, c, a);
+        set_depends_on(&env, &contract_id, escrow_id, d, b);
+
+        // B and C blocked until A approved
+        assert_eq!(
+            client
+                .try_submit_milestone(&freelancer, &escrow_id, &b)
+                .unwrap_err()
+                .unwrap(),
+            EscrowError::InvalidMilestoneState
+        );
+        assert_eq!(
+            client
+                .try_submit_milestone(&freelancer, &escrow_id, &c)
+                .unwrap_err()
+                .unwrap(),
+            EscrowError::InvalidMilestoneState
+        );
+
+        client.submit_milestone(&freelancer, &escrow_id, &a);
+        client.approve_milestone(&escrow_client, &escrow_id, &a);
+
+        // After A approved, B and C can submit; D still blocked until B approved
+        client.submit_milestone(&freelancer, &escrow_id, &b);
+        client.submit_milestone(&freelancer, &escrow_id, &c);
+        assert_eq!(
+            client
+                .try_submit_milestone(&freelancer, &escrow_id, &d)
+                .unwrap_err()
+                .unwrap(),
+            EscrowError::InvalidMilestoneState
+        );
+    }
+
+    #[test]
+    fn test_emits_unlocked_event_when_prereq_completes() {
+        let (env, admin, contract_id, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+
+        token_admin.mint(
+            &escrow_client,
+            &(2_000_i128 + (2 * ContractStorage::reserve_for_entries(1))),
+        );
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &2_000_i128,
+            &BytesN::from_array(&env, &[52; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let a = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "A"),
+            &BytesN::from_array(&env, &[8; 32]),
+            &1_000_i128,
+        );
+        let b = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "B"),
+            &BytesN::from_array(&env, &[9; 32]),
+            &1_000_i128,
+        );
+
+        set_depends_on(&env, &contract_id, escrow_id, b, a);
+
+        client.submit_milestone(&freelancer, &escrow_id, &a);
+        client.approve_milestone(&escrow_client, &escrow_id, &a);
+
+        let all_events = env.events().all();
+        assert!(
+            all_events.iter().any(|e| {
+                let topic = &e.0;
+                topic == &(symbol_short!("milestone_unlocked"), escrow_id).into_val(&env)
+            }),
+            "expected milestone_unlocked event"
+        );
     }
 
     #[test]
@@ -4741,11 +5826,13 @@ mod tests {
 
     #[test]
     fn test_cancel_escrow() {
-        let (env, admin, _, client) = setup();
+        let (env, admin, contract_id, client) = setup();
         client.initialize(&admin);
 
         let escrow_client = Address::generate(&env);
         let freelancer = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        client.set_platform_treasury(&admin, &treasury);
         let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
         let token_id = token_contract.address();
         let token_admin = token::StellarAssetClient::new(&env, &token_id);
@@ -4773,7 +5860,80 @@ mod tests {
 
         let state = client.get_escrow(&escrow_id);
         assert_eq!(state.status, EscrowStatus::Cancelled);
-        assert_eq!(token_client.balance(&escrow_client), 200_i128);
+        // Default fee tier for 200 is 200 bps => 4 fee.
+        assert_eq!(token_client.balance(&treasury), 4_i128);
+        assert_eq!(token_client.balance(&escrow_client), 196_i128);
+        assert_eq!(token_client.balance(&freelancer), 0_i128);
+
+        // Verify cancellation breakdown event was emitted
+        let all_events = env.events().all();
+        assert!(
+            all_events.iter().any(|e| {
+                let topic = &e.0;
+                topic == &(symbol_short!("escrow_cancelled_breakdown"), escrow_id).into_val(&env)
+            }),
+            "expected escrow_cancelled_breakdown event"
+        );
+    }
+
+    #[test]
+    fn test_cancel_escrow_partial_completion_splits_balance() {
+        let (env, admin, contract_id, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        client.set_platform_treasury(&admin, &treasury);
+
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+        let token_client = token::Client::new(&env, &token_id);
+
+        token_admin.mint(
+            &escrow_client,
+            &(2_000_i128 + ContractStorage::reserve_for_entries(1)),
+        );
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &2_000_i128,
+            &BytesN::from_array(&env, &[60; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let m0 = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "M0"),
+            &BytesN::from_array(&env, &[61; 32]),
+            &1_000_i128,
+        );
+        let m1 = client.add_milestone(
+            &escrow_client,
+            &escrow_id,
+            &String::from_str(&env, "M1"),
+            &BytesN::from_array(&env, &[62; 32]),
+            &1_000_i128,
+        );
+
+        // Simulate partial completion: m0 approved, m1 pending (no release performed).
+        set_milestone_status(&env, &contract_id, escrow_id, m0, MS_APPROVED);
+        set_milestone_status(&env, &contract_id, escrow_id, m1, MS_PENDING);
+
+        client.cancel_escrow(&escrow_client, &escrow_id);
+
+        // Fee for 2_000 @ 150 bps => 30
+        assert_eq!(token_client.balance(&treasury), 30_i128);
+        assert_eq!(token_client.balance(&freelancer), 1_000_i128);
+        assert_eq!(token_client.balance(&escrow_client), 970_i128);
     }
 
     #[test]
@@ -6191,5 +7351,286 @@ mod tests {
             !matches!(result2, Err(Ok(EscrowError::DeadlineExpired))),
             "Valid deadline must not return DeadlineExpired regardless of nonce"
         );
+    }
+
+    // ── Oracle Fallback Dispute Resolution Tests ──────────────────────────────
+
+    /// Build a valid OracleResolutionPayload signed with a test keypair.
+    fn make_oracle_payload(
+        env: &Env,
+        escrow_id: u64,
+        client_bps: u32,
+        freelancer_bps: u32,
+        expires_at: u64,
+        signing_key: &[u8; 32],
+    ) -> (OracleResolutionPayload, BytesN<32>) {
+        use soroban_sdk::crypto::bls12_381;
+        // Use ed25519 via env.crypto() — derive pubkey from secret
+        // In tests we use the Soroban test helper to sign
+        let keypair = env
+            .crypto()
+            .ed25519_sign(&BytesN::from_array(env, signing_key), &{
+                let mut msg = [0u8; 24];
+                msg[0..8].copy_from_slice(&escrow_id.to_le_bytes());
+                msg[8..12].copy_from_slice(&client_bps.to_le_bytes());
+                msg[12..16].copy_from_slice(&freelancer_bps.to_le_bytes());
+                msg[16..24].copy_from_slice(&expires_at.to_le_bytes());
+                soroban_sdk::Bytes::from_slice(env, &msg)
+            });
+        let pubkey = env
+            .crypto()
+            .ed25519_public_key(&BytesN::from_array(env, signing_key));
+        let payload = OracleResolutionPayload {
+            escrow_id,
+            client_bps,
+            freelancer_bps,
+            expires_at,
+            signature: keypair,
+            oracle_pubkey: pubkey.clone(),
+        };
+        (payload, pubkey)
+    }
+
+    #[test]
+    fn test_oracle_resolve_dispute_after_grace_period() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[1u8; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.raise_dispute(&escrow_client, &escrow_id, &None);
+
+        // Register oracle key
+        let oracle_secret = [42u8; 32];
+        let oracle_pubkey = env
+            .crypto()
+            .ed25519_public_key(&BytesN::from_array(&env, &oracle_secret));
+        client.set_trusted_oracle_key(&admin, &oracle_pubkey);
+
+        // Advance past grace period (7 days)
+        let grace = 7 * 24 * 60 * 60_u64;
+        advance(&env, grace + 1);
+
+        let expires_at = env.ledger().timestamp() + 3600;
+        let (payload, _) =
+            make_oracle_payload(&env, escrow_id, 6000, 4000, expires_at, &oracle_secret);
+
+        client.oracle_resolve_dispute(&escrow_id, &payload, &grace);
+
+        let state = client.get_escrow(&escrow_id);
+        assert_eq!(state.status, EscrowStatus::Completed);
+        assert_eq!(state.remaining_balance, 0);
+
+        let token_client = token::Client::new(&env, &token_id);
+        assert_eq!(token_client.balance(&escrow_client), 60_i128);
+        assert_eq!(token_client.balance(&freelancer), 40_i128);
+    }
+
+    #[test]
+    fn test_oracle_resolve_dispute_rejected_before_grace_period() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[2u8; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.raise_dispute(&escrow_client, &escrow_id, &None);
+
+        let oracle_secret = [43u8; 32];
+        let oracle_pubkey = env
+            .crypto()
+            .ed25519_public_key(&BytesN::from_array(&env, &oracle_secret));
+        client.set_trusted_oracle_key(&admin, &oracle_pubkey);
+
+        let grace = 7 * 24 * 60 * 60_u64;
+        // Do NOT advance past grace period
+        let expires_at = env.ledger().timestamp() + 3600;
+        let (payload, _) =
+            make_oracle_payload(&env, escrow_id, 5000, 5000, expires_at, &oracle_secret);
+
+        let result = client.try_oracle_resolve_dispute(&escrow_id, &payload, &grace);
+        assert!(matches!(
+            result,
+            Err(Ok(EscrowError::GracePeriodNotElapsed))
+        ));
+    }
+
+    #[test]
+    fn test_oracle_resolve_dispute_rejected_stale_payload() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[3u8; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.raise_dispute(&escrow_client, &escrow_id, &None);
+
+        let oracle_secret = [44u8; 32];
+        let oracle_pubkey = env
+            .crypto()
+            .ed25519_public_key(&BytesN::from_array(&env, &oracle_secret));
+        client.set_trusted_oracle_key(&admin, &oracle_pubkey);
+
+        let grace = 7 * 24 * 60 * 60_u64;
+        advance(&env, grace + 1);
+
+        // expires_at is in the past
+        let expires_at = env.ledger().timestamp() - 1;
+        let (payload, _) =
+            make_oracle_payload(&env, escrow_id, 5000, 5000, expires_at, &oracle_secret);
+
+        let result = client.try_oracle_resolve_dispute(&escrow_id, &payload, &grace);
+        assert!(matches!(result, Err(Ok(EscrowError::OraclePayloadStale))));
+    }
+
+    #[test]
+    fn test_oracle_resolve_dispute_rejected_invalid_bps() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.raise_dispute(&escrow_client, &escrow_id, &None);
+
+        let oracle_secret = [45u8; 32];
+        let oracle_pubkey = env
+            .crypto()
+            .ed25519_public_key(&BytesN::from_array(&env, &oracle_secret));
+        client.set_trusted_oracle_key(&admin, &oracle_pubkey);
+
+        let grace = 7 * 24 * 60 * 60_u64;
+        advance(&env, grace + 1);
+
+        let expires_at = env.ledger().timestamp() + 3600;
+        // bps sum to 9999, not 10000
+        let (payload, _) =
+            make_oracle_payload(&env, escrow_id, 5000, 4999, expires_at, &oracle_secret);
+
+        let result = client.try_oracle_resolve_dispute(&escrow_id, &payload, &grace);
+        assert!(matches!(result, Err(Ok(EscrowError::OraclePayoutInvalid))));
+    }
+
+    #[test]
+    fn test_oracle_resolve_dispute_rejected_wrong_key() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[5u8; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.raise_dispute(&escrow_client, &escrow_id, &None);
+
+        // Register one key, sign with a different key
+        let trusted_secret = [46u8; 32];
+        let trusted_pubkey = env
+            .crypto()
+            .ed25519_public_key(&BytesN::from_array(&env, &trusted_secret));
+        client.set_trusted_oracle_key(&admin, &trusted_pubkey);
+
+        let grace = 7 * 24 * 60 * 60_u64;
+        advance(&env, grace + 1);
+
+        let expires_at = env.ledger().timestamp() + 3600;
+        let wrong_secret = [99u8; 32];
+        let (payload, _) =
+            make_oracle_payload(&env, escrow_id, 5000, 5000, expires_at, &wrong_secret);
+
+        let result = client.try_oracle_resolve_dispute(&escrow_id, &payload, &grace);
+        assert!(matches!(
+            result,
+            Err(Ok(EscrowError::OracleSignatureInvalid))
+        ));
     }
 }

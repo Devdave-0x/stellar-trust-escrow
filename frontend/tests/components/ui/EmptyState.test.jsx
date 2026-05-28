@@ -57,6 +57,12 @@ describe('EmptyState', () => {
   it('is centered with the correct container', () => {
     render(<EmptyState />);
     const container = screen.getByTestId('empty-state');
-    expect(container).toHaveClass('flex', 'flex-col', 'items-center', 'justify-center', 'text-center');
+    expect(container).toHaveClass(
+      'flex',
+      'flex-col',
+      'items-center',
+      'justify-center',
+      'text-center',
+    );
   });
 });

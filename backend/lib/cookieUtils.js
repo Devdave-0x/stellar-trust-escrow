@@ -1,6 +1,6 @@
 /**
  * Secure Cookie Utility
- * 
+ *
  * Provides secure cookie handling with httpOnly, SameSite=Strict,
  * and other security best practices for refresh token storage.
  */
@@ -19,7 +19,7 @@ function setSecureCookie(res, name, value, options = {}) {
     sameSite: 'Strict',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    ...options
+    ...options,
   };
 
   res.cookie(name, value, defaultOptions);
@@ -33,7 +33,7 @@ function setSecureCookie(res, name, value, options = {}) {
 function setRefreshTokenCookie(res, refreshToken) {
   setSecureCookie(res, 'refreshToken', refreshToken, {
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    path: '/api/auth/refresh'
+    path: '/api/auth/refresh',
   });
 }
 
@@ -46,7 +46,7 @@ function clearRefreshTokenCookie(res) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict',
-    path: '/api/auth/refresh'
+    path: '/api/auth/refresh',
   });
 }
 
@@ -67,7 +67,7 @@ function getRefreshTokenFromCookie(req) {
 function setAccessTokenCookie(res, accessToken) {
   setSecureCookie(res, 'accessToken', accessToken, {
     maxAge: 15 * 60 * 1000, // 15 minutes
-    path: '/'
+    path: '/',
   });
 }
 
@@ -80,7 +80,7 @@ function clearAccessTokenCookie(res) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict',
-    path: '/'
+    path: '/',
   });
 }
 
@@ -95,7 +95,7 @@ function setCSRFCookie(res, csrfToken) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict',
     path: '/',
-    maxAge: 15 * 60 * 1000 // 15 minutes
+    maxAge: 15 * 60 * 1000, // 15 minutes
   });
 }
 
@@ -110,7 +110,7 @@ function clearAllAuthCookies(res) {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict',
-    path: '/'
+    path: '/',
   });
 }
 
@@ -124,7 +124,7 @@ function cookieSecurityMiddleware() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
-    
+
     next();
   };
 }
@@ -138,5 +138,5 @@ export default {
   clearAccessTokenCookie,
   setCSRFCookie,
   clearAllAuthCookies,
-  cookieSecurityMiddleware
+  cookieSecurityMiddleware,
 };

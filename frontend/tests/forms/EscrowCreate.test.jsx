@@ -611,12 +611,16 @@ describe('Accessibility', () => {
 
   it('page heading is an h1', () => {
     renderPage();
-    expect(screen.getByRole('heading', { level: 1, name: /Create New Escrow/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: /Create New Escrow/i }),
+    ).toBeInTheDocument();
   });
 
   it('step headings are h2', () => {
     renderPage();
-    expect(screen.getByRole('heading', { level: 2, name: /Counterparty & Funds/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Counterparty & Funds/i }),
+    ).toBeInTheDocument();
   });
 
   it('step 2 heading is h2', () => {

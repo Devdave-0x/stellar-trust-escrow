@@ -17,11 +17,11 @@ import { jest } from '@jest/globals';
 // ── Metric mocks ──────────────────────────────────────────────────────────────
 
 const metricsMock = {
-  circuitBreakerState:            { set: jest.fn() },
-  circuitBreakerCallsTotal:       { inc: jest.fn() },
+  circuitBreakerState: { set: jest.fn() },
+  circuitBreakerCallsTotal: { inc: jest.fn() },
   circuitBreakerTransitionsTotal: { inc: jest.fn() },
-  dbConnectionErrorsTotal:        { inc: jest.fn() },
-  chaosInjectedTotal:             { inc: jest.fn() },
+  dbConnectionErrorsTotal: { inc: jest.fn() },
+  chaosInjectedTotal: { inc: jest.fn() },
 };
 
 jest.unstable_mockModule('../../lib/metrics.js', () => metricsMock);
@@ -44,7 +44,7 @@ const {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function enableChaos(experimentId) {
-  process.env.CHAOS_ENABLED   = 'true';
+  process.env.CHAOS_ENABLED = 'true';
   process.env.CHAOS_EXPERIMENT = experimentId;
 }
 
@@ -55,8 +55,15 @@ function disableChaos() {
 
 function makeMockRes() {
   const res = { statusCode: null, body: null, headersSent: false };
-  res.status = jest.fn().mockImplementation((code) => { res.statusCode = code; return res; });
-  res.json   = jest.fn().mockImplementation((data) => { res.body = data; res.headersSent = true; return res; });
+  res.status = jest.fn().mockImplementation((code) => {
+    res.statusCode = code;
+    return res;
+  });
+  res.json = jest.fn().mockImplementation((data) => {
+    res.body = data;
+    res.headersSent = true;
+    return res;
+  });
   return res;
 }
 
@@ -132,7 +139,8 @@ describe('Experiment: db-failure — circuit breaker opens on DB errors', () => 
       timeout: 30000,
     });
 
-    const dbCall = () => Promise.reject(Object.assign(new Error("Can't reach DB"), { code: 'P1001' }));
+    const dbCall = () =>
+      Promise.reject(Object.assign(new Error("Can't reach DB"), { code: 'P1001' }));
 
     for (let i = 0; i < 5; i++) {
       await expect(cb.execute(dbCall)).rejects.toThrow();
@@ -153,7 +161,10 @@ describe('Experiment: db-failure — circuit breaker opens on DB errors', () => 
 
     // Subsequent call: fails fast, not via dbCall
     let calledDb = false;
-    const fastCall = () => { calledDb = true; return Promise.resolve(); };
+    const fastCall = () => {
+      calledDb = true;
+      return Promise.resolve();
+    };
     await expect(cb.execute(fastCall)).rejects.toBeInstanceOf(CircuitOpenError);
     expect(calledDb).toBe(false);
   });
@@ -177,10 +188,10 @@ describe('Experiment: db-failure — circuit breaker opens on DB errors', () => 
 
     jest.advanceTimersByTime(5001);
 
-    await cb.execute(succeed);  // HALF_OPEN, 1st success
+    await cb.execute(succeed); // HALF_OPEN, 1st success
     expect(cb.state).toBe(STATES.HALF_OPEN);
 
-    await cb.execute(succeed);  // 2nd success → CLOSED
+    await cb.execute(succeed); // 2nd success → CLOSED
     expect(cb.state).toBe(STATES.CLOSED);
   });
 });
@@ -250,9 +261,8 @@ describe('Experiment: stellar-rpc-error — Stellar circuit breaker', () => {
     enableChaos('stellar-rpc-error');
 
     const cb = new CircuitBreaker('stellar-rpc', { failureThreshold: 5, timeout: 30000 });
-    const rpcCall = () => Promise.reject(
-      Object.assign(new Error('RPC unavailable'), { code: 'STELLAR_RPC_ERROR' }),
-    );
+    const rpcCall = () =>
+      Promise.reject(Object.assign(new Error('RPC unavailable'), { code: 'STELLAR_RPC_ERROR' }));
 
     for (let i = 0; i < 5; i++) {
       await expect(cb.execute(rpcCall)).rejects.toThrow();
@@ -361,8 +371,16 @@ describe('Metric emission', () => {
   it('chaosInjectedTotal is incremented on each fault injection', async () => {
     enableChaos('db-failure');
 
-    try { injectDatabaseError('db-failure'); } catch { /* expected */ }
-    try { injectDatabaseError('db-failure'); } catch { /* expected */ }
+    try {
+      injectDatabaseError('db-failure');
+    } catch {
+      /* expected */
+    }
+    try {
+      injectDatabaseError('db-failure');
+    } catch {
+      /* expected */
+    }
 
     expect(metricsMock.chaosInjectedTotal.inc).toHaveBeenCalledTimes(2);
     expect(metricsMock.chaosInjectedTotal.inc).toHaveBeenCalledWith(
@@ -376,9 +394,11 @@ describe('Metric emission', () => {
     await cb.execute(() => Promise.resolve('ok'));
     await expect(cb.execute(() => Promise.reject(new Error('boom')))).rejects.toThrow();
 
-    expect(metricsMock.circuitBreakerCallsMock?.inc ?? metricsMock.circuitBreakerCallsTotal.inc)
-      .toHaveBeenCalledWith(expect.objectContaining({ outcome: 'success' }));
-    expect(metricsMock.circuitBreakerCallsTotal.inc)
-      .toHaveBeenCalledWith(expect.objectContaining({ outcome: 'failure' }));
+    expect(
+      metricsMock.circuitBreakerCallsMock?.inc ?? metricsMock.circuitBreakerCallsTotal.inc,
+    ).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'success' }));
+    expect(metricsMock.circuitBreakerCallsTotal.inc).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'failure' }),
+    );
   });
 });

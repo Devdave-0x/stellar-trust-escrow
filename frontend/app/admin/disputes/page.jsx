@@ -104,23 +104,26 @@ export default function AdminDisputesPage() {
   const [toast, setToast] = useState('');
   const [selectedDispute, setSelectedDispute] = useState(null);
 
-  const fetchDisputes = useCallback(async (page = 1, resolved = 'false') => {
-    setLoading(true);
-    setError('');
-    try {
-      const params = new URLSearchParams({ page, limit: 20 });
-      if (resolved !== '') params.set('resolved', resolved);
-      const res = await adminFetch(`/api/admin/disputes?${params}`, apiKey);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch disputes');
-      setDisputes(data.disputes);
-      setPagination(data.pagination);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiKey]);
+  const fetchDisputes = useCallback(
+    async (page = 1, resolved = 'false') => {
+      setLoading(true);
+      setError('');
+      try {
+        const params = new URLSearchParams({ page, limit: 20 });
+        if (resolved !== '') params.set('resolved', resolved);
+        const res = await adminFetch(`/api/admin/disputes?${params}`, apiKey);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch disputes');
+        setDisputes(data.disputes);
+        setPagination(data.pagination);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiKey],
+  );
 
   useEffect(() => {
     fetchDisputes(1, filter);
@@ -135,14 +138,10 @@ export default function AdminDisputesPage() {
     const id = selectedDispute.id;
     setSelectedDispute(null);
     try {
-      const res = await adminFetch(
-        `/api/admin/disputes/${id}/resolve`,
-        apiKey,
-        {
-          method: 'POST',
-          body: JSON.stringify({ clientAmount, freelancerAmount, notes }),
-        },
-      );
+      const res = await adminFetch(`/api/admin/disputes/${id}/resolve`, apiKey, {
+        method: 'POST',
+        body: JSON.stringify({ clientAmount, freelancerAmount, notes }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to resolve dispute');
       showToast('Dispute resolved successfully.');

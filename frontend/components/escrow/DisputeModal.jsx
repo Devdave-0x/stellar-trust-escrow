@@ -59,8 +59,8 @@ export default function DisputeModal({ isOpen, onClose, escrowId }) {
       <div className="space-y-4">
         {/* Warning */}
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-sm text-amber-300">
-          Raising a dispute will <strong>freeze all funds</strong> in this escrow until the
-          arbiter or contract admin resolves it. This action cannot be undone.
+          Raising a dispute will <strong>freeze all funds</strong> in this escrow until the arbiter
+          or contract admin resolves it. This action cannot be undone.
         </div>
 
         {/* Escrow ID */}

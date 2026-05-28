@@ -36,7 +36,7 @@ mod gas_profiling;
 mod types;
 
 pub use errors::InsuranceError;
-pub use types::{Claim, ClaimStatus, DataKey, FundInfo, FundStats};
+pub use types::{Claim, ClaimStatus, DataKey, FundInfo, FundStats, SlashProposal, SlashStatus, StakeRecord};
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 
@@ -48,6 +48,12 @@ const PERSISTENT_TTL_EXTEND_TO: u32 = 50_000;
 
 /// Default claim expiry window in ledgers (~7 days at 5 s/ledger).
 const DEFAULT_CLAIM_EXPIRY_LEDGERS: u64 = 120_960;
+
+/// Yield accumulator precision factor (1e9).
+const YIELD_PRECISION: i128 = 1_000_000_000;
+
+/// Default maximum slash in basis points (4000 = 40%).
+const DEFAULT_MAX_SLASH_BPS: u32 = 4_000;
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 struct Storage;
@@ -214,6 +220,131 @@ impl Storage {
             Self::bump_persistent(env, &key);
         }
         val
+    }
+
+    // ── Staking helpers ───────────────────────────────────────────────────────
+
+    fn acquire_lock(env: &Env) -> Result<(), InsuranceError> {
+        if env
+            .storage()
+            .instance()
+            .get::<DataKey, bool>(&DataKey::ReentrancyLock)
+            .unwrap_or(false)
+        {
+            return Err(InsuranceError::Reentrancy);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyLock, &true);
+        Ok(())
+    }
+
+    fn release_lock(env: &Env) {
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyLock, &false);
+    }
+
+    fn get_stake_record(env: &Env, staker: &Address) -> Option<StakeRecord> {
+        let key = DataKey::Stake(staker.clone());
+        let rec = env.storage().persistent().get(&key);
+        if rec.is_some() {
+            Self::bump_persistent(env, &key);
+        }
+        rec
+    }
+
+    fn save_stake_record(env: &Env, record: &StakeRecord) {
+        let key = DataKey::Stake(record.staker.clone());
+        env.storage().persistent().set(&key, record);
+        Self::bump_persistent(env, &key);
+    }
+
+    fn remove_stake_record(env: &Env, staker: &Address) {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Stake(staker.clone()));
+    }
+
+    fn get_stake_total(env: &Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::StakeTotal)
+            .unwrap_or(0)
+    }
+
+    fn set_stake_total(env: &Env, total: i128) {
+        env.storage().instance().set(&DataKey::StakeTotal, &total);
+    }
+
+    fn get_stake_pool(env: &Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::StakePool)
+            .unwrap_or(0)
+    }
+
+    fn set_stake_pool(env: &Env, pool: i128) {
+        env.storage().instance().set(&DataKey::StakePool, &pool);
+    }
+
+    fn get_yield_acc(env: &Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::YieldAccumulator)
+            .unwrap_or(0)
+    }
+
+    fn set_yield_acc(env: &Env, acc: i128) {
+        env.storage()
+            .instance()
+            .set(&DataKey::YieldAccumulator, &acc);
+    }
+
+    fn get_max_slash_bps(env: &Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MaxSlashBps)
+            .unwrap_or(DEFAULT_MAX_SLASH_BPS)
+    }
+
+    fn next_slash_id(env: &Env) -> u32 {
+        let id: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SlashCounter)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::SlashCounter, &(id + 1));
+        id
+    }
+
+    fn load_slash(env: &Env, slash_id: u32) -> Result<SlashProposal, InsuranceError> {
+        let key = DataKey::SlashProposal(slash_id);
+        let s = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(InsuranceError::SlashProposalNotFound)?;
+        Self::bump_persistent(env, &key);
+        Ok(s)
+    }
+
+    fn save_slash(env: &Env, s: &SlashProposal) {
+        let key = DataKey::SlashProposal(s.id);
+        env.storage().persistent().set(&key, s);
+        Self::bump_persistent(env, &key);
+    }
+
+    fn pending_yield(record: &StakeRecord, current_acc: i128) -> i128 {
+        if record.amount == 0 {
+            return 0;
+        }
+        record
+            .amount
+            .saturating_mul(current_acc - record.reward_debt)
+            / YIELD_PRECISION
     }
 }
 
@@ -590,22 +721,369 @@ impl InsuranceContract {
     pub fn is_governor(env: Env, address: Address) -> bool {
         Storage::is_governor(&env, &address)
     }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TESTS
-// ─────────────────────────────────────────────────────────────────────────────
+    // ── Staking ───────────────────────────────────────────────────────────────
+
+    /// Stake tokens into the insurance fund.
+    ///
+    /// Caller transfers `amount` tokens to this contract and receives a pro-rata
+    /// share of future platform-fee yield. Reentrancy-guarded.
+    pub fn stake(env: Env, staker: Address, amount: i128) -> Result<(), InsuranceError> {
+        staker.require_auth();
+        Storage::require_initialized(&env)?;
+        Storage::acquire_lock(&env)?;
+
+        if amount <= 0 {
+            Storage::release_lock(&env);
+            return Err(InsuranceError::InvalidAmount);
+        }
+
+        let acc = Storage::get_yield_acc(&env);
+
+        // Settle any pending yield before changing the stake
+        let mut record = Storage::get_stake_record(&env, &staker).unwrap_or(StakeRecord {
+            staker: staker.clone(),
+            amount: 0,
+            reward_debt: acc,
+        });
+
+        let pending = Storage::pending_yield(&record, acc);
+        if pending > 0 {
+            let token = token::Client::new(&env, &Storage::get_token(&env));
+            let bal = token.balance(&env.current_contract_address());
+            if bal >= pending {
+                token.transfer(&env.current_contract_address(), &staker, &pending);
+                events::emit_yield_claimed(&env, &staker, pending);
+            }
+        }
+
+        // Transfer staked tokens in
+        token::Client::new(&env, &Storage::get_token(&env)).transfer(
+            &staker,
+            &env.current_contract_address(),
+            &amount,
+        );
+
+        record.amount += amount;
+        record.reward_debt = acc;
+        Storage::save_stake_record(&env, &record);
+        Storage::set_stake_total(&env, Storage::get_stake_total(&env) + amount);
+        Storage::set_stake_pool(&env, Storage::get_stake_pool(&env) + amount);
+
+        events::emit_staked(&env, &staker, amount);
+        Storage::release_lock(&env);
+        Ok(())
+    }
+
+    /// Unstake tokens. Staker receives a proportional share of the stake pool
+    /// (which may be less than the nominal amount if slashes occurred).
+    /// Reentrancy-guarded.
+    pub fn unstake(env: Env, staker: Address, amount: i128) -> Result<i128, InsuranceError> {
+        staker.require_auth();
+        Storage::require_initialized(&env)?;
+        Storage::acquire_lock(&env)?;
+
+        let mut record = Storage::get_stake_record(&env, &staker)
+            .ok_or_else(|| { Storage::release_lock(&env); InsuranceError::NoStakeFound })?;
+
+        if amount <= 0 || amount > record.amount {
+            Storage::release_lock(&env);
+            return Err(InsuranceError::InsufficientStake);
+        }
+
+        let acc = Storage::get_yield_acc(&env);
+
+        // Settle pending yield first
+        let pending = Storage::pending_yield(&record, acc);
+        let token = token::Client::new(&env, &Storage::get_token(&env));
+        if pending > 0 {
+            let bal = token.balance(&env.current_contract_address());
+            if bal >= pending {
+                token.transfer(&env.current_contract_address(), &staker, &pending);
+                events::emit_yield_claimed(&env, &staker, pending);
+            }
+        }
+
+        // Compute proportional return (accounts for slashes)
+        let total_stored = Storage::get_stake_total(&env);
+        let stake_pool = Storage::get_stake_pool(&env);
+        let actual_return = if total_stored > 0 {
+            amount.saturating_mul(stake_pool) / total_stored
+        } else {
+            amount
+        };
+
+        // Dynamic balance check
+        let bal = token.balance(&env.current_contract_address());
+        if bal < actual_return {
+            Storage::release_lock(&env);
+            return Err(InsuranceError::InsufficientFunds);
+        }
+
+        token.transfer(&env.current_contract_address(), &staker, &actual_return);
+
+        record.amount -= amount;
+        record.reward_debt = acc;
+        if record.amount == 0 {
+            Storage::remove_stake_record(&env, &staker);
+        } else {
+            Storage::save_stake_record(&env, &record);
+        }
+        Storage::set_stake_total(&env, Storage::get_stake_total(&env) - amount);
+        Storage::set_stake_pool(&env, Storage::get_stake_pool(&env) - actual_return);
+
+        events::emit_unstaked(&env, &staker, actual_return);
+        Storage::release_lock(&env);
+        Ok(actual_return)
+    }
+
+    /// Add platform fees to the yield pool. Admin only.
+    ///
+    /// Caller must transfer tokens to this contract separately; this function
+    /// updates the yield accumulator to distribute proportionally to stakers.
+    pub fn add_platform_fees(env: Env, caller: Address, amount: i128) -> Result<(), InsuranceError> {
+        caller.require_auth();
+        Storage::require_admin(&env, &caller)?;
+
+        if amount <= 0 {
+            return Err(InsuranceError::InvalidAmount);
+        }
+
+        let total_stored = Storage::get_stake_total(&env);
+        if total_stored > 0 {
+            let acc = Storage::get_yield_acc(&env);
+            Storage::set_yield_acc(&env, acc + amount.saturating_mul(YIELD_PRECISION) / total_stored);
+        }
+        // If no stakers, fees accumulate in the contract balance for future use.
+
+        events::emit_fee_added(&env, amount);
+        Ok(())
+    }
+
+    /// Claim accumulated yield for the caller.
+    pub fn claim_yield(env: Env, staker: Address) -> Result<i128, InsuranceError> {
+        staker.require_auth();
+        Storage::require_initialized(&env)?;
+        Storage::acquire_lock(&env)?;
+
+        let mut record = Storage::get_stake_record(&env, &staker)
+            .ok_or_else(|| { Storage::release_lock(&env); InsuranceError::NoStakeFound })?;
+
+        let acc = Storage::get_yield_acc(&env);
+        let pending = Storage::pending_yield(&record, acc);
+
+        if pending <= 0 {
+            Storage::release_lock(&env);
+            return Err(InsuranceError::NoYieldAvailable);
+        }
+
+        let token = token::Client::new(&env, &Storage::get_token(&env));
+        let bal = token.balance(&env.current_contract_address());
+        if bal < pending {
+            Storage::release_lock(&env);
+            return Err(InsuranceError::InsufficientFunds);
+        }
+
+        token.transfer(&env.current_contract_address(), &staker, &pending);
+        record.reward_debt = acc;
+        Storage::save_stake_record(&env, &record);
+
+        events::emit_yield_claimed(&env, &staker, pending);
+        Storage::release_lock(&env);
+        Ok(pending)
+    }
+
+    // ── Slash governance ──────────────────────────────────────────────────────
+
+    /// Any governor can submit a slash proposal.
+    ///
+    /// `slash_bps` is capped at the configured maximum (default 40%).
+    /// Governance quorum (from `set_quorum`) is reused for slash approval.
+    ///
+    /// # Returns
+    /// The assigned `slash_id`.
+    pub fn propose_slash(
+        env: Env,
+        caller: Address,
+        slash_bps: u32,
+        reason: String,
+    ) -> Result<u32, InsuranceError> {
+        caller.require_auth();
+        Storage::require_initialized(&env)?;
+
+        if !Storage::is_governor(&env, &caller) {
+            return Err(InsuranceError::NotGovernor);
+        }
+        if slash_bps == 0 {
+            return Err(InsuranceError::InvalidSlashBps);
+        }
+        if slash_bps > Storage::get_max_slash_bps(&env) {
+            return Err(InsuranceError::SlashExceedsCap);
+        }
+
+        let now = env.ledger().timestamp();
+        let slash_id = Storage::next_slash_id(&env);
+        let proposal = SlashProposal {
+            id: slash_id,
+            proposer: caller.clone(),
+            slash_bps,
+            reason,
+            votes_for: 0,
+            votes_against: 0,
+            status: SlashStatus::Pending,
+            created_at: now,
+        };
+        Storage::save_slash(&env, &proposal);
+        events::emit_slash_proposed(&env, slash_id, &caller, slash_bps);
+        Ok(slash_id)
+    }
+
+    /// Governor votes on a pending slash proposal.
+    ///
+    /// Automatically resolves to Approved/Rejected once governance quorum is met.
+    pub fn vote_slash(
+        env: Env,
+        governor: Address,
+        slash_id: u32,
+        approve: bool,
+    ) -> Result<(), InsuranceError> {
+        governor.require_auth();
+        Storage::require_initialized(&env)?;
+
+        if !Storage::is_governor(&env, &governor) {
+            return Err(InsuranceError::NotGovernor);
+        }
+
+        let vote_key = DataKey::SlashVote(slash_id, governor.clone());
+        if env.storage().persistent().has(&vote_key) {
+            return Err(InsuranceError::AlreadyVoted);
+        }
+
+        let mut proposal = Storage::load_slash(&env, slash_id)?;
+        if proposal.status != SlashStatus::Pending {
+            return Err(InsuranceError::SlashProposalNotApproved);
+        }
+
+        env.storage().persistent().set(&vote_key, &approve);
+        Storage::bump_persistent(&env, &vote_key);
+
+        if approve {
+            proposal.votes_for += 1;
+        } else {
+            proposal.votes_against += 1;
+        }
+
+        let quorum = Storage::get_quorum(&env);
+        if proposal.votes_for + proposal.votes_against >= quorum {
+            proposal.status = if proposal.votes_for >= quorum {
+                SlashStatus::Approved
+            } else {
+                SlashStatus::Rejected
+            };
+        }
+
+        Storage::save_slash(&env, &proposal);
+        Ok(())
+    }
+
+    /// Execute an approved slash proposal. Permissionless once approved.
+    ///
+    /// Transfers `stake_pool * slash_bps / 10_000` tokens to the admin (treasury).
+    /// Slash is bounded by the configured maximum (default 40%).
+    ///
+    /// # Returns
+    /// The actual number of tokens slashed.
+    pub fn execute_slash(env: Env, slash_id: u32) -> Result<i128, InsuranceError> {
+        Storage::require_initialized(&env)?;
+        Storage::acquire_lock(&env)?;
+
+        let mut proposal = Storage::load_slash(&env, slash_id)
+            .map_err(|e| { Storage::release_lock(&env); e })?;
+
+        if proposal.status != SlashStatus::Approved {
+            Storage::release_lock(&env);
+            return Err(InsuranceError::SlashProposalNotApproved);
+        }
+
+        let stake_pool = Storage::get_stake_pool(&env);
+        let slash_amount = stake_pool.saturating_mul(proposal.slash_bps as i128) / 10_000;
+
+        if slash_amount > 0 {
+            let token = token::Client::new(&env, &Storage::get_token(&env));
+            // Dynamic balance check
+            let bal = token.balance(&env.current_contract_address());
+            let actual_slash = slash_amount.min(bal);
+
+            if actual_slash > 0 {
+                let admin: Address = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::Admin)
+                    .unwrap();
+                token.transfer(&env.current_contract_address(), &admin, &actual_slash);
+                Storage::set_stake_pool(&env, stake_pool - actual_slash);
+
+                events::emit_slash_executed(&env, slash_id, proposal.slash_bps, actual_slash);
+            }
+        }
+
+        proposal.status = SlashStatus::Executed;
+        Storage::save_slash(&env, &proposal);
+        Storage::release_lock(&env);
+        Ok(slash_amount)
+    }
+
+    /// Admin sets the maximum allowable slash percentage (bps, ceiling 4000 = 40%).
+    pub fn set_max_slash_bps(
+        env: Env,
+        caller: Address,
+        max_bps: u32,
+    ) -> Result<(), InsuranceError> {
+        caller.require_auth();
+        Storage::require_admin(&env, &caller)?;
+        if max_bps == 0 || max_bps > 4_000 {
+            return Err(InsuranceError::InvalidSlashBps);
+        }
+        env.storage().instance().set(&DataKey::MaxSlashBps, &max_bps);
+        Storage::bump_instance(&env);
+        Ok(())
+    }
+
+    /// Returns the staked amount (nominal) for `staker`.
+    pub fn get_stake(env: Env, staker: Address) -> i128 {
+        Storage::get_stake_record(&env, &staker)
+            .map(|r| r.amount)
+            .unwrap_or(0)
+    }
+
+    /// Returns the pending yield for `staker`.
+    pub fn pending_yield_view(env: Env, staker: Address) -> i128 {
+        let record = match Storage::get_stake_record(&env, &staker) {
+            Some(r) => r,
+            None => return 0,
+        };
+        let acc = Storage::get_yield_acc(&env);
+        Storage::pending_yield(&record, acc)
+    }
+
+    /// Returns a slash proposal by ID.
+    pub fn get_slash_proposal(env: Env, slash_id: u32) -> Result<SlashProposal, InsuranceError> {
+        Storage::require_initialized(&env)?;
+        Storage::load_slash(&env, slash_id)
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::{testutils::Address as _, token, Env, String};
+    #[allow(unused_imports)]
+    use crate::{SlashStatus, StakeRecord};
 
     struct Setup {
         env: Env,
         admin: Address,
         token_id: Address,
-        #[allow(dead_code)]
         contract_id: Address,
         client: InsuranceContractClient<'static>,
     }
@@ -966,6 +1444,168 @@ mod tests {
         let desc = String::from_str(&s.env, "Claim");
         let id = s.client.submit_claim(&claimant, &desc, &100_i128);
         let result = s.client.try_withdraw_claim(&other, &id);
+        assert!(result.is_err());
+    }
+
+    // ── Staking (Issue #896) ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_stake_deposits_tokens() {
+        let s = setup();
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.admin, &s.token_id, &staker, 1_000);
+
+        s.client.stake(&staker, &1_000_i128);
+
+        assert_eq!(s.client.get_stake(&staker), 1_000);
+        let tok = token::Client::new(&s.env, &s.token_id);
+        assert_eq!(tok.balance(&staker), 0);
+    }
+
+    #[test]
+    fn test_unstake_returns_tokens() {
+        let s = setup();
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.admin, &s.token_id, &staker, 1_000);
+
+        s.client.stake(&staker, &1_000_i128);
+        let returned = s.client.unstake(&staker, &1_000_i128);
+
+        assert_eq!(returned, 1_000);
+        assert_eq!(s.client.get_stake(&staker), 0);
+        let tok = token::Client::new(&s.env, &s.token_id);
+        assert_eq!(tok.balance(&staker), 1_000);
+    }
+
+    #[test]
+    fn test_unstake_more_than_staked_fails() {
+        let s = setup();
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.admin, &s.token_id, &staker, 500);
+
+        s.client.stake(&staker, &500_i128);
+        let result = s.client.try_unstake(&staker, &600_i128);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_yield_distributed_proportionally() {
+        let s = setup();
+        let s1 = Address::generate(&s.env);
+        let s2 = Address::generate(&s.env);
+        mint(&s.env, &s.admin, &s.token_id, &s1, 1_000);
+        mint(&s.env, &s.admin, &s.token_id, &s2, 3_000);
+
+        s.client.stake(&s1, &1_000_i128);
+        s.client.stake(&s2, &3_000_i128);
+
+        // Admin adds platform fees: 400 tokens to yield pool
+        mint(&s.env, &s.admin, &s.token_id, &s.contract_id, 400);
+        s.client.add_platform_fees(&s.admin, &400_i128);
+
+        // s1 has 25% of stake (1000/4000), s2 has 75%
+        let y1 = s.client.pending_yield_view(&s1);
+        let y2 = s.client.pending_yield_view(&s2);
+        assert_eq!(y1, 100); // 25% of 400
+        assert_eq!(y2, 300); // 75% of 400
+    }
+
+    #[test]
+    fn test_claim_yield_transfers_tokens() {
+        let s = setup();
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.admin, &s.token_id, &staker, 2_000);
+        s.client.stake(&staker, &2_000_i128);
+
+        mint(&s.env, &s.admin, &s.token_id, &s.contract_id, 200);
+        s.client.add_platform_fees(&s.admin, &200_i128);
+
+        let claimed = s.client.claim_yield(&staker);
+        assert_eq!(claimed, 200);
+
+        let tok = token::Client::new(&s.env, &s.token_id);
+        assert_eq!(tok.balance(&staker), 200);
+
+        // Yield exhausted; second claim fails
+        let result = s.client.try_claim_yield(&staker);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_slash_proposal_lifecycle() {
+        let s = setup();
+        let gov1 = Address::generate(&s.env);
+        let gov2 = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov1);
+        s.client.add_governor(&s.admin, &gov2);
+
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.admin, &s.token_id, &staker, 1_000);
+        s.client.stake(&staker, &1_000_i128);
+
+        let reason = String::from_str(&s.env, "Protocol exploit");
+        let slash_id = s.client.propose_slash(&gov1, &1_000_u32, &reason); // 10%
+
+        let proposal = s.client.get_slash_proposal(&slash_id);
+        assert_eq!(proposal.status, SlashStatus::Pending);
+
+        s.client.vote_slash(&gov1, &slash_id, &true);
+        s.client.vote_slash(&gov2, &slash_id, &true);
+
+        let proposal = s.client.get_slash_proposal(&slash_id);
+        assert_eq!(proposal.status, SlashStatus::Approved);
+
+        let slashed = s.client.execute_slash(&slash_id);
+        assert_eq!(slashed, 100); // 10% of 1_000
+
+        let tok = token::Client::new(&s.env, &s.token_id);
+        // Admin (treasury) received 100 slashed tokens
+        assert_eq!(tok.balance(&s.admin), 100);
+
+        // Staker unstakes and receives the remaining 90%
+        let returned = s.client.unstake(&staker, &1_000_i128);
+        assert_eq!(returned, 900);
+    }
+
+    #[test]
+    fn test_slash_exceeds_cap_fails() {
+        let s = setup();
+        let gov = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov);
+
+        let reason = String::from_str(&s.env, "Too large");
+        // 4001 bps > default 4000 cap
+        let result = s.client.try_propose_slash(&gov, &4_001_u32, &reason);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_non_governor_cannot_propose_slash() {
+        let s = setup();
+        let stranger = Address::generate(&s.env);
+        let reason = String::from_str(&s.env, "Unauthorized");
+        let result = s.client.try_propose_slash(&stranger, &500_u32, &reason);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_slash_rejected_when_against_wins() {
+        let s = setup();
+        let gov1 = Address::generate(&s.env);
+        let gov2 = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov1);
+        s.client.add_governor(&s.admin, &gov2);
+
+        let reason = String::from_str(&s.env, "Disputed slash");
+        let slash_id = s.client.propose_slash(&gov1, &500_u32, &reason);
+
+        s.client.vote_slash(&gov1, &slash_id, &false);
+        s.client.vote_slash(&gov2, &slash_id, &false);
+
+        let proposal = s.client.get_slash_proposal(&slash_id);
+        assert_eq!(proposal.status, SlashStatus::Rejected);
+
+        let result = s.client.try_execute_slash(&slash_id);
         assert!(result.is_err());
     }
 }

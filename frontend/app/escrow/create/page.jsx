@@ -41,13 +41,14 @@ const DEFAULT_MILESTONE = { title: '', description: '', amount: '' };
 const DESCRIPTION_MIN_LENGTH = 10;
 
 function applyTemplateToForm(currentForm, template) {
-  const milestones = Array.isArray(template.milestones) && template.milestones.length > 0
-    ? template.milestones.map((milestone) => ({
-        title: milestone.title || '',
-        description: milestone.description || '',
-        amount: milestone.amount || '',
-      }))
-    : [{ ...DEFAULT_MILESTONE }];
+  const milestones =
+    Array.isArray(template.milestones) && template.milestones.length > 0
+      ? template.milestones.map((milestone) => ({
+          title: milestone.title || '',
+          description: milestone.description || '',
+          amount: milestone.amount || '',
+        }))
+      : [{ ...DEFAULT_MILESTONE }];
 
   return {
     ...currentForm,
@@ -138,7 +139,9 @@ export default function CreateEscrowPage() {
 
   const removeMilestone = (index) => {
     setFormData((data) => {
-      const nextMilestones = data.milestones.filter((_, milestoneIndex) => milestoneIndex !== index);
+      const nextMilestones = data.milestones.filter(
+        (_, milestoneIndex) => milestoneIndex !== index,
+      );
       return {
         ...data,
         milestones: nextMilestones.length > 0 ? nextMilestones : [{ ...DEFAULT_MILESTONE }],
@@ -246,10 +249,7 @@ export default function CreateEscrowPage() {
           Back
         </Button>
         {currentStep < 4 ? (
-          <Button
-            variant="primary"
-            onClick={() => setCurrentStep((step) => step + 1)}
-          >
+          <Button variant="primary" onClick={() => setCurrentStep((step) => step + 1)}>
             Next →
           </Button>
         ) : (
@@ -283,7 +283,9 @@ function StepCounterparty({ formData, setFormData, setTouched, amountError, desc
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="token" className="block text-sm text-gray-400 mb-1">Token</label>
+          <label htmlFor="token" className="block text-sm text-gray-400 mb-1">
+            Token
+          </label>
           <select
             id="token"
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white"
@@ -355,8 +357,9 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-white">Milestones</h2>
         <span className="text-sm text-gray-500">
-          Total: {formData.milestones.reduce((sum, milestone) => sum + Number(milestone.amount || 0), 0)}{' '}
-          / {formData.totalAmount || '—'} {String(formData.tokenAddress || 'USDC').toUpperCase()}
+          Total:{' '}
+          {formData.milestones.reduce((sum, milestone) => sum + Number(milestone.amount || 0), 0)} /{' '}
+          {formData.totalAmount || '—'} {String(formData.tokenAddress || 'USDC').toUpperCase()}
         </span>
       </div>
 
@@ -431,7 +434,10 @@ function StepReview({ formData }) {
           Freelancer: <span className="text-white">{formData.freelancerAddress || '—'}</span>
         </p>
         <p>
-          Total Amount: <span className="text-white">{formData.totalAmount || '—'} {token}</span>
+          Total Amount:{' '}
+          <span className="text-white">
+            {formData.totalAmount || '—'} {token}
+          </span>
         </p>
         <p>
           Milestones: <span className="text-white">{formData.milestones.length}</span>
@@ -439,8 +445,10 @@ function StepReview({ formData }) {
       </div>
       <p className="text-xs text-gray-500">
         ⚠️ By proceeding, you authorize locking{' '}
-        <strong className="text-white">{formData.totalAmount || '0'} {token}</strong> in the escrow contract.
-        This action cannot be undone without mutual agreement.
+        <strong className="text-white">
+          {formData.totalAmount || '0'} {token}
+        </strong>{' '}
+        in the escrow contract. This action cannot be undone without mutual agreement.
       </p>
     </div>
   );

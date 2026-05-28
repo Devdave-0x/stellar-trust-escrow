@@ -36,4 +36,21 @@ pub enum GovError {
     // Parameters
     InvalidParameter = 19,
     InvalidDuration = 20,
+
+    // Arbitrator DAO
+    AlreadyArbitrator = 21,
+    NotArbitrator = 22,
+    InsufficientStake = 23,
+    StakeCooldownActive = 24,
+    NoStakeToWithdraw = 25,
+    SlashExceedsStake = 26,
+
+    // ve-token (voting escrow)
+    LockDurationTooShort = 27,
+    LockDurationTooLong = 28,
+    LockAlreadyExists = 29,
+    NoLockFound = 30,
+    LockNotExpired = 31,
+    NewUnlockTimeTooEarly = 32,
+    ZeroLockAmount = 33,
 }

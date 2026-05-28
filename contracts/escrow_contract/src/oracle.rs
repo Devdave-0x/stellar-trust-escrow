@@ -1,10 +1,10 @@
-use soroban_sdk::{contractclient, contracttype, Address, Env};
+use soroban_sdk::{contractclient, contracttype, symbol_short, Address, Env, Symbol};
 
 use crate::types::DataKey;
 use crate::EscrowError;
 
 /// Maximum age (in seconds) before a price is considered stale.
-pub const PRICE_STALENESS_THRESHOLD: u64 = 3_600; // 1 hour
+pub const PRICE_STALENESS_THRESHOLD: u64 = 10_800; // 3 hours
 
 /// Price with 7 decimal places of precision (Stellar convention).
 #[allow(dead_code)]
@@ -18,6 +18,75 @@ pub struct PriceData {
     pub price: i128,
     /// Ledger timestamp when this price was last updated.
     pub timestamp: u64,
+}
+
+/// USD/XLM price feed returned by DIA/Band-compatible oracle adapters.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PriceFeed {
+    /// USD price of 1 XLM in micro-USD (6 decimal places, e.g. 1_200_000 = $1.20).
+    pub price_micro_usd: i128,
+    /// Unix timestamp of the feed update.
+    pub timestamp: u64,
+}
+
+/// USD-denominated milestone shape for dynamic XLM valuation.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct UsdMilestone {
+    pub id: u32,
+    /// Target payout in micro-USD (e.g. 500_000_000 = $500.00).
+    pub amount_micro_usd: i128,
+    pub completed: bool,
+}
+
+pub struct OracleConsumer;
+
+impl OracleConsumer {
+    /// Fetch and validate the USD/XLM price feed from an external oracle contract.
+    ///
+    /// Panics with `stale_feed` if the feed is older than 3 hours.
+    pub fn get_validated_feed(env: &Env, oracle_id: &Address) -> PriceFeed {
+        let feed: PriceFeed = env.invoke_contract(
+            oracle_id,
+            &symbol_short!("get_price"),
+            soroban_sdk::vec![env],
+        );
+
+        let now = env.ledger().timestamp();
+        if now.saturating_sub(feed.timestamp) > PRICE_STALENESS_THRESHOLD {
+            panic!("stale_feed: oracle price is older than 3 hours");
+        }
+        if feed.price_micro_usd <= 0 {
+            panic!("invalid_feed: oracle price must be positive");
+        }
+
+        feed
+    }
+
+    /// Convert a USD milestone amount to XLM stroops using the oracle price.
+    ///
+    /// Emits `oracle_conversion` with `(amount_micro_usd, price_micro_usd,
+    /// xlm_stroops, feed_timestamp)`.
+    pub fn usd_to_xlm_stroops(env: &Env, oracle_id: &Address, amount_micro_usd: i128) -> i128 {
+        let feed = Self::get_validated_feed(env, oracle_id);
+        let xlm_stroops = amount_micro_usd
+            .checked_mul(10_000_000)
+            .and_then(|amount| amount.checked_div(feed.price_micro_usd))
+            .expect("conversion_overflow");
+
+        env.events().publish(
+            (Symbol::new(env, "oracle_conversion"),),
+            (
+                amount_micro_usd,
+                feed.price_micro_usd,
+                xlm_stroops,
+                feed.timestamp,
+            ),
+        );
+
+        xlm_stroops
+    }
 }
 
 /// Minimal interface for an external price oracle contract.

@@ -114,7 +114,13 @@ describe('GET /health', () => {
   it('returns 200 and status=degraded when cache is degraded (Redis configured but down)', async () => {
     const origRedisUrl = process.env.REDIS_URL;
     process.env.REDIS_URL = 'redis://localhost:6379';
-    mockAnalytics.mockReturnValue({ backend: 'memory', hits: 0, misses: 0, hitRate: '0', memSize: 0 });
+    mockAnalytics.mockReturnValue({
+      backend: 'memory',
+      hits: 0,
+      misses: 0,
+      hitRate: '0',
+      memSize: 0,
+    });
 
     const res = await request(buildApp()).get('/health');
     expect(res.status).toBe(200);

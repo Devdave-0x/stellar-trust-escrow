@@ -1,16 +1,16 @@
-import axios from "axios";
-import { getOnlineStatus } from "../network";
-import { retryRequest } from "./retry";
+import axios from 'axios';
+import { getOnlineStatus } from '../network';
+import { retryRequest } from './retry';
 
 const api = axios.create({
-  baseURL: "/api",
+  baseURL: '/api',
   timeout: 10000,
 });
 
 api.interceptors.request.use((config) => {
   if (!getOnlineStatus()) {
     return Promise.reject({
-      message: "You are offline. Please check your internet connection.",
+      message: 'You are offline. Please check your internet connection.',
       isOffline: true,
     });
   }

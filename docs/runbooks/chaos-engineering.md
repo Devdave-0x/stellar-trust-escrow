@@ -94,22 +94,24 @@ npm run test:chaos
 
 ### `db-latency` — Database High Latency
 
-| Field            | Value |
-|------------------|-------|
-| Fault type       | latency |
-| Target           | database |
-| Delay            | 2 000 ms + 300 ms jitter |
-| Probability      | 100% |
-| Duration         | 60 s |
+| Field       | Value                    |
+| ----------- | ------------------------ |
+| Fault type  | latency                  |
+| Target      | database                 |
+| Delay       | 2 000 ms + 300 ms jitter |
+| Probability | 100%                     |
+| Duration    | 60 s                     |
 
 **Hypothesis:** Under sustained DB latency the circuit breaker opens within 5 slow requests and the API returns 503 instead of hanging.
 
 **Expected behaviour:**
+
 - First 5 requests time out after ~2 s each (retried 3× = ~6 s total)
 - Circuit opens; subsequent requests return 503 in < 1 ms
 - After 30 s timeout the circuit probes; 2 healthy probes close it
 
 **Verify in Prometheus:**
+
 ```promql
 circuit_breaker_state{name="database"}           # should reach 1 (OPEN)
 circuit_breaker_transitions_total{to="OPEN"}     # should increment
@@ -120,21 +122,23 @@ http_request_duration_ms_bucket{route="/api/v1/escrows"}  # spike in 2000ms buck
 
 ### `db-failure` — Database Connection Failure
 
-| Field            | Value |
-|------------------|-------|
-| Fault type       | error (P1001) |
-| Target           | database |
-| Probability      | 100% |
-| Duration         | 30 s |
+| Field       | Value         |
+| ----------- | ------------- |
+| Fault type  | error (P1001) |
+| Target      | database      |
+| Probability | 100%          |
+| Duration    | 30 s          |
 
 **Hypothesis:** DB errors trigger 3 retries with backoff (1 s → 2 s → 4 s), then the circuit opens and subsequent requests fail fast.
 
 **Expected behaviour:**
+
 - Each request spends ~7 s in retry before surfacing 503
 - After 5 failed requests the circuit opens
 - Open circuit: 503 within < 5 ms (fail-fast)
 
 **Verify in Prometheus:**
+
 ```promql
 db_connection_errors_total{error_type="P1001"}   # should climb
 circuit_breaker_state{name="database"}           # reaches 1 (OPEN)
@@ -144,22 +148,24 @@ circuit_breaker_state{name="database"}           # reaches 1 (OPEN)
 
 ### `stellar-rpc-timeout` — Stellar RPC Timeout
 
-| Field            | Value |
-|------------------|-------|
-| Fault type       | timeout |
-| Target           | stellar |
-| Timeout          | 3 000 ms |
-| Routes           | /api/v1/escrows/broadcast |
-| Probability      | 100% |
-| Duration         | 30 s |
+| Field       | Value                     |
+| ----------- | ------------------------- |
+| Fault type  | timeout                   |
+| Target      | stellar                   |
+| Timeout     | 3 000 ms                  |
+| Routes      | /api/v1/escrows/broadcast |
+| Probability | 100%                      |
+| Duration    | 30 s                      |
 
 **Hypothesis:** Transaction broadcast times out within 3 s, returning 504 instead of polling for 60 s.
 
 **Expected behaviour:**
+
 - POST `/broadcast` returns 504 within ~3 s
 - No goroutine / event loop leak from the abandoned polling loop
 
 **Verify:**
+
 ```bash
 time curl -X POST $BASE_URL/api/v1/escrows/broadcast \
   -H "Content-Type: application/json" \
@@ -171,17 +177,18 @@ time curl -X POST $BASE_URL/api/v1/escrows/broadcast \
 
 ### `stellar-rpc-error` — Stellar RPC 503 Errors
 
-| Field            | Value |
-|------------------|-------|
-| Fault type       | error (STELLAR_RPC_ERROR) |
-| Target           | stellar |
-| Routes           | /api/v1/escrows/broadcast |
-| Probability      | 100% |
-| Duration         | 30 s |
+| Field       | Value                     |
+| ----------- | ------------------------- |
+| Fault type  | error (STELLAR_RPC_ERROR) |
+| Target      | stellar                   |
+| Routes      | /api/v1/escrows/broadcast |
+| Probability | 100%                      |
+| Duration    | 30 s                      |
 
 **Hypothesis:** Repeated RPC errors open the Stellar circuit breaker; subsequent broadcast attempts return 503 fail-fast.
 
 **Verify in Prometheus:**
+
 ```promql
 circuit_breaker_state{name="stellar-rpc"}        # reaches 1 (OPEN)
 circuit_breaker_calls_total{name="stellar-rpc",outcome="rejected"}
@@ -191,18 +198,19 @@ circuit_breaker_calls_total{name="stellar-rpc",outcome="rejected"}
 
 ### `partial-api-errors` — Partial API Error Rate (30%)
 
-| Field            | Value |
-|------------------|-------|
-| Fault type       | http-error |
-| Target           | api |
-| Status code      | 500 |
-| Probability      | 30% |
-| Routes           | /api/v1/escrows |
-| Duration         | 60 s |
+| Field       | Value           |
+| ----------- | --------------- |
+| Fault type  | http-error      |
+| Target      | api             |
+| Status code | 500             |
+| Probability | 30%             |
+| Routes      | /api/v1/escrows |
+| Duration    | 60 s            |
 
 **Hypothesis:** ~30% of GET `/escrows` fail with 500; the circuit breaker stays CLOSED (below the 5-failure threshold); healthy requests still succeed.
 
 **Verify:**
+
 - Error rate visible in Prometheus: `rate(http_requests_total{status_code="500"}[1m])` ≈ 30% of escrow reads
 - Circuit stays CLOSED: `circuit_breaker_state{name="database"} == 0`
 
@@ -210,18 +218,19 @@ circuit_breaker_calls_total{name="stellar-rpc",outcome="rejected"}
 
 ### `high-latency-reads` — High Latency on Escrow Reads
 
-| Field            | Value |
-|------------------|-------|
-| Fault type       | latency |
-| Target           | api |
-| Delay            | 1 000–1 500 ms |
-| Routes           | /api/v1/escrows |
-| Probability      | 100% |
-| Duration         | 60 s |
+| Field       | Value           |
+| ----------- | --------------- |
+| Fault type  | latency         |
+| Target      | api             |
+| Delay       | 1 000–1 500 ms  |
+| Routes      | /api/v1/escrows |
+| Probability | 100%            |
+| Duration    | 60 s            |
 
 **Hypothesis:** P99 latency exceeds the 1 000 ms SLO and Grafana alert fires.
 
 **Verify:**
+
 ```promql
 histogram_quantile(0.99, rate(http_request_duration_ms_bucket{route="/api/v1/escrows"}[5m]))
 # Should exceed 1000
@@ -233,12 +242,12 @@ histogram_quantile(0.99, rate(http_request_duration_ms_bucket{route="/api/v1/esc
 
 ### Thresholds (default, configurable per-breaker)
 
-| Parameter         | Default | Description |
-|-------------------|---------|-------------|
-| failureThreshold  | 5       | Failures within windowSize before opening |
-| successThreshold  | 2       | Consecutive successes in HALF_OPEN to close |
-| timeout           | 30 000 ms | Wait in OPEN before probing |
-| windowSize        | 10 000 ms | Sliding window for failure counting |
+| Parameter        | Default   | Description                                 |
+| ---------------- | --------- | ------------------------------------------- |
+| failureThreshold | 5         | Failures within windowSize before opening   |
+| successThreshold | 2         | Consecutive successes in HALF_OPEN to close |
+| timeout          | 30 000 ms | Wait in OPEN before probing                 |
+| windowSize       | 10 000 ms | Sliding window for failure counting         |
 
 ### States
 
@@ -265,6 +274,7 @@ curl http://localhost:3000/health | jq '.circuitBreakers'
 Open the STE Overview dashboard at `http://localhost:3001` (or your Grafana instance).
 
 Key panels to watch during chaos:
+
 - **HTTP Error Rate** — should spike during fault injection
 - **DB Query Duration** — should spike during db-latency experiment
 - **Circuit Breaker State** — should transition to 1 (OPEN) during db-failure/stellar-error experiments

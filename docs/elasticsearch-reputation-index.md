@@ -6,17 +6,17 @@
 
 ## Mapping
 
-| Field               | ES type              | Notes                                      |
-| ------------------- | -------------------- | ------------------------------------------ |
-| `address`           | `keyword`            | Stellar G-address (exact match / filter)   |
-| `address_suggest`   | `search_as_you_type` | Prefix autocomplete (2-gram, 3-gram)       |
-| `tenant_id`         | `keyword`            | Multi-tenant filter                        |
-| `total_score`       | `long`               | Primary sort field for leaderboard         |
-| `completed_escrows` | `integer`            |                                            |
-| `disputed_escrows`  | `integer`            |                                            |
-| `disputes_won`      | `integer`            |                                            |
-| `total_volume`      | `keyword`            | Stored as string (BigInt-safe)             |
-| `last_updated`      | `date`               | ISO-8601                                   |
+| Field               | ES type              | Notes                                    |
+| ------------------- | -------------------- | ---------------------------------------- |
+| `address`           | `keyword`            | Stellar G-address (exact match / filter) |
+| `address_suggest`   | `search_as_you_type` | Prefix autocomplete (2-gram, 3-gram)     |
+| `tenant_id`         | `keyword`            | Multi-tenant filter                      |
+| `total_score`       | `long`               | Primary sort field for leaderboard       |
+| `completed_escrows` | `integer`            |                                          |
+| `disputed_escrows`  | `integer`            |                                          |
+| `disputes_won`      | `integer`            |                                          |
+| `total_volume`      | `keyword`            | Stored as string (BigInt-safe)           |
+| `last_updated`      | `date`               | ISO-8601                                 |
 
 Settings: `number_of_shards: 1`, `number_of_replicas: 0` (scale replicas in production).
 
@@ -32,10 +32,10 @@ Every ES query is wrapped in a try/catch. On any ES error the service transparen
 
 ## Environment variables
 
-| Variable              | Default                   | Description                          |
-| --------------------- | ------------------------- | ------------------------------------ |
-| `ELASTICSEARCH_URL`   | `http://localhost:9200`   | ES node URL                          |
-| `ELASTICSEARCH_API_KEY` | _(empty)_               | API key for Elastic Cloud / secured  |
+| Variable                | Default                 | Description                         |
+| ----------------------- | ----------------------- | ----------------------------------- |
+| `ELASTICSEARCH_URL`     | `http://localhost:9200` | ES node URL                         |
+| `ELASTICSEARCH_API_KEY` | _(empty)_               | API key for Elastic Cloud / secured |
 
 ## Local development
 

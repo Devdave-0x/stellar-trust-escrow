@@ -28,9 +28,7 @@ const PUBLIC_ROUTES = [
 
 function isPublicRoute(req) {
   return PUBLIC_ROUTES.some(
-    (r) =>
-      r.method === req.method &&
-      (req.path === r.path || req.path.startsWith(r.path + '/')),
+    (r) => r.method === req.method && (req.path === r.path || req.path.startsWith(r.path + '/')),
   );
 }
 

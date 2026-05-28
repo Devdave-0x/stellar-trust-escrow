@@ -51,7 +51,8 @@ const rules = [
           fires: true,
           confidence: 0.85,
           clientSplit: 1.0,
-          resolution: 'Client submitted evidence; freelancer provided none. Resolved in favour of client.',
+          resolution:
+            'Client submitted evidence; freelancer provided none. Resolved in favour of client.',
         };
       }
       if (freelancerEvidence.length > 0 && clientEvidence.length === 0) {
@@ -59,7 +60,8 @@ const rules = [
           fires: true,
           confidence: 0.85,
           clientSplit: 0.0,
-          resolution: 'Freelancer submitted evidence; client provided none. Resolved in favour of freelancer.',
+          resolution:
+            'Freelancer submitted evidence; client provided none. Resolved in favour of freelancer.',
         };
       }
       return { fires: false };
@@ -78,9 +80,10 @@ const rules = [
         if (hoursOpen >= 72) {
           return {
             fires: true,
-            confidence: 0.80,
+            confidence: 0.8,
             clientSplit: 0.5,
-            resolution: 'No evidence submitted by either party within 72 hours. Amount split equally.',
+            resolution:
+              'No evidence submitted by either party within 72 hours. Amount split equally.',
           };
         }
       }
@@ -96,14 +99,18 @@ const rules = [
     name: 'milestone_approved_before_dispute',
     evaluate(evidence, escrow) {
       const hasApprovedMilestone = escrow.milestones?.some(
-        (m) => m.status === 'Approved' && m.resolvedAt && new Date(m.resolvedAt) < new Date(escrow.raisedAt),
+        (m) =>
+          m.status === 'Approved' &&
+          m.resolvedAt &&
+          new Date(m.resolvedAt) < new Date(escrow.raisedAt),
       );
       if (hasApprovedMilestone) {
         return {
           fires: true,
-          confidence: 0.90,
+          confidence: 0.9,
           clientSplit: 0.0,
-          resolution: 'At least one milestone was approved on-chain before the dispute was raised. Resolved in favour of freelancer.',
+          resolution:
+            'At least one milestone was approved on-chain before the dispute was raised. Resolved in favour of freelancer.',
         };
       }
       return { fires: false };
@@ -125,7 +132,8 @@ const rules = [
           fires: true,
           confidence: 0.88,
           clientSplit: 1.0,
-          resolution: 'Escrow deadline passed with no milestone submissions. Resolved in favour of client.',
+          resolution:
+            'Escrow deadline passed with no milestone submissions. Resolved in favour of client.',
         };
       }
       return { fires: false };
@@ -205,8 +213,10 @@ export async function submitEvidence(disputeId, payload) {
   const VALID_ROLES = ['client', 'freelancer', 'arbiter', 'admin'];
   const VALID_TYPES = ['text', 'url', 'hash'];
 
-  if (!VALID_ROLES.includes(role)) throw new Error(`Invalid role. Must be one of: ${VALID_ROLES.join(', ')}`);
-  if (!VALID_TYPES.includes(evidenceType)) throw new Error(`Invalid evidenceType. Must be one of: ${VALID_TYPES.join(', ')}`);
+  if (!VALID_ROLES.includes(role))
+    throw new Error(`Invalid role. Must be one of: ${VALID_ROLES.join(', ')}`);
+  if (!VALID_TYPES.includes(evidenceType))
+    throw new Error(`Invalid evidenceType. Must be one of: ${VALID_TYPES.join(', ')}`);
   if (!content?.trim()) throw new Error('content is required');
 
   const dispute = await prisma.dispute.findUnique({ where: { id: disputeId } });
@@ -214,7 +224,14 @@ export async function submitEvidence(disputeId, payload) {
   if (dispute.resolvedAt) throw new Error('Cannot submit evidence for a resolved dispute');
 
   const evidence = await prisma.disputeEvidence.create({
-    data: { disputeId, submittedBy, role, evidenceType, content: content.trim(), description: description ?? null },
+    data: {
+      disputeId,
+      submittedBy,
+      role,
+      evidenceType,
+      content: content.trim(),
+      description: description ?? null,
+    },
   });
 
   await log({
@@ -274,7 +291,12 @@ export async function runAutomatedResolution(disputeId) {
       action: AuditAction.RESOLVE_DISPUTE,
       actor: 'system',
       resourceId: String(disputeId),
-      metadata: { rule: evaluation.rule, confidence: evaluation.confidence, clientAmount, freelancerAmount },
+      metadata: {
+        rule: evaluation.rule,
+        confidence: evaluation.confidence,
+        clientAmount,
+        freelancerAmount,
+      },
     });
 
     return { resolved: true, resolutionType: ResolutionType.AUTO, dispute: updated };
@@ -347,7 +369,8 @@ export async function submitAppeal(disputeId, payload) {
 
   if (!dispute) throw new Error('Dispute not found');
   if (!dispute.resolvedAt) throw new Error('Can only appeal a resolved dispute');
-  if (dispute.appeals.length > 0) throw new Error('You have already submitted an appeal for this dispute');
+  if (dispute.appeals.length > 0)
+    throw new Error('You have already submitted an appeal for this dispute');
 
   const appeal = await prisma.disputeAppeal.create({
     data: { disputeId, appealedBy, reason: reason.trim(), status: 'pending' },
@@ -376,7 +399,8 @@ export async function submitAppeal(disputeId, payload) {
  */
 export async function reviewAppeal(appealId, payload) {
   const { reviewedBy, status, reviewNotes } = payload;
-  if (!['approved', 'rejected'].includes(status)) throw new Error("status must be 'approved' or 'rejected'");
+  if (!['approved', 'rejected'].includes(status))
+    throw new Error("status must be 'approved' or 'rejected'");
 
   const appeal = await prisma.disputeAppeal.findUnique({ where: { id: appealId } });
   if (!appeal) throw new Error('Appeal not found');

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]          # support both main and develop for merge-ready CI
+    branches: [main, develop] # support both main and develop for merge-ready CI
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened]
@@ -148,7 +148,7 @@ jobs:
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_COLOR: danger
-          SLACK_MESSAGE: "❌ Contract CI failed — ${{ github.ref }} (${{ github.sha }}) — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SLACK_MESSAGE: '❌ Contract CI failed — ${{ github.ref }} (${{ github.sha }}) — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
 
   # ─────────────────────────────────────────
   # 🔬 Contract Fuzzing
@@ -156,7 +156,7 @@ jobs:
   contract-fuzz:
     name: Smart Contract Fuzzing
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'   # only on direct pushes to develop, not PRs
+    if: github.event_name == 'push' # only on direct pushes to develop, not PRs
 
     steps:
       - uses: actions/checkout@v4
@@ -220,7 +220,7 @@ jobs:
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_COLOR: danger
-          SLACK_MESSAGE: "⚠️ Fuzz testing found a failure on ${{ github.ref }} (${{ github.sha }})"
+          SLACK_MESSAGE: '⚠️ Fuzz testing found a failure on ${{ github.ref }} (${{ github.sha }})'
 
   # ─────────────────────────────────────────
   # ⚙️ Backend (Node.js)
@@ -290,7 +290,7 @@ jobs:
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_COLOR: danger
-          SLACK_MESSAGE: "❌ Backend CI failed (Node ${{ matrix.node-version }}) — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SLACK_MESSAGE: '❌ Backend CI failed (Node ${{ matrix.node-version }}) — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
 
   # ─────────────────────────────────────────
   # 🎨 Frontend (Next.js)
@@ -376,7 +376,7 @@ jobs:
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_COLOR: danger
-          SLACK_MESSAGE: "❌ Frontend CI failed (Node ${{ matrix.node-version }}) — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SLACK_MESSAGE: '❌ Frontend CI failed (Node ${{ matrix.node-version }}) — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
 
   # ─────────────────────────────────────────
   # 🎭 E2E Tests (Playwright)
@@ -477,7 +477,7 @@ jobs:
               CHANGED=$(git ls-tree -r --name-only HEAD)
             fi
           fi
-          if echo "$CHANGED" | grep -qE '^(frontend/|package(-lock)?\.json)'; then
+          if echo "$CHANGED" | grep -qE '^(frontend/|package(-lock)?\.json|scripts/)'; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -493,19 +493,50 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: npm ci
 
-      - name: Run Accessibility Tests
+      - name: Install Playwright browsers
+        if: steps.changes.outputs.changed == 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Build frontend
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+
+      - name: Start frontend server
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run start:test &
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+
+      - name: Wait for server
+        if: steps.changes.outputs.changed == 'true'
+        run: npx wait-on http://127.0.0.1:3000 --timeout 60000
+
+      - name: Run Jest Accessibility Tests
         if: steps.changes.outputs.changed == 'true'
         run: npm run test:a11y
         working-directory: frontend
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:4000
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
 
-      - name: Upload accessibility report
-        if: steps.changes.outputs.changed == 'true' && failure()
+      - name: Run Automated Accessibility Scanner
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run test:a11y:scan
+        working-directory: frontend
+        env:
+          CI: 'true'
+          BASE_URL: http://127.0.0.1:3000
+
+      - name: Upload accessibility reports
+        if: steps.changes.outputs.changed == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
-          name: accessibility-report-${{ github.sha }}
-          path: frontend/accessibility-report.html
+          name: accessibility-reports-${{ github.sha }}
+          path: frontend/accessibility-reports/
           retention-days: 30
 
   # ─────────────────────────────────────────

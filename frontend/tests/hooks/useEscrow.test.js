@@ -26,7 +26,7 @@ describe('useEscrow', () => {
     expect(useSWR).toHaveBeenCalledWith(
       expect.stringContaining('/api/escrows/42'),
       expect.any(Function),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -52,7 +52,12 @@ describe('useEscrow', () => {
 
   it('returns escrow data from SWR', () => {
     const MOCK_ESCROW = { id: 1, title: 'Audit', status: 'Active' };
-    useSWR.mockReturnValue({ data: MOCK_ESCROW, error: undefined, isLoading: false, mutate: mockMutate });
+    useSWR.mockReturnValue({
+      data: MOCK_ESCROW,
+      error: undefined,
+      isLoading: false,
+      mutate: mockMutate,
+    });
 
     const { result } = renderHook(() => useEscrow(1));
 
@@ -63,7 +68,12 @@ describe('useEscrow', () => {
   });
 
   it('returns loading state when SWR is fetching', () => {
-    useSWR.mockReturnValue({ data: undefined, error: undefined, isLoading: true, mutate: mockMutate });
+    useSWR.mockReturnValue({
+      data: undefined,
+      error: undefined,
+      isLoading: true,
+      mutate: mockMutate,
+    });
 
     const { result } = renderHook(() => useEscrow(1));
 
@@ -73,7 +83,12 @@ describe('useEscrow', () => {
 
   it('returns error from SWR when fetch fails', () => {
     const fetchError = new Error('Network error');
-    useSWR.mockReturnValue({ data: undefined, error: fetchError, isLoading: false, mutate: mockMutate });
+    useSWR.mockReturnValue({
+      data: undefined,
+      error: fetchError,
+      isLoading: false,
+      mutate: mockMutate,
+    });
 
     const { result } = renderHook(() => useEscrow(1));
 

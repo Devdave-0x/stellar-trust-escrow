@@ -23,9 +23,7 @@ describe('ErrorAlert', () => {
   });
 
   it('renders custom title', () => {
-    render(
-      <ErrorAlert message="Error message" onDismiss={jest.fn()} title="Validation Error" />,
-    );
+    render(<ErrorAlert message="Error message" onDismiss={jest.fn()} title="Validation Error" />);
     expect(screen.getByText('Validation Error')).toBeInTheDocument();
   });
 

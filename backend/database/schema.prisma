@@ -64,15 +64,101 @@ model User {
   email        String   @unique
   password     String
   walletAddress String? @unique @map("wallet_address")
+  role         String   @default("user") // user | admin | superadmin
+  mfaEnabled   Boolean  @default(false) @map("mfa_enabled")
+  mfaEnforced  Boolean  @default(false) @map("mfa_enforced") // Force MFA for high-value operations
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   tenant        Tenant        @relation(fields: [tenantId], references: [id])
   refreshTokens RefreshToken[]
+  mfaMethods    MfaMethod[]
+  mfaAttempts   MfaAttempt[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
+  @@index([walletAddress])
+  @@index([role])
   @@map("users")
+}
+
+// ── MFA Methods ───────────────────────────────────────────────────────────────
+
+model MfaMethod {
+  id            String    @id @default(cuid())
+  userId        Int       @map("user_id")
+  tenantId      String    @map("tenant_id")
+  type          MfaType   // TOTP | WEBAUTHN
+  name          String    // User-friendly name (e.g., "iPhone 15", "Authenticator App")
+  isActive      Boolean   @default(true) @map("is_active")
+  isPrimary     Boolean   @default(false) @map("is_primary")
+  
+  // TOTP-specific fields
+  totpSecret    String?   @map("totp_secret") // Encrypted TOTP secret
+  totpBackupCodes String[] @default([]) @map("totp_backup_codes") // Encrypted backup codes
+  
+  // WebAuthn-specific fields
+  credentialId  String?   @unique @map("credential_id") // Base64-encoded credential ID
+  publicKey     String?   @map("public_key") // Base64-encoded public key
+  counter       BigInt?   @default(0) // Signature counter for replay protection
+  transports    String[]  @default([]) // usb, nfc, ble, internal
+  aaguid        String?   // Authenticator AAGUID
+  
+  lastUsedAt    DateTime? @map("last_used_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tenantId])
+  @@index([userId, isActive])
+  @@index([type, isActive])
+  @@index([credentialId])
+  @@map("mfa_methods")
+}
+
+// ── MFA Attempts (Brute-force Protection) ─────────────────────────────────────
+
+model MfaAttempt {
+  id          String   @id @default(cuid())
+  userId      Int      @map("user_id")
+  tenantId    String   @map("tenant_id")
+  methodType  MfaType  @map("method_type")
+  success     Boolean
+  ipAddress   String   @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  failureReason String? @map("failure_reason")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, success, createdAt(sort: Desc)])
+  @@index([ipAddress, createdAt(sort: Desc)])
+  @@index([createdAt])
+  @@map("mfa_attempts")
+}
+
+// ── MFA Lockouts ──────────────────────────────────────────────────────────────
+
+model MfaLockout {
+  id          String   @id @default(cuid())
+  userId      Int      @unique @map("user_id")
+  tenantId    String   @map("tenant_id")
+  lockedUntil DateTime @map("locked_until")
+  reason      String   @default("Too many failed MFA attempts")
+  attempts    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, lockedUntil])
+  @@index([lockedUntil])
+  @@map("mfa_lockouts")
+}
+
+enum MfaType {
+  TOTP
+  WEBAUTHN
 }
 
 // ── Refresh Tokens ─────────────────────────────────────────────────────────────
@@ -103,7 +189,9 @@ model RefreshToken {
 // ── Escrows ───────────────────────────────────────────────────────────────────
 
 model Escrow {
-  /// On-chain escrow_id from the contract
+  /// On-chain escrow_id from the contract.
+  /// Monthly archive partitions are materialized in escrows_archive_<YYYY_MM>
+  /// and searched through the archive fallback path when live rows are exhausted.
   id                BigInt       @id
   tenantId          String       @map("tenant_id")
   clientAddress     String       @map("client_address")
@@ -254,6 +342,10 @@ model DisputeEvidence {
   ipfsCid      String?  @map("ipfs_cid")
   /// IPFS CID for thumbnail (images only)
   thumbnailCid String?  @map("thumbnail_cid")
+  /// SHA-256 hash of the file content (hex)
+  fileHash     String?  @map("file_hash")
+  /// Merkle root of all evidence files in this dispute batch
+  merkleRoot   String?  @map("merkle_root")
   /// Virus scan status: pending | clean | infected | error
   scanStatus   String?  @default("pending") @map("scan_status")
   /// Virus scan result details
@@ -349,6 +441,44 @@ model ContractEvent {
   @@index([escrowId, eventType])
   @@index([escrowId, ledgerAt(sort: Asc)])
   @@map("contract_events")
+}
+
+model WebhookSubscription {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  url        String
+  secret     String
+  eventTypes String[] @default([])
+  isActive   Boolean  @default(true) @map("is_active")
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  deliveries WebhookDelivery[]
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([createdBy])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  subscriptionId String   @map("subscription_id")
+  eventType      String   @map("event_type")
+  payload        Json
+  status         String   @default("pending")
+  attempts       Int      @default(0)
+  responseCode   Int?     @map("response_code")
+  errorMessage   String?  @map("error_message")
+  lastAttemptAt  DateTime? @map("last_attempt_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([eventType])
+  @@map("webhook_deliveries")
 }
 
 // ── Indexer State ─────────────────────────────────────────────────────────────

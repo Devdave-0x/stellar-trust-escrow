@@ -34,6 +34,7 @@ Rust's debug builds panic on overflow; release builds wrap. Soroban compiles to 
 - [ ] Boundary values tested (0, `i128::MAX`, `u32::MAX`)
 
 **Example:**
+
 ```rust
 // bad
 let new_balance = balance + amount;
@@ -67,6 +68,7 @@ let new_balance = balance.checked_add(amount).ok_or(InsuranceError::Overflow)?;
 Slither runs automatically on every PR via CI (see `.github/workflows/ci.yml` — `contract-static-analysis` job).
 
 To run locally:
+
 ```bash
 pip install slither-analyzer
 slither contracts/ --config-file slither.config.json
@@ -88,6 +90,7 @@ Fuzz targets live in `contracts/escrow_contract/fuzz/fuzz_targets/`. The `contra
 - [ ] No fuzz-discovered panics left unresolved
 
 To run locally (requires nightly):
+
 ```bash
 cd contracts/escrow_contract
 cargo +nightly fuzz run <target_name> -- -max_total_time=120
@@ -107,13 +110,13 @@ Full formal verification isn't required for every PR, but these points should be
 
 ## Testing Requirements by Function Type
 
-| Function type | Minimum tests required |
-|---|---|
-| Initialize / setup | Happy path + double-init rejection |
-| State mutation (contribute, vote) | Happy path + auth failure + boundary values |
-| Claim lifecycle | Full flow + each invalid transition |
-| Admin functions | Auth check + valid update + zero/invalid value rejection |
-| View functions | Returns correct data after state changes |
+| Function type                     | Minimum tests required                                   |
+| --------------------------------- | -------------------------------------------------------- |
+| Initialize / setup                | Happy path + double-init rejection                       |
+| State mutation (contribute, vote) | Happy path + auth failure + boundary values              |
+| Claim lifecycle                   | Full flow + each invalid transition                      |
+| Admin functions                   | Auth check + valid update + zero/invalid value rejection |
+| View functions                    | Returns correct data after state changes                 |
 
 - [ ] Each new function has tests covering the above minimums
 - [ ] Tests use `mock_all_auths()` only where intentional — don't mask auth bugs
@@ -133,7 +136,7 @@ Full formal verification isn't required for every PR, but these points should be
 
 Found a vulnerability outside of a PR review? Report it privately:
 
-- **Email:** security@stellar-trust.io *(update this before going public)*
+- **Email:** security@stellar-trust.io _(update this before going public)_
 - **Scope:** All contracts in `contracts/`, deployed contract addresses listed in `ARCHITECTURE.md`
 - **Out of scope:** Frontend UI bugs, rate limiting, DoS via normal usage
 - **Response SLA:** Acknowledgement within 48 hours, triage within 7 days

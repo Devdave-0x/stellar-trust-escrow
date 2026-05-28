@@ -130,9 +130,15 @@ class WebSocketPool {
       this.peakConnections = this.connections.size;
     }
 
-    ws.on('pong', () => { ws.isAlive = true; });
-    ws.on('close', () => { this.removeConnection(id); });
-    ws.on('error', (err) => { log.error({ message: 'ws_socket_error', id, err: err.message }); });
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
+    ws.on('close', () => {
+      this.removeConnection(id);
+    });
+    ws.on('error', (err) => {
+      log.error({ message: 'ws_socket_error', id, err: err.message });
+    });
     ws.on('message', (data) => {
       this.handleIncomingMessage(id, ws, data).catch((err) =>
         log.error({ message: 'ws_message_error', id, err: err.message }),
@@ -367,7 +373,9 @@ export function createWebSocketServer(httpServer) {
     }
   });
 
-  wss.on('close', () => { pool.stopHeartbeat(); });
+  wss.on('close', () => {
+    pool.stopHeartbeat();
+  });
 
   return wss;
 }

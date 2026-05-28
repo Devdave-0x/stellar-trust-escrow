@@ -15,31 +15,31 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 // ── Mock @elastic/elasticsearch ───────────────────────────────────────────────
 
 const mockSearch = jest.fn();
-const mockIndex  = jest.fn();
-const mockBulk   = jest.fn();
+const mockIndex = jest.fn();
+const mockBulk = jest.fn();
 const mockExists = jest.fn();
 const mockCreate = jest.fn();
 
 jest.unstable_mockModule('@elastic/elasticsearch', () => ({
   Client: jest.fn().mockImplementation(() => ({
-    search:  mockSearch,
-    index:   mockIndex,
-    bulk:    mockBulk,
+    search: mockSearch,
+    index: mockIndex,
+    bulk: mockBulk,
     indices: { exists: mockExists, create: mockCreate },
   })),
 }));
 
 // ── Mock prisma ───────────────────────────────────────────────────────────────
 
-const mockFindMany  = jest.fn();
-const mockCount     = jest.fn();
+const mockFindMany = jest.fn();
+const mockCount = jest.fn();
 const mockTransaction = jest.fn();
 
 jest.unstable_mockModule('../lib/prisma.js', () => ({
   default: {
     reputationRecord: {
       findMany: mockFindMany,
-      count:    mockCount,
+      count: mockCount,
     },
     $transaction: mockTransaction,
   },
@@ -49,41 +49,35 @@ jest.unstable_mockModule('../lib/prisma.js', () => ({
 
 process.env.ELASTICSEARCH_URL = 'http://localhost:9200';
 
-const {
-  search,
-  leaderboard,
-  bulkSync,
-  syncFromPrisma,
-  indexRecord,
-  ensureIndex,
-} = await import('../services/reputationSearchService.js');
+const { search, leaderboard, bulkSync, syncFromPrisma, indexRecord, ensureIndex } =
+  await import('../services/reputationSearchService.js');
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const ADDR = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
 
 const prismaRecord = {
-  address:          ADDR,
-  tenantId:         'tenant_1',
-  totalScore:       BigInt(500),
+  address: ADDR,
+  tenantId: 'tenant_1',
+  totalScore: BigInt(500),
   completedEscrows: 10,
-  disputedEscrows:  1,
-  disputesWon:      1,
-  totalVolume:      '50000',
-  lastUpdated:      new Date('2026-01-01'),
-  updatedAt:        new Date('2026-01-01'),
+  disputedEscrows: 1,
+  disputesWon: 1,
+  totalVolume: '50000',
+  lastUpdated: new Date('2026-01-01'),
+  updatedAt: new Date('2026-01-01'),
 };
 
 const esHit = {
-  address:           ADDR,
-  tenant_id:         'tenant_1',
-  total_score:       500,
+  address: ADDR,
+  tenant_id: 'tenant_1',
+  total_score: 500,
   completed_escrows: 10,
-  disputed_escrows:  1,
-  disputes_won:      1,
-  total_volume:      '50000',
-  last_updated:      '2026-01-01T00:00:00.000Z',
-  address_suggest:   ADDR,
+  disputed_escrows: 1,
+  disputes_won: 1,
+  total_volume: '50000',
+  last_updated: '2026-01-01T00:00:00.000Z',
+  address_suggest: ADDR,
 };
 
 function makeEsResponse(hits) {
@@ -160,7 +154,10 @@ describe('indexRecord', () => {
 describe('bulkSync', () => {
   it('sends bulk operations for each record', async () => {
     mockBulk.mockResolvedValue({ errors: false, items: [] });
-    const count = await bulkSync([prismaRecord, { ...prismaRecord, address: 'G' + 'B'.repeat(55) }]);
+    const count = await bulkSync([
+      prismaRecord,
+      { ...prismaRecord, address: 'G' + 'B'.repeat(55) },
+    ]);
     expect(count).toBe(2);
     const { operations } = mockBulk.mock.calls[0][0];
     // 2 records × 2 ops (index header + doc) = 4

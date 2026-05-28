@@ -19,7 +19,10 @@ function buildApp(ip = '1.2.3.4') {
   const app = express();
   app.use(express.json());
   // Inject a test IP via header; middleware reads X-Test-IP in test mode
-  app.use((req, _res, next) => { req.headers['x-test-ip'] = ip; next(); });
+  app.use((req, _res, next) => {
+    req.headers['x-test-ip'] = ip;
+    next();
+  });
   app.use(publicRateLimit);
   app.get('/api/escrows', (_req, res) => res.json({ ok: true }));
   app.get('/api/reputation/:address', (_req, res) => res.json({ ok: true }));
@@ -89,9 +92,7 @@ describe('publicRateLimit — wallet limiting', () => {
     const app = buildApp('10.0.2.2');
 
     await request(app).get('/api/escrows').set('x-wallet-address', WALLET).expect(200);
-    const res = await request(app)
-      .get('/api/escrows')
-      .set('x-wallet-address', WALLET);
+    const res = await request(app).get('/api/escrows').set('x-wallet-address', WALLET);
     expect(res.status).toBe(429);
   });
 

@@ -13,7 +13,11 @@ const prismaMock = {
     }),
     update: jest.fn(({ where, data }) => {
       const existing = flagStore.get(where.key);
-      if (!existing) { const e = new Error('Not found'); e.code = 'P2025'; throw e; }
+      if (!existing) {
+        const e = new Error('Not found');
+        e.code = 'P2025';
+        throw e;
+      }
       const updated = { ...existing, ...data };
       flagStore.set(where.key, updated);
       return Promise.resolve(updated);

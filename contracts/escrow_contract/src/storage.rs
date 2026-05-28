@@ -239,9 +239,17 @@ impl StorageManager {
                     lock_time: v1_escrow.lock_time,
                     lock_time_extension: v1_escrow.lock_time_extension,
                     timelock: OptionalTimelock::None,
+                    dispute_timeout_ledger: None,
+                    dispute_started_ledger: None,
                     brief_hash: v1_escrow.brief_hash,
                     rent_balance: 0,
                     last_rent_collection_at: v1_escrow.created_at,
+                    required_freelancer_stake: 0,
+                    stake_deposited: true,
+                    dispute_timeout_ledger: None,
+                    dispute_started_ledger: None,
+                    client_referrer: None,
+                    freelancer_referrer: None,
                 };
 
                 // Store meta in v2 format using PackedDataKey

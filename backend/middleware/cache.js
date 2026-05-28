@@ -12,7 +12,7 @@
 import cache from '../../lib/cache.js';
 
 export const TTL = {
-  LIST: 300,   // 5 minutes for escrow lists
+  LIST: 300, // 5 minutes for escrow lists
   DETAIL: 900, // 15 minutes for individual escrows
 };
 

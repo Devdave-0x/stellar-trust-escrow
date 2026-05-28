@@ -81,16 +81,18 @@ describe('MilestoneItem', () => {
       <MilestoneItem {...defaultProps} milestone={{ ...baseMilestone, status: 'Approved' }} />,
     );
     expect(
-      screen.getByText((_, element) =>
-        element?.tagName === 'P' &&
-        element.textContent?.includes('Approve & Release Funds'),
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === 'P' && element.textContent?.includes('Approve & Release Funds'),
       ),
     ).toBeInTheDocument();
   });
 
   it('calls onSubmit when freelancer clicks Submit Work', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
-    renderWithAppProviders(<MilestoneItem {...defaultProps} role="freelancer" onSubmit={onSubmit} />);
+    renderWithAppProviders(
+      <MilestoneItem {...defaultProps} role="freelancer" onSubmit={onSubmit} />,
+    );
     fireEvent.click(screen.getByText(/Submit Work/));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(1));
   });
@@ -131,7 +133,9 @@ describe('MilestoneItem', () => {
           resolveAction = res;
         }),
     );
-    renderWithAppProviders(<MilestoneItem {...defaultProps} role="freelancer" onSubmit={onSubmit} />);
+    renderWithAppProviders(
+      <MilestoneItem {...defaultProps} role="freelancer" onSubmit={onSubmit} />,
+    );
     fireEvent.click(screen.getByText(/Submit Work/));
     expect(await screen.findByText(/Loading\.\.\./)).toBeInTheDocument();
     await act(async () => {
@@ -140,7 +144,9 @@ describe('MilestoneItem', () => {
   });
 
   it('renders connector line when not last', () => {
-    const { container } = renderWithAppProviders(<MilestoneItem {...defaultProps} isLast={false} />);
+    const { container } = renderWithAppProviders(
+      <MilestoneItem {...defaultProps} isLast={false} />,
+    );
     expect(container.querySelector('.w-px')).toBeInTheDocument();
   });
 

@@ -165,12 +165,12 @@ are lost or created during resolution.
 
 Examples for an escrow with `remaining_balance = 3_000_000_000` (300 USDC):
 
-| Scenario | `client_amount` | `freelancer_amount` |
-|----------|-----------------|---------------------|
-| Full refund to client | 3 000 000 000 | 0 |
-| Full payment to freelancer | 0 | 3 000 000 000 |
-| 50/50 split | 1 500 000 000 | 1 500 000 000 |
-| 70% freelancer | 900 000 000 | 2 100 000 000 |
+| Scenario                   | `client_amount` | `freelancer_amount` |
+| -------------------------- | --------------- | ------------------- |
+| Full refund to client      | 3 000 000 000   | 0                   |
+| Full payment to freelancer | 0               | 3 000 000 000       |
+| 50/50 split                | 1 500 000 000   | 1 500 000 000       |
+| 70% freelancer             | 900 000 000     | 2 100 000 000       |
 
 ### State Prerequisite
 
@@ -216,16 +216,16 @@ soroban contract invoke \
 The arbiter's authority is intentionally narrow. The following actions
 are **not** available to the arbiter:
 
-| Action | Who can do it |
-|--------|--------------|
-| Approve a milestone | Client only |
-| Reject a milestone | Client only |
-| Submit a milestone | Freelancer only |
-| Cancel an escrow | Client only (via `cancel_escrow`) |
-| Add a milestone | Client only |
-| Upgrade the contract | Admin only |
-| Change the arbiter address | Nobody — immutable after creation |
-| Raise a dispute | Client or freelancer only |
+| Action                                     | Who can do it                     |
+| ------------------------------------------ | --------------------------------- |
+| Approve a milestone                        | Client only                       |
+| Reject a milestone                         | Client only                       |
+| Submit a milestone                         | Freelancer only                   |
+| Cancel an escrow                           | Client only (via `cancel_escrow`) |
+| Add a milestone                            | Client only                       |
+| Upgrade the contract                       | Admin only                        |
+| Change the arbiter address                 | Nobody — immutable after creation |
+| Raise a dispute                            | Client or freelancer only         |
 | Resolve a dispute on a non-disputed escrow | Nobody — `EscrowNotDisputed` (10) |
 
 The arbiter cannot unilaterally move funds unless a dispute has been
@@ -236,14 +236,14 @@ not sum to `remaining_balance`.
 
 ## Error Reference
 
-| Code | Name | When it occurs |
-|------|------|----------------|
-| 3 | `Unauthorized` | `raise_dispute` called by an address that is neither client nor freelancer. |
-| 7 | `ArbiterOnly` | `resolve_dispute` called by an address that is neither the arbiter nor the admin. |
-| 9 | `EscrowNotActive` | `raise_dispute` called on an escrow that is not `Active`. |
-| 10 | `EscrowNotDisputed` | `resolve_dispute` called on an escrow that is not `Disputed`. |
-| 20 | `AmountMismatch` | `client_amount + freelancer_amount != remaining_balance`. |
-| 23 | `DisputeAlreadyExists` | `raise_dispute` called on an escrow already in `Disputed` state. |
+| Code | Name                   | When it occurs                                                                    |
+| ---- | ---------------------- | --------------------------------------------------------------------------------- |
+| 3    | `Unauthorized`         | `raise_dispute` called by an address that is neither client nor freelancer.       |
+| 7    | `ArbiterOnly`          | `resolve_dispute` called by an address that is neither the arbiter nor the admin. |
+| 9    | `EscrowNotActive`      | `raise_dispute` called on an escrow that is not `Active`.                         |
+| 10   | `EscrowNotDisputed`    | `resolve_dispute` called on an escrow that is not `Disputed`.                     |
+| 20   | `AmountMismatch`       | `client_amount + freelancer_amount != remaining_balance`.                         |
+| 23   | `DisputeAlreadyExists` | `raise_dispute` called on an escrow already in `Disputed` state.                  |
 
 ---
 
