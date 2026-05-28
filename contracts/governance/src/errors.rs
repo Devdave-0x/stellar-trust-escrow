@@ -17,6 +17,7 @@ pub enum GovError {
     ProposalNotActive = 6,
     ProposalNotPassed = 7,
     ProposalAlreadyExecuted = 8,
+    ProposalAlreadyCancelled = 21,
     ProposalExpired = 9,
     TimelockNotElapsed = 10,
     InvalidProposalType = 11,
@@ -35,4 +36,12 @@ pub enum GovError {
     // Parameters
     InvalidParameter = 19,
     InvalidDuration = 20,
+
+    // Arbitrator DAO
+    AlreadyArbitrator = 21,
+    NotArbitrator = 22,
+    InsufficientStake = 23,
+    StakeCooldownActive = 24,
+    NoStakeToWithdraw = 25,
+    SlashExceedsStake = 26,
 }

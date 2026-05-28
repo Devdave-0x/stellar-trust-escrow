@@ -42,7 +42,7 @@ pub fn get_oracle(env: &Env) -> Result<Address, EscrowError> {
     env.storage()
         .instance()
         .get(&DataKey::OracleAddress)
-        .ok_or(EscrowError::OracleNotConfigured)
+        .ok_or(EscrowError::BridgeError)
 }
 
 pub fn set_fallback_oracle(env: &Env, oracle: &Address) {
@@ -78,11 +78,11 @@ pub fn get_price_usd(env: &Env, asset: &Address) -> Result<i128, EscrowError> {
             if is_fresh(&data, now) {
                 return Ok(data.price);
             }
-            return Err(EscrowError::OraclePriceStale);
+            return Err(EscrowError::BridgeError);
         }
     }
 
-    Err(EscrowError::OraclePriceStale)
+    Err(EscrowError::BridgeError)
 }
 
 /// Convert `amount` of `from_asset` to `to_asset` using oracle prices.
@@ -97,14 +97,14 @@ pub fn convert_amount(
     let to_price = get_price_usd(env, to_asset)?;
 
     if to_price == 0 {
-        return Err(EscrowError::OracleInvalidPrice);
+        return Err(EscrowError::BridgeError);
     }
 
     // amount * from_price / to_price  (prices share the same decimal base)
     amount
         .checked_mul(from_price)
         .and_then(|v| v.checked_div(to_price))
-        .ok_or(EscrowError::OracleInvalidPrice)
+        .ok_or(EscrowError::BridgeError)
 }
 
 #[inline]
