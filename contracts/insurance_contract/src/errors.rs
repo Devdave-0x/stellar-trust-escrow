@@ -47,4 +47,22 @@ pub enum InsuranceError {
     // ── Deadline ─────────────────────────────────────────────────────────────
     InvalidDeadline = 18,
     ClaimExpired = 19,
+
+    // ── Staking ───────────────────────────────────────────────────────────────
+    /// Reentrancy detected
+    Reentrancy = 20,
+    /// No active stake for this address
+    NoStakeFound = 21,
+    /// Unstake amount exceeds staked balance
+    InsufficientStake = 22,
+    /// Slash proposal not found
+    SlashProposalNotFound = 23,
+    /// Slash proposal is not in Approved state
+    SlashProposalNotApproved = 24,
+    /// slash_bps exceeds the configured maximum (40%)
+    SlashExceedsCap = 25,
+    /// slash_bps must be > 0
+    InvalidSlashBps = 26,
+    /// Nothing to yield-claim
+    NoYieldAvailable = 27,
 }
