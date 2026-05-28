@@ -103,7 +103,9 @@ model RefreshToken {
 // ── Escrows ───────────────────────────────────────────────────────────────────
 
 model Escrow {
-  /// On-chain escrow_id from the contract
+  /// On-chain escrow_id from the contract.
+  /// Monthly archive partitions are materialized in escrows_archive_<YYYY_MM>
+  /// and searched through the archive fallback path when live rows are exhausted.
   id                BigInt       @id
   tenantId          String       @map("tenant_id")
   clientAddress     String       @map("client_address")

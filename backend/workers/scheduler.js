@@ -1,5 +1,7 @@
 import cron from 'node-cron';
+import prisma from '../lib/prisma.js';
 import { scheduledQueue } from '../queues/index.js';
+import { archiveCompletedEscrows } from '../services/escrowArchiveService.js';
 import { syncFromPrisma } from '../services/reputationSearchService.js';
 
 // Daily cleanup at 2AM UTC
@@ -22,6 +24,18 @@ cron.schedule('0 * * * *', async () => {
   console.log('[Scheduler] Running hourly reputation check');
   await scheduledQueue.add('reputation-check', {});
 });
+
+// Daily archive sweep at 1AM UTC
+cron.schedule(
+  '0 1 * * *',
+  async () => {
+    console.log('[Scheduler] Archiving completed escrows older than one year');
+    await archiveCompletedEscrows(prisma).catch((err) =>
+      console.warn('[EscrowArchive] Daily archive sweep failed:', err.message),
+    );
+  },
+  { timezone: 'UTC' },
+);
 
 // Daily ES reputation sync at 3AM UTC
 cron.schedule(
