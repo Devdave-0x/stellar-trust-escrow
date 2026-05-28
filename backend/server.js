@@ -56,6 +56,7 @@ import logger, { getLogger } from './config/logger.js';
 import emailService from './services/emailService.js';
 import complianceService from './services/complianceService.js';
 import { startIndexer } from './services/eventIndexer.js';
+import { startRpcMonitor } from './monitoring/rpcMonitor.js';
 import { setupSwagger } from './api/docs/swagger.js';
 import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
@@ -276,6 +277,7 @@ async function startServer() {
           logger.error({ err, component: 'indexer' }, 'Indexer failed to start');
           Sentry.captureException(err, { tags: { component: 'indexer' } });
         });
+        startRpcMonitor();
 
         // Reputation ES sync — ensure index + initial sync on startup
         ensureIndex().then(() =>
