@@ -15,6 +15,8 @@
 
 import prisma from '../lib/prisma.js';
 import { withRetry } from '../lib/transaction.js';
+import LockManager from '../services/lockManager.js';
+import { syncCid } from './ipfsSyncWorker.js';
 
 const CONTRACT_ID         = process.env.ESCROW_CONTRACT_ID || '';
 const RPC_URL             = process.env.SOROBAN_RPC_URL    || 'https://soroban-testnet.stellar.org';
@@ -188,6 +190,10 @@ async function handleDisputeRaised(event, escrowId) {
       update: {},
     }),
   ]);
+
+  // Pre-fetch IPFS evidence metadata asynchronously
+  const cid = event.value?.[1] ?? event.cid;
+  if (cid) syncCid(String(cid), Number(escrowId));
 }
 
 async function handleDisputeResolved(event, escrowId) {
@@ -228,6 +234,11 @@ export async function startIndexer() {
   console.log(`[Indexer] Starting from ledger ${cursor}`);
 
   const tick = async () => {
+    const lock = await LockManager.acquire('escrow_verifying_lock', 300_000);
+    if (!lock) {
+      console.info('[Indexer] Lock held by another process — skipping tick');
+      return;
+    }
     const t0 = Date.now();
     try {
       const latest = await getLatestLedger();
@@ -250,6 +261,7 @@ export async function startIndexer() {
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
     } finally {
       metrics.lastTickMs = Date.now() - t0;
+      await lock.release();
     }
   };
 
