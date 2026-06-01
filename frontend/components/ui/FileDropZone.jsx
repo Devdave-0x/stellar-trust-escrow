@@ -44,9 +44,12 @@ function formatBytes(bytes) {
 }
 
 function getFileIcon(type) {
-  if (type.startsWith('image/')) return <Image size={16} className="text-indigo-400" aria-hidden="true" />;
-  if (type.startsWith('video/')) return <Film size={16} className="text-purple-400" aria-hidden="true" />;
-  if (type === 'application/pdf') return <FileText size={16} className="text-red-400" aria-hidden="true" />;
+  if (type.startsWith('image/'))
+    return <Image size={16} className="text-indigo-400" aria-hidden="true" />;
+  if (type.startsWith('video/'))
+    return <Film size={16} className="text-purple-400" aria-hidden="true" />;
+  if (type === 'application/pdf')
+    return <FileText size={16} className="text-red-400" aria-hidden="true" />;
   return <File size={16} className="text-gray-400" aria-hidden="true" />;
 }
 
@@ -198,20 +201,20 @@ export default function FileDropZone({
       if (onUpload) {
         // Real upload path
         let cancelled = false;
-        cancelRefs.current[entry.id] = () => { cancelled = true; };
+        cancelRefs.current[entry.id] = () => {
+          cancelled = true;
+        };
 
-        Promise.resolve(onUpload(entry.raw, (progress) => {
-          if (cancelled) return;
-          setFiles((prev) =>
-            prev.map((f) => (f.id === entry.id ? { ...f, progress } : f)),
-          );
-          announce(`${entry.name}: ${Math.round(progress)}% uploaded`);
-        }))
+        Promise.resolve(
+          onUpload(entry.raw, (progress) => {
+            if (cancelled) return;
+            setFiles((prev) => prev.map((f) => (f.id === entry.id ? { ...f, progress } : f)));
+            announce(`${entry.name}: ${Math.round(progress)}% uploaded`);
+          }),
+        )
           .then(() => {
             if (cancelled) return;
-            setFiles((prev) =>
-              prev.map((f) => (f.id === entry.id ? { ...f, progress: 100 } : f)),
-            );
+            setFiles((prev) => prev.map((f) => (f.id === entry.id ? { ...f, progress: 100 } : f)));
             announce(`${entry.name} uploaded successfully`);
           })
           .catch((err) => {
@@ -252,9 +255,7 @@ export default function FileDropZone({
       cancel();
       cancelRefs.current[id] = 'cancelled';
     }
-    setFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, cancelled: true } : f)),
-    );
+    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, cancelled: true } : f)));
   }, []);
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
@@ -329,9 +330,7 @@ export default function FileDropZone({
           ${isFull ? 'opacity-40 cursor-not-allowed' : ''}
         `}
         style={{
-          background: isDragging
-            ? 'rgba(99,102,241,0.08)'
-            : 'rgba(255,255,255,0.02)',
+          background: isDragging ? 'rgba(99,102,241,0.08)' : 'rgba(255,255,255,0.02)',
           borderColor: isDragging ? '#6366f1' : 'rgba(255,255,255,0.12)',
           animation: isDragging ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
           boxShadow: isDragging
@@ -361,11 +360,11 @@ export default function FileDropZone({
             {isDragging ? 'Release to upload' : 'Drag & drop files here'}
           </p>
           <p className="text-xs text-gray-500">
-            or{' '}
-            <span className="text-indigo-400 underline underline-offset-2">browse files</span>
+            or <span className="text-indigo-400 underline underline-offset-2">browse files</span>
           </p>
           <p className="text-[11px] text-gray-600 mt-1">
-            {Object.values(acceptedTypes).join(', ')} · max {formatBytes(maxSizeBytes)} · up to {maxFiles} files
+            {Object.values(acceptedTypes).join(', ')} · max {formatBytes(maxSizeBytes)} · up to{' '}
+            {maxFiles} files
           </p>
         </div>
 

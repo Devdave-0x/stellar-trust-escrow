@@ -51,7 +51,9 @@ function makeSocket(overrides = {}) {
     to: jest.fn().mockReturnThis(),
     emit: jest.fn(),
     disconnect: jest.fn(),
-    on: jest.fn((event, handler) => { listeners[event] = handler; }),
+    on: jest.fn((event, handler) => {
+      listeners[event] = handler;
+    }),
     _listeners: listeners,
     ...overrides,
   };
@@ -217,7 +219,9 @@ describe('Namespace auth middleware logic', () => {
   });
 
   it('rejects a valid JWT whose address is not a dispute party', async () => {
-    const token = makeToken({ address: 'GSTRANGER00000000000000000000000000000000000000000000000' });
+    const token = makeToken({
+      address: 'GSTRANGER00000000000000000000000000000000000000000000000',
+    });
     const socket = makeSocket();
     socket.handshake.auth.token = token;
 
@@ -270,11 +274,14 @@ describe('Event routing', () => {
     handler({ content: 'Hello dispute!' }, ack);
 
     expect(nspTo).toHaveBeenCalledWith(room);
-    expect(nspEmit).toHaveBeenCalledWith('message:new', expect.objectContaining({
-      content: 'Hello dispute!',
-      sender: socket.data.address,
-      disputeId: 42,
-    }));
+    expect(nspEmit).toHaveBeenCalledWith(
+      'message:new',
+      expect.objectContaining({
+        content: 'Hello dispute!',
+        sender: socket.data.address,
+        disputeId: 42,
+      }),
+    );
     expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
   });
 
@@ -356,8 +363,11 @@ describe('Event routing', () => {
     };
     handler();
 
-    expect(toEmit).toHaveBeenCalledWith('user:left', expect.objectContaining({
-      address: socket.data.address,
-    }));
+    expect(toEmit).toHaveBeenCalledWith(
+      'user:left',
+      expect.objectContaining({
+        address: socket.data.address,
+      }),
+    );
   });
 });

@@ -9,7 +9,6 @@
  * @module middleware/tracingMiddleware
  */
 
- 
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 /**

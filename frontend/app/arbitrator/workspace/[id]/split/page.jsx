@@ -87,7 +87,11 @@ function PreviewModal({ file, onClose }) {
 
         <div className="max-h-[75vh] overflow-auto p-4">
           {file.type.startsWith('image/') ? (
-            <img src={file.url} alt={file.name} className="mx-auto max-h-[70vh] rounded-2xl object-contain" />
+            <img
+              src={file.url}
+              alt={file.name}
+              className="mx-auto max-h-[70vh] rounded-2xl object-contain"
+            />
           ) : (
             <iframe
               src={file.url}
@@ -114,10 +118,13 @@ export default function ArbitrationSplitPage() {
         <header className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.35em] text-indigo-200">Arbitration workspace</p>
+              <p className="text-xs uppercase tracking-[0.35em] text-indigo-200">
+                Arbitration workspace
+              </p>
               <h1 className="text-3xl font-semibold text-white">Advanced immersive case panel</h1>
               <p className="max-w-3xl text-sm text-gray-300 lg:text-base">
-                Compare client and freelancer case materials side-by-side, review evidence in-place, and resolve payout split decisions from a pinned center control rail.
+                Compare client and freelancer case materials side-by-side, review evidence in-place,
+                and resolve payout split decisions from a pinned center control rail.
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
@@ -132,7 +139,9 @@ export default function ArbitrationSplitPage() {
             <div className="rounded-t-3xl border-b border-white/10 bg-gradient-to-r from-indigo-500/12 via-transparent to-transparent p-5">
               <p className="text-xs uppercase tracking-[0.35em] text-indigo-200">Left panel</p>
               <h2 className="mt-2 text-xl font-semibold text-white">Client arguments</h2>
-              <p className="mt-1 text-sm text-gray-300">Review the client’s claims, evidence files, and supporting notes.</p>
+              <p className="mt-1 text-sm text-gray-300">
+                Review the client’s claims, evidence files, and supporting notes.
+              </p>
             </div>
             <div className="space-y-5 p-5">
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -140,7 +149,10 @@ export default function ArbitrationSplitPage() {
               </div>
               <ul className="space-y-2 text-sm text-gray-200">
                 {CLIENT_CASE.highlights.map((item) => (
-                  <li key={item} className="flex items-start gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-2">
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-2"
+                  >
                     <span className="mt-1 h-2 w-2 rounded-full bg-rose-400" />
                     <span>{item}</span>
                   </li>
@@ -162,7 +174,9 @@ export default function ArbitrationSplitPage() {
                           <p className="text-sm font-medium text-white">{file.name}</p>
                           <p className="text-xs text-gray-400">{file.note}</p>
                         </div>
-                        <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.25em] text-indigo-200">Preview</span>
+                        <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.25em] text-indigo-200">
+                          Preview
+                        </span>
                       </div>
                     </button>
                   ))}
@@ -175,16 +189,22 @@ export default function ArbitrationSplitPage() {
             <div className="rounded-t-3xl border-b border-white/10 bg-gradient-to-r from-emerald-500/15 via-transparent to-indigo-500/15 p-5">
               <p className="text-xs uppercase tracking-[0.35em] text-emerald-100">Center rail</p>
               <h2 className="mt-2 text-xl font-semibold text-white">Resolution controls</h2>
-              <p className="mt-1 text-sm text-gray-300">Set the payout split and confirm the preferred resolution path.</p>
+              <p className="mt-1 text-sm text-gray-300">
+                Set the payout split and confirm the preferred resolution path.
+              </p>
             </div>
             <div className="space-y-5 p-5">
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                 <div className="flex items-end justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Payout split</p>
+                    <p className="text-xs uppercase tracking-[0.25em] text-gray-400">
+                      Payout split
+                    </p>
                     <p className="mt-1 text-sm text-gray-200">Client share: {clientShare}%</p>
                   </div>
-                  <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-100">{freelancerShare}% freelancer</span>
+                  <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-100">
+                    {freelancerShare}% freelancer
+                  </span>
                 </div>
                 <input
                   aria-label="Adjust client payout percentage"
@@ -207,9 +227,21 @@ export default function ArbitrationSplitPage() {
                 <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Voting panel</p>
                 <div className="mt-3 space-y-2">
                   {[
-                    { id: 'client', label: 'Client-favored split', note: 'Award the client the current share.' },
-                    { id: 'split', label: 'Balanced split', note: 'Use the slider above as the final allocation.' },
-                    { id: 'freelancer', label: 'Freelancer-favored split', note: 'Prioritize the freelancer payout path.' },
+                    {
+                      id: 'client',
+                      label: 'Client-favored split',
+                      note: 'Award the client the current share.',
+                    },
+                    {
+                      id: 'split',
+                      label: 'Balanced split',
+                      note: 'Use the slider above as the final allocation.',
+                    },
+                    {
+                      id: 'freelancer',
+                      label: 'Freelancer-favored split',
+                      note: 'Prioritize the freelancer payout path.',
+                    },
                   ].map((option) => (
                     <button
                       key={option.id}
@@ -230,15 +262,36 @@ export default function ArbitrationSplitPage() {
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-gray-200">
-                <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Decision summary</p>
-                <p className="mt-2">Current recommendation: <strong>{vote === 'split' ? 'balanced split' : vote === 'client' ? 'client-favored' : 'freelancer-favored'}</strong>.</p>
-                <p className="mt-1 text-gray-300">Client payout: <strong>{clientShare}%</strong>. Freelancer payout: <strong>{freelancerShare}%</strong>.</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-gray-400">
+                  Decision summary
+                </p>
+                <p className="mt-2">
+                  Current recommendation:{' '}
+                  <strong>
+                    {vote === 'split'
+                      ? 'balanced split'
+                      : vote === 'client'
+                        ? 'client-favored'
+                        : 'freelancer-favored'}
+                  </strong>
+                  .
+                </p>
+                <p className="mt-1 text-gray-300">
+                  Client payout: <strong>{clientShare}%</strong>. Freelancer payout:{' '}
+                  <strong>{freelancerShare}%</strong>.
+                </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button variant="primary" size="sm">Save draft</Button>
-                <Button variant="secondary" size="sm">Share notes</Button>
-                <Button variant="danger" size="sm">Escalate</Button>
+                <Button variant="primary" size="sm">
+                  Save draft
+                </Button>
+                <Button variant="secondary" size="sm">
+                  Share notes
+                </Button>
+                <Button variant="danger" size="sm">
+                  Escalate
+                </Button>
               </div>
             </div>
           </aside>
@@ -247,7 +300,9 @@ export default function ArbitrationSplitPage() {
             <div className="rounded-t-3xl border-b border-white/10 bg-gradient-to-r from-emerald-500/12 via-transparent to-transparent p-5">
               <p className="text-xs uppercase tracking-[0.35em] text-emerald-100">Right panel</p>
               <h2 className="mt-2 text-xl font-semibold text-white">Freelancer arguments</h2>
-              <p className="mt-1 text-sm text-gray-300">Review the freelancer’s counter-claim and supporting evidence.</p>
+              <p className="mt-1 text-sm text-gray-300">
+                Review the freelancer’s counter-claim and supporting evidence.
+              </p>
             </div>
             <div className="space-y-5 p-5">
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -255,7 +310,10 @@ export default function ArbitrationSplitPage() {
               </div>
               <ul className="space-y-2 text-sm text-gray-200">
                 {FREELANCER_CASE.highlights.map((item) => (
-                  <li key={item} className="flex items-start gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-2">
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-2"
+                  >
                     <span className="mt-1 h-2 w-2 rounded-full bg-emerald-400" />
                     <span>{item}</span>
                   </li>
@@ -277,7 +335,9 @@ export default function ArbitrationSplitPage() {
                           <p className="text-sm font-medium text-white">{file.name}</p>
                           <p className="text-xs text-gray-400">{file.note}</p>
                         </div>
-                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.25em] text-emerald-100">Preview</span>
+                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.25em] text-emerald-100">
+                          Preview
+                        </span>
                       </div>
                     </button>
                   ))}

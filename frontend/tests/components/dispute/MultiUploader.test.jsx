@@ -40,7 +40,9 @@ describe('MultiUploader', () => {
     render(<MultiUploader />);
     const zone = screen.getByRole('button', { name: /drop files here/i });
     const file = makeFile('report.pdf');
-    await act(async () => { dropFiles(zone, [file]); });
+    await act(async () => {
+      dropFiles(zone, [file]);
+    });
     expect(screen.getByText('report.pdf')).toBeInTheDocument();
   });
 
@@ -54,10 +56,10 @@ describe('MultiUploader', () => {
     expect(screen.getByLabelText('Uploading')).toBeInTheDocument();
 
     // Advance timers step by step until upload completes (avoids infinite-loop with Math.random)
-    await act(async () => { jest.advanceTimersByTime(5000); });
-    await waitFor(() =>
-      expect(screen.getByLabelText('Upload complete')).toBeInTheDocument(),
-    );
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    await waitFor(() => expect(screen.getByLabelText('Upload complete')).toBeInTheDocument());
   });
 
   it('rejects unsupported file types', async () => {
@@ -86,7 +88,9 @@ describe('MultiUploader', () => {
       fireEvent.change(input, { target: { files: [makeFile('doc.pdf')] } });
     });
     // Complete upload so remove button appears
-    await act(async () => { jest.advanceTimersByTime(5000); });
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
     await waitFor(() => screen.getByLabelText('Remove doc.pdf'));
     fireEvent.click(screen.getByLabelText('Remove doc.pdf'));
     expect(screen.queryByText('doc.pdf')).not.toBeInTheDocument();
@@ -100,9 +104,7 @@ describe('MultiUploader', () => {
     });
     const cancelBtn = screen.getByLabelText('Cancel upload for cancel.pdf');
     fireEvent.click(cancelBtn);
-    await waitFor(() =>
-      expect(screen.getByLabelText('cancelled')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByLabelText('cancelled')).toBeInTheDocument());
   });
 
   it('allows caption input after upload completes', async () => {
@@ -111,7 +113,9 @@ describe('MultiUploader', () => {
     await act(async () => {
       fireEvent.change(input, { target: { files: [makeFile('proof.pdf')] } });
     });
-    await act(async () => { jest.advanceTimersByTime(5000); });
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
     const captionInput = await screen.findByLabelText('Caption for proof.pdf');
     fireEvent.change(captionInput, { target: { value: 'Key evidence' } });
     expect(captionInput).toHaveValue('Key evidence');

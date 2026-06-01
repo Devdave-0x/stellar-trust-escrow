@@ -46,7 +46,8 @@ function formatBytes(bytes) {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function FileTypeIcon({ mimeType }) {
-  if (mimeType.startsWith('image/')) return <ImageIcon size={16} className="text-indigo-400 shrink-0" aria-hidden="true" />;
+  if (mimeType.startsWith('image/'))
+    return <ImageIcon size={16} className="text-indigo-400 shrink-0" aria-hidden="true" />;
   return <FileText size={16} className="text-gray-400 shrink-0" aria-hidden="true" />;
 }
 
@@ -70,12 +71,7 @@ function ProgressBar({ value }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function MultiUploader({
-  onUpload,
-  maxFiles = 10,
-  maxTotalMB = 50,
-  accept,
-}) {
+export default function MultiUploader({ onUpload, maxFiles = 10, maxTotalMB = 50, accept }) {
   const acceptedTypes = accept
     ? Object.fromEntries(accept.map((t) => [t, t.split('/')[1].toUpperCase()]))
     : DEFAULT_ACCEPT;
@@ -111,9 +107,7 @@ export default function MultiUploader({
         progress = Math.min(progress + Math.random() * 20 + 8, 100);
         const done = progress >= 100;
         return prev.map((f) =>
-          f.id === id
-            ? { ...f, progress, status: done ? 'done' : 'uploading' }
-            : f,
+          f.id === id ? { ...f, progress, status: done ? 'done' : 'uploading' } : f,
         );
       });
 
@@ -136,7 +130,10 @@ export default function MultiUploader({
           error = `Type not allowed. Accepted: ${Object.values(acceptedTypes).join(', ')}`;
         } else if (raw.size > MAX_FILE_BYTES) {
           error = `Exceeds 10 MB limit (${formatBytes(raw.size)})`;
-        } else if (totalBytes + incoming.reduce((s, f) => s + f.size, 0) + raw.size > maxTotalBytes) {
+        } else if (
+          totalBytes + incoming.reduce((s, f) => s + f.size, 0) + raw.size >
+          maxTotalBytes
+        ) {
           error = `Would exceed total ${maxTotalMB} MB limit`;
         }
 
@@ -159,21 +156,30 @@ export default function MultiUploader({
       incoming.filter((f) => !f.error).forEach((f) => simulateUpload(f.id));
       onUpload?.(incoming.filter((f) => !f.error).map((f) => f.raw));
     },
-    [files, maxFiles, maxTotalBytes, maxTotalMB, totalBytes, acceptedTypes, simulateUpload, onUpload],
+    [
+      files,
+      maxFiles,
+      maxTotalBytes,
+      maxTotalMB,
+      totalBytes,
+      acceptedTypes,
+      simulateUpload,
+      onUpload,
+    ],
   );
 
   // ── Item actions ────────────────────────────────────────────────────────────
 
   const cancelUpload = (id) =>
     setFiles((prev) =>
-      prev.map((f) => (f.id === id && f.status === 'uploading' ? { ...f, status: 'cancelled' } : f)),
+      prev.map((f) =>
+        f.id === id && f.status === 'uploading' ? { ...f, status: 'cancelled' } : f,
+      ),
     );
 
   const retryUpload = (id) => {
     setFiles((prev) =>
-      prev.map((f) =>
-        f.id === id ? { ...f, progress: 0, status: 'uploading', error: null } : f,
-      ),
+      prev.map((f) => (f.id === id ? { ...f, progress: 0, status: 'uploading', error: null } : f)),
     );
     simulateUpload(id);
   };
@@ -185,7 +191,10 @@ export default function MultiUploader({
 
   // ── Drag-and-drop (drop zone) ───────────────────────────────────────────────
 
-  const onDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+  const onDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
   const onDragLeave = (e) => {
     // Only clear when leaving the zone entirely
     if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false);
@@ -196,7 +205,10 @@ export default function MultiUploader({
     processFiles([...e.dataTransfer.files]);
   };
   const onKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      inputRef.current?.click();
+    }
   };
 
   // ── Drag-and-drop (reorder) ─────────────────────────────────────────────────
@@ -224,7 +236,10 @@ export default function MultiUploader({
       return arr;
     });
   };
-  const onItemDragEnd = () => { dragSrcId.current = null; setDragOverId(null); };
+  const onItemDragEnd = () => {
+    dragSrcId.current = null;
+    setDragOverId(null);
+  };
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -232,7 +247,6 @@ export default function MultiUploader({
 
   return (
     <section className="space-y-4" aria-label="Multi-file evidence uploader">
-
       {/* ── Drop zone ── */}
       <div
         role="button"
@@ -259,7 +273,10 @@ export default function MultiUploader({
       >
         <Upload
           size={30}
-          className={cn('transition-colors duration-200', isDragging ? 'text-indigo-400' : 'text-gray-500')}
+          className={cn(
+            'transition-colors duration-200',
+            isDragging ? 'text-indigo-400' : 'text-gray-500',
+          )}
           aria-hidden="true"
         />
         <div className="text-center select-none">
@@ -267,7 +284,8 @@ export default function MultiUploader({
             {isDragging ? 'Release to add files' : 'Drag & drop files, or click to browse'}
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            {Object.values(acceptedTypes).join(', ')} · max 10 MB each · up to {maxFiles} files · {maxTotalMB} MB total
+            {Object.values(acceptedTypes).join(', ')} · max 10 MB each · up to {maxFiles} files ·{' '}
+            {maxTotalMB} MB total
           </p>
         </div>
 
@@ -279,7 +297,10 @@ export default function MultiUploader({
           className="sr-only"
           aria-hidden="true"
           tabIndex={-1}
-          onChange={(e) => { processFiles([...e.target.files]); e.target.value = ''; }}
+          onChange={(e) => {
+            processFiles([...e.target.files]);
+            e.target.value = '';
+          }}
         />
       </div>
 
@@ -336,13 +357,25 @@ export default function MultiUploader({
 
                 {/* Status icon */}
                 {file.status === 'uploading' && (
-                  <Loader2 size={14} className="text-indigo-400 animate-spin shrink-0" aria-label="Uploading" />
+                  <Loader2
+                    size={14}
+                    className="text-indigo-400 animate-spin shrink-0"
+                    aria-label="Uploading"
+                  />
                 )}
                 {file.status === 'done' && (
-                  <CheckCircle2 size={14} className="text-emerald-400 shrink-0" aria-label="Upload complete" />
+                  <CheckCircle2
+                    size={14}
+                    className="text-emerald-400 shrink-0"
+                    aria-label="Upload complete"
+                  />
                 )}
                 {(file.status === 'error' || file.status === 'cancelled') && (
-                  <AlertCircle size={14} className="text-red-400 shrink-0" aria-label={file.status} />
+                  <AlertCircle
+                    size={14}
+                    className="text-red-400 shrink-0"
+                    aria-label={file.status}
+                  />
                 )}
 
                 {/* Retry (error / cancelled) */}
@@ -384,7 +417,9 @@ export default function MultiUploader({
 
               {/* Validation error */}
               {file.error && (
-                <p className="text-xs text-red-400" role="alert">{file.error}</p>
+                <p className="text-xs text-red-400" role="alert">
+                  {file.error}
+                </p>
               )}
 
               {/* Caption input (shown once done or while uploading) */}

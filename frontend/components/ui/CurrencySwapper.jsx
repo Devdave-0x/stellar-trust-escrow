@@ -113,14 +113,21 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
   }, [fromToken, toToken, quote]);
 
   const handleSwap = async () => {
-    if (!walletConnected) { onConnectWallet?.(); return; }
+    if (!walletConnected) {
+      onConnectWallet?.();
+      return;
+    }
     if (!quote) return;
     setSwapping(true);
     setError('');
     try {
       await onSwap?.({ from: fromToken, to: toToken, amount: fromAmount, quote });
       setSwapSuccess(true);
-      setTimeout(() => { setSwapSuccess(false); setFromAmount(''); setQuote(null); }, 2000);
+      setTimeout(() => {
+        setSwapSuccess(false);
+        setFromAmount('');
+        setQuote(null);
+      }, 2000);
     } catch (err) {
       setError(err.message || 'Swap failed.');
     } finally {
@@ -129,7 +136,9 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
   };
 
   const slippage = quote ? (quote.rate * SLIPPAGE_TOLERANCE).toFixed(6) : null;
-  const minReceived = quote ? (quote.destinationAmount * (1 - SLIPPAGE_TOLERANCE)).toFixed(6) : null;
+  const minReceived = quote
+    ? (quote.destinationAmount * (1 - SLIPPAGE_TOLERANCE)).toFixed(6)
+    : null;
 
   return (
     <section
@@ -144,8 +153,10 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
         <label htmlFor="from-amount" className="text-xs text-gray-400">
           You pay
         </label>
-        <div className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3
-                        focus-within:border-indigo-500/70 transition-colors">
+        <div
+          className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3
+                        focus-within:border-indigo-500/70 transition-colors"
+        >
           <input
             id="from-amount"
             type="number"
@@ -174,8 +185,14 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
                      focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
         >
           <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path d="M5 12l-3-3 3-3M15 8l3 3-3 3M2 9h16" stroke="currentColor" strokeWidth="1.5"
-                  fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M5 12l-3-3 3-3M15 8l3 3-3 3M2 9h16"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       </div>
@@ -191,8 +208,20 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
           >
             {loading ? (
               <span className="inline-flex items-center gap-1 text-gray-500 text-sm">
-                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <svg
+                  className="animate-spin h-3 w-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
                 Fetching…
@@ -222,7 +251,9 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
           </div>
           <div className="flex justify-between text-gray-400">
             <dt>Min. received</dt>
-            <dd className="text-white">{minReceived} {toToken}</dd>
+            <dd className="text-white">
+              {minReceived} {toToken}
+            </dd>
           </div>
           <div className="flex justify-between text-gray-400">
             <dt>Network fee</dt>
@@ -231,7 +262,9 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
           {quote.path?.length > 0 && (
             <div className="flex justify-between text-gray-400">
               <dt>Route</dt>
-              <dd className="text-white">{fromToken} → {quote.path.map((p) => p.asset_code || 'XLM').join(' → ')} → {toToken}</dd>
+              <dd className="text-white">
+                {fromToken} → {quote.path.map((p) => p.asset_code || 'XLM').join(' → ')} → {toToken}
+              </dd>
             </div>
           )}
         </dl>
@@ -239,7 +272,10 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
 
       {/* Error */}
       {error && (
-        <div role="alert" className="bg-red-500/10 border border-red-500/40 text-red-400 text-xs p-3 rounded-xl">
+        <div
+          role="alert"
+          className="bg-red-500/10 border border-red-500/40 text-red-400 text-xs p-3 rounded-xl"
+        >
           {error}
         </div>
       )}
@@ -256,7 +292,13 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
                    bg-indigo-600 hover:bg-indigo-500 text-white
                    hover:shadow-[0_0_20px_rgba(99,102,241,0.4)]"
       >
-        {swapSuccess ? '✓ Swapped!' : swapping ? 'Swapping…' : !walletConnected ? 'Connect Wallet to Swap' : 'Swap'}
+        {swapSuccess
+          ? '✓ Swapped!'
+          : swapping
+            ? 'Swapping…'
+            : !walletConnected
+              ? 'Connect Wallet to Swap'
+              : 'Swap'}
       </button>
     </section>
   );
@@ -265,7 +307,9 @@ export default function CurrencySwapper({ onSwap, walletConnected = false, onCon
 function TokenBadge({ token }) {
   const colors = { XLM: 'bg-sky-500/20 text-sky-300', USDC: 'bg-blue-500/20 text-blue-300' };
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${colors[token] || 'bg-gray-700 text-gray-300'}`}>
+    <span
+      className={`px-2.5 py-1 rounded-lg text-xs font-bold ${colors[token] || 'bg-gray-700 text-gray-300'}`}
+    >
       {token}
     </span>
   );

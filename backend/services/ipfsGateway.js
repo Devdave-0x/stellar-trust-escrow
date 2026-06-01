@@ -89,9 +89,7 @@ function recordSuccess(url, latencyMs) {
   if (!state) return;
   state.failCount = 0;
   // Exponential moving average (α = 0.3)
-  state.avgLatency = state.avgLatency === 0
-    ? latencyMs
-    : 0.7 * state.avgLatency + 0.3 * latencyMs;
+  state.avgLatency = state.avgLatency === 0 ? latencyMs : 0.7 * state.avgLatency + 0.3 * latencyMs;
 }
 
 function recordFailure(url) {
@@ -132,7 +130,9 @@ async function cacheSet(key, value, ttl) {
   if (!redis) return;
   try {
     await redis.set(key, JSON.stringify(value), { EX: ttl });
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // ── Core fetch logic ──────────────────────────────────────────────────────────

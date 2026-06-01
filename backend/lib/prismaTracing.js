@@ -9,7 +9,6 @@
  * @module lib/prismaTracing
  */
 
- 
 import { getTracer } from './tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
 

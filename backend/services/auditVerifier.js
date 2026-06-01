@@ -96,7 +96,14 @@ async function computeChainRoot(tenantId) {
       where: { tenantId, id: { gt: cursor } },
       orderBy: { id: 'asc' },
       take: BATCH_SIZE,
-      select: { id: true, tenantId: true, category: true, action: true, actor: true, createdAt: true },
+      select: {
+        id: true,
+        tenantId: true,
+        category: true,
+        action: true,
+        actor: true,
+        createdAt: true,
+      },
     });
 
     if (batch.length === 0) break;
@@ -247,10 +254,7 @@ async function verifyTenant(tenantId) {
   } else {
     // Update verified_at timestamp
     await upsertStoredRoot(tenantId, rootHash, count);
-    logger.info(
-      { tenantId, count, durationMs: Date.now() - start },
-      'Audit chain verified OK',
-    );
+    logger.info({ tenantId, count, durationMs: Date.now() - start }, 'Audit chain verified OK');
   }
 }
 

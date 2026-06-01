@@ -94,13 +94,17 @@ function getConfig(status) {
 
 function formatAmount(amount) {
   const n = Number(amount) / 10_000_000;
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDC';
+  return (
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDC'
+  );
 }
 
 function formatDate(val) {
   if (!val) return '—';
   return new Date(val).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
   });
 }
 
@@ -120,7 +124,9 @@ function DetailsPanel({ milestone, onClose, isOpen }) {
   // Close on Escape
   useEffect(() => {
     if (!isOpen) return;
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
@@ -176,10 +182,7 @@ function DetailsPanel({ milestone, onClose, isOpen }) {
               <h2 className="text-white font-semibold text-sm leading-tight truncate max-w-[220px]">
                 {milestone.title}
               </h2>
-              <span
-                className="text-xs font-medium mt-0.5 inline-block"
-                style={{ color: cfg.text }}
-              >
+              <span className="text-xs font-medium mt-0.5 inline-block" style={{ color: cfg.text }}>
                 {cfg.label}
               </span>
             </div>
@@ -196,7 +199,6 @@ function DetailsPanel({ milestone, onClose, isOpen }) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-
           {/* Status badge */}
           <div
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
@@ -353,9 +355,7 @@ function MilestoneNode({ milestone, index, isSelected, onClick, isLast }) {
         className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center
                    transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-950"
         style={{
-          background: isSelected
-            ? `radial-gradient(circle, ${cfg.color}30, ${cfg.bg})`
-            : cfg.bg,
+          background: isSelected ? `radial-gradient(circle, ${cfg.color}30, ${cfg.bg})` : cfg.bg,
           border: `2px solid ${cfg.ring}`,
           boxShadow: isSelected
             ? `0 0 0 4px ${cfg.glow}, 0 0 20px ${cfg.glow}, 0 0 40px ${cfg.glow}40`
@@ -431,32 +431,33 @@ export default function ProgressChart({ milestones = [], className = '' }) {
   }, []);
 
   // Keyboard: arrow keys to navigate nodes
-  const handleContainerKeyDown = useCallback((e) => {
-    if (milestones.length === 0) return;
-    if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      setSelectedIndex((i) => {
-        const next = i === null ? 0 : Math.min(i + 1, milestones.length - 1);
-        setIsPanelOpen(true);
-        return next;
-      });
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      setSelectedIndex((i) => {
-        const prev = i === null ? milestones.length - 1 : Math.max(i - 1, 0);
-        setIsPanelOpen(true);
-        return prev;
-      });
-    }
-  }, [milestones.length]);
+  const handleContainerKeyDown = useCallback(
+    (e) => {
+      if (milestones.length === 0) return;
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setSelectedIndex((i) => {
+          const next = i === null ? 0 : Math.min(i + 1, milestones.length - 1);
+          setIsPanelOpen(true);
+          return next;
+        });
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setSelectedIndex((i) => {
+          const prev = i === null ? milestones.length - 1 : Math.max(i - 1, 0);
+          setIsPanelOpen(true);
+          return prev;
+        });
+      }
+    },
+    [milestones.length],
+  );
 
   // Progress summary
   const completed = milestones.filter(
     (m) => m.status === 'Released' || m.status === 'Approved',
   ).length;
-  const progressPct = milestones.length > 0
-    ? Math.round((completed / milestones.length) * 100)
-    : 0;
+  const progressPct = milestones.length > 0 ? Math.round((completed / milestones.length) * 100) : 0;
 
   if (milestones.length === 0) {
     return (
@@ -572,11 +573,7 @@ export default function ProgressChart({ milestones = [], className = '' }) {
       </div>
 
       {/* Details panel */}
-      <DetailsPanel
-        milestone={selectedMilestone}
-        isOpen={isPanelOpen}
-        onClose={closePanel}
-      />
+      <DetailsPanel milestone={selectedMilestone} isOpen={isPanelOpen} onClose={closePanel} />
     </>
   );
 }

@@ -31,7 +31,15 @@
  * @module api/controllers/gasController
  */
 
-import { SorobanRpc, xdr, Networks, TransactionBuilder, Account, Operation, Contract } from '@stellar/stellar-sdk';
+import {
+  SorobanRpc,
+  xdr,
+  Networks,
+  TransactionBuilder,
+  Account,
+  Operation,
+  Contract,
+} from '@stellar/stellar-sdk';
 import { logControllerError } from '../../config/logger.js';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -42,7 +50,10 @@ const NETWORK_PASSPHRASE = NETWORK === 'mainnet' ? Networks.PUBLIC : Networks.TE
 
 // Whitelist of allowed caller origins / API keys for internal request verification
 const INTERNAL_API_KEYS = new Set(
-  (process.env.GAS_ESTIMATOR_API_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean),
+  (process.env.GAS_ESTIMATOR_API_KEYS || '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean),
 );
 
 // Stroops per XLM
@@ -122,7 +133,9 @@ async function fetchFeeStats(server) {
         percentile95Fee: Number(inclusionFees.p99 ?? BASE_FEE_STROOPS * 5),
       };
     }
-  } catch { /* fall through to defaults */ }
+  } catch {
+    /* fall through to defaults */
+  }
 
   return {
     recentMedianFee: BASE_FEE_STROOPS,

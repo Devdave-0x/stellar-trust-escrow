@@ -66,8 +66,7 @@ export default function BiometricAuth({ userId, userEmail, onAuthSuccess }) {
   const [password, setPassword] = useState('');
 
   const isWebAuthnSupported =
-    typeof window !== 'undefined' &&
-    window.PublicKeyCredential !== undefined;
+    typeof window !== 'undefined' && window.PublicKeyCredential !== undefined;
 
   // ── Registration ────────────────────────────────────────────────────────────
 

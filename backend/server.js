@@ -1,4 +1,3 @@
- 
 import { initTracing } from './lib/tracing.js';
 // Tracing and Sentry must be initialised before other imports so instrumentation patches apply.
 initTracing();
