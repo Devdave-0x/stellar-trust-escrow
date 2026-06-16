@@ -102,7 +102,7 @@ mod token_whitelist_tests {
             &None::<u64>,
         );
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap(), EscrowError::Unauthorized);
+        assert_eq!(result.err().unwrap(), EscrowError::E3);
 
         // Disable whitelist
         client.set_token_whitelist_enabled(&admin, &false);

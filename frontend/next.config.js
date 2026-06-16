@@ -22,6 +22,7 @@ const withBundleAnalyzer =
 const nextConfig = {
   // ── Output ──────────────────────────────────────────────────────────────────
   output: process.env.NEXT_OUTPUT === 'standalone' ? 'standalone' : undefined,
+  outputFileTracingRoot: new URL('..', import.meta.url).pathname,
 
   // ── Image Optimization ──────────────────────────────────────────────────────
   images: {

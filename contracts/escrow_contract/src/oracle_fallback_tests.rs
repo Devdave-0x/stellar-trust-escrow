@@ -55,7 +55,7 @@ mod oracle_fallback_tests {
     fn test_oracle_fallback_on_stale_primary() {
         let (env, admin, client) = setup();
 
-        let now: u64 = 10_000;
+        let now: u64 = PRICE_STALENESS_THRESHOLD + 10_000;
         let stale_ts = now - PRICE_STALENESS_THRESHOLD - 1; // older than threshold
         let fresh_ts = now - 1; // within threshold
 
@@ -80,7 +80,7 @@ mod oracle_fallback_tests {
     fn test_oracle_both_stale_returns_error() {
         let (env, admin, client) = setup();
 
-        let now: u64 = 10_000;
+        let now: u64 = PRICE_STALENESS_THRESHOLD + 10_000;
         let stale_ts = now - PRICE_STALENESS_THRESHOLD - 1;
 
         let primary = register_mock_oracle(&env, 1_000_000, stale_ts);
@@ -94,7 +94,7 @@ mod oracle_fallback_tests {
         let asset = Address::generate(&env);
         let result = client.try_get_price(&asset);
         assert!(
-            matches!(result, Err(Ok(EscrowError::BridgeError))),
+            matches!(result, Err(Ok(EscrowError::E54))),
             "should return OraclePriceStale when both oracles are stale"
         );
     }

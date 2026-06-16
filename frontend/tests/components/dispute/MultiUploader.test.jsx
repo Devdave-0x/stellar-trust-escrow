@@ -5,7 +5,7 @@ import MultiUploader from '../../../components/dispute/MultiUploader';
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeFile(name = 'evidence.pdf', type = 'application/pdf', sizeBytes = 1024) {
-  const file = new File(['x'.repeat(sizeBytes)], name, { type });
+  const file = new File([new Uint8Array(Math.min(sizeBytes, 1024))], name, { type });
   Object.defineProperty(file, 'size', { value: sizeBytes });
   return file;
 }

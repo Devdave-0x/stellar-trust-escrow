@@ -14,11 +14,10 @@
 //! Run with:
 //!   cargo test -p stellar-trust-escrow-contract --test integration
 
-use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    token, Address, BytesN, Env, String,
+use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String};
+use stellar_trust_escrow_contract::{
+    EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MS_REJECTED, MS_SUBMITTED,
 };
-use stellar_trust_escrow_contract::{EscrowContract, EscrowContractClient, EscrowStatus, MilestoneStatus};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -41,12 +40,37 @@ fn setup() -> TestEnv {
     let contract_id = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(&env, &contract_id);
     client.initialize(&admin);
+    client.set_platform_treasury(&admin, &admin);
 
-    TestEnv { env, contract_id, client, admin, token_id }
+    TestEnv {
+        env,
+        contract_id,
+        client,
+        admin,
+        token_id,
+    }
 }
 
-fn mint(env: &Env, admin: &Address, token_id: &Address, to: &Address, amount: i128) {
+fn mint(env: &Env, _admin: &Address, token_id: &Address, to: &Address, amount: i128) {
     token::StellarAssetClient::new(env, token_id).mint(to, &amount);
+}
+
+fn mint_for_escrow(
+    env: &Env,
+    admin: &Address,
+    token_id: &Address,
+    to: &Address,
+    amount: i128,
+    expected_milestones: i128,
+) {
+    const RENT_RESERVE_PER_ENTRY: i128 = 30;
+    mint(
+        env,
+        admin,
+        token_id,
+        to,
+        amount + RENT_RESERVE_PER_ENTRY * (1 + expected_milestones),
+    );
 }
 
 fn hash(env: &Env, seed: u8) -> BytesN<32> {
@@ -55,6 +79,14 @@ fn hash(env: &Env, seed: u8) -> BytesN<32> {
 
 fn balance(env: &Env, token_id: &Address, addr: &Address) -> i128 {
     token::Client::new(env, token_id).balance(addr)
+}
+
+fn no_multisig(env: &Env) -> MultisigConfig {
+    MultisigConfig {
+        approvers: soroban_sdk::Vec::new(env),
+        weights: soroban_sdk::Vec::new(env),
+        threshold: 0,
+    }
 }
 
 // ── Test 1: Full happy-path lifecycle ─────────────────────────────────────────
@@ -66,43 +98,55 @@ fn test_full_escrow_lifecycle() {
     let freelancer = Address::generate(&t.env);
 
     // Fund client
-    mint(&t.env, &t.admin, &t.token_id, &client_addr, 1_000);
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, 1_000, 2);
 
     // Create escrow
     let escrow_id = t.client.create_escrow(
-        &client_addr, &freelancer, &t.token_id,
-        &1_000, &hash(&t.env, 1), &None, &None, &None,
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &1_000,
+        &hash(&t.env, 1),
+        &None,
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
     );
-    assert_eq!(balance(&t.env, &t.token_id, &client_addr), 0);
-    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 1_000);
+    assert_eq!(balance(&t.env, &t.token_id, &client_addr), 60);
+    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 1_030);
 
     // Add two milestones
     let m0 = t.client.add_milestone(
-        &client_addr, &escrow_id,
+        &client_addr,
+        &escrow_id,
         &String::from_str(&t.env, "Design"),
-        &hash(&t.env, 2), &400,
+        &hash(&t.env, 2),
+        &400,
     );
     let m1 = t.client.add_milestone(
-        &client_addr, &escrow_id,
+        &client_addr,
+        &escrow_id,
         &String::from_str(&t.env, "Development"),
-        &hash(&t.env, 3), &600,
+        &hash(&t.env, 3),
+        &600,
     );
 
     // Freelancer submits milestone 0
     t.client.submit_milestone(&freelancer, &escrow_id, &m0);
     let ms = t.client.get_milestone(&escrow_id, &m0);
-    assert_eq!(ms.status, MilestoneStatus::Submitted);
+    assert_eq!(ms.status, MS_SUBMITTED);
 
     // Client approves milestone 0 — funds released
     t.client.approve_milestone(&client_addr, &escrow_id, &m0);
     assert_eq!(balance(&t.env, &t.token_id, &freelancer), 400);
-    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 600);
+    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 690);
 
     // Freelancer submits and client approves milestone 1
     t.client.submit_milestone(&freelancer, &escrow_id, &m1);
     t.client.approve_milestone(&client_addr, &escrow_id, &m1);
     assert_eq!(balance(&t.env, &t.token_id, &freelancer), 1_000);
-    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 0);
+    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 90);
 
     // Escrow should be Completed
     let state = t.client.get_escrow(&escrow_id);
@@ -118,17 +162,27 @@ fn test_dispute_and_arbiter_resolution() {
     let freelancer = Address::generate(&t.env);
     let arbiter = Address::generate(&t.env);
 
-    mint(&t.env, &t.admin, &t.token_id, &client_addr, 500);
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, 500, 1);
 
     let escrow_id = t.client.create_escrow(
-        &client_addr, &freelancer, &t.token_id,
-        &500, &hash(&t.env, 10), &Some(arbiter.clone()), &None, &None,
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &500,
+        &hash(&t.env, 10),
+        &Some(arbiter.clone()),
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
     );
 
     let m0 = t.client.add_milestone(
-        &client_addr, &escrow_id,
+        &client_addr,
+        &escrow_id,
         &String::from_str(&t.env, "Milestone"),
-        &hash(&t.env, 11), &500,
+        &hash(&t.env, 11),
+        &500,
     );
 
     // Freelancer submits, client raises dispute
@@ -143,7 +197,7 @@ fn test_dispute_and_arbiter_resolution() {
 
     assert_eq!(balance(&t.env, &t.token_id, &client_addr), 200);
     assert_eq!(balance(&t.env, &t.token_id, &freelancer), 300);
-    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 0);
+    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 60);
 }
 
 // ── Test 3: Unauthorized access ───────────────────────────────────────────────
@@ -155,16 +209,26 @@ fn test_unauthorized_approve_rejected() {
     let freelancer = Address::generate(&t.env);
     let attacker = Address::generate(&t.env);
 
-    mint(&t.env, &t.admin, &t.token_id, &client_addr, 200);
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, 200, 1);
 
     let escrow_id = t.client.create_escrow(
-        &client_addr, &freelancer, &t.token_id,
-        &200, &hash(&t.env, 20), &None, &None, &None,
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &200,
+        &hash(&t.env, 20),
+        &None,
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
     );
     let m0 = t.client.add_milestone(
-        &client_addr, &escrow_id,
+        &client_addr,
+        &escrow_id,
         &String::from_str(&t.env, "Work"),
-        &hash(&t.env, 21), &200,
+        &hash(&t.env, 21),
+        &200,
     );
     t.client.submit_milestone(&freelancer, &escrow_id, &m0);
 
@@ -172,8 +236,8 @@ fn test_unauthorized_approve_rejected() {
     let result = t.client.try_approve_milestone(&attacker, &escrow_id, &m0);
     assert!(result.is_err(), "Attacker should not be able to approve");
 
-    // Funds must still be in contract
-    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 200);
+    // Funds and prepaid rent must still be in contract
+    assert_eq!(balance(&t.env, &t.token_id, &t.contract_id), 260);
 }
 
 // ── Test 4: Insufficient funds (amount > deposited) ───────────────────────────
@@ -184,25 +248,37 @@ fn test_milestone_amount_exceeds_escrow_rejected() {
     let client_addr = Address::generate(&t.env);
     let freelancer = Address::generate(&t.env);
 
-    mint(&t.env, &t.admin, &t.token_id, &client_addr, 100);
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, 100, 1);
 
     let escrow_id = t.client.create_escrow(
-        &client_addr, &freelancer, &t.token_id,
-        &100, &hash(&t.env, 30), &None, &None, &None,
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &100,
+        &hash(&t.env, 30),
+        &None,
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
     );
 
     // Add milestone for 100
     t.client.add_milestone(
-        &client_addr, &escrow_id,
+        &client_addr,
+        &escrow_id,
         &String::from_str(&t.env, "Full"),
-        &hash(&t.env, 31), &100,
+        &hash(&t.env, 31),
+        &100,
     );
 
     // Try to add another milestone that would exceed total — must fail
     let result = t.client.try_add_milestone(
-        &client_addr, &escrow_id,
+        &client_addr,
+        &escrow_id,
         &String::from_str(&t.env, "Over"),
-        &hash(&t.env, 32), &1,
+        &hash(&t.env, 32),
+        &1,
     );
     assert!(result.is_err(), "Over-allocation should be rejected");
 }
@@ -215,11 +291,19 @@ fn test_double_dispute_rejected() {
     let client_addr = Address::generate(&t.env);
     let freelancer = Address::generate(&t.env);
 
-    mint(&t.env, &t.admin, &t.token_id, &client_addr, 300);
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, 300, 0);
 
     let escrow_id = t.client.create_escrow(
-        &client_addr, &freelancer, &t.token_id,
-        &300, &hash(&t.env, 40), &None, &None, &None,
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &300,
+        &hash(&t.env, 40),
+        &None,
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
     );
 
     t.client.raise_dispute(&client_addr, &escrow_id, &None);
@@ -237,16 +321,24 @@ fn test_cancel_escrow_refunds_client() {
     let client_addr = Address::generate(&t.env);
     let freelancer = Address::generate(&t.env);
 
-    mint(&t.env, &t.admin, &t.token_id, &client_addr, 500);
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, 500, 0);
 
     let escrow_id = t.client.create_escrow(
-        &client_addr, &freelancer, &t.token_id,
-        &500, &hash(&t.env, 50), &None, &None, &None,
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &500,
+        &hash(&t.env, 50),
+        &None,
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
     );
 
     t.client.cancel_escrow(&client_addr, &escrow_id);
 
-    assert_eq!(balance(&t.env, &t.token_id, &client_addr), 500);
+    assert_eq!(balance(&t.env, &t.token_id, &client_addr), 490);
     let state = t.client.get_escrow(&escrow_id);
     assert_eq!(state.status, EscrowStatus::Cancelled);
 }
@@ -271,26 +363,36 @@ fn test_reject_and_resubmit_milestone() {
     let client_addr = Address::generate(&t.env);
     let freelancer = Address::generate(&t.env);
 
-    mint(&t.env, &t.admin, &t.token_id, &client_addr, 200);
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, 200, 1);
 
     let escrow_id = t.client.create_escrow(
-        &client_addr, &freelancer, &t.token_id,
-        &200, &hash(&t.env, 60), &None, &None, &None,
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &200,
+        &hash(&t.env, 60),
+        &None,
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
     );
     let m0 = t.client.add_milestone(
-        &client_addr, &escrow_id,
+        &client_addr,
+        &escrow_id,
         &String::from_str(&t.env, "Draft"),
-        &hash(&t.env, 61), &200,
+        &hash(&t.env, 61),
+        &200,
     );
 
     t.client.submit_milestone(&freelancer, &escrow_id, &m0);
     t.client.reject_milestone(&client_addr, &escrow_id, &m0);
 
     let ms = t.client.get_milestone(&escrow_id, &m0);
-    assert_eq!(ms.status, MilestoneStatus::Rejected);
+    assert_eq!(ms.status, MS_REJECTED);
 
     // Freelancer resubmits
     t.client.submit_milestone(&freelancer, &escrow_id, &m0);
     let ms2 = t.client.get_milestone(&escrow_id, &m0);
-    assert_eq!(ms2.status, MilestoneStatus::Submitted);
+    assert_eq!(ms2.status, MS_SUBMITTED);
 }

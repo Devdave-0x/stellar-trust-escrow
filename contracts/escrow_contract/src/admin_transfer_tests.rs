@@ -57,7 +57,7 @@ mod admin_transfer_tests {
         contract.propose_admin(&admin, &new_admin);
 
         let result = contract.try_accept_admin(&impostor);
-        assert_eq!(result, Err(Ok(EscrowError::Unauthorized)));
+        assert_eq!(result, Err(Ok(EscrowError::E3)));
 
         // Admin must remain unchanged
         assert_eq!(contract.get_admin(), admin.clone());
@@ -70,7 +70,7 @@ mod admin_transfer_tests {
         let random = Address::generate(&env);
 
         let result = contract.try_accept_admin(&random);
-        assert_eq!(result, Err(Ok(EscrowError::Unauthorized)));
+        assert_eq!(result, Err(Ok(EscrowError::E3)));
     }
 
     /// `propose_admin` by a non-admin must be rejected.
@@ -81,7 +81,7 @@ mod admin_transfer_tests {
         let victim = Address::generate(&env);
 
         let result = contract.try_propose_admin(&attacker, &victim);
-        assert_eq!(result, Err(Ok(EscrowError::AdminOnly)));
+        assert_eq!(result, Err(Ok(EscrowError::E4)));
     }
 
     /// After a successful transfer, `DataKey::PendingAdmin` is cleared —
@@ -97,6 +97,6 @@ mod admin_transfer_tests {
         // PendingAdmin is gone; any further accept attempt must fail
         let another = Address::generate(&env);
         let result = contract.try_accept_admin(&another);
-        assert_eq!(result, Err(Ok(EscrowError::Unauthorized)));
+        assert_eq!(result, Err(Ok(EscrowError::E3)));
     }
 }

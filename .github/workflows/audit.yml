@@ -22,14 +22,14 @@ jobs:
         run: cargo install cargo-audit
 
       - name: Run cargo audit
-        run: cargo audit --workspace
+        run: cargo audit
         continue-on-error: true
         id: audit
 
       - name: Audit Summary
         run: |
           echo "## Cargo Audit Results" >> $GITHUB_STEP_SUMMARY
-          cargo audit --workspace --json | jq '.vulnerabilities | length' | xargs -I {} echo "Found {} vulnerabilities" >> $GITHUB_STEP_SUMMARY || echo "Audit completed" >> $GITHUB_STEP_SUMMARY
+          cargo audit --json | jq '.vulnerabilities.count // (.vulnerabilities | length)' | xargs -I {} echo "Found {} vulnerabilities" >> $GITHUB_STEP_SUMMARY || echo "Audit completed" >> $GITHUB_STEP_SUMMARY
 
       - name: Fail if vulnerabilities found
         if: steps.audit.outcome == 'failure'

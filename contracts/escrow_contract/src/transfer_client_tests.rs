@@ -77,7 +77,7 @@ mod transfer_client_tests {
 
         let result = client.try_transfer_client_role(&escrow_id, &freelancer);
         assert!(
-            matches!(result, Err(Ok(EscrowError::Unauthorized))),
+            matches!(result, Err(Ok(EscrowError::E3))),
             "Should reject new_client == freelancer"
         );
     }
@@ -99,7 +99,7 @@ mod transfer_client_tests {
 
         let result = client.try_transfer_client_role(&escrow_id, &arbiter);
         assert!(
-            matches!(result, Err(Ok(EscrowError::Unauthorized))),
+            matches!(result, Err(Ok(EscrowError::E3))),
             "Should reject new_client == arbiter"
         );
     }
@@ -118,7 +118,7 @@ mod transfer_client_tests {
 
         let result = client.try_transfer_client_role(&escrow_id, &new_client);
         assert!(
-            matches!(result, Err(Ok(EscrowError::EscrowNotActive))),
+            matches!(result, Err(Ok(EscrowError::E9))),
             "Should reject transfer on non-Active escrow"
         );
     }

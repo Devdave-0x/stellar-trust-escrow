@@ -101,7 +101,7 @@ mod max_escrow_amount_tests {
             &None,
             &no_multisig(&env),
         );
-        assert_eq!(result, Err(Ok(EscrowError::InvalidEscrowAmount)));
+        assert_eq!(result, Err(Ok(EscrowError::E19)));
     }
 
     /// Zero `total_amount` must also be rejected with `InvalidEscrowAmount`.
@@ -122,6 +122,6 @@ mod max_escrow_amount_tests {
             &None,
             &no_multisig(&env),
         );
-        assert_eq!(result, Err(Ok(EscrowError::InvalidEscrowAmount)));
+        assert_eq!(result, Err(Ok(EscrowError::E19)));
     }
 }
