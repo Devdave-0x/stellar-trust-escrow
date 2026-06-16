@@ -109,6 +109,6 @@ mod escrow_template_tests {
 
         let result = client.try_get_template(&999);
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap(), EscrowError::EscrowNotFound);
+        assert_eq!(result.err().unwrap(), EscrowError::E8);
     }
 }

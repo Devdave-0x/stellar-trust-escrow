@@ -66,7 +66,9 @@ function isReadOnly(fn) {
 
 export default function ContractInspectorPage() {
   const [abiText, setAbiText] = useState(JSON.stringify(DEFAULT_ABI, null, 2));
-  const [contractId, setContractId] = useState('GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+  const [contractId, setContractId] = useState(
+    'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+  );
   const [rpcUrl, setRpcUrl] = useState('https://horizon-testnet.stellar.org/soroban/rpc');
   const [selectedFunctionIndex, setSelectedFunctionIndex] = useState(0);
   const [fieldValues, setFieldValues] = useState({});
@@ -143,7 +145,8 @@ export default function ContractInspectorPage() {
         await window.freighter.requestAccess();
       }
       const address =
-        (typeof window.freighter.getPublicKey === 'function' && (await window.freighter.getPublicKey())) ||
+        (typeof window.freighter.getPublicKey === 'function' &&
+          (await window.freighter.getPublicKey())) ||
         null;
       const networkDetails =
         (typeof window.freighter.getNetworkDetails === 'function' &&
@@ -242,7 +245,8 @@ export default function ContractInspectorPage() {
         <div className="space-y-3">
           <h1 className="text-3xl font-bold text-white">Smart Contract Method Inspector</h1>
           <p className="text-gray-400 max-w-2xl">
-            Inspect Soroban ABI functions, connect your wallet, and execute raw contract methods with dynamic input forms.
+            Inspect Soroban ABI functions, connect your wallet, and execute raw contract methods
+            with dynamic input forms.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -321,8 +325,7 @@ export default function ContractInspectorPage() {
                 <strong>Network:</strong> {walletNetwork ?? 'Unknown'}
               </p>
               <p>
-                <strong>Connection:</strong>{' '}
-                {walletAddress ? 'Connected' : 'Disconnected'}
+                <strong>Connection:</strong> {walletAddress ? 'Connected' : 'Disconnected'}
               </p>
             </div>
           </div>
@@ -330,7 +333,9 @@ export default function ContractInspectorPage() {
           <div className="card p-6">
             <h2 className="text-xl font-semibold text-white">ABI Methods</h2>
             {functions.length === 0 ? (
-              <p className="mt-4 text-sm text-gray-400">No functions detected. Paste a Soroban ABI and select a method.</p>
+              <p className="mt-4 text-sm text-gray-400">
+                No functions detected. Paste a Soroban ABI and select a method.
+              </p>
             ) : (
               <div className="mt-4 space-y-2">
                 {functions.map((fn, index) => (
@@ -348,7 +353,9 @@ export default function ContractInspectorPage() {
                     }}
                   >
                     <div className="font-medium">{fn.name}</div>
-                    <div className="text-xs text-gray-400">{fn.stateMutability || 'nonpayable'}</div>
+                    <div className="text-xs text-gray-400">
+                      {fn.stateMutability || 'nonpayable'}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -362,7 +369,9 @@ export default function ContractInspectorPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-white">Invoke {activeFunction.name}</h2>
-              <p className="text-sm text-gray-400">Dynamic inputs are generated from the ABI definition.</p>
+              <p className="text-sm text-gray-400">
+                Dynamic inputs are generated from the ABI definition.
+              </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <span className="rounded-full bg-gray-800 px-3 py-1 text-xs uppercase tracking-[0.12em] text-indigo-300">
@@ -392,7 +401,9 @@ export default function ContractInspectorPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               {invokeError && <p className="text-sm text-rose-400">{invokeError}</p>}
-              <p className="text-xs text-gray-500">Connected wallet will be used to sign or simulate requests.</p>
+              <p className="text-xs text-gray-500">
+                Connected wallet will be used to sign or simulate requests.
+              </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Button variant="secondary" size="md" onClick={() => setFieldValues({})}>
@@ -416,12 +427,16 @@ export default function ContractInspectorPage() {
         <div className="card p-6 space-y-4">
           <div>
             <h2 className="text-xl font-semibold text-white">Gas & Transaction</h2>
-            <p className="text-sm text-gray-400">Review estimated gas and the signed transaction preview.</p>
+            <p className="text-sm text-gray-400">
+              Review estimated gas and the signed transaction preview.
+            </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-gray-700 bg-slate-950 p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Estimated Gas</p>
-              <p className="mt-3 text-3xl font-semibold text-white">{gasMetrics?.estimated ?? '—'}</p>
+              <p className="mt-3 text-3xl font-semibold text-white">
+                {gasMetrics?.estimated ?? '—'}
+              </p>
             </div>
             <div className="rounded-2xl border border-gray-700 bg-slate-950 p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Charged Gas</p>

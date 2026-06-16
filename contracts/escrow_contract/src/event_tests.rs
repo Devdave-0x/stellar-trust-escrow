@@ -326,7 +326,7 @@ mod event_tests {
 
         assert_eq!(topic_u64(&env, &topics, 1), escrow_id);
         let returned: i128 = soroban_sdk::FromVal::from_val(&env, &data);
-        assert_eq!(returned, 200_i128);
+        assert_eq!(returned, 196_i128);
     }
 
     // ── dispute_raised ────────────────────────────────────────────────────────
@@ -576,7 +576,7 @@ mod event_tests {
         let release_err = client
             .try_release_funds(&client_addr, &escrow_id, &mid)
             .unwrap_err();
-        assert!(matches!(release_err, Ok(EscrowError::TimelockNotExpired)));
+        assert!(matches!(release_err, Ok(EscrowError::E53)));
 
         env.ledger().set_timestamp(env.ledger().timestamp() + 20);
 

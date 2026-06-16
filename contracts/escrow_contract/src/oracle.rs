@@ -40,8 +40,10 @@ pub struct UsdMilestone {
     pub completed: bool,
 }
 
+#[allow(dead_code)]
 pub struct OracleConsumer;
 
+#[allow(dead_code)]
 impl OracleConsumer {
     /// Fetch and validate the USD/XLM price feed from an external oracle contract.
     ///
@@ -111,7 +113,7 @@ pub fn get_oracle(env: &Env) -> Result<Address, EscrowError> {
     env.storage()
         .instance()
         .get(&DataKey::OracleAddress)
-        .ok_or(EscrowError::BridgeError)
+        .ok_or(EscrowError::E54)
 }
 
 pub fn set_fallback_oracle(env: &Env, oracle: &Address) {
@@ -147,11 +149,11 @@ pub fn get_price_usd(env: &Env, asset: &Address) -> Result<i128, EscrowError> {
             if is_fresh(&data, now) {
                 return Ok(data.price);
             }
-            return Err(EscrowError::BridgeError);
+            return Err(EscrowError::E54);
         }
     }
 
-    Err(EscrowError::BridgeError)
+    Err(EscrowError::E54)
 }
 
 /// Convert `amount` of `from_asset` to `to_asset` using oracle prices.
@@ -166,14 +168,14 @@ pub fn convert_amount(
     let to_price = get_price_usd(env, to_asset)?;
 
     if to_price == 0 {
-        return Err(EscrowError::BridgeError);
+        return Err(EscrowError::E54);
     }
 
     // amount * from_price / to_price  (prices share the same decimal base)
     amount
         .checked_mul(from_price)
         .and_then(|v| v.checked_div(to_price))
-        .ok_or(EscrowError::BridgeError)
+        .ok_or(EscrowError::E54)
 }
 
 #[inline]

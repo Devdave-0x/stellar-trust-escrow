@@ -17,7 +17,9 @@ export default function useNetworkGuard({ targetNetwork = 'Testnet', walletProvi
       try {
         if (!provider) return;
         // Freighter has getNetwork, other providers may have chainId
-        const info = await (provider.getNetwork ? provider.getNetwork() : provider.request?.({ method: 'eth_chainId' }));
+        const info = await (provider.getNetwork
+          ? provider.getNetwork()
+          : provider.request?.({ method: 'eth_chainId' }));
         const name = info?.name || info || String(info);
         if (!mounted) return;
         setCurrent(name);
@@ -45,7 +47,10 @@ export default function useNetworkGuard({ targetNetwork = 'Testnet', walletProvi
     }
     if (provider.request) {
       // best-effort: not all providers support this
-      return provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: targetNetwork }] });
+      return provider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetNetwork }],
+      });
     }
     throw new Error('Provider does not support network switch');
   };
@@ -53,11 +58,16 @@ export default function useNetworkGuard({ targetNetwork = 'Testnet', walletProvi
   function GuardModal() {
     if (!mismatch) return null;
     return (
-      <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)' }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)' }}
+      >
         <div style={{ width: 480, margin: '10% auto', background: 'white', padding: 20 }}>
           <h3>Network Mismatch</h3>
           <p>
-            Your wallet is connected to <strong>{current}</strong>, but the app requires <strong>{targetNetwork}</strong>.
+            Your wallet is connected to <strong>{current}</strong>, but the app requires{' '}
+            <strong>{targetNetwork}</strong>.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => trySwitch().catch(() => {})}>Switch Network</button>

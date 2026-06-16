@@ -2,7 +2,9 @@ import React, { useMemo, useState } from 'react';
 
 function smallChart(values = []) {
   const max = Math.max(...values, 1);
-  const points = values.map((v, i) => `${(i / (values.length - 1 || 1)) * 100},${100 - (v / max) * 100}`);
+  const points = values.map(
+    (v, i) => `${(i / (values.length - 1 || 1)) * 100},${100 - (v / max) * 100}`,
+  );
   return `0,100 ${points.join(' ')} 100,100`;
 }
 
@@ -54,7 +56,9 @@ export default function ParameterSimulator({ initial = { fee: 0.5, timeout: 7 },
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <pre style={{ background: '#f7f7f7', padding: 8 }}>{JSON.stringify({ fee, timeout }, null, 2)}</pre>
+        <pre style={{ background: '#f7f7f7', padding: 8 }}>
+          {JSON.stringify({ fee, timeout }, null, 2)}
+        </pre>
       </div>
     </div>
   );

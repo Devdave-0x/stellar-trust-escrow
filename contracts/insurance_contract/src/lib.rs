@@ -36,7 +36,9 @@ mod gas_profiling;
 mod types;
 
 pub use errors::InsuranceError;
-pub use types::{Claim, ClaimStatus, DataKey, FundInfo, FundStats, SlashProposal, SlashStatus, StakeRecord};
+pub use types::{
+    Claim, ClaimStatus, DataKey, FundInfo, FundStats, SlashProposal, SlashStatus, StakeRecord,
+};
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 
@@ -783,8 +785,10 @@ impl InsuranceContract {
         Storage::require_initialized(&env)?;
         Storage::acquire_lock(&env)?;
 
-        let mut record = Storage::get_stake_record(&env, &staker)
-            .ok_or_else(|| { Storage::release_lock(&env); InsuranceError::NoStakeFound })?;
+        let mut record = Storage::get_stake_record(&env, &staker).ok_or_else(|| {
+            Storage::release_lock(&env);
+            InsuranceError::NoStakeFound
+        })?;
 
         if amount <= 0 || amount > record.amount {
             Storage::release_lock(&env);
@@ -841,7 +845,11 @@ impl InsuranceContract {
     ///
     /// Caller must transfer tokens to this contract separately; this function
     /// updates the yield accumulator to distribute proportionally to stakers.
-    pub fn add_platform_fees(env: Env, caller: Address, amount: i128) -> Result<(), InsuranceError> {
+    pub fn add_platform_fees(
+        env: Env,
+        caller: Address,
+        amount: i128,
+    ) -> Result<(), InsuranceError> {
         caller.require_auth();
         Storage::require_admin(&env, &caller)?;
 
@@ -852,7 +860,10 @@ impl InsuranceContract {
         let total_stored = Storage::get_stake_total(&env);
         if total_stored > 0 {
             let acc = Storage::get_yield_acc(&env);
-            Storage::set_yield_acc(&env, acc + amount.saturating_mul(YIELD_PRECISION) / total_stored);
+            Storage::set_yield_acc(
+                &env,
+                acc + amount.saturating_mul(YIELD_PRECISION) / total_stored,
+            );
         }
         // If no stakers, fees accumulate in the contract balance for future use.
 
@@ -866,8 +877,10 @@ impl InsuranceContract {
         Storage::require_initialized(&env)?;
         Storage::acquire_lock(&env)?;
 
-        let mut record = Storage::get_stake_record(&env, &staker)
-            .ok_or_else(|| { Storage::release_lock(&env); InsuranceError::NoStakeFound })?;
+        let mut record = Storage::get_stake_record(&env, &staker).ok_or_else(|| {
+            Storage::release_lock(&env);
+            InsuranceError::NoStakeFound
+        })?;
 
         let acc = Storage::get_yield_acc(&env);
         let pending = Storage::pending_yield(&record, acc);
@@ -997,8 +1010,9 @@ impl InsuranceContract {
         Storage::require_initialized(&env)?;
         Storage::acquire_lock(&env)?;
 
-        let mut proposal = Storage::load_slash(&env, slash_id)
-            .map_err(|e| { Storage::release_lock(&env); e })?;
+        let mut proposal = Storage::load_slash(&env, slash_id).inspect_err(|_| {
+            Storage::release_lock(&env);
+        })?;
 
         if proposal.status != SlashStatus::Approved {
             Storage::release_lock(&env);
@@ -1015,11 +1029,7 @@ impl InsuranceContract {
             let actual_slash = slash_amount.min(bal);
 
             if actual_slash > 0 {
-                let admin: Address = env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::Admin)
-                    .unwrap();
+                let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
                 token.transfer(&env.current_contract_address(), &admin, &actual_slash);
                 Storage::set_stake_pool(&env, stake_pool - actual_slash);
 
@@ -1044,7 +1054,9 @@ impl InsuranceContract {
         if max_bps == 0 || max_bps > 4_000 {
             return Err(InsuranceError::InvalidSlashBps);
         }
-        env.storage().instance().set(&DataKey::MaxSlashBps, &max_bps);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxSlashBps, &max_bps);
         Storage::bump_instance(&env);
         Ok(())
     }
@@ -1076,9 +1088,9 @@ impl InsuranceContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, token, Env, String};
     #[allow(unused_imports)]
     use crate::{SlashStatus, StakeRecord};
+    use soroban_sdk::{testutils::Address as _, token, Env, String};
 
     struct Setup {
         env: Env,

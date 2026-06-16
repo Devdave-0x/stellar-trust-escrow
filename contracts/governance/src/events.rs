@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use soroban_sdk::{symbol_short, Address, Env};
 
 pub fn emit_proposal_created(env: &Env, proposal_id: u64, proposer: &Address) {

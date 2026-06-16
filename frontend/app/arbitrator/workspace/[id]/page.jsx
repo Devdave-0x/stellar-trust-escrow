@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Button from '../../../components/ui/Button';
-import CurrencyConverter from '../../../components/ui/CurrencyConverter';
+import Button from '../../../../components/ui/Button';
+import CurrencyConverter from '../../../../components/ui/CurrencyConverter';
 
 const MOCK_WORKSPACE = {
   escrowId: 'ESCROW-8729',
@@ -84,7 +84,11 @@ function EvidencePreviewModal({ file, onClose }) {
         </div>
         <div className="max-h-[75vh] overflow-auto p-5">
           {file.type.startsWith('image/') ? (
-            <img src={file.url} alt={file.name} className="mx-auto max-h-[70vh] rounded-3xl object-contain" />
+            <img
+              src={file.url}
+              alt={file.name}
+              className="mx-auto max-h-[70vh] rounded-3xl object-contain"
+            />
           ) : (
             <iframe
               src={file.url}
@@ -161,11 +165,14 @@ export default function ArbitratorWorkspacePage({ params }) {
         <header className="rounded-[32px] border border-white/10 bg-slate-900/80 p-6 shadow-[0_20px_80px_-40px_rgba(15,23,42,0.65)] backdrop-blur-xl">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.35em] text-indigo-300/80">Arbitrator mediation workspace</p>
+              <p className="text-xs uppercase tracking-[0.35em] text-indigo-300/80">
+                Arbitrator mediation workspace
+              </p>
               <h1 className="text-3xl font-semibold text-white">Case #{workspaceId}</h1>
               <p className="max-w-3xl text-sm leading-6 text-slate-300 lg:text-base">
-                Navigate evidence, compare party positions, and finalize a fair payout recommendation.
-                The UI is designed for rapid keyboard navigation and accessible decision workflows.
+                Navigate evidence, compare party positions, and finalize a fair payout
+                recommendation. The UI is designed for rapid keyboard navigation and accessible
+                decision workflows.
               </p>
             </div>
             <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 px-5 py-3 text-sm text-cyan-100 shadow-sm shadow-cyan-500/10">
@@ -179,7 +186,9 @@ export default function ArbitratorWorkspacePage({ params }) {
           <section className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5 shadow-xl shadow-black/30">
             <div className="mb-5 flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Evidence explorer</p>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                  Evidence explorer
+                </p>
                 <h2 className="mt-2 text-xl font-semibold text-white">Chronological log</h2>
               </div>
               <span className="rounded-full bg-violet-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-violet-200">
@@ -188,7 +197,10 @@ export default function ArbitratorWorkspacePage({ params }) {
             </div>
             <ol className="space-y-4">
               {MOCK_WORKSPACE.evidence.map((item, index) => (
-                <li key={item.id} className="group rounded-3xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-indigo-400/40">
+                <li
+                  key={item.id}
+                  className="group rounded-3xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-indigo-400/40"
+                >
                   <button
                     type="button"
                     onClick={() => {
@@ -203,11 +215,15 @@ export default function ArbitratorWorkspacePage({ params }) {
                         <p className="text-sm font-semibold text-white">{item.title}</p>
                         <p className="mt-2 text-sm leading-6 text-slate-400">{item.description}</p>
                       </div>
-                      <span className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleDateString()}</span>
+                      <span className="text-xs text-slate-500">
+                        {new Date(item.timestamp).toLocaleDateString()}
+                      </span>
                     </div>
                     <div className="mt-3 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-500">
                       <span>#{index + 1}</span>
-                      <span className="rounded-full bg-white/5 px-2 py-1">{item.file.type.split('/')[1]}</span>
+                      <span className="rounded-full bg-white/5 px-2 py-1">
+                        {item.file.type.split('/')[1]}
+                      </span>
                     </div>
                   </button>
                 </li>
@@ -231,7 +247,9 @@ export default function ArbitratorWorkspacePage({ params }) {
             <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5 shadow-xl shadow-black/20">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Dual-party brief</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                    Dual-party brief
+                  </p>
                   <h2 className="mt-2 text-xl font-semibold text-white">Account summary</h2>
                 </div>
                 <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase text-emerald-200">
@@ -240,8 +258,13 @@ export default function ArbitratorWorkspacePage({ params }) {
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {[MOCK_WORKSPACE.client, MOCK_WORKSPACE.freelancer].map((party) => (
-                  <div key={party.address} className="rounded-3xl border border-white/10 bg-slate-950/70 p-4">
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{party.role}</p>
+                  <div
+                    key={party.address}
+                    className="rounded-3xl border border-white/10 bg-slate-950/70 p-4"
+                  >
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+                      {party.role}
+                    </p>
                     <p className="mt-3 text-lg font-semibold text-white">{party.name}</p>
                     <p className="mt-1 text-sm text-slate-400">{party.address}</p>
                     <p className="mt-4 text-sm leading-6 text-slate-300">{party.claim}</p>
@@ -257,7 +280,9 @@ export default function ArbitratorWorkspacePage({ params }) {
             <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5 shadow-xl shadow-black/20">
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Split control</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                    Split control
+                  </p>
                   <h2 className="mt-2 text-xl font-semibold text-white">Dynamic payout slider</h2>
                 </div>
                 <span className="rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold uppercase text-indigo-200">
@@ -299,7 +324,9 @@ export default function ArbitratorWorkspacePage({ params }) {
             <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5 shadow-xl shadow-black/20">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Collaboration notes</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                    Collaboration notes
+                  </p>
                   <h2 className="mt-2 text-xl font-semibold text-white">Case notes board</h2>
                 </div>
                 <span className="rounded-full bg-slate-800/80 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-300">
@@ -318,7 +345,9 @@ export default function ArbitratorWorkspacePage({ params }) {
                 className="w-full rounded-3xl border border-white/10 bg-slate-950/80 p-4 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
               />
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-slate-400">Your notes are stored securely for this workspace.</div>
+                <div className="text-sm text-slate-400">
+                  Your notes are stored securely for this workspace.
+                </div>
                 <div className="flex flex-wrap gap-3">
                   <Button onClick={saveNotes} isLoading={isSaving} className="w-full sm:w-auto">
                     Save notes
@@ -332,13 +361,20 @@ export default function ArbitratorWorkspacePage({ params }) {
           <aside className="space-y-6">
             <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5 shadow-xl shadow-black/20">
               <div className="mb-5">
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Resolution deployment</p>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                  Resolution deployment
+                </p>
                 <h2 className="mt-2 text-xl font-semibold text-white">Direct transaction panel</h2>
               </div>
               <div className="space-y-4 rounded-3xl border border-white/10 bg-slate-950/80 p-4">
                 <div className="text-sm text-slate-400">Security checks</div>
                 <ul className="space-y-3 text-sm text-slate-300">
-                  {['Wallet signature verified', 'Payout ratio reviewed', 'Memo authenticity scanned', 'Amount boundaries confirmed'].map((check) => (
+                  {[
+                    'Wallet signature verified',
+                    'Payout ratio reviewed',
+                    'Memo authenticity scanned',
+                    'Amount boundaries confirmed',
+                  ].map((check) => (
                     <li key={check} className="flex items-center gap-3">
                       <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
                       <span>{check}</span>
@@ -347,7 +383,10 @@ export default function ArbitratorWorkspacePage({ params }) {
                 </ul>
                 <div className="rounded-3xl bg-slate-900/90 p-4 text-sm text-slate-200">
                   <p className="font-semibold text-white">Deployment summary</p>
-                  <p className="mt-2 leading-6">Resolve {MOCK_WORKSPACE.escrowId} with {clientShare}% / {freelancerShare}% split and submit the payout decision to the settlement contract.</p>
+                  <p className="mt-2 leading-6">
+                    Resolve {MOCK_WORKSPACE.escrowId} with {clientShare}% / {freelancerShare}% split
+                    and submit the payout decision to the settlement contract.
+                  </p>
                 </div>
                 <Button
                   onClick={deployTransaction}
@@ -356,13 +395,17 @@ export default function ArbitratorWorkspacePage({ params }) {
                 >
                   {deployStatus === 'submitted' ? 'Deployment queued' : 'Confirm and deploy'}
                 </Button>
-                <p className="text-sm text-slate-400">{actionMessage || 'Ready for transaction review.'}</p>
+                <p className="text-sm text-slate-400">
+                  {actionMessage || 'Ready for transaction review.'}
+                </p>
               </div>
             </div>
 
             <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5 shadow-xl shadow-black/20">
               <div className="mb-5">
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Financial tools</p>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                  Financial tools
+                </p>
                 <h2 className="mt-2 text-xl font-semibold text-white">Currency conversion</h2>
               </div>
               <CurrencyConverter className="rounded-[28px] border border-white/10 bg-slate-950/80 p-4" />

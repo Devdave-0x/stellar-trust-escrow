@@ -93,7 +93,7 @@ mod lock_time_enforcement_tests {
         env.ledger().with_mut(|l| l.timestamp = lock_time - 1);
         let result = client.try_release_funds(&admin, &escrow_id, &mid);
         assert!(
-            matches!(result, Err(Ok(EscrowError::LockTimeNotExpired))),
+            matches!(result, Err(Ok(EscrowError::E28))),
             "release_funds must return LockTimeNotExpired before lock_time expires"
         );
     }

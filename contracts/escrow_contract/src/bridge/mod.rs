@@ -78,7 +78,7 @@ pub fn validate_escrow_token(env: &Env, token: &Address) -> Result<(), EscrowErr
     // If the token is registered as a wrapped asset it must be approved and finalized.
     if let Some(info) = get_wrapped_token_info(env, token) {
         if !info.is_approved {
-            return Err(EscrowError::BridgeError);
+            return Err(EscrowError::E54);
         }
         require_bridge_finalized(env, token)?;
     }
@@ -88,9 +88,9 @@ pub fn validate_escrow_token(env: &Env, token: &Address) -> Result<(), EscrowErr
 
 /// Validate that a bridge transfer is finalized (>= MIN_BRIDGE_CONFIRMATIONS).
 pub fn require_bridge_finalized(env: &Env, token: &Address) -> Result<(), EscrowError> {
-    let conf = get_bridge_confirmation(env, token).ok_or(EscrowError::BridgeError)?;
+    let conf = get_bridge_confirmation(env, token).ok_or(EscrowError::E54)?;
     if !conf.is_finalized {
-        return Err(EscrowError::BridgeError);
+        return Err(EscrowError::E54);
     }
     Ok(())
 }

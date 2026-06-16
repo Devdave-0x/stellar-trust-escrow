@@ -21,7 +21,7 @@ pub fn deposit_stake_and_activate(
 
     // Validate the freelancer
     if *freelancer != meta.freelancer {
-        return Err(EscrowError::Unauthorized);
+        return Err(EscrowError::E3);
     }
 
     // Check if stake is already deposited
@@ -33,7 +33,7 @@ pub fn deposit_stake_and_activate(
         .unwrap_or(false);
 
     if already_deposited {
-        return Err(EscrowError::InvalidEscrowAmount); // Reuse existing error for "stake already deposited"
+        return Err(EscrowError::E19); // Reuse existing error for "stake already deposited"
     }
 
     // Load the required stake amount
@@ -93,7 +93,7 @@ pub fn slash_stake_to_client(
     }
 
     if slash_percentage > 100 {
-        return Err(EscrowError::InvalidEscrowAmount);
+        return Err(EscrowError::E19);
     }
 
     let slash_amount = (meta.required_freelancer_stake as u128 * slash_percentage as u128 / 100) as i128;

@@ -6,7 +6,10 @@ import { PrismaClient } from '@prisma/client';
 import { attachConnectionMonitoring } from '../lib/connectionMonitor.js';
 import { attachRetryMiddleware } from '../lib/retryUtils.js';
 
-const replicaUrls = (process.env.READ_REPLICA_URLS || '').split(',').map((s) => s.trim()).filter(Boolean);
+const replicaUrls = (process.env.READ_REPLICA_URLS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 const primaryUrl = process.env.DATABASE_URL;
 
 function createClientFor(url) {
@@ -42,24 +45,30 @@ const READ_OPS = new Set([
  * Create a proxy that routes model operations to the primary or a replica.
  * Usage: import prisma from '../config/prismaClient.js'; await prisma.user.findMany(...)
  */
-const routedPrisma = new Proxy({}, {
-  get(_, modelName) {
-    // return a proxy for the model
-    return new Proxy({}, {
-      get(_, opName) {
-        return async (args) => {
-          const op = String(opName);
-          const client = READ_OPS.has(op) ? pickReplica() : primary;
-          // eslint-disable-next-line no-prototype-builtins
-          if (!client[modelName] || !client[modelName][op]) {
-            throw new Error(`Prisma client does not support ${String(modelName)}.${op}`);
-          }
-          return client[modelName][op](args);
-        };
-      },
-    });
+const routedPrisma = new Proxy(
+  {},
+  {
+    get(_, modelName) {
+      // return a proxy for the model
+      return new Proxy(
+        {},
+        {
+          get(_, opName) {
+            return async (args) => {
+              const op = String(opName);
+              const client = READ_OPS.has(op) ? pickReplica() : primary;
+               
+              if (!client[modelName] || !client[modelName][op]) {
+                throw new Error(`Prisma client does not support ${String(modelName)}.${op}`);
+              }
+              return client[modelName][op](args);
+            };
+          },
+        },
+      );
+    },
   },
-});
+);
 
 export { primary, replicas };
 export default routedPrisma;

@@ -49,7 +49,7 @@ mod self_escrow_tests {
             &no_multisig(&env),
         );
         assert!(
-            matches!(result, Err(Ok(EscrowError::Unauthorized))),
+            matches!(result, Err(Ok(EscrowError::E3))),
             "create_escrow must reject client == freelancer"
         );
     }
@@ -74,7 +74,7 @@ mod self_escrow_tests {
             &signers,
         );
         assert!(
-            matches!(result, Err(Ok(EscrowError::Unauthorized))),
+            matches!(result, Err(Ok(EscrowError::E3))),
             "create_escrow_with_buyer_signers must reject client == freelancer"
         );
     }

@@ -442,6 +442,7 @@ pub enum ArbError {
 #[cfg(test)]
 mod arb_tests {
     use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
     use soroban_sdk::{contract, contractimpl, Address, Env};
 
     #[contract]
@@ -568,7 +569,7 @@ mod arb_tests {
             select_panel(&env, 1).unwrap();
             // Total load across all 3 selected == PANEL_SIZE
             let total_load: u32 = (0..arbs.len())
-                .map(|i| get_load(&env, &arbs.get(i as u32).unwrap()))
+                .map(|i| get_load(&env, &arbs.get(i).unwrap()))
                 .sum();
             assert_eq!(total_load, PANEL_SIZE);
         });

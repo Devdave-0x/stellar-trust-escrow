@@ -130,7 +130,7 @@ impl Storage {
 /// Returns the token balance or ve-token voting power of `address`.
 fn voting_power(env: &Env, token: &Address, address: &Address) -> i128 {
     let base_balance = token::Client::new(env, token).balance(address);
-    let ve_power = GovernanceContract::ve_voting_power(env, address);
+    let ve_power = GovernanceContract::ve_voting_power(env.clone(), address.clone());
     if ve_power > base_balance {
         ve_power
     } else {
@@ -138,22 +138,28 @@ fn voting_power(env: &Env, token: &Address, address: &Address) -> i128 {
     }
 }
 
-fn validate_parameter_payload(payload: &ParameterPayload) -> Result<(), GovError> {
-    if payload.key == "proposal_threshold" {
+fn validate_parameter_payload(env: &Env, payload: &ParameterPayload) -> Result<(), GovError> {
+    if payload.key == String::from_str(env, "proposal_threshold") {
         if payload.value < 0 {
             return Err(GovError::InvalidParameter);
         }
         return Ok(());
     }
 
-    if payload.key == "voting_period" || payload.key == "voting_delay" || payload.key == "timelock_delay" {
+    if payload.key == String::from_str(env, "voting_period")
+        || payload.key == String::from_str(env, "voting_delay")
+        || payload.key == String::from_str(env, "timelock_delay")
+    {
         if payload.value <= 0 {
             return Err(GovError::InvalidParameter);
         }
         return Ok(());
     }
 
-    if payload.key == "quorum_bps" || payload.key == "approval_threshold_bps" {
+    if payload.key == String::from_str(env, "quorum_bps")
+        || payload.key == String::from_str(env, "approval_threshold_bps")
+        || payload.key == String::from_str(env, "platform_fee_bps")
+    {
         if payload.value < 0 || payload.value > 10_000 {
             return Err(GovError::InvalidParameter);
         }
@@ -283,7 +289,7 @@ impl GovernanceContract {
         // Validate payload matches type and control parameter updates
         match (&proposal_type, &payload) {
             (ProposalType::ParameterChange, ProposalPayload::Parameter(parameter)) => {
-                validate_parameter_payload(parameter)?;
+                validate_parameter_payload(&env, parameter)?;
             }
             (ProposalType::ContractUpgrade, ProposalPayload::Upgrade(_)) => {}
             (ProposalType::FundAllocation, ProposalPayload::Fund(_)) => {}
@@ -504,7 +510,7 @@ impl GovernanceContract {
                 );
             }
             ProposalPayload::Parameter(parameter) => {
-                validate_parameter_payload(parameter)?;
+                validate_parameter_payload(&env, parameter)?;
                 // Parameter changes are read by off-chain systems via events.
                 // On-chain consumers can query get_proposal and read the payload.
             }

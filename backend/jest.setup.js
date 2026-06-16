@@ -1,3 +1,9 @@
+import { createRequire } from 'module';
+
+if (typeof global.require === 'undefined') {
+  global.require = createRequire(import.meta.url);
+}
+
 if (typeof global.File === 'undefined') {
   global.File = class File extends Blob {
     constructor(bits, name, options = {}) {

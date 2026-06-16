@@ -12,7 +12,10 @@ const marketCache = new Map();
 function formatAmount(value, asset) {
   if (Number.isNaN(value) || value === null) return '';
   const digits = FIAT_ASSETS.includes(asset) ? 2 : 6;
-  return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: digits });
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
 }
 
 async function fetchCoingeckoPrice(asset, fiat) {
@@ -43,10 +46,9 @@ async function fetchFiatRate(from, to) {
   const cached = marketCache.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) return cached;
 
-  const response = await fetch(
-    `https://api.exchangerate.host/latest?base=${from}&symbols=${to}`,
-    { signal: AbortSignal.timeout(5000) },
-  );
+  const response = await fetch(`https://api.exchangerate.host/latest?base=${from}&symbols=${to}`, {
+    signal: AbortSignal.timeout(5000),
+  });
   if (!response.ok) return null;
 
   const data = await response.json();
@@ -65,8 +67,8 @@ function getWarning(change24h) {
   return Math.abs(change24h) > 4
     ? 'High market volatility detected. Slippage may increase.'
     : Math.abs(change24h) > 2
-    ? 'Market conditions are active. Confirm rates before submitting.'
-    : null;
+      ? 'Market conditions are active. Confirm rates before submitting.'
+      : null;
 }
 
 export default function CurrencyConverter({ className = '' }) {
@@ -152,14 +154,13 @@ export default function CurrencyConverter({ className = '' }) {
     setFromValue(toValue);
   };
 
-  const slippage = useMemo(
-    () => getSlippageEstimate(priceInfo?.change24h ?? 0),
-    [priceInfo],
-  );
+  const slippage = useMemo(() => getSlippageEstimate(priceInfo?.change24h ?? 0), [priceInfo]);
   const warningMessage = useMemo(() => getWarning(priceInfo?.change24h ?? 0), [priceInfo]);
 
   return (
-    <div className={`rounded-3xl border border-white/10 bg-slate-950/80 p-5 shadow-lg shadow-cyan-500/5 ${className}`}>
+    <div
+      className={`rounded-3xl border border-white/10 bg-slate-950/80 p-5 shadow-lg shadow-cyan-500/5 ${className}`}
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Currency converter</p>
@@ -218,7 +219,9 @@ export default function CurrencyConverter({ className = '' }) {
         <div className="flex items-center justify-between">
           <span>Live rate</span>
           <span className="text-white">
-            {priceInfo?.price ? `1 ${fromAsset} = ${formatAmount(priceInfo.price, toAsset)} ${toAsset}` : 'Unavailable'}
+            {priceInfo?.price
+              ? `1 ${fromAsset} = ${formatAmount(priceInfo.price, toAsset)} ${toAsset}`
+              : 'Unavailable'}
           </span>
         </div>
         <div className="flex items-center justify-between">
@@ -245,7 +248,10 @@ export default function CurrencyConverter({ className = '' }) {
 function AssetInput({ label, value, asset, assets, onAmountChange, onAssetChange }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-4">
-      <label className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400" htmlFor={`${label}-amount`}>
+      <label
+        className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400"
+        htmlFor={`${label}-amount`}
+      >
         {label}
       </label>
       <div className="mt-3 flex gap-3">

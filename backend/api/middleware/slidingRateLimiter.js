@@ -27,7 +27,9 @@ async function record(redisClient, key, windowMs, now = Date.now()) {
   const results = await pipeline.exec();
   // results is an array of [err, reply] tuples
   const cardReply = results && results[2] ? results[2][1] : null;
-  return typeof cardReply === 'string' || typeof cardReply === 'number' ? parseInt(cardReply, 10) : null;
+  return typeof cardReply === 'string' || typeof cardReply === 'number'
+    ? parseInt(cardReply, 10)
+    : null;
 }
 
 async function count(redisClient, key, windowMs, now = Date.now()) {
@@ -80,7 +82,9 @@ export function createRedisSlidingWindowRateLimiter({
           res.set('Retry-After', String(Math.ceil(burstWindowMs / 1000)));
           res.set('X-RateLimit-Limit', String(max));
           res.set('X-RateLimit-Remaining', '0');
-          return res.status(429).json({ error: message, code: 'RATE_LIMIT_EXCEEDED', reason: 'burst' });
+          return res
+            .status(429)
+            .json({ error: message, code: 'RATE_LIMIT_EXCEEDED', reason: 'burst' });
         }
         await record(redisClient, `${key}:burst`, burstWindowMs, now);
       }

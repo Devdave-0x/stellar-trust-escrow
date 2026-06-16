@@ -100,7 +100,8 @@ export default function DashboardPage() {
             data-tour="get-testnet-xlm"
             className="card rounded-3xl border border-indigo-500/20 bg-gray-950 p-5 text-sm text-gray-300"
           >
-            Connect your wallet and use the Stellar Friendbot faucet to fund testnet XLM for your first escrow contract experiments.
+            Connect your wallet and use the Stellar Friendbot faucet to fund testnet XLM for your
+            first escrow contract experiments.
           </div>
 
           <section aria-label="Key performance metrics">

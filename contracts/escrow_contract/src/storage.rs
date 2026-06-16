@@ -119,7 +119,7 @@ impl StorageManager {
 
         if current_version > STORAGE_VERSION {
             // Downgrade not supported - this could corrupt data
-            return Err(crate::EscrowError::MigrationFailed);
+            return Err(crate::EscrowError::E42);
         }
 
         // Run migrations in order from current to target version
@@ -244,12 +244,7 @@ impl StorageManager {
                     brief_hash: v1_escrow.brief_hash,
                     rent_balance: 0,
                     last_rent_collection_at: v1_escrow.created_at,
-                    required_freelancer_stake: 0,
-                    stake_deposited: true,
-                    dispute_timeout_ledger: None,
-                    dispute_started_ledger: None,
-                    client_referrer: None,
-                    freelancer_referrer: None,
+                    dispute_start_ledger: None,
                 };
 
                 // Store meta in v2 format using PackedDataKey

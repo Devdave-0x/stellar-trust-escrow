@@ -185,6 +185,7 @@ pub fn apply_lock_extension_bonus(
 #[cfg(test)]
 mod incentive_tests {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{contract, contractimpl, Address, Env};
 
     // Minimal stub contract so tests can access env.storage()

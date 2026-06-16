@@ -94,8 +94,7 @@ pub fn emit_yield_claimed(env: &Env, staker: &Address, amount: i128) {
 
 /// Emitted when platform fees are added to the yield pool.
 pub fn emit_fee_added(env: &Env, amount: i128) {
-    env.events()
-        .publish((symbol_short!("ins_fee"),), amount);
+    env.events().publish((symbol_short!("ins_fee"),), amount);
 }
 
 /// Emitted when a slash proposal is submitted.

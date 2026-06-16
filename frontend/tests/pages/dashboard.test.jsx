@@ -97,8 +97,13 @@ describe('DashboardPage', () => {
 
   it('renders fetched stats values', async () => {
     renderWithAppProviders(<DashboardPage />);
-    expect(await screen.findByText('7')).toBeInTheDocument();
-    expect(screen.getAllByText('4').length).toBeGreaterThan(0);
+    const totalEscrowsMetric = await screen.findByRole('region', {
+      name: /total escrows metric/i,
+    });
+    const completedMetric = screen.getByRole('region', { name: /completed metric/i });
+
+    expect(totalEscrowsMetric).toHaveTextContent('7');
+    expect(completedMetric).toHaveTextContent('4');
   });
 
   it('renders active escrows section', async () => {
