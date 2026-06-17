@@ -39,19 +39,20 @@ model Tenant {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  users             User[]
-  escrows           Escrow[]
-  milestones        Milestone[]
-  reputationRecords ReputationRecord[]
-  disputes          Dispute[]
-  disputeEvidence   DisputeEvidence[]
-  disputeAppeals    DisputeAppeal[]
-  userProfiles      UserProfile[]
-  contractEvents    ContractEvent[]
-  payments          Payment[]
-  kycVerifications  KycVerification[]
-  adminAuditLogs    AdminAuditLog[]
-  auditLogs         AuditLog[]
+  users                User[]
+  escrows              Escrow[]
+  milestones           Milestone[]
+  reputationRecords    ReputationRecord[]
+  disputes             Dispute[]
+  disputeEvidence      DisputeEvidence[]
+  disputeAppeals       DisputeAppeal[]
+  userProfiles         UserProfile[]
+  contractEvents       ContractEvent[]
+  webhookSubscriptions WebhookSubscription[]
+  payments             Payment[]
+  kycVerifications     KycVerification[]
+  adminAuditLogs       AdminAuditLog[]
+  auditLogs            AuditLog[]
 
   @@map("tenants")
 }
@@ -59,18 +60,18 @@ model Tenant {
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id           Int      @id @default(autoincrement())
-  tenantId     String   @map("tenant_id")
-  email        String   @unique
-  password     String
-  walletAddress String? @unique @map("wallet_address")
-  role         String   @default("user") // user | admin | superadmin
-  mfaEnabled   Boolean  @default(false) @map("mfa_enabled")
-  mfaEnforced  Boolean  @default(false) @map("mfa_enforced") // Force MFA for high-value operations
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id")
+  email         String   @unique
+  password      String
+  walletAddress String?  @unique @map("wallet_address")
+  role          String   @default("user") // user | admin | superadmin
+  mfaEnabled    Boolean  @default(false) @map("mfa_enabled")
+  mfaEnforced   Boolean  @default(false) @map("mfa_enforced") // Force MFA for high-value operations
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
   refreshTokens RefreshToken[]
   mfaMethods    MfaMethod[]
   mfaAttempts   MfaAttempt[]
@@ -85,28 +86,28 @@ model User {
 // ── MFA Methods ───────────────────────────────────────────────────────────────
 
 model MfaMethod {
-  id            String    @id @default(cuid())
-  userId        Int       @map("user_id")
-  tenantId      String    @map("tenant_id")
-  type          MfaType   // TOTP | WEBAUTHN
-  name          String    // User-friendly name (e.g., "iPhone 15", "Authenticator App")
-  isActive      Boolean   @default(true) @map("is_active")
-  isPrimary     Boolean   @default(false) @map("is_primary")
-  
+  id        String  @id @default(cuid())
+  userId    Int     @map("user_id")
+  tenantId  String  @map("tenant_id")
+  type      MfaType // TOTP | WEBAUTHN
+  name      String // User-friendly name (e.g., "iPhone 15", "Authenticator App")
+  isActive  Boolean @default(true) @map("is_active")
+  isPrimary Boolean @default(false) @map("is_primary")
+
   // TOTP-specific fields
-  totpSecret    String?   @map("totp_secret") // Encrypted TOTP secret
+  totpSecret      String?  @map("totp_secret") // Encrypted TOTP secret
   totpBackupCodes String[] @default([]) @map("totp_backup_codes") // Encrypted backup codes
-  
+
   // WebAuthn-specific fields
-  credentialId  String?   @unique @map("credential_id") // Base64-encoded credential ID
-  publicKey     String?   @map("public_key") // Base64-encoded public key
-  counter       BigInt?   @default(0) // Signature counter for replay protection
-  transports    String[]  @default([]) // usb, nfc, ble, internal
-  aaguid        String?   // Authenticator AAGUID
-  
-  lastUsedAt    DateTime? @map("last_used_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  credentialId String?  @unique @map("credential_id") // Base64-encoded credential ID
+  publicKey    String?  @map("public_key") // Base64-encoded public key
+  counter      BigInt?  @default(0) // Signature counter for replay protection
+  transports   String[] @default([]) // usb, nfc, ble, internal
+  aaguid       String? // Authenticator AAGUID
+
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -120,15 +121,15 @@ model MfaMethod {
 // ── MFA Attempts (Brute-force Protection) ─────────────────────────────────────
 
 model MfaAttempt {
-  id          String   @id @default(cuid())
-  userId      Int      @map("user_id")
-  tenantId    String   @map("tenant_id")
-  methodType  MfaType  @map("method_type")
-  success     Boolean
-  ipAddress   String   @map("ip_address")
-  userAgent   String?  @map("user_agent")
-  failureReason String? @map("failure_reason")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  userId        Int      @map("user_id")
+  tenantId      String   @map("tenant_id")
+  methodType    MfaType  @map("method_type")
+  success       Boolean
+  ipAddress     String   @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -164,18 +165,18 @@ enum MfaType {
 // ── Refresh Tokens ─────────────────────────────────────────────────────────────
 
 model RefreshToken {
-  id         String   @id @default(cuid())
-  userId     Int      @map("user_id")
-  tenantId   String   @map("tenant_id")
-  tokenHash  String   @unique @map("token_hash")
-  deviceInfo Json?    @map("device_info")
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  isActive   Boolean  @default(true) @map("is_active")
-  expiresAt  DateTime @map("expires_at")
+  id         String    @id @default(cuid())
+  userId     Int       @map("user_id")
+  tenantId   String    @map("tenant_id")
+  tokenHash  String    @unique @map("token_hash")
+  deviceInfo Json?     @map("device_info")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  isActive   Boolean   @default(true) @map("is_active")
+  expiresAt  DateTime  @map("expires_at")
   lastUsedAt DateTime? @map("last_used_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -455,7 +456,7 @@ model WebhookSubscription {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   deliveries WebhookDelivery[]
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([createdBy])
@@ -463,16 +464,16 @@ model WebhookSubscription {
 }
 
 model WebhookDelivery {
-  id             String   @id @default(cuid())
-  subscriptionId String   @map("subscription_id")
-  eventType      String   @map("event_type")
+  id             String    @id @default(cuid())
+  subscriptionId String    @map("subscription_id")
+  eventType      String    @map("event_type")
   payload        Json
-  status         String   @default("pending")
-  attempts       Int      @default(0)
-  responseCode   Int?     @map("response_code")
-  errorMessage   String?  @map("error_message")
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  responseCode   Int?      @map("response_code")
+  errorMessage   String?   @map("error_message")
   lastAttemptAt  DateTime? @map("last_attempt_at")
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
