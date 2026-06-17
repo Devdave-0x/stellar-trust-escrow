@@ -20,6 +20,11 @@ const SLOW_QUERY_THRESHOLD_MS = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || 
  * @param {import('@prisma/client').PrismaClient} prisma
  */
 export function attachPrismaMetrics(prisma) {
+  if (typeof prisma.$use !== 'function') {
+    log.debug({ message: 'prisma_metrics_middleware_unavailable' });
+    return;
+  }
+
   prisma.$use(async (params, next) => {
     const start = Date.now();
     const result = await next(params);

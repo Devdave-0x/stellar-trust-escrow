@@ -76,12 +76,12 @@ soroban keys fund contributor --network testnet
 
 The Cargo workspace (`Cargo.toml` at the repository root) contains four contract crates:
 
-| Crate                | Path                           | Purpose                        |
-| -------------------- | ------------------------------ | ------------------------------ |
-| `escrow_contract`    | `contracts/escrow_contract`    | Core milestone escrow logic    |
-| `governance`         | `contracts/governance`         | On-chain governance and voting |
-| `insurance_contract` | `contracts/insurance_contract` | Dispute insurance pool         |
-| `escrow_extensions`  | `contracts/escrow_extensions`  | Optional escrow add-ons        |
+| Crate                              | Path                           | Purpose                        |
+| ---------------------------------- | ------------------------------ | ------------------------------ |
+| `stellar-trust-escrow-contract`    | `contracts/escrow_contract`    | Core milestone escrow logic    |
+| `stellar-trust-governance`         | `contracts/governance`         | On-chain governance and voting |
+| `stellar-trust-insurance-contract` | `contracts/insurance_contract` | Dispute insurance pool         |
+| `stellar-trust-escrow-extensions`  | `contracts/escrow_extensions`  | Optional escrow add-ons        |
 
 All four share a single `[profile.release]` in the root `Cargo.toml`:
 
@@ -105,13 +105,13 @@ Run tests for a single crate to keep feedback fast:
 
 ```bash
 # Core escrow contract
-cargo test -p escrow_contract
+cargo test -p stellar-trust-escrow-contract
 
 # Governance contract
-cargo test -p governance
+cargo test -p stellar-trust-governance
 
 # Escrow extensions
-cargo test -p escrow_extensions
+cargo test -p stellar-trust-escrow-extensions
 
 # All crates at once
 cargo test --workspace
@@ -120,7 +120,7 @@ cargo test --workspace
 Run a specific test by name:
 
 ```bash
-cargo test -p escrow_contract test_approve_milestone_o1_completion_check
+cargo test -p stellar-trust-escrow-contract test_approve_milestone_o1_completion_check
 ```
 
 ### Soroban test harness patterns
@@ -252,8 +252,8 @@ Open `http://localhost:3000`.
 ### 7. Optional: build the contracts locally
 
 ```bash
-cargo build -p escrow_contract --target wasm32-unknown-unknown
-cargo build -p insurance_contract --target wasm32-unknown-unknown
+cargo build -p stellar-trust-escrow-contract --target wasm32-unknown-unknown
+cargo build -p stellar-trust-insurance-contract --target wasm32-unknown-unknown
 ```
 
 ## Development Workflow
@@ -303,16 +303,16 @@ cargo test --workspace
 Run a single crate for faster iteration:
 
 ```bash
-cargo test -p escrow_contract
-cargo test -p governance
-cargo test -p escrow_extensions
-cargo test -p insurance_contract
+cargo test -p stellar-trust-escrow-contract
+cargo test -p stellar-trust-governance
+cargo test -p stellar-trust-escrow-extensions
+cargo test -p stellar-trust-insurance-contract
 ```
 
 Run a specific test by name:
 
 ```bash
-cargo test -p escrow_contract <test_name>
+cargo test -p stellar-trust-escrow-contract <test_name>
 ```
 
 For deeper contract verification on macOS, Linux, or WSL:
