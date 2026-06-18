@@ -12,6 +12,17 @@ import { TIER_LIMITS } from '../../config/rateLimits.js';
 import { logControllerError } from '../../config/logger.js';
 import { getUserUsage } from '../middleware/rateLimiter.js';
 
+// JSON.stringify does not guarantee key order, so two objects with the same
+// contents but different insertion order produce different cache keys.
+// This sorted replacer ensures deterministic serialisation for cache keys.
+function stableStringify(obj) {
+  return JSON.stringify(obj, (_, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+}
+
 // Mutable runtime overrides (resets on server restart)
 const runtimeTierLimits = { ...TIER_LIMITS };
 
@@ -55,7 +66,7 @@ const listUsers = async (req, res) => {
 
     const where = search ? { address: { contains: search, mode: 'insensitive' } } : {};
 
-    const cacheKey = `admin:users:${JSON.stringify({ where, page, limit })}`;
+    const cacheKey = `admin:users:${stableStringify({ where, page, limit })}`;
     const cached = await cache.get(cacheKey);
     if (cached) return res.json(cached);
 
@@ -226,7 +237,7 @@ const listDisputes = async (req, res) => {
           ? { resolvedAt: null }
           : {};
 
-    const cacheKey = `admin:disputes:${JSON.stringify({ where, page, limit })}`;
+    const cacheKey = `admin:disputes:${stableStringify({ where, page, limit })}`;
     const cached = await cache.get(cacheKey);
     if (cached) return res.json(cached);
 
