@@ -307,10 +307,12 @@ model Dispute {
   /// Whether this dispute was auto-resolved
   autoResolved     Boolean   @default(false) @map("auto_resolved")
 
-  tenant   Tenant            @relation(fields: [tenantId], references: [id])
-  escrow   Escrow            @relation(fields: [escrowId], references: [id])
-  evidence DisputeEvidence[]
-  appeals  DisputeAppeal[]
+  tenant       Tenant            @relation(fields: [tenantId], references: [id])
+  escrow       Escrow            @relation(fields: [escrowId], references: [id])
+  evidence     DisputeEvidence[]
+  appeals      DisputeAppeal[]
+  chatRoomKeys ChatRoomKey[]
+  chatMessages ChatMessage[]
 
   @@index([tenantId, raisedByAddress])
   @@index([tenantId, resolvedAt])
@@ -651,4 +653,82 @@ enum PaymentStatus {
   Completed
   Failed
   Refunded
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+/// Symmetric encryption key shared between parties to a dispute chat room.
+/// One row per (disputeId, participantAddress) pair so each participant
+/// stores their own encrypted copy.
+model ChatRoomKey {
+  id           Int      @id @default(autoincrement())
+  tenantId     String   @map("tenant_id")
+  disputeId    Int      @map("dispute_id")
+  /// Stellar address of the participant holding this key
+  address      String
+  /// AES-256-GCM key encrypted with the participant's public key (base64)
+  encryptedKey String   @map("encrypted_key")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@unique([disputeId, address])
+  @@index([tenantId, disputeId])
+  @@index([address])
+  @@map("chat_room_keys")
+}
+
+/// Individual message in a dispute chat room.
+model ChatMessage {
+  id         Int      @id @default(autoincrement())
+  tenantId   String   @map("tenant_id")
+  disputeId  Int      @map("dispute_id")
+  /// Sender's Stellar address
+  sender     String
+  /// Encrypted ciphertext (AES-256-GCM, base64)
+  ciphertext String
+  /// AES-GCM nonce (base64, 12 bytes)
+  nonce      String
+  /// SHA-256 integrity check of the plaintext (hex) — verified client-side
+  checksum   String
+  sentAt     DateTime @default(now()) @map("sent_at")
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, disputeId, sentAt(sort: Asc)])
+  @@index([disputeId, sentAt(sort: Asc)])
+  @@index([sender])
+  @@map("chat_messages")
+}
+
+// ── Reputation Events ─────────────────────────────────────────────────────────
+
+/// Append-only ledger of every reputation-affecting event. The ReputationRecord
+/// aggregate is derived from these rows and can be rebuilt at any time.
+model ReputationEvent {
+  id        BigInt   @id @default(autoincrement())
+  tenantId  String   @map("tenant_id")
+  /// Address whose reputation changed
+  address   String
+  /// Type of event: ESCROW_COMPLETED | DISPUTE_WON | DISPUTE_LOST | ESCROW_CANCELLED
+  eventType String   @map("event_type")
+  /// Signed integer delta applied to total_score
+  delta     Int
+  /// Related escrow (nullable for admin adjustments)
+  escrowId  BigInt?  @map("escrow_id")
+  /// Related dispute (nullable)
+  disputeId Int?     @map("dispute_id")
+  /// Ledger sequence when the on-chain event was finalised
+  ledger    BigInt?
+  /// Free-form metadata (resolution details, admin notes, etc.)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, address, createdAt(sort: Desc)])
+  @@index([address, createdAt(sort: Desc)])
+  @@index([tenantId, eventType])
+  @@index([escrowId])
+  @@index([disputeId])
+  @@index([createdAt(sort: Desc)])
+  @@map("reputation_events")
 }
