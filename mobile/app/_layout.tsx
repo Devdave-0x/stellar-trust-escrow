@@ -30,8 +30,9 @@ export default function RootLayout() {
       () => {}, // foreground — banner handles it
       (response) => {
         const data = response.notification.request.content.data as Record<string, string>;
-        if (data?.escrowId) {
-          void router.push(`/escrow/${data.escrowId}`);
+        const escrowId = data?.escrowId;
+        if (escrowId && /^\d+$/.test(String(escrowId))) {
+          void router.push(`/escrow/${escrowId}`);
         }
       },
     );
