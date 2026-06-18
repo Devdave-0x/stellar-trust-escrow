@@ -16,8 +16,7 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT Bearer token on every request; fall back to address header for
-// unauthenticated flows that only need the public address for read endpoints.
+// Attach JWT Bearer token on every request.
 api.interceptors.request.use((config) => {
   const token = storage.getString(STORAGE_KEYS.AUTH_TOKEN);
   if (token) {
@@ -25,6 +24,18 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Clear stale credentials on 401 so the user is prompted to re-authenticate
+// rather than silently retrying with an expired token on every subsequent call.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      storage.delete(STORAGE_KEYS.AUTH_TOKEN);
+    }
+    return Promise.reject(error);
+  },
+);
 
 // ── Typed response helpers ────────────────────────────────────────────────────
 
