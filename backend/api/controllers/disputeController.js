@@ -20,9 +20,12 @@ import { verifyFile, merkleRoot, hashFile } from '../../services/ipfsHashService
 const VALID_DISPUTE_SORT_FIELDS = new Set(['raisedAt', 'resolvedAt', 'id']);
 const VALID_SORT_ORDERS = new Set(['asc', 'desc']);
 
+const DISPUTE_MAX_LIMIT = 50;
+
 const listDisputes = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
+    const { page, skip } = parsePagination(req.query);
+    const limit = Math.min(parsePagination(req.query).limit, DISPUTE_MAX_LIMIT);
     const {
       status,
       raisedBy,
@@ -43,6 +46,16 @@ const listDisputes = async (req, res) => {
         error: 'Invalid sortOrder value',
         allowed: [...VALID_SORT_ORDERS],
       });
+    }
+
+    if (dateFrom && isNaN(Date.parse(dateFrom))) {
+      return res.status(400).json({ error: 'dateFrom must be a valid ISO date string' });
+    }
+    if (dateTo && isNaN(Date.parse(dateTo))) {
+      return res.status(400).json({ error: 'dateTo must be a valid ISO date string' });
+    }
+    if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+      return res.status(400).json({ error: 'dateFrom must not be after dateTo' });
     }
 
     const where = {
