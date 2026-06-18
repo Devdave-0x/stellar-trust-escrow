@@ -20,6 +20,10 @@ const exportUserData = async (req, res) => {
       });
     }
 
+    if (req.user?.address !== address) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     const data = await exportService.exportUserData(address);
 
     res.json(data);
@@ -45,6 +49,10 @@ const importUserData = async (req, res) => {
       return res.status(400).json({
         error: 'Invalid Stellar address format',
       });
+    }
+
+    if (req.user?.address !== address) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     // Validate import data
