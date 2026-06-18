@@ -63,11 +63,12 @@ export const TTL = {
  * @returns {string}
  */
 export function buildCacheKey(req) {
+  const tenant = req.tenant?.slug || 'global';
   const sortedQuery = Object.keys(req.query)
     .sort()
     .map((k) => `${k}=${req.query[k]}`)
     .join('&');
-  return `http:${req.method}:${req.path}${sortedQuery ? ':' + sortedQuery : ''}`;
+  return `http:${tenant}:${req.method}:${req.path}${sortedQuery ? ':' + sortedQuery : ''}`;
 }
 
 // ── Cache response middleware ─────────────────────────────────────────────────
