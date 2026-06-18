@@ -10,7 +10,8 @@ import jwt from 'jsonwebtoken';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import sessionService from '../../services/sessionService.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change_this_in_production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 const NONCE_TTL_MS = 5 * 60 * 1000;
 
