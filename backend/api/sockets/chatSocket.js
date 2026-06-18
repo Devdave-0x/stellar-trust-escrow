@@ -18,7 +18,8 @@ import { createModuleLogger } from '../../config/logger.js';
 
 const log = createModuleLogger('chatSocket');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change_this_in_production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 const DISPUTE_NS_RE = /^\/dispute\/(\d+)$/;
 
 // ── JWT extraction ────────────────────────────────────────────────────────────
