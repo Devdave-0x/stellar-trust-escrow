@@ -12,7 +12,8 @@ import jwt from 'jsonwebtoken';
 import mfaService from '../../services/mfaService.js';
 import cache from '../../lib/cache.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change_this_in_production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 const MFA_SESSION_DURATION = 30 * 60 * 1000; // 30 minutes
 
 /**
