@@ -40,14 +40,24 @@ export function useEscrowList(params?: Record<string, string | number>) {
     queryFn: async () => {
       const net = await NetInfo.fetch();
       if (!net.isConnected) {
+        const status = params?.status as string | undefined;
+        const limit = typeof params?.limit === 'number' ? params.limit : 20;
+        const offset = typeof params?.offset === 'number' ? params.offset : 0;
+
+        let offline = getCachedEscrows() as Escrow[];
+        if (status) {
+          offline = offline.filter((e) => e.status === status);
+        }
+        const paged = offline.slice(offset, offset + limit);
+
         return {
-          data: getCachedEscrows() as Escrow[],
-          total: 0,
-          page: 1,
-          limit: 20,
-          totalPages: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
+          data: paged,
+          total: offline.length,
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          totalPages: Math.max(1, Math.ceil(offline.length / limit)),
+          hasNextPage: offset + limit < offline.length,
+          hasPreviousPage: offset > 0,
         };
       }
       const { data } = await escrowApi.list(params);
