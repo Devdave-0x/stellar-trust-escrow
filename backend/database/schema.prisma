@@ -652,3 +652,49 @@ enum PaymentStatus {
   Failed
   Refunded
 }
+
+// ── Chat (Encrypted Dispute Messaging) ───────────────────────────────────────
+// roomId convention: "dispute:<escrowId>"
+// encryptedKey: AES-256 session key wrapped with recipient's Stellar public key (ECIES).
+// The server stores but never decrypts — plaintext never touches the backend.
+
+/// Per-participant AES session key for a dispute chat room.
+/// @@unique([roomId, address]) allows key rotation via upsert.
+model ChatRoomKey {
+  id           String   @id @default(cuid())
+  roomId       String   @map("room_id")
+  address      String
+  /// AES-256 session key encrypted with recipient's Stellar public key (ECIES), base64-encoded
+  encryptedKey String   @map("encrypted_key") @db.Text
+  tenantId     String   @map("tenant_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([roomId, address])
+  @@index([roomId])
+  @@index([tenantId, roomId])
+  @@map("chat_room_keys")
+}
+
+/// Encrypted message in a dispute chat room.
+/// ciphertext/iv/tag: AES-256-GCM encrypted payload — server never decrypts.
+model ChatMessage {
+  id            String   @id @default(cuid())
+  roomId        String   @map("room_id")
+  senderAddress String   @map("sender_address")
+  /// AES-256-GCM ciphertext, base64-encoded
+  ciphertext    String   @db.Text
+  /// 12-byte GCM nonce, base64-encoded
+  iv            String   @db.Text
+  /// 16-byte GCM auth tag, base64-encoded
+  tag           String   @db.Text
+  tenantId      String   @map("tenant_id")
+  sentAt        DateTime @default(now()) @map("sent_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([roomId, sentAt])
+  @@index([tenantId, roomId])
+  @@map("chat_messages")
+}
