@@ -6,7 +6,7 @@
  */
 
 import axios from 'axios';
-import { storage, STORAGE_KEYS } from './storage';
+import { storage } from './storage';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -16,23 +16,52 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT Bearer token on every request.
-api.interceptors.request.use((config) => {
-  const token = storage.getString(STORAGE_KEYS.AUTH_TOKEN);
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
+// Attach JWT as Bearer token on every request
+api.interceptors.request.use(async (config) => {
+  const jwt = await (async () => {
+    try {
+      const { secureStorage } = await import('./storage');
+      return await secureStorage.get('auth_jwt');
+    } catch {
+      return null;
+    }
+  })();
+
+  if (jwt) {
+    config.headers.Authorization = `Bearer ${jwt}`;
   }
   return config;
 });
 
-// Clear stale credentials on 401 so the user is prompted to re-authenticate
-// rather than silently retrying with an expired token on every subsequent call.
+// Handle 401: attempt silent re-auth
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      storage.delete(STORAGE_KEYS.AUTH_TOKEN);
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const { useWalletStore } = await import('../store/useWalletStore');
+        const { jwtAuth } = await import('../services/jwtAuth');
+
+        const address = useWalletStore.getState().address;
+        if (!address) throw new Error('No wallet connected');
+
+        const newToken = await jwtAuth.silentRefresh(address);
+        if (!newToken) throw new Error('Silent refresh failed');
+
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch {
+        // Re-auth failed; caller should redirect to connect screen
+        const { useWalletStore } = await import('../store/useWalletStore');
+        useWalletStore.getState().disconnect();
+        return Promise.reject(error);
+      }
     }
+
     return Promise.reject(error);
   },
 );
@@ -103,49 +132,49 @@ export interface Dispute {
 
 export const escrowApi = {
   list: (params?: Record<string, string | number>) =>
-    api.get<PaginatedResponse<Escrow>>('/api/v1/escrows', { params }),
+    api.get<PaginatedResponse<Escrow>>('/api/escrows', { params }),
 
-  get: (id: string) => api.get<Escrow>(`/api/v1/escrows/${id}`),
+  get: (id: string) => api.get<Escrow>(`/api/escrows/${id}`),
 
   getMilestones: (id: string, params?: Record<string, number>) =>
-    api.get<PaginatedResponse<Milestone>>(`/api/v1/escrows/${id}/milestones`, { params }),
+    api.get<PaginatedResponse<Milestone>>(`/api/escrows/${id}/milestones`, { params }),
 
   broadcast: (signedXdr: string) =>
-    api.post<{ hash: string; status: string }>('/api/v1/escrows/broadcast', { signedXdr }),
+    api.post<{ hash: string; status: string }>('/api/escrows/broadcast', { signedXdr }),
 };
 
 export const userApi = {
-  get: (address: string) => api.get(`/api/v1/users/${address}`),
+  get: (address: string) => api.get(`/api/users/${address}`),
   getEscrows: (address: string, params?: Record<string, string | number>) =>
-    api.get<PaginatedResponse<Escrow>>(`/api/v1/users/${address}/escrows`, { params }),
-  getStats: (address: string) => api.get(`/api/v1/users/${address}/stats`),
+    api.get<PaginatedResponse<Escrow>>(`/api/users/${address}/escrows`, { params }),
+  getStats: (address: string) => api.get(`/api/users/${address}/stats`),
 };
 
 export const reputationApi = {
-  get: (address: string) => api.get<ReputationRecord>(`/api/v1/reputation/${address}`),
+  get: (address: string) => api.get<ReputationRecord>(`/api/reputation/${address}`),
   leaderboard: (params?: Record<string, number>) =>
-    api.get<PaginatedResponse<ReputationRecord>>('/api/v1/reputation/leaderboard', { params }),
+    api.get<PaginatedResponse<ReputationRecord>>('/api/reputation/leaderboard', { params }),
 };
 
 export const disputeApi = {
   list: (params?: Record<string, string | number>) =>
-    api.get<PaginatedResponse<Dispute>>('/api/v1/disputes', { params }),
-  get: (escrowId: string) => api.get<Dispute>(`/api/v1/disputes/${escrowId}`),
+    api.get<PaginatedResponse<Dispute>>('/api/disputes', { params }),
+  get: (escrowId: string) => api.get<Dispute>(`/api/disputes/${escrowId}`),
 };
 
 export const searchApi = {
-  search: (params: Record<string, string | number>) => api.get('/api/v1/search', { params }),
-  suggest: (q: string) => api.get('/api/v1/search/suggest', { params: { q } }),
+  search: (params: Record<string, string | number>) => api.get('/api/search', { params }),
+  suggest: (q: string) => api.get('/api/search/suggest', { params: { q } }),
 };
 
 export const kycApi = {
-  getStatus: (address: string) => api.get(`/api/v1/kyc/status/${address}`),
-  getToken: (address: string) => api.post('/api/v1/kyc/token', { address }),
+  getStatus: (address: string) => api.get(`/api/kyc/status/${address}`),
+  getToken: (address: string) => api.post('/api/kyc/token', { address }),
 };
 
 export const paymentApi = {
   createCheckout: (body: { address: string; amountUsd: number; escrowId?: string }) =>
-    api.post('/api/v1/payments/checkout', body),
-  getStatus: (sessionId: string) => api.get(`/api/v1/payments/status/${sessionId}`),
-  list: (address: string) => api.get(`/api/v1/payments/${address}`),
+    api.post('/api/payments/checkout', body),
+  getStatus: (sessionId: string) => api.get(`/api/payments/status/${sessionId}`),
+  list: (address: string) => api.get(`/api/payments/${address}`),
 };
