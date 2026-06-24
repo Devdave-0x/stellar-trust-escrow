@@ -1,4 +1,4 @@
-# Stellar Crowd Fund Escrow
+# Stellar Crowd Fund Escrow .....
 
 **Trustless crowd-funded work agreements on the Stellar blockchain.**
 
