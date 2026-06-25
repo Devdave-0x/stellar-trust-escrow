@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import Spinner from '../../components/ui/Spinner';
 import EscrowCard from '../../components/escrow/EscrowCard';
@@ -9,16 +8,17 @@ import SearchFilters from '../../components/explorer/SearchFilters';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';
 import ErrorBoundary from '../../components/error/ErrorBoundary';
+import { useFilterState } from '../../hooks/useFilterState';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 const DEFAULT_FILTERS = {
-  statuses: [],
+  status: '',
   minAmount: '',
   maxAmount: '',
   dateFrom: '',
   dateTo: '',
-  sort: 'createdAt:desc',
+  sort: '',
 };
 
 function normaliseEscrow(e) {
@@ -35,45 +35,37 @@ function normaliseEscrow(e) {
   };
 }
 
-function buildQuery({ search, filters, page, limit }) {
+function buildApiQuery({ search, filters, page, limit }) {
   const params = new URLSearchParams();
   params.set('page', String(page));
   params.set('limit', String(limit));
   if (search) params.set('search', search);
-  if (filters.statuses.length) params.set('status', filters.statuses.join(','));
+  if (filters.status) params.set('status', filters.status);
   if (filters.minAmount) params.set('minAmount', filters.minAmount);
   if (filters.maxAmount) params.set('maxAmount', filters.maxAmount);
   if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
   if (filters.dateTo) params.set('dateTo', filters.dateTo);
-  const [sortBy, sortOrder] = filters.sort.split(':');
-  params.set('sortBy', sortBy);
-  params.set('sortOrder', sortOrder);
+  if (filters.sort) {
+    const [sortBy, sortOrder] = filters.sort.split(':');
+    params.set('sortBy', sortBy);
+    params.set('sortOrder', sortOrder || 'desc');
+  } else {
+    params.set('sortBy', 'createdAt');
+    params.set('sortOrder', 'desc');
+  }
   return params.toString();
-}
-
-function filtersFromUrl(sp) {
-  const statusParam = sp.get('status') || '';
-  return {
-    statuses: statusParam ? statusParam.split(',') : [],
-    minAmount: sp.get('minAmount') || '',
-    maxAmount: sp.get('maxAmount') || '',
-    dateFrom: sp.get('dateFrom') || '',
-    dateTo: sp.get('dateTo') || '',
-    sort: sp.get('sortBy')
-      ? `${sp.get('sortBy')}:${sp.get('sortOrder') || 'desc'}`
-      : 'createdAt:desc',
-  };
 }
 
 const PAGE_SIZE = 12;
 
 function ExplorerContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
-  const [filters, setFilters] = useState(() => filtersFromUrl(searchParams));
-  const [page, setPage] = useState(Number(searchParams.get('page') || 1));
+  const { filters, page, setFilter, setFilters, setPage, resetFilters } = useFilterState({
+    defaults: DEFAULT_FILTERS,
+    pageParam: 'page',
+  });
+
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [escrows, setEscrows] = useState([]);
   const [meta, setMeta] = useState({
@@ -90,23 +82,19 @@ function ExplorerContent() {
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       setDebouncedSearch(search);
+      // Reset to page 1 when search changes; use setFilter to trigger URL replace.
+      setFilter('_search_reset', '');
       setPage(1);
     }, 300);
     return () => clearTimeout(debounceTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (debouncedSearch) params.set('search', debouncedSearch);
-    if (page > 1) params.set('page', String(page));
-    router.replace(`/explorer?${params.toString()}`, { scroll: false });
-  }, [debouncedSearch, page, router]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const qs = buildQuery({ search: debouncedSearch, filters, page, limit: PAGE_SIZE });
+    const qs = buildApiQuery({ search: debouncedSearch, filters, page, limit: PAGE_SIZE });
     fetch(`${API_BASE}/api/escrows?${qs}`)
       .then((r) => {
         if (!r.ok) throw new Error(`API error ${r.status}`);
@@ -128,25 +116,42 @@ function ExplorerContent() {
     };
   }, [debouncedSearch, filters, page]);
 
-  const handleFilterChange = useCallback((key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    setPage(1);
-  }, []);
+  // Adapt the SearchFilters component's (key, value) API to our filter state.
+  const handleFilterChange = useCallback(
+    (key, value) => {
+      if (key === 'statuses') {
+        // SearchFilters passes statuses as an array; flatten to comma-separated string for URL.
+        setFilter('status', Array.isArray(value) ? value.join(',') : value);
+      } else {
+        setFilter(key, value);
+      }
+    },
+    [setFilter],
+  );
 
   const handleReset = useCallback(() => {
-    setFilters(DEFAULT_FILTERS);
+    resetFilters();
     setSearch('');
     setDebouncedSearch('');
-    setPage(1);
-  }, []);
+  }, [resetFilters]);
+
+  // Convert the URL string back to array for SearchFilters.
+  const filtersForPanel = {
+    statuses: filters.status ? filters.status.split(',') : [],
+    minAmount: filters.minAmount,
+    maxAmount: filters.maxAmount,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    sort: filters.sort || 'createdAt:desc',
+  };
 
   const activeFilterCount =
-    filters.statuses.length +
+    filtersForPanel.statuses.length +
     (filters.minAmount ? 1 : 0) +
     (filters.maxAmount ? 1 : 0) +
     (filters.dateFrom ? 1 : 0) +
     (filters.dateTo ? 1 : 0) +
-    (filters.sort !== 'createdAt:desc' ? 1 : 0);
+    (filters.sort && filters.sort !== 'createdAt:desc' ? 1 : 0);
 
   return (
     <div className="space-y-6">
@@ -157,38 +162,54 @@ function ExplorerContent() {
 
       <div className="flex gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
+          <label htmlFor="explorer-search" className="sr-only">
+            Search escrows
+          </label>
           <input
-            type="text"
+            id="explorer-search"
+            type="search"
             placeholder="Search by escrow ID or address..."
             className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-4 py-2.5 text-white"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search escrows by ID or address"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              aria-label="Clear search"
             >
-              <X size={14} />
+              <X size={14} aria-hidden="true" />
             </button>
           )}
         </div>
 
         <button
           onClick={() => setShowFilters((v) => !v)}
+          aria-expanded={showFilters}
+          aria-controls="explorer-filters"
           className="flex items-center gap-2 px-4 py-2.5 rounded-lg border bg-gray-900 border-gray-800 text-gray-300"
         >
-          <SlidersHorizontal size={15} />
+          <SlidersHorizontal size={15} aria-hidden="true" />
           Filters
-          {activeFilterCount > 0 && <span className="text-xs">{activeFilterCount}</span>}
+          {activeFilterCount > 0 && (
+            <span className="text-xs" aria-label={`${activeFilterCount} active filters`}>
+              {activeFilterCount}
+            </span>
+          )}
         </button>
       </div>
 
       <div className={`flex gap-6 ${showFilters ? 'items-start' : ''}`}>
         {showFilters && (
-          <div className="w-56 flex-shrink-0 card">
-            <SearchFilters filters={filters} onChange={handleFilterChange} onReset={handleReset} />
+          <div id="explorer-filters" className="w-56 flex-shrink-0 card">
+            <SearchFilters
+              filters={filtersForPanel}
+              onChange={handleFilterChange}
+              onReset={handleReset}
+            />
           </div>
         )}
 
@@ -199,7 +220,7 @@ function ExplorerContent() {
               <p className="text-sm">Loading escrows...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-16">
+            <div className="text-center py-16" role="alert">
               <p className="text-red-400 mb-3">Failed to load escrows</p>
               <p className="text-gray-500 text-sm">{error}</p>
             </div>
@@ -224,29 +245,31 @@ function ExplorerContent() {
       </div>
 
       {!loading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 pt-2">
+        <nav aria-label="Escrow list pagination" className="flex items-center justify-center gap-3 pt-2">
           <Button
             variant="secondary"
             size="sm"
             disabled={!meta.hasPreviousPage}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
+            aria-label="Previous page"
           >
-            <ChevronLeft size={14} />
+            <ChevronLeft size={14} aria-hidden="true" />
             Prev
           </Button>
-          <span className="text-sm text-gray-400">
+          <span className="text-sm text-gray-400" aria-live="polite" aria-atomic="true">
             Page {page} of {meta.totalPages || 1}
           </span>
           <Button
             variant="secondary"
             size="sm"
             disabled={!meta.hasNextPage}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => setPage(page + 1)}
+            aria-label="Next page"
           >
             Next
-            <ChevronRight size={14} />
+            <ChevronRight size={14} aria-hidden="true" />
           </Button>
-        </div>
+        </nav>
       )}
     </div>
   );
