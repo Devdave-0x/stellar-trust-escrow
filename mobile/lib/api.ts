@@ -103,49 +103,49 @@ export interface Dispute {
 
 export const escrowApi = {
   list: (params?: Record<string, string | number>) =>
-    api.get<PaginatedResponse<Escrow>>('/api/escrows', { params }),
+    api.get<PaginatedResponse<Escrow>>('/api/v1/escrows', { params }),
 
-  get: (id: string) => api.get<Escrow>(`/api/escrows/${id}`),
+  get: (id: string) => api.get<Escrow>(`/api/v1/escrows/${id}`),
 
   getMilestones: (id: string, params?: Record<string, number>) =>
-    api.get<PaginatedResponse<Milestone>>(`/api/escrows/${id}/milestones`, { params }),
+    api.get<PaginatedResponse<Milestone>>(`/api/v1/escrows/${id}/milestones`, { params }),
 
   broadcast: (signedXdr: string) =>
-    api.post<{ hash: string; status: string }>('/api/escrows/broadcast', { signedXdr }),
+    api.post<{ hash: string; status: string }>('/api/v1/escrows/broadcast', { signedXdr }),
 };
 
 export const userApi = {
-  get: (address: string) => api.get(`/api/users/${address}`),
+  get: (address: string) => api.get(`/api/v1/users/${address}`),
   getEscrows: (address: string, params?: Record<string, string | number>) =>
-    api.get<PaginatedResponse<Escrow>>(`/api/users/${address}/escrows`, { params }),
-  getStats: (address: string) => api.get(`/api/users/${address}/stats`),
+    api.get<PaginatedResponse<Escrow>>(`/api/v1/users/${address}/escrows`, { params }),
+  getStats: (address: string) => api.get(`/api/v1/users/${address}/stats`),
 };
 
 export const reputationApi = {
-  get: (address: string) => api.get<ReputationRecord>(`/api/reputation/${address}`),
+  get: (address: string) => api.get<ReputationRecord>(`/api/v1/reputation/${address}`),
   leaderboard: (params?: Record<string, number>) =>
-    api.get<PaginatedResponse<ReputationRecord>>('/api/reputation/leaderboard', { params }),
+    api.get<PaginatedResponse<ReputationRecord>>('/api/v1/reputation/leaderboard', { params }),
 };
 
 export const disputeApi = {
   list: (params?: Record<string, string | number>) =>
-    api.get<PaginatedResponse<Dispute>>('/api/disputes', { params }),
-  get: (escrowId: string) => api.get<Dispute>(`/api/disputes/${escrowId}`),
+    api.get<PaginatedResponse<Dispute>>('/api/v1/disputes', { params }),
+  get: (escrowId: string) => api.get<Dispute>(`/api/v1/disputes/${escrowId}`),
 };
 
 export const searchApi = {
-  search: (params: Record<string, string | number>) => api.get('/api/search', { params }),
-  suggest: (q: string) => api.get('/api/search/suggest', { params: { q } }),
+  search: (params: Record<string, string | number>) => api.get('/api/v1/search', { params }),
+  suggest: (q: string) => api.get('/api/v1/search/suggest', { params: { q } }),
 };
 
 export const kycApi = {
-  getStatus: (address: string) => api.get(`/api/kyc/status/${address}`),
-  getToken: (address: string) => api.post('/api/kyc/token', { address }),
+  getStatus: (address: string) => api.get(`/api/v1/kyc/status/${address}`),
+  getToken: (address: string) => api.post('/api/v1/kyc/token', { address }),
 };
 
 export const paymentApi = {
   createCheckout: (body: { address: string; amountUsd: number; escrowId?: string }) =>
-    api.post('/api/payments/checkout', body),
-  getStatus: (sessionId: string) => api.get(`/api/payments/status/${sessionId}`),
-  list: (address: string) => api.get(`/api/payments/${address}`),
+    api.post('/api/v1/payments/checkout', body),
+  getStatus: (sessionId: string) => api.get(`/api/v1/payments/status/${sessionId}`),
+  list: (address: string) => api.get(`/api/v1/payments/${address}`),
 };
