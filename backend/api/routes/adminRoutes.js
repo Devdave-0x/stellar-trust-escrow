@@ -116,6 +116,14 @@ router.patch('/rate-limits/:tier', requireMfa, adminController.updateRateLimit);
  */
 router.get('/rate-limits/usage/:userId', adminController.getUserRateLimitUsage);
 
+// ── Stellar Monitor ────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/stellar/reconcile
+ * @desc   Trigger a manual Horizon reconciliation for monitored accounts
+ * @body   { accounts?: string[] }  — omit to reconcile all MONITOR_ACCOUNTS
+ */
+router.post('/stellar/reconcile', adminController.reconcileStellar);
+
 // ── Tenants ───────────────────────────────────────────────────────────────────
 router.get('/tenants', tenantController.listTenants);
 router.post('/tenants', tenantController.createTenant);

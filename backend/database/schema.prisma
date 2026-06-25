@@ -737,3 +737,40 @@ model ReputationEvent {
   @@index([createdAt(sort: Desc)])
   @@map("reputation_events")
 }
+
+// ── Stellar Monitor ───────────────────────────────────────────────────────────
+
+/// Persists the Horizon SSE cursor for each monitored account so the stream
+/// can resume from the correct position after a restart.
+model StellarMonitorCursor {
+  account   String   @id
+  /// Horizon paging_token of the last successfully processed transaction
+  cursor    String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("stellar_monitor_cursors")
+}
+
+/// Records every on-chain transaction that has no matching database record.
+/// Rows remain until manually resolved or automatically cleared once the
+/// corresponding DB record appears.
+model StellarMonitorDivergence {
+  id         Int       @id @default(autoincrement())
+  /// Stellar transaction hash
+  txHash     String    @unique @map("tx_hash")
+  /// Monitored account address this tx appeared on
+  account    String
+  /// Derived event type from tx memo (e.g. "fund", "release", "dispute")
+  eventType  String    @map("event_type")
+  /// When the divergence was first detected
+  detectedAt DateTime  @map("detected_at")
+  /// Whether an admin or automated process resolved it
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime? @map("resolved_at")
+  /// When the first alert was sent (null = not yet alerted)
+  alertedAt  DateTime? @map("alerted_at")
+
+  @@index([resolved, detectedAt])
+  @@index([account])
+  @@map("stellar_monitor_divergences")
+}

@@ -63,6 +63,7 @@ import { startRpcMonitor } from './monitoring/rpcMonitor.js';
 import { createEventWorker, createDeadLetterWorker } from './services/eventWorker.js';
 import { setupSwagger } from './api/docs/swagger.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
+import stellarMonitor from './services/stellarMonitorService.js';
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
 import v1Router from './api/v1/index.js';
@@ -245,6 +246,16 @@ async function startServer() {
           eventWorker = createEventWorker();
           deadLetterWorker = createDeadLetterWorker();
           logger.info('[BullMQ] Event processing workers started');
+
+          const closeWorkers = async () => {
+            logger.info('[BullMQ] Shutting down workers...');
+            await eventWorker.close();
+            await deadLetterWorker.close();
+            stellarMonitor.stop();
+          };
+
+          process.once('SIGTERM', closeWorkers);
+          process.once('SIGINT', closeWorkers);
         } catch (error) {
           logger.error({ err: error }, '[BullMQ] Failed to start workers');
           Sentry.captureException(error, { tags: { component: 'bullmq-workers' } });
@@ -299,6 +310,11 @@ async function startServer() {
           Sentry.captureException(err, { tags: { component: 'indexer' } });
         });
         startRpcMonitor();
+
+        stellarMonitor.start().catch((err) => {
+          logger.error({ err, component: 'stellar-monitor' }, 'StellarMonitor failed to start');
+          Sentry.captureException(err, { tags: { component: 'stellar-monitor' } });
+        });
 
         // Reputation ES sync — ensure index + initial sync on startup
         ensureIndex().then(() =>
