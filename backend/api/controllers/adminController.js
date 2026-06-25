@@ -488,6 +488,34 @@ const updateSettings = async (req, res) => {
   }
 };
 
+// ── Stellar Monitor ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/stellar/reconcile
+ * Triggers a manual reconciliation run against Horizon for the given accounts
+ * (or all configured MONITOR_ACCOUNTS when none are supplied).
+ *
+ * Body (optional): { accounts: string[] }
+ */
+const reconcileStellar = async (req, res) => {
+  try {
+    const { reconcile } = await import('../../services/stellarMonitorService.js');
+    const accounts = Array.isArray(req.body?.accounts) ? req.body.accounts : undefined;
+    const result = await reconcile(accounts);
+
+    adminLog.info({
+      message: 'admin_stellar_reconcile',
+      triggeredBy: req.user?.userId ?? 'admin',
+      ...result,
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logControllerError('admin.reconcileStellar', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listUsers,
   getUserDetail,
@@ -502,4 +530,5 @@ export default {
   getRateLimits,
   updateRateLimit,
   getUserRateLimitUsage,
+  reconcileStellar,
 };
