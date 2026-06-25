@@ -64,6 +64,7 @@ import { createEventWorker, createDeadLetterWorker } from './services/eventWorke
 import { setupSwagger } from './api/docs/swagger.js';
 import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
+import stellarMonitor from './services/stellarMonitorService.js';
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
 
@@ -291,6 +292,7 @@ async function startServer() {
             logger.info('[BullMQ] Shutting down workers...');
             await eventWorker.close();
             await deadLetterWorker.close();
+            stellarMonitor.stop();
           };
 
           process.once('SIGTERM', closeWorkers);
@@ -305,6 +307,11 @@ async function startServer() {
           Sentry.captureException(err, { tags: { component: 'indexer' } });
         });
         startRpcMonitor();
+
+        stellarMonitor.start().catch((err) => {
+          logger.error({ err, component: 'stellar-monitor' }, 'StellarMonitor failed to start');
+          Sentry.captureException(err, { tags: { component: 'stellar-monitor' } });
+        });
 
         // Reputation ES sync — ensure index + initial sync on startup
         ensureIndex().then(() =>
