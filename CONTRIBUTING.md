@@ -262,33 +262,114 @@ cargo build -p stellar-trust-insurance-contract --target wasm32-unknown-unknown
 
 ### Branch naming
 
-Use a short descriptive branch name:
+Branches must follow this pattern (enforced by the pre-push hook):
 
-- `docs/contributor-onboarding`
-- `feature/add-wallet-retry`
-- `fix/backend-health-route`
-- `test/improve-escrow-coverage`
+```
+<type>/<short-description>
+```
+
+| Prefix | When to use |
+| --- | --- |
+| `feat/` | New functionality |
+| `fix/` | Bug fix |
+| `refactor/` | Code improvement, no behaviour change |
+| `docs/` | Documentation only |
+| `test/` | Tests only |
+| `chore/` | Tooling, dependencies, config |
+| `hotfix/` | Urgent production fix branched from `main` |
+| `release/` | Release preparation (version bump, CHANGELOG) |
+
+Examples:
+
+```
+feat/wallet-retry-logic
+fix/backend-health-route
+docs/contributor-onboarding
+chore/upgrade-prisma-5
+```
+
+Keep the description short, lowercase, and hyphen-separated. No ticket numbers in the branch name — link the issue in the PR instead.
+
+---
+
+### Commit message format — Conventional Commits
+
+Every commit must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+<type>(<scope>): <short summary>
+
+<optional body — explain WHY if the diff doesn't make it obvious>
+
+<optional footer>
+BREAKING CHANGE: <description>
+Closes #<issue>
+```
+
+**Type must be one of:**
+
+| Type | When to use |
+| --- | --- |
+| `feat` | New feature visible to users or callers |
+| `fix` | Bug fix |
+| `perf` | Performance improvement |
+| `security` | Security fix or hardening |
+| `refactor` | Code restructuring, no behaviour change |
+| `test` | Adding or fixing tests |
+| `docs` | Documentation only |
+| `chore` | Build process, tooling, dependency updates |
+
+**Scope** is optional but encouraged — use the layer or domain (`backend`, `contracts`, `frontend`, `mobile`, `webhooks`, `auth`, etc.).
+
+**Subject line rules:**
+- Imperative mood: "add pagination" not "adds pagination" or "added pagination"
+- No capital first letter
+- No trailing period
+- 72 characters max
+
+**Examples:**
+
+```
+feat(backend): add cursor pagination to /api/escrows
+fix(contracts): prevent integer overflow in milestone release
+docs: expand PR lifecycle section in CONTRIBUTING
+chore(deps): upgrade @stellar/stellar-sdk to 12.1.0
+test(backend): add dispute resolution edge cases
+```
+
+If a commit introduces a breaking change, add a `BREAKING CHANGE:` footer:
+
+```
+feat(api)!: rename client_address to clientAddress in all responses
+
+BREAKING CHANGE: all API consumers must update field references.
+Closes #200
+```
+
+The `!` after the type is shorthand — the footer is still required.
+
+---
 
 ### Typical flow
 
 ```bash
-git checkout -b docs/contributor-onboarding
+# 1. Branch from develop
+git checkout develop
+git pull upstream develop
+git checkout -b feat/my-feature
+
+# 2. Make changes, then run the relevant checks
+#    (see Testing All Layers and Code Style sections below)
+
+# 3. Commit
+git add <files>
+git commit -m "feat(backend): add my feature"
+
+# 4. Push
+git push -u origin feat/my-feature
 ```
 
-Make your change, then run the relevant checks from the sections below.
-
-Commit using Conventional Commits:
-
-```bash
-git add .
-git commit -m "docs: create contributor onboarding guide"
-```
-
-Push your branch:
-
-```bash
-git push -u origin docs/contributor-onboarding
-```
+Open the pull request on GitHub, targeting `develop`. Use the PR template — filling it in completely is a requirement, not a suggestion.
 
 ## Testing All Layers
 
@@ -397,28 +478,67 @@ Notes:
 
 ## Pull Request Process
 
-1. Pick or claim an issue before starting substantial work.
-2. Keep the branch scoped to one fix, feature, or documentation change.
-3. Open a pull request against `main`.
-4. Fill in the PR template completely.
-5. Link the issue with `Closes #<issue-number>`.
-6. Run the relevant tests and list the exact commands in the PR.
-7. Wait for maintainer review and address feedback with follow-up commits.
+### Before you open a PR
 
-Review expectations:
+- Claim or create an issue first. Leave a comment so no one duplicates your work.
+- Keep the branch scoped to **one logical change**. If you find an unrelated bug while working, fix it in a separate branch.
+- Run all relevant checks for the layer(s) you touched (see [Testing All Layers](#testing-all-layers) and [Code Style and Linting](#code-style-and-linting)).
+- Update documentation when behaviour changes. If you add an endpoint, update `docs/api/`. If you change an env variable, update README and `.env.example`.
 
-- Documentation-only changes should still be checked for command accuracy and broken links.
-- Code changes should include tests or explain why test coverage was not added.
-- UI changes should include screenshots or a short recording.
-- Breaking changes must be called out explicitly in the PR body.
+### PR lifecycle
 
-Minimum checklist before requesting review:
+```
+Draft  →  Ready for Review  →  Approved  →  Merged
+```
 
-- [ ] Code compiles or the changed docs reference working commands
-- [ ] Tests added or updated when behavior changed
-- [ ] Linting and formatting pass
-- [ ] Relevant docs were updated
-- [ ] No breaking changes, or they are clearly documented
+**Draft** — open as a draft as soon as the branch exists if you want early visibility or async feedback before the work is done. Drafts do not trigger maintainer review.
+
+**Ready for Review** — convert to "Ready for review" only when:
+- All checklist items in the PR template are ticked
+- CI is green (or you have explained a known transient failure)
+- You have resolved or replied to every comment from the draft phase
+
+**Approved** — at least one maintainer must approve. For changes to contract logic, two approvals are required. Approval does not mean merge — it means the reviewer is satisfied. The author does the merge after approval.
+
+**Merged** — always merge into `develop`, never directly into `main`. Use the **"Squash and merge"** strategy for feature and fix branches so the commit history on `develop` stays clean and follows Conventional Commits. Use **"Merge commit"** for `release/` branches so the merge point is visible.
+
+### Target branch
+
+| Branch type | Target |
+| --- | --- |
+| `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/` | `develop` |
+| `release/vX.Y.Z` | `main` |
+| `hotfix/` | `main` **and** back-merged into `develop` |
+
+Never open a PR directly against `main` unless it is a release or hotfix.
+
+### What every PR must include
+
+| Requirement | Details |
+| --- | --- |
+| **Passing CI** | All checks must be green. Do not ask for review with a red pipeline. |
+| **Tests** | New features need tests. Bug fixes need a regression test. Refactors with no behaviour change are exempt — state this explicitly. |
+| **Documentation** | Update any affected doc, README section, or `.env.example`. Link the relevant file in the PR body. |
+| **CHANGELOG entry** | Add a line under `## [Unreleased]` for any user- or caller-visible change. See [Versioning Policy](#versioning-policy). |
+| **Linked issue** | `Closes #<number>` in the PR body. |
+| **Filled-in template** | Every section of the PR template must be completed — do not delete sections and leave them blank. |
+
+### Addressing review feedback
+
+- Push follow-up commits to the same branch — do not close and reopen the PR.
+- Resolve a comment thread only after the requested change is made; let the reviewer re-check.
+- If you disagree with feedback, reply with reasoning. Maintainers can be wrong.
+- Mark trivial acknowledgements ("good catch, fixed") with a thumbs-up rather than a new comment to keep the thread readable.
+
+### Review expectations by change type
+
+| Change type | Expectation |
+| --- | --- |
+| Documentation only | Commands must be tested locally; no broken links |
+| Backend / API | Tests covering the new or changed behaviour; migration status verified |
+| Contract logic | Two approvals; new Soroban test using `Env::default()` + `mock_all_auths()` |
+| Frontend / UI | Screenshots or short screen recording included |
+| Breaking change | Clearly labelled in the PR title (`!` suffix on type) and body; CHANGELOG updated |
 
 ## Finding a First Issue
 
