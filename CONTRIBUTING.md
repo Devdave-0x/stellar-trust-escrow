@@ -2,6 +2,8 @@
 
 This guide is the fastest path from clone to first PR. It covers local setup, testing, linting, the review process, and how to find newcomer-friendly issues.
 
+For the canonical clone-to-running-app walkthrough, use [Local development setup](docs/local-development.md).
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

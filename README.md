@@ -244,6 +244,8 @@ Stellar-Crowd-Fund-Escrow/
 
 ## Getting Started
 
+New contributors should follow the canonical [local development setup guide](docs/local-development.md). It covers prerequisites, environment files, Docker services, a test escrow, troubleshooting, and the first-PR workflow. The condensed steps below remain as a quick reference.
+
 ### What you need
 
 | Dependency  | Minimum | Notes                                         |
