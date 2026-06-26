@@ -110,7 +110,12 @@ export default function EscrowCard({ escrow, isLoading = false }) {
 
       {/* Footer */}
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-800">
-        <span className="text-xs text-gray-600">#{id}</span>
+        <span className="flex items-center gap-2">
+          <span className="text-xs text-gray-600">#{id}</span>
+          <div onClick={(e) => e.preventDefault()}>
+            <CopyButton text={String(id)} label="Escrow ID" />
+          </div>
+        </span>
         <span
           className={`text-xs font-medium ${
             role === 'client' ? 'text-blue-400' : 'text-emerald-400'
