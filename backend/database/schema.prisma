@@ -53,6 +53,8 @@ model Tenant {
   kycVerifications     KycVerification[]
   adminAuditLogs       AdminAuditLog[]
   auditLogs            AuditLog[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@map("tenants")
 }
@@ -71,10 +73,12 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  refreshTokens RefreshToken[]
-  mfaMethods    MfaMethod[]
-  mfaAttempts   MfaAttempt[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  refreshTokens           RefreshToken[]
+  mfaMethods              MfaMethod[]
+  mfaAttempts             MfaAttempt[]
+  notifications           Notification[]
+  notificationPreference  NotificationPreference?
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
@@ -625,6 +629,51 @@ model AuditLog {
   @@index([category, createdAt(sort: Desc)])
   @@index([actor, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String           @map("tenant_id")
+  userId    Int              @map("user_id")
+  event     NotificationEvent
+  data      Json
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([userId, read, createdAt(sort: Desc)])
+  @@index([tenantId, userId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id               String   @id @default(cuid())
+  userId           Int      @unique @map("user_id")
+  tenantId         String   @map("tenant_id")
+  /// JSON map of NotificationEvent -> { email: bool, inApp: bool }
+  preferences      Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, userId])
+  @@map("notification_preferences")
+}
+
+enum NotificationEvent {
+  escrow_funded
+  release_requested
+  dispute_raised
+  dispute_resolved
+  escrow_expiring
+  milestone_completed
+  escrow_status_changed
 }
 
 enum EscrowStatus {
