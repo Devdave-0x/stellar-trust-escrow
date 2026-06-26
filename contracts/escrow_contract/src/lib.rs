@@ -3644,7 +3644,7 @@ impl EscrowContract {
             .get(&DataKey::MultisigCfg(escrow_id))
             .ok_or(EscrowError::E66)?;
 
-        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
