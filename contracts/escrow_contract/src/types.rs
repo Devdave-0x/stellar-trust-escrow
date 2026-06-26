@@ -750,4 +750,6 @@ pub enum DataKey {
     OracleResolution(u64),
     /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
     TrustedOracleKey,
+    /// Configured release timelock duration in seconds for an escrow — key: u64, value: u64
+    EscrowTimelockSecs(u64),
 }

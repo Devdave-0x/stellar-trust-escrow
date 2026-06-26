@@ -57,6 +57,8 @@ pub enum EcErr {
     E61 = 61,
     E62 = 62,
     E63 = 63,
+    E64 = 64,
+    E65 = 65,
 }
 
 pub use self::EcErr as EscrowError;

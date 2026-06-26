@@ -449,3 +449,17 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
         (referrer.clone(), amount),
     );
 }
+
+pub fn emit_release_pending(env: &Env, escrow_id: u64, milestone_id: u32, release_at: u64) {
+    env.events().publish(
+        (ev::RELEASE_PENDING, escrow_id),
+        (milestone_id, release_at),
+    );
+}
+
+pub fn emit_pending_release_executed(env: &Env, escrow_id: u64, milestone_id: u32, amount: i128) {
+    env.events().publish(
+        (ev::PENDING_RELEASE_EXECUTED, escrow_id),
+        (milestone_id, amount),
+    );
+}

@@ -131,6 +131,9 @@ pub const MAX_BUYER_SIGNERS: u32 = 10;
 /// Automatic deadline extension when milestone submitted near deadline (7 days).
 pub const AUTO_DEADLINE_EXTENSION_SECONDS: u64 = 604_800;
 
+/// Maximum release timelock duration (72 hours in seconds).
+pub const MAX_RELEASE_TIMELOCK_SECS: u64 = 259_200;
+
 /// Minimum escrow amount in base token units.
 pub const MIN_ESCROW_AMOUNT: i128 = 1_i128;
 
@@ -151,6 +154,7 @@ pub enum PackedDataKey {
     EscrowMeta(u64),
     Milestone(u64, u32),
     RecurringConfig(u64),
+    MilestoneReleaseAt(u64, u32),
 }
 
 // ── Meta-transaction argument structs ────────────────────────────────────────
@@ -2717,11 +2721,18 @@ impl EscrowContract {
         milestone.resolved_at = Some(now);
         meta.approved_count = meta.approved_count.checked_add(1).ok_or(EscrowError::E20)?;
 
-        let timelock_expired =
-            ContractStorage::check_timelock_expired(&env, escrow_id, meta.timelock.clone()).is_ok();
+        // Check for a creation-time release timelock first.
+        let release_timelock_secs: Option<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::EscrowTimelockSecs(escrow_id));
+
+        let timelock_expired = release_timelock_secs.is_none()
+            && ContractStorage::check_timelock_expired(&env, escrow_id, meta.timelock.clone())
+                .is_ok();
 
         if timelock_expired {
-            // Release funds immediately — timelock not active
+            // Release funds immediately — no timelock active
             token::Client::new(&env, &meta.token).transfer(
                 &env.current_contract_address(),
                 &meta.freelancer,
@@ -2734,6 +2745,13 @@ impl EscrowContract {
             meta.released_count = meta.released_count.checked_add(1).ok_or(EscrowError::E20)?;
             milestone.status = MS_RELEASED;
             events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
+        } else if let Some(duration) = release_timelock_secs {
+            // Store release_at for this milestone; caller may dispute during the window.
+            let release_at = now.saturating_add(duration);
+            let ra_key = PackedDataKey::MilestoneReleaseAt(escrow_id, milestone_id);
+            env.storage().persistent().set(&ra_key, &release_at);
+            ContractStorage::bump_persistent_ttl(&env, &ra_key);
+            events::emit_release_pending(&env, escrow_id, milestone_id, release_at);
         }
 
         ContractStorage::save_milestone(&env, escrow_id, &milestone);
@@ -3291,6 +3309,130 @@ impl EscrowContract {
 
         events::emit_timelock_started(&env, escrow_id, duration_ledger, now);
         Ok(())
+    }
+
+    // ── Release Timelock (creation-time configurable delay) ───────────────────
+
+    /// Creates an escrow with a configurable release timelock.
+    ///
+    /// When a milestone is approved on this escrow, funds are not released
+    /// immediately. Instead a `release_at` timestamp (`NOW + timelock_duration`)
+    /// is recorded per milestone, and anyone can call `process_pending_release`
+    /// once that timestamp is reached.  During the window, the non-approving
+    /// party may call `raise_dispute` to block the release.
+    ///
+    /// `timelock_duration` must be between 1 and `MAX_RELEASE_TIMELOCK_SECS`
+    /// (72 hours).
+    pub fn create_escrow_with_release_timelock(
+        env: Env,
+        client: Address,
+        freelancer: Address,
+        token: Address,
+        total_amount: i128,
+        brief_hash: BytesN<32>,
+        arbiter: Option<Address>,
+        deadline: Option<u64>,
+        lock_time: Option<u64>,
+        timelock_duration: u64,
+    ) -> Result<u64, EscrowError> {
+        if timelock_duration == 0 || timelock_duration > MAX_RELEASE_TIMELOCK_SECS {
+            return Err(EscrowError::E64);
+        }
+        let escrow_id = Self::create_escrow_internal(
+            env.clone(),
+            client,
+            freelancer,
+            token,
+            total_amount,
+            brief_hash,
+            arbiter,
+            deadline,
+            lock_time,
+            None,
+            None,
+        )?;
+        let key = DataKey::EscrowTimelockSecs(escrow_id);
+        env.storage().persistent().set(&key, &timelock_duration);
+        ContractStorage::bump_persistent_ttl(&env, &key);
+        Ok(escrow_id)
+    }
+
+    /// Executes a pending milestone release once the release timelock has expired.
+    ///
+    /// Callable by anyone after `release_at` has passed.  The milestone must be
+    /// in `MS_APPROVED` state and the escrow must still be `Active` (a dispute
+    /// raised during the window will have changed the status to `Disputed`,
+    /// blocking this call).
+    pub fn process_pending_release(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        milestone_id: u32,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let ra_key = PackedDataKey::MilestoneReleaseAt(escrow_id, milestone_id);
+            let release_at: u64 = env
+                .storage()
+                .persistent()
+                .get(&ra_key)
+                .ok_or(EscrowError::E65)?;
+
+            let now = env.ledger().timestamp();
+            if now < release_at {
+                return Err(EscrowError::E65);
+            }
+
+            let milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
+            if milestone.status != MS_APPROVED {
+                return Err(EscrowError::E14);
+            }
+
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            if meta.status != EscrowStatus::Active {
+                return Err(EscrowError::E9);
+            }
+
+            let amount = milestone.amount;
+            token::Client::new(&env, &meta.token).transfer(
+                &env.current_contract_address(),
+                &meta.freelancer,
+                &amount,
+            );
+
+            let mut milestone = milestone;
+            milestone.status = MS_RELEASED;
+            ContractStorage::save_milestone(&env, escrow_id, &milestone);
+            env.storage().persistent().remove(&ra_key);
+
+            meta.remaining_balance = meta
+                .remaining_balance
+                .checked_sub(amount)
+                .ok_or(EscrowError::E20)?;
+            meta.released_count = meta.released_count.checked_add(1).ok_or(EscrowError::E20)?;
+
+            if meta.released_count == meta.milestone_count && meta.milestone_count > 0 {
+                meta.status = EscrowStatus::Completed;
+                Self::remove_from_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Active),
+                    escrow_id,
+                );
+                Self::append_to_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+                    escrow_id,
+                );
+                events::emit_escrow_completed(&env, escrow_id);
+            }
+
+            ContractStorage::save_escrow_meta(&env, &meta);
+            events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
+            events::emit_pending_release_executed(&env, escrow_id, milestone_id, amount);
+            Ok(())
+        })
     }
 
     // ── Time Lock Extension ─────────────────────────────────────────────────────
