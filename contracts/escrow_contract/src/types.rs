@@ -760,4 +760,8 @@ pub enum DataKey {
     AllocatedPct(u64),
     /// Count of percentage-based milestones added to an escrow — key: u64, value: u32
     PctMilestoneCount(u64),
+    /// Evidence hash submitted when raising a dispute — key: u64, value: BytesN<32>
+    EvidenceHash(u64),
+    /// Approved arbiter allowlist entry — key: Address, value: bool
+    ApprovedArbiter(Address),
 }

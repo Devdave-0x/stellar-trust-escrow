@@ -4013,6 +4013,211 @@ impl EscrowContract {
         Ok(proposal_id)
     }
 
+    // ── On-chain Dispute Arbitration ──────────────────────────────────────────
+
+    /// Adds an address to the approved arbiter allowlist.  Admin-only.
+    pub fn add_approved_arbiter(
+        env: Env,
+        caller: Address,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+        let key = DataKey::ApprovedArbiter(arbiter);
+        env.storage().persistent().set(&key, &true);
+        ContractStorage::bump_persistent_ttl(&env, &key);
+        Ok(())
+    }
+
+    /// Removes an address from the approved arbiter allowlist.  Admin-only.
+    pub fn remove_approved_arbiter(
+        env: Env,
+        caller: Address,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ApprovedArbiter(arbiter));
+        Ok(())
+    }
+
+    /// Raises a dispute and stores an on-chain evidence hash.
+    ///
+    /// Functionally identical to `raise_dispute` but additionally records
+    /// `evidence_hash` in persistent storage and emits `ev_sub`.  Only the
+    /// client or freelancer may call this.
+    pub fn raise_dispute_with_evidence(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        milestone_id: Option<u32>,
+        evidence_hash: BytesN<32>,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+        if meta.status == EscrowStatus::Disputed {
+            return Err(EscrowError::E9);
+        }
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+
+        meta.status = EscrowStatus::Disputed;
+        meta.dispute_started_ledger = Some(env.ledger().sequence());
+        meta.dispute_start_ledger = Some(env.ledger().timestamp());
+        Self::remove_from_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::Active),
+            escrow_id,
+        );
+        Self::append_to_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::Disputed),
+            escrow_id,
+        );
+        ContractStorage::save_escrow_meta(&env, &meta);
+
+        let ev_key = DataKey::EvidenceHash(escrow_id);
+        env.storage().persistent().set(&ev_key, &evidence_hash);
+        ContractStorage::bump_persistent_ttl(&env, &ev_key);
+
+        events::emit_dispute_raised(&env, escrow_id, &caller);
+        events::emit_evidence_submitted(&env, escrow_id, &evidence_hash);
+
+        if let Some(mid) = milestone_id {
+            let mut milestone = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+            let was_submitted = milestone.status == MS_SUBMITTED;
+            if was_submitted || milestone.status == MS_PENDING {
+                milestone.status = MS_DISPUTED;
+                milestone.resolved_at = Some(env.ledger().timestamp());
+                ContractStorage::save_milestone(&env, escrow_id, &milestone);
+                if was_submitted {
+                    let mut meta2 = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+                    meta2.submitted_count = meta2.submitted_count.saturating_sub(1);
+                    ContractStorage::save_escrow_meta(&env, &meta2);
+                }
+                events::emit_milestone_disputed(&env, escrow_id, mid, &caller);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Admin-only: assigns an approved arbiter to a disputed escrow.
+    ///
+    /// The `arbiter` must be present in the allowlist set via
+    /// `add_approved_arbiter`.  Once assigned, only the arbiter may call
+    /// `submit_ruling` to resolve the dispute.
+    pub fn assign_dispute_arbiter(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+        ContractStorage::require_not_paused(&env)?;
+
+        let is_approved: bool = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ApprovedArbiter(arbiter.clone()))
+            .unwrap_or(false);
+        if !is_approved {
+            return Err(EscrowError::E71);
+        }
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        if meta.status != EscrowStatus::Disputed {
+            return Err(EscrowError::E10);
+        }
+
+        meta.arbiter = Some(arbiter.clone());
+        ContractStorage::save_escrow_meta(&env, &meta);
+
+        events::emit_arbiter_assigned(&env, escrow_id, &arbiter);
+        Ok(())
+    }
+
+    /// Arbiter-only: submits a final ruling, distributing remaining funds
+    /// proportionally between buyer (`buyer_pct`) and seller (`seller_pct`).
+    ///
+    /// `buyer_pct + seller_pct` must equal 100.  The ruling is final and
+    /// cannot be reversed.  Emits `dis_res` and `esc_done`.
+    pub fn submit_ruling(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        buyer_pct: u32,
+        seller_pct: u32,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+
+        if buyer_pct.saturating_add(seller_pct) != 100 {
+            return Err(EscrowError::E72);
+        }
+
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+            let is_arbiter = meta.arbiter.as_ref().is_some_and(|a| *a == caller);
+            if !is_arbiter {
+                return Err(EscrowError::E3);
+            }
+
+            if meta.status != EscrowStatus::Disputed {
+                return Err(EscrowError::E10);
+            }
+
+            let total = meta.remaining_balance;
+            let buyer_amount = total
+                .checked_mul(i128::from(buyer_pct))
+                .ok_or(EscrowError::E20)?
+                / 100;
+            let seller_amount = total - buyer_amount;
+
+            let token = token::Client::new(&env, &meta.token);
+            let contract_addr = env.current_contract_address();
+
+            if buyer_amount > 0 {
+                token.transfer(&contract_addr, &meta.client, &buyer_amount);
+            }
+            if seller_amount > 0 {
+                token.transfer(&contract_addr, &meta.freelancer, &seller_amount);
+            }
+
+            meta.remaining_balance = 0;
+            meta.status = EscrowStatus::Completed;
+            meta.dispute_started_ledger = None;
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Disputed),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
+
+            events::emit_dispute_resolved(&env, escrow_id, buyer_amount, seller_amount);
+            events::emit_escrow_completed(&env, escrow_id);
+
+            Ok(())
+        })
+    }
+
     // ── Oracle Fallback Dispute Resolution ───────────────────────────────────
 
     /// Admin-only: register the trusted oracle Ed25519 public key used to

@@ -93,6 +93,11 @@ pub const RENT_EXPIRED: Symbol = symbol_short!("rent_exp");
 
 pub const NFT_GATED_ESCROW_CREATED: Symbol = symbol_short!("nft_esc");
 
+// ── On-chain arbitration ──────────────────────────────────────────────────────
+
+pub const ARBITER_ASSIGNED: Symbol = symbol_short!("arb_asgn");
+pub const EVIDENCE_SUBMITTED: Symbol = symbol_short!("ev_sub");
+
 // ── Escrow-level multisig ─────────────────────────────────────────────────────
 
 pub const ESCROW_APPROVAL_SUBMITTED: Symbol = symbol_short!("esc_apr");

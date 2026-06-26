@@ -450,6 +450,16 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
     );
 }
 
+pub fn emit_arbiter_assigned(env: &Env, escrow_id: u64, arbiter: &Address) {
+    env.events()
+        .publish((ev::ARBITER_ASSIGNED, escrow_id), arbiter.clone());
+}
+
+pub fn emit_evidence_submitted(env: &Env, escrow_id: u64, evidence_hash: &soroban_sdk::BytesN<32>) {
+    env.events()
+        .publish((ev::EVIDENCE_SUBMITTED, escrow_id), evidence_hash.clone());
+}
+
 pub fn emit_escrow_approval_submitted(
     env: &Env,
     escrow_id: u64,
