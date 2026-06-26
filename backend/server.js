@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { initSecrets } from './lib/secrets.js';
 import http from 'http';
 import compressionMiddleware from './middleware/compression.js';
-import cors from 'cors';
+import { corsMiddleware } from './middleware/cors.js';
 import express from 'express';
 import helmet from 'helmet';
 import { requestLogger } from './lib/logger.js';
@@ -112,12 +112,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', requestId);
   next();
 });
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    credentials: true,
-  }),
-);
+app.use(corsMiddleware);
 app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
 app.use(cookieParser());
