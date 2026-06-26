@@ -134,6 +134,9 @@ pub const AUTO_DEADLINE_EXTENSION_SECONDS: u64 = 604_800;
 /// Maximum release timelock duration (72 hours in seconds).
 pub const MAX_RELEASE_TIMELOCK_SECS: u64 = 259_200;
 
+/// Maximum number of percentage-based milestones per escrow.
+pub const MAX_PCT_MILESTONES: u32 = 10;
+
 /// Minimum escrow amount in base token units.
 pub const MIN_ESCROW_AMOUNT: i128 = 1_i128;
 
@@ -155,6 +158,7 @@ pub enum PackedDataKey {
     Milestone(u64, u32),
     RecurringConfig(u64),
     MilestoneReleaseAt(u64, u32),
+    MilestonePct(u64, u32),
 }
 
 // ── Meta-transaction argument structs ────────────────────────────────────────
@@ -2173,6 +2177,84 @@ impl EscrowContract {
         ContractStorage::save_escrow_meta(env, &meta);
 
         events::emit_milestone_added(env, escrow_id, milestone_id, amount);
+        Ok(milestone_id)
+    }
+
+    /// Adds a milestone defined by a percentage of the escrow's total amount.
+    ///
+    /// Up to `MAX_PCT_MILESTONES` (10) percentage-based milestones may be added.
+    /// Cumulative percentages must not exceed 100.  The token amount is computed
+    /// as `total_amount * pct / 100` and must be positive.
+    ///
+    /// The per-milestone percentage is stored on-chain for transparency.
+    pub fn add_milestone_pct(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        title: String,
+        description_hash: BytesN<32>,
+        pct: u32,
+    ) -> Result<u32, EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+
+        if pct == 0 || pct > 100 {
+            return Err(EscrowError::E69);
+        }
+
+        let pct_count_key = DataKey::PctMilestoneCount(escrow_id);
+        let pct_count: u32 = env
+            .storage()
+            .persistent()
+            .get(&pct_count_key)
+            .unwrap_or(0);
+        if pct_count >= MAX_PCT_MILESTONES {
+            return Err(EscrowError::E70);
+        }
+
+        let allocated_pct_key = DataKey::AllocatedPct(escrow_id);
+        let allocated_pct: u32 = env
+            .storage()
+            .persistent()
+            .get(&allocated_pct_key)
+            .unwrap_or(0);
+        let new_allocated_pct = allocated_pct
+            .checked_add(pct)
+            .ok_or(EscrowError::E15)?;
+        if new_allocated_pct > 100 {
+            return Err(EscrowError::E15);
+        }
+
+        // Compute amount — load meta for total_amount only (no rent charge here;
+        // add_milestone_internal will handle that).
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        let amount = meta
+            .total_amount
+            .checked_mul(i128::from(pct))
+            .ok_or(EscrowError::E15)?
+            / 100;
+        if amount <= 0 {
+            return Err(EscrowError::E17);
+        }
+
+        let milestone_id =
+            Self::add_milestone_internal(&env, &caller, escrow_id, title, description_hash, amount)?;
+
+        let pct_key = PackedDataKey::MilestonePct(escrow_id, milestone_id);
+        env.storage().persistent().set(&pct_key, &pct);
+        ContractStorage::bump_persistent_ttl(&env, &pct_key);
+
+        env.storage()
+            .persistent()
+            .set(&allocated_pct_key, &new_allocated_pct);
+        ContractStorage::bump_persistent_ttl(&env, &allocated_pct_key);
+
+        env.storage()
+            .persistent()
+            .set(&pct_count_key, &(pct_count + 1));
+        ContractStorage::bump_persistent_ttl(&env, &pct_count_key);
+
         Ok(milestone_id)
     }
 

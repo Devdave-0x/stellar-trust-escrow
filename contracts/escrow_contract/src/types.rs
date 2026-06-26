@@ -756,4 +756,8 @@ pub enum DataKey {
     MultisigCfg(u64),
     /// Addresses that have submitted an escrow-level release approval — key: u64, value: Vec<Address>
     MultisigApprovals(u64),
+    /// Cumulative percentage allocated via add_milestone_pct — key: u64, value: u32
+    AllocatedPct(u64),
+    /// Count of percentage-based milestones added to an escrow — key: u64, value: u32
+    PctMilestoneCount(u64),
 }
