@@ -2222,15 +2222,11 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         if pct == 0 || pct > 100 {
-            return Err(EscrowError::E69);
+            return Err(EscrowError::OraclePriceConversionFailed);
         }
 
         let pct_count_key = DataKey::PctMilestoneCount(escrow_id);
-        let pct_count: u32 = env
-            .storage()
-            .persistent()
-            .get(&pct_count_key)
-            .unwrap_or(0);
+        let pct_count: u32 = env.storage().persistent().get(&pct_count_key).unwrap_or(0);
         if pct_count >= MAX_PCT_MILESTONES {
             return Err(EscrowError::E70);
         }
@@ -2241,9 +2237,7 @@ impl EscrowContract {
             .persistent()
             .get(&allocated_pct_key)
             .unwrap_or(0);
-        let new_allocated_pct = allocated_pct
-            .checked_add(pct)
-            .ok_or(EscrowError::E15)?;
+        let new_allocated_pct = allocated_pct.checked_add(pct).ok_or(EscrowError::E15)?;
         if new_allocated_pct > 100 {
             return Err(EscrowError::E15);
         }
@@ -2260,8 +2254,14 @@ impl EscrowContract {
             return Err(EscrowError::E17);
         }
 
-        let milestone_id =
-            Self::add_milestone_internal(&env, &caller, escrow_id, title, description_hash, amount)?;
+        let milestone_id = Self::add_milestone_internal(
+            &env,
+            &caller,
+            escrow_id,
+            title,
+            description_hash,
+            amount,
+        )?;
 
         let pct_key = PackedDataKey::MilestonePct(escrow_id, milestone_id);
         env.storage().persistent().set(&pct_key, &pct);
@@ -3580,11 +3580,7 @@ impl EscrowContract {
     /// freelancer and the escrow is marked `Completed`.
     ///
     /// Emits `esc_apr` per approval and `esc_thr` when the threshold is met.
-    pub fn approve_release(
-        env: Env,
-        caller: Address,
-        escrow_id: u64,
-    ) -> Result<(), EscrowError> {
+    pub fn approve_release(env: Env, caller: Address, escrow_id: u64) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
         ContractStorage::require_not_frozen(&env, escrow_id)?;
@@ -3596,7 +3592,7 @@ impl EscrowContract {
                 .ok_or(EscrowError::E66)?;
 
             if !cfg.approvers.contains(&caller) {
-                return Err(EscrowError::E67);
+                return Err(EscrowError::OracleStaleFeed);
             }
 
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
@@ -3612,7 +3608,7 @@ impl EscrowContract {
                 .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
 
             if approvals.contains(&caller) {
-                return Err(EscrowError::E68);
+                return Err(EscrowError::OracleInvalidPrice);
             }
             approvals.push_back(caller.clone());
 
@@ -3677,11 +3673,7 @@ impl EscrowContract {
     ///
     /// Only callable before the approval threshold has been reached (i.e. the
     /// escrow must still be `Active`).  Emits `esc_rev`.
-    pub fn revoke_approval(
-        env: Env,
-        caller: Address,
-        escrow_id: u64,
-    ) -> Result<(), EscrowError> {
+    pub fn revoke_approval(env: Env, caller: Address, escrow_id: u64) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
 
@@ -3714,7 +3706,7 @@ impl EscrowContract {
         }
 
         if !found {
-            return Err(EscrowError::E67);
+            return Err(EscrowError::OracleStaleFeed);
         }
 
         env.storage()
