@@ -3411,7 +3411,7 @@ impl EscrowContract {
     ///
     /// `timelock_duration` must be between 1 and `MAX_RELEASE_TIMELOCK_SECS`
     /// (72 hours).
-    pub fn create_escrow_with_release_timelock(
+    pub fn create_escrow_timelock(
         env: Env,
         client: Address,
         freelancer: Address,
