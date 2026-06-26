@@ -63,6 +63,16 @@ pub enum EcErr {
     OracleStaleFeed = 67,
     OracleInvalidPrice = 68,
     OraclePriceConversionFailed = 69,
+    /// Percentage-based milestone limit reached.
+    E70 = 70,
+    /// Arbiter address is not on the admin-managed allowlist.
+    E71 = 71,
+    /// Ruling percentages do not sum to 100.
+    E72 = 72,
+    /// Escrow has no deadline or the deadline has not yet passed.
+    E73 = 73,
+    /// Depositor has insufficient token balance (trustline or funds check failed).
+    E74 = 74,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle

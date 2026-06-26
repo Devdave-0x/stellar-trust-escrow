@@ -22,6 +22,8 @@ pub enum EscrowStatus {
     Cancelled,
     /// Cancellation requested - pending dispute resolution or deadline.
     CancellationPending,
+    /// Escrow deadline passed without completion. Remaining funds refunded to depositor.
+    Expired,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

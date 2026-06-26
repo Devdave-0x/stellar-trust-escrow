@@ -3262,6 +3262,64 @@ impl EscrowContract {
         })
     }
 
+    /// Permissionless escrow expiry after the deadline.
+    ///
+    /// Callable by anyone once the escrow's deadline has passed.
+    /// Refunds the full remaining balance to the depositor (client) and
+    /// transitions the escrow to `Expired` state. Idempotent — invoking
+    /// on an already-expired escrow returns `Ok(())` without error.
+    ///
+    /// Returns `E9` if the escrow is not in `Active` state (other than already expired).
+    /// Returns `E73` if the escrow has no deadline or the deadline has not yet passed.
+    pub fn expire_escrow(env: Env, escrow_id: u64) -> Result<(), EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+            // Idempotency: already expired is a no-op
+            if meta.status == EscrowStatus::Expired {
+                return Ok(());
+            }
+
+            if meta.status != EscrowStatus::Active {
+                return Err(EscrowError::E9);
+            }
+
+            let deadline = meta.deadline.ok_or(EscrowError::E73)?;
+            let now = env.ledger().timestamp();
+            if now < deadline {
+                return Err(EscrowError::E73);
+            }
+
+            let refund_amount = meta.remaining_balance;
+            if refund_amount > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.client,
+                    &refund_amount,
+                );
+            }
+
+            meta.remaining_balance = 0;
+            meta.status = EscrowStatus::Expired;
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Active),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Expired),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
+            events::emit_escrow_expired(&env, escrow_id, refund_amount);
+            Ok(())
+        })
+    }
+
     /// Splits the unallocated balance of an active escrow into two new child escrows.
     /// Requires joint authorization from both the client and freelancer.
     pub fn split_escrow(
