@@ -68,6 +68,7 @@ import stellarMonitor from './services/stellarMonitorService.js';
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
 import v1Router from './api/v1/index.js';
+import { idempotencyMiddleware } from './api/middleware/idempotency.js';
 
 // Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
@@ -125,6 +126,8 @@ app.use(sanitizeInputs);
 app.use(csrfProtection);
 app.use('/uploads', express.static('uploads'));
 app.use(auditMiddleware);
+// Idempotency key enforcement for all POST and PATCH requests
+app.use(idempotencyMiddleware());
 
 // ── Sentry tracing handler — after body parsers, before routes ────────────────
 app.use(sentryTracingHandler);
