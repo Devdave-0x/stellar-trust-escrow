@@ -1854,6 +1854,7 @@ impl EscrowContract {
             &env.current_contract_address(),
             &total_amount,
         );
+        events::emit_escrow_funded(&env, escrow_id, &client, total_amount, now);
         ContractStorage::charge_rent_reserve(&env, &token, &client, rent_reserve)?;
 
         ContractStorage::save_escrow_meta(
@@ -2880,6 +2881,7 @@ impl EscrowContract {
 
         ContractStorage::save_escrow_meta(&env, &meta);
         events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
+        events::emit_release_approved(&env, escrow_id, &caller, milestone_id, amount, now);
         Ok(())
     }
 
