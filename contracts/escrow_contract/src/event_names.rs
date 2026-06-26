@@ -41,3 +41,4 @@ pub const ARBITER_UPDATED: Symbol = symbol_short!("arb_upd");
 pub const RENT_COLLECTED: Symbol = symbol_short!("rent_col");
 pub const RENT_EXPIRED: Symbol = symbol_short!("rent_exp");
 pub const EVIDENCE_STORED: Symbol = symbol_short!("evd_stor");
+pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");

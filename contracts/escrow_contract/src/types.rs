@@ -599,4 +599,8 @@ pub enum DataKey {
     MigrationCursor,
     /// Dispute record by escrow ID — key: u64, value: DisputeRecord
     DisputeRecord(u64),
+    /// Arbiter fee split percentage (0–100) — value: u32
+    ArbiterFeeSplitPct,
+    /// Platform treasury address — value: Address
+    PlatformTreasury,
 }

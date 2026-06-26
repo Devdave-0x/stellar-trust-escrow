@@ -141,4 +141,10 @@ pub enum EscrowError {
     // ── Input Validation ─────────────────────────────────────────────────────
     /// A string argument exceeds MAX_STRING_LEN or is empty.
     StringTooLong = 55,
+
+    // ── Arbitration Fee ─────────────────────────────────────────────────────
+    /// The arbiter fee split percentage is outside the valid range (0–100).
+    InvalidFeeSplit = 56,
+    /// No platform treasury address has been configured.
+    TreasuryNotConfigured = 57,
 }

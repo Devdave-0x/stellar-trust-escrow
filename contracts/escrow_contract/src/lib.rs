@@ -841,6 +841,47 @@ impl EscrowContract {
         ContractStorage::initialize(&env, &admin)
     }
 
+    // ── Arbitration Fee Configuration ────────────────────────────────────────
+
+    /// Sets the arbiter/treasury fee split percentage. Admin only.
+    ///
+    /// `arbiter_pct` is the percentage of the arbitration fee paid to the arbiter
+    /// (e.g., 70 means 70% to arbiter, 30% to platform treasury). Must be 0–100.
+    pub fn set_arbiter_fee_split(
+        env: Env,
+        caller: Address,
+        arbiter_pct: u32,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        if arbiter_pct > 100 {
+            return Err(EscrowError::InvalidFeeSplit);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::ArbiterFeeSplitPct, &arbiter_pct);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Sets the platform treasury address. Admin only.
+    pub fn set_platform_treasury(
+        env: Env,
+        caller: Address,
+        treasury: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformTreasury, &treasury);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
     // ── Oracle Configuration ──────────────────────────────────────────────────
 
     /// Set the primary price oracle contract address. Admin only.
@@ -2520,6 +2561,18 @@ impl EscrowContract {
     /// # Gas notes
     /// - Two token transfers in sequence; unavoidable.
     /// - Reputation updates are two upserts, each touching only one storage entry.
+    /// Resolves a dispute by distributing remaining funds.
+    ///
+    /// When an arbiter fee split is configured (`set_arbiter_fee_split`), the
+    /// arbitration fee is deducted from the escrowed amount before distributing
+    /// `client_amount` and `freelancer_amount`. The fee is split between the
+    /// arbiter and the platform treasury according to the configured percentage.
+    ///
+    /// `client_amount + freelancer_amount` must equal `remaining_balance` minus
+    /// the arbitration fee (which is computed as:
+    /// `remaining_balance - client_amount - freelancer_amount`).
+    ///
+    /// Both the arbiter and treasury transfers are atomic with the ruling.
     pub fn resolve_dispute(
         env: Env,
         caller: Address,
@@ -2532,7 +2585,6 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        // Caller must be arbiter or admin
         let is_arbiter = meta.arbiter.as_ref().is_some_and(|a| *a == caller);
         if !is_arbiter {
             ContractStorage::require_admin(&env, &caller)?;
@@ -2541,7 +2593,14 @@ impl EscrowContract {
         if meta.status != EscrowStatus::Disputed {
             return Err(EscrowError::EscrowNotDisputed);
         }
-        if client_amount + freelancer_amount != meta.remaining_balance {
+
+        let arbitration_fee = meta
+            .remaining_balance
+            .checked_sub(client_amount)
+            .and_then(|v| v.checked_sub(freelancer_amount))
+            .ok_or(EscrowError::AmountMismatch)?;
+
+        if arbitration_fee < 0 {
             return Err(EscrowError::AmountMismatch);
         }
 
@@ -2555,6 +2614,56 @@ impl EscrowContract {
             token.transfer(&contract_addr, &meta.freelancer, &freelancer_amount);
         }
 
+        if arbitration_fee > 0 {
+            let arbiter_pct: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::ArbiterFeeSplitPct)
+                .unwrap_or(70_u32);
+
+            let arbiter_amount = arbitration_fee * i128::from(arbiter_pct) / 100;
+            let treasury_amount = arbitration_fee - arbiter_amount;
+
+            if arbiter_amount > 0 {
+                if let Some(ref arbiter_addr) = meta.arbiter {
+                    token.transfer(&contract_addr, arbiter_addr, &arbiter_amount);
+                } else {
+                    let admin: Address = env
+                        .storage()
+                        .instance()
+                        .get(&DataKey::Admin)
+                        .ok_or(EscrowError::NotInitialized)?;
+                    token.transfer(&contract_addr, &admin, &arbiter_amount);
+                }
+            }
+
+            if treasury_amount > 0 {
+                let treasury: Address = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::PlatformTreasury)
+                    .ok_or(EscrowError::TreasuryNotConfigured)?;
+                token.transfer(&contract_addr, &treasury, &treasury_amount);
+            }
+
+            let arbiter_for_event = meta
+                .arbiter
+                .clone()
+                .unwrap_or_else(|| caller.clone());
+            let treasury_for_event: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::PlatformTreasury)
+                .unwrap_or_else(|| caller.clone());
+            events::emit_arbitration_fee_paid(
+                &env,
+                &arbiter_for_event,
+                arbiter_amount,
+                &treasury_for_event,
+                treasury_amount,
+            );
+        }
+
         meta.remaining_balance = 0;
         meta.status = EscrowStatus::Completed;
         ContractStorage::save_escrow_meta(&env, &meta);
@@ -2563,7 +2672,6 @@ impl EscrowContract {
 
         events::emit_dispute_resolved(&env, escrow_id, client_amount, freelancer_amount);
 
-        // Update reputation for both parties
         Self::_update_reputation_internal(&env, &meta.client, false, true, client_amount);
         Self::_update_reputation_internal(&env, &meta.freelancer, false, true, freelancer_amount);
 

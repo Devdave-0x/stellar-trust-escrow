@@ -330,3 +330,21 @@ pub fn emit_evidence_hashes_stored(env: &Env, escrow_id: u64, hash_count: u32) {
     env.events()
         .publish((ev::EVIDENCE_STORED, escrow_id), hash_count);
 }
+
+pub fn emit_arbitration_fee_paid(
+    env: &Env,
+    arbiter: &Address,
+    arbiter_amount: i128,
+    treasury: &Address,
+    treasury_amount: i128,
+) {
+    env.events().publish(
+        (ev::ARBITRATION_FEE_PAID,),
+        (
+            arbiter.clone(),
+            arbiter_amount,
+            treasury.clone(),
+            treasury_amount,
+        ),
+    );
+}
