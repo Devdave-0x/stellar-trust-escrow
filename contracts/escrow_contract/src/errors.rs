@@ -60,12 +60,11 @@ pub enum EcErr {
     E64 = 64,
     E65 = 65,
     E66 = 66,
-    E67 = 67,
-    E68 = 68,
-    E69 = 69,
-    E70 = 70,
-    E71 = 71,
-    E72 = 72,
+    OracleStaleFeed = 67,
+    OracleInvalidPrice = 68,
+    OraclePriceConversionFailed = 69,
 }
 
-pub use self::EcErr as EscrowError;
+/// Backward-compatible alias — existing code imports `EscrowError`; the oracle
+/// refactor renamed the enum to `EcErr` without updating call sites.
+pub type EscrowError = EcErr;

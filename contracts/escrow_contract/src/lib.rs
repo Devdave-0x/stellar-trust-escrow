@@ -70,6 +70,7 @@ mod nft;
 mod nft_tests;
 mod oracle;
 mod oracle_fallback_tests;
+mod oracle_overflow_tests;
 mod oracle_tests;
 mod partial_cancel_tests;
 mod pause_tests;
@@ -1147,6 +1148,20 @@ impl EscrowContract {
         ContractStorage::require_admin(&env, &caller)?;
         caller.require_auth();
         oracle::set_fallback_oracle(&env, &oracle);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Set the oracle staleness threshold (in seconds). Admin only.
+    /// Valid range: 1–86400 seconds.
+    pub fn set_oracle_stale_threshold(
+        env: Env,
+        caller: Address,
+        threshold_seconds: u64,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        oracle::set_oracle_stale_threshold(&env, threshold_seconds)?;
         ContractStorage::bump_instance_ttl(&env);
         Ok(())
     }
