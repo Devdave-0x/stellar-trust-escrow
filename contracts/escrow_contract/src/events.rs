@@ -260,6 +260,16 @@ pub fn emit_cancellation_approved(env: &Env, escrow_id: u64, approver: &Address)
         .publish((ev::CANCELLATION_APPROVED, escrow_id), approver.clone());
 }
 
+pub fn emit_cancellation_completed(env: &Env, escrow_id: u64, refund_amount: i128) {
+    env.events()
+        .publish((ev::CANCELLATION_COMPLETED, escrow_id), refund_amount);
+}
+
+pub fn emit_cancellation_rejected(env: &Env, escrow_id: u64, rejected_by: &Address) {
+    env.events()
+        .publish((ev::CANCELLATION_REJECTED, escrow_id), rejected_by.clone());
+}
+
 pub fn emit_cancellation_requested(
     env: &Env,
     escrow_id: u64,

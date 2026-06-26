@@ -119,7 +119,7 @@ mod storage;
 /// validate amounts client-side before submitting a transaction.
 pub const MAX_ESCROW_AMOUNT: i128 = 100_000_000_000_000_000i128;
 
-const CANCELLATION_DISPUTE_PERIOD: u64 = 120_960;
+const CANCELLATION_DISPUTE_PERIOD: u64 = 259_200; // 72 hours in seconds
 const SLASH_DISPUTE_PERIOD: u64 = 51_840;
 const SLASH_PERCENTAGE: u64 = 10;
 const RENT_PERIOD_SECONDS: u64 = 86_400;
@@ -5186,6 +5186,121 @@ impl EscrowContract {
 
         events::emit_dispute_raised(&env, escrow_id, &caller);
 
+        Ok(())
+    }
+
+    /// Confirms a pending cancellation as the counterparty, returning all
+    /// remaining funds to the client (depositor) immediately.
+    pub fn confirm_cancellation(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            let request = ContractStorage::load_cancellation_request(&env, escrow_id)?;
+
+            // Only the counterparty (non-requester) may confirm
+            if caller == request.requester {
+                return Err(EscrowError::E3);
+            }
+            if caller != meta.client && caller != meta.freelancer {
+                return Err(EscrowError::E3);
+            }
+
+            // Request must not have expired
+            let now = env.ledger().timestamp();
+            if now > request.dispute_deadline {
+                return Err(EscrowError::E36);
+            }
+
+            let refund_amount = meta.remaining_balance;
+            if refund_amount > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.client,
+                    &refund_amount,
+                );
+            }
+
+            meta.status = EscrowStatus::Cancelled;
+            meta.remaining_balance = 0;
+            Self::remove_from_address_index(
+                &env,
+                &DataKey::CancellationsByRequester(request.requester.clone()),
+                escrow_id,
+            );
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::CancellationPending),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Cancelled),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
+            ContractStorage::remove_cancellation_request(&env, escrow_id);
+            ContractStorage::remove_fee_snapshot(&env, escrow_id);
+
+            events::emit_cancellation_completed(&env, escrow_id, refund_amount);
+            Ok(())
+        })
+    }
+
+    /// Rejects a pending cancellation as the counterparty, clearing the request
+    /// and restoring the escrow to Active status.
+    pub fn reject_cancellation(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        let request = ContractStorage::load_cancellation_request(&env, escrow_id)?;
+
+        // Only the counterparty (non-requester) may reject
+        if caller == request.requester {
+            return Err(EscrowError::E3);
+        }
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        // Request must not have expired
+        let now = env.ledger().timestamp();
+        if now > request.dispute_deadline {
+            return Err(EscrowError::E36);
+        }
+
+        // Restore escrow to Active
+        meta.status = EscrowStatus::Active;
+        Self::remove_from_address_index(
+            &env,
+            &DataKey::CancellationsByRequester(request.requester.clone()),
+            escrow_id,
+        );
+        Self::remove_from_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::CancellationPending),
+            escrow_id,
+        );
+        Self::append_to_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::Active),
+            escrow_id,
+        );
+        ContractStorage::save_escrow_meta(&env, &meta);
+        ContractStorage::remove_cancellation_request(&env, escrow_id);
+
+        events::emit_cancellation_rejected(&env, escrow_id, &caller);
         Ok(())
     }
 
