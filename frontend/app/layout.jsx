@@ -3,7 +3,6 @@ import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import NavigationProgress from '../components/layout/NavigationProgress';
 import { ThemeProvider } from '../contexts/ThemeContext';
-import { PreferencesProvider } from '../contexts/PreferencesContext';
 import { CurrencyProvider } from '../contexts/CurrencyContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import { I18nProvider } from '../i18n/index.jsx';
@@ -12,6 +11,8 @@ import PerformanceMonitor from '../components/ui/PerformanceMonitor';
 import BackToTop from '../components/ui/BackToTop';
 import OfflineBanner from '../components/ui/OfflineBanner';
 import ServiceWorkerRegistrar from '../components/ui/ServiceWorkerRegistrar';
+import { AppStoreProvider } from '../store/app-store';
+import TokenRefreshManager from '../components/auth/TokenRefreshManager';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -36,28 +37,32 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href={API_ORIGIN} crossOrigin="anonymous" />
       </head>
       <body className="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans">
-        <I18nProvider>
-          <ThemeProvider>
-            <PreferencesProvider>
-            <CurrencyProvider>
-              <ToastProvider>
-                <Header />
-                <NavigationProgress />
-                <OfflineBanner />
-                <ErrorBoundary>
-                  <main id="main-content" className="flex-1 container mx-auto px-4 py-8 max-w-7xl">
-                    {children}
-                  </main>
-                </ErrorBoundary>
-                <Footer />
-                <PerformanceMonitor />
-                <BackToTop />
-                <ServiceWorkerRegistrar />
-              </ToastProvider>
-            </CurrencyProvider>
-            </PreferencesProvider>
-          </ThemeProvider>
-        </I18nProvider>
+        <AppStoreProvider>
+          <I18nProvider>
+            <ThemeProvider>
+              <CurrencyProvider>
+                <ToastProvider>
+                  <TokenRefreshManager />
+                  <Header />
+                  <NavigationProgress />
+                  <OfflineBanner />
+                  <ErrorBoundary>
+                    <main
+                      id="main-content"
+                      className="flex-1 container mx-auto px-4 py-8 max-w-7xl"
+                    >
+                      {children}
+                    </main>
+                  </ErrorBoundary>
+                  <Footer />
+                  <PerformanceMonitor />
+                  <BackToTop />
+                  <ServiceWorkerRegistrar />
+                </ToastProvider>
+              </CurrencyProvider>
+            </ThemeProvider>
+          </I18nProvider>
+        </AppStoreProvider>
       </body>
     </html>
   );

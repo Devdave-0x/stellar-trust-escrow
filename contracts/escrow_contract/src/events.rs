@@ -449,3 +449,50 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
         (referrer.clone(), amount),
     );
 }
+
+pub fn emit_arbiter_assigned(env: &Env, escrow_id: u64, arbiter: &Address) {
+    env.events()
+        .publish((ev::ARBITER_ASSIGNED, escrow_id), arbiter.clone());
+}
+
+pub fn emit_evidence_submitted(env: &Env, escrow_id: u64, evidence_hash: &soroban_sdk::BytesN<32>) {
+    env.events()
+        .publish((ev::EVIDENCE_SUBMITTED, escrow_id), evidence_hash.clone());
+}
+
+pub fn emit_escrow_approval_submitted(
+    env: &Env,
+    escrow_id: u64,
+    signer: &Address,
+    approval_count: u32,
+    threshold: u32,
+) {
+    env.events().publish(
+        (ev::ESCROW_APPROVAL_SUBMITTED, escrow_id),
+        (signer.clone(), approval_count, threshold),
+    );
+}
+
+pub fn emit_escrow_approval_revoked(env: &Env, escrow_id: u64, signer: &Address) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_REVOKED, escrow_id), signer.clone());
+}
+
+pub fn emit_escrow_approval_threshold_met(env: &Env, escrow_id: u64, threshold: u32) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_THRESHOLD_MET, escrow_id), threshold);
+}
+
+pub fn emit_release_pending(env: &Env, escrow_id: u64, milestone_id: u32, release_at: u64) {
+    env.events().publish(
+        (ev::RELEASE_PENDING, escrow_id),
+        (milestone_id, release_at),
+    );
+}
+
+pub fn emit_pending_release_executed(env: &Env, escrow_id: u64, milestone_id: u32, amount: i128) {
+    env.events().publish(
+        (ev::PENDING_RELEASE_EXECUTED, escrow_id),
+        (milestone_id, amount),
+    );
+}
