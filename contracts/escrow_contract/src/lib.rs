@@ -1846,6 +1846,13 @@ impl EscrowContract {
             }
             signers
         };
+        // Verify depositor has sufficient balance for any SAC token (covers trustline check).
+        // A depositor without a trustline for a classic Stellar asset will show balance 0.
+        let depositor_balance = token::Client::new(&env, &token).balance(&client);
+        if depositor_balance < total_amount {
+            return Err(EscrowError::E74);
+        }
+
         let escrow_id = ContractStorage::next_escrow_id(&env)?;
         let rent_reserve = ContractStorage::reserve_for_entries(1);
 
