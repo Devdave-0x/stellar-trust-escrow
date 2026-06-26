@@ -70,6 +70,7 @@ mod batch_add_milestones_cap_tests;
 mod batch_approve_release_e2e_tests;
 mod bridge;
 mod bridge_tests;
+mod dispute_cooldown_tests;
 mod errors;
 mod event_names;
 mod event_tests;
@@ -97,11 +98,11 @@ mod version_tests;
 pub use errors::EscrowError;
 use storage::StorageManager;
 pub use types::{
-    ApprovalRecord, DataKey, EscrowFeeSnapshot, EscrowState, EscrowStatus, EscrowTemplate, FeeTier,
-    Milestone, MilestoneStatus, MilestoneTemplate, MultisigConfig, OptionalBytesN32,
-    OptionalPriceCondition, OptionalTimelock, OracleResolutionPayload, PriceCondition,
-    PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord, Timelock,
-    MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
+    ApprovalRecord, DataKey, DisputeInfo, EscrowFeeSnapshot, EscrowState, EscrowStatus,
+    EscrowTemplate, FeeTier, Milestone, MilestoneStatus, MilestoneTemplate, MultisigConfig,
+    OptionalBytesN32, OptionalPriceCondition, OptionalTimelock, OracleResolutionPayload,
+    PriceCondition, PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord,
+    Timelock, MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
 };
 use types::{CancellationRequest, RecurringPaymentConfig, SlashRecord};
 use types::{FundPayload, ProposalPayload, ProposalType};
@@ -162,6 +163,9 @@ pub const MIN_ARBITER_REPUTATION_SCORE: u64 = 100;
 
 /// Semantic version of the deployed contract. Must match `version` in Cargo.toml.
 pub const CONTRACT_VERSION: &str = "0.1.0";
+
+/// Default dispute cooldown: 24 hours in seconds.
+pub const DEFAULT_DISPUTE_COOLDOWN_SECS: u64 = 86_400;
 
 /// Threshold for high-value escrows that can be escalated to governance (1000 XLM in stroops).
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
@@ -1440,6 +1444,30 @@ impl EscrowContract {
             .instance()
             .get(&DataKey::MinArbiterReputation)
             .unwrap_or(MIN_ARBITER_REPUTATION_SCORE)
+    }
+
+    // ── Dispute Cooldown Configuration ──────────────────────────────────────────
+
+    pub fn set_dispute_cooldown(
+        env: Env,
+        caller: Address,
+        cooldown_secs: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::DisputeCooldownSecs, &cooldown_secs);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    pub fn get_dispute_cooldown(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::DisputeCooldownSecs)
+            .unwrap_or(DEFAULT_DISPUTE_COOLDOWN_SECS)
     }
 
     // ── Governance Contract Configuration ─────────────────────────────────────
@@ -4205,6 +4233,10 @@ impl EscrowContract {
     ///
     /// `buyer_pct + seller_pct` must equal 100.  The ruling is final and
     /// cannot be reversed.  Emits `dis_res` and `esc_done`.
+    ///
+    /// A mandatory cooldown period (see `set_dispute_cooldown`) must elapse
+    /// after `raise_dispute` before a ruling can be submitted, giving both
+    /// parties time to present counter-evidence.
     pub fn submit_ruling(
         env: Env,
         caller: Address,
@@ -4232,22 +4264,26 @@ impl EscrowContract {
                 return Err(EscrowError::E10);
             }
 
+            let cooldown_secs: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::DisputeCooldownSecs)
+                .unwrap_or(DEFAULT_DISPUTE_COOLDOWN_SECS);
+
+            let disputed_at = meta.dispute_start_ledger.ok_or(EscrowError::E10)?;
+            let cooldown_end = disputed_at.saturating_add(cooldown_secs);
+            let now = env.ledger().timestamp();
+
+            if now < cooldown_end {
+                return Err(EscrowError::E73);
+            }
+
             let total = meta.remaining_balance;
             let buyer_amount = total
                 .checked_mul(i128::from(buyer_pct))
                 .ok_or(EscrowError::E20)?
                 / 100;
             let seller_amount = total - buyer_amount;
-
-            let token = token::Client::new(&env, &meta.token);
-            let contract_addr = env.current_contract_address();
-
-            if buyer_amount > 0 {
-                token.transfer(&contract_addr, &meta.client, &buyer_amount);
-            }
-            if seller_amount > 0 {
-                token.transfer(&contract_addr, &meta.freelancer, &seller_amount);
-            }
 
             meta.remaining_balance = 0;
             meta.status = EscrowStatus::Completed;
@@ -4264,6 +4300,17 @@ impl EscrowContract {
             );
             ContractStorage::save_escrow_meta(&env, &meta);
 
+            let token = token::Client::new(&env, &meta.token);
+            let contract_addr = env.current_contract_address();
+
+            if buyer_amount > 0 {
+                token.transfer(&contract_addr, &meta.client, &buyer_amount);
+            }
+            if seller_amount > 0 {
+                token.transfer(&contract_addr, &meta.freelancer, &seller_amount);
+            }
+
+            events::emit_cooldown_elapsed(&env, escrow_id, cooldown_end);
             events::emit_dispute_resolved(&env, escrow_id, buyer_amount, seller_amount);
             events::emit_escrow_completed(&env, escrow_id);
 
@@ -4791,6 +4838,35 @@ impl EscrowContract {
         let mut meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
         ContractStorage::settle_rent_for_access(&env, &mut meta)?;
         Ok(meta)
+    }
+
+    pub fn get_dispute_info(
+        env: Env,
+        escrow_id: u64,
+    ) -> Result<types::DisputeInfo, EscrowError> {
+        let meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+        let cooldown_secs: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::DisputeCooldownSecs)
+            .unwrap_or(DEFAULT_DISPUTE_COOLDOWN_SECS);
+
+        let is_disputed = meta.status == EscrowStatus::Disputed;
+        let disputed_at = meta.dispute_start_ledger;
+        let cooldown_ends_at = disputed_at.map(|t| t.saturating_add(cooldown_secs));
+        let cooldown_elapsed = cooldown_ends_at
+            .map(|end| env.ledger().timestamp() >= end)
+            .unwrap_or(false);
+
+        Ok(types::DisputeInfo {
+            escrow_id,
+            is_disputed,
+            disputed_at,
+            cooldown_secs,
+            cooldown_ends_at,
+            cooldown_elapsed,
+            arbiter: meta.arbiter,
+        })
     }
 
     pub fn collect_rent(env: Env, escrow_id: u64) -> Result<i128, EscrowError> {
