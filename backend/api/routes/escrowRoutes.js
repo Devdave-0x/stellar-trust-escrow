@@ -30,11 +30,12 @@ router.get(
  * @route  POST /api/escrows/broadcast
  * @desc   Broadcast a signed XDR transaction to create/fund an escrow.
  *         Logs the CREATE transition to the audit trail.
+ *         Invalidates escrow list and dashboard stats caches.
  */
 router.post(
   '/broadcast',
   validateBroadcast,
-  invalidateOn({ tags: ['escrows'] }),
+  invalidateOn({ tags: ['escrows', 'stats:volume', 'stats:active', 'stats:success'] }),
   auditTransitionMiddleware(),
   escrowController.broadcastCreateEscrow,
 );
@@ -91,6 +92,45 @@ router.get(
     tags: (req) => ['escrows', `escrow:${req.params.id}`],
   }),
   escrowController.getEscrow,
+);
+
+/**
+ * @route  GET /api/escrows/stats/volume
+ * @desc   Total escrow volume. Cached 30s.
+ */
+router.get(
+  '/stats/volume',
+  cacheResponse({
+    ttl: TTL.STATS,
+    tags: ['stats:volume'],
+  }),
+  escrowController.getTotalVolume,
+);
+
+/**
+ * @route  GET /api/escrows/stats/active
+ * @desc   Count of active escrows. Cached 30s.
+ */
+router.get(
+  '/stats/active',
+  cacheResponse({
+    ttl: TTL.STATS,
+    tags: ['stats:active'],
+  }),
+  escrowController.getActiveEscrows,
+);
+
+/**
+ * @route  GET /api/escrows/stats/success-rate
+ * @desc   Escrow success rate. Cached 30s.
+ */
+router.get(
+  '/stats/success-rate',
+  cacheResponse({
+    ttl: TTL.STATS,
+    tags: ['stats:success'],
+  }),
+  escrowController.getSuccessRate,
 );
 
 export default router;

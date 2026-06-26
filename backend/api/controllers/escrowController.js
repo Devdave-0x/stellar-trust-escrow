@@ -62,6 +62,8 @@ function logCacheMetrics() {
 async function onEscrowStatusChange(id) {
   try {
     await invalidateEscrowCache(id);
+    // Also invalidate dashboard stats since they reflect current escrow states
+    await invalidateStatsCaches();
     logCacheMetrics();
   } catch (err) {
     console.error('[Cache] invalidateEscrowCache failed:', err.message);
@@ -287,7 +289,7 @@ const getMilestone = async (req, res) => {
 
 // ── Stats endpoints (with Redis caching) ─────────────────────────────────────
 
-const STATS_CACHE_TTL = 3600; // 1 hour in seconds
+const STATS_CACHE_TTL = 30; // 30 seconds as per issue #4 requirements
 
 /**
  * Helper to get cached stats or fetch from DB with cache population

@@ -46,7 +46,10 @@ import cache from '../../lib/cache.js';
 export const TTL = {
   DEFAULT: parseInt(process.env.CACHE_TTL_DEFAULT || '60', 10),
   LIST: parseInt(process.env.CACHE_TTL_LIST || '15', 10),
-  DETAIL: parseInt(process.env.CACHE_TTL_DETAIL || '30', 10),
+  /** Escrow detail responses cached for 60s as per issue #4 requirements */
+  DETAIL: parseInt(process.env.CACHE_TTL_DETAIL || '60', 10),
+  /** Dashboard stats cached for 30s as per issue #4 requirements */
+  STATS: parseInt(process.env.CACHE_TTL_STATS || '30', 10),
   LEADERBOARD: parseInt(process.env.CACHE_TTL_LEADERBOARD || '300', 10),
   EVENTS: parseInt(process.env.CACHE_TTL_EVENTS || '15', 10),
   REPUTATION: parseInt(process.env.CACHE_TTL_REPUTATION || '60', 10),
@@ -110,7 +113,6 @@ export function cacheResponse(options = {}) {
 
     res.setHeader('X-Cache', 'MISS');
     res.setHeader('X-Cache-Key', key);
-
     // ── Intercept res.json to store the response ──────────────────────────────
     const originalJson = res.json.bind(res);
     res.json = async (body) => {
