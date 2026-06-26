@@ -18,6 +18,7 @@ import {
   paginationQuery,
   handleValidationErrors,
 } from '../../middleware/validation.js';
+import { getArchiveTableName, listArchiveTables } from '../../services/escrowArchiveService.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -173,8 +174,21 @@ const getEscrow = async (req, res) => {
       },
     });
 
-    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
-    res.json(escrow);
+    if (escrow) return res.json(escrow);
+
+    // Fallback: search archive partition tables
+    const tables = await listArchiveTables(prisma);
+    for (const table of tables) {
+      const ARCHIVE_TABLE_RE = /^escrows_archive_\d{4}_\d{2}$/;
+      if (!ARCHIVE_TABLE_RE.test(table)) continue;
+      const [archived] = await prisma.$queryRawUnsafe(
+        `SELECT * FROM ${table} WHERE id = $1 LIMIT 1`,
+        id,
+      );
+      if (archived) return res.json({ ...archived, _source: 'archive' });
+    }
+
+    return res.status(404).json({ error: 'Escrow not found' });
   } catch (err) {
     if (err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });

@@ -516,6 +516,18 @@ const reconcileStellar = async (req, res) => {
   }
 };
 
+const triggerEscrowArchive = async (req, res) => {
+  try {
+    const { archiveCompletedEscrows } = await import('../../services/escrowArchiveService.js');
+    const result = await archiveCompletedEscrows(prisma);
+    adminLog.info({ type: 'admin_action', action: 'TRIGGER_ESCROW_ARCHIVE', ...result });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logControllerError('admin.triggerEscrowArchive', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listUsers,
   getUserDetail,
@@ -531,4 +543,5 @@ export default {
   updateRateLimit,
   getUserRateLimitUsage,
   reconcileStellar,
+  triggerEscrowArchive,
 };
