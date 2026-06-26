@@ -752,4 +752,18 @@ pub enum DataKey {
     OracleResolution(u64),
     /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
     TrustedOracleKey,
+    /// Configured release timelock duration in seconds for an escrow — key: u64, value: u64
+    EscrowTimelockSecs(u64),
+    /// M-of-N multisig config for escrow-level release approval — key: u64, value: MultisigConfig
+    MultisigCfg(u64),
+    /// Addresses that have submitted an escrow-level release approval — key: u64, value: Vec<Address>
+    MultisigApprovals(u64),
+    /// Cumulative percentage allocated via add_milestone_pct — key: u64, value: u32
+    AllocatedPct(u64),
+    /// Count of percentage-based milestones added to an escrow — key: u64, value: u32
+    PctMilestoneCount(u64),
+    /// Evidence hash submitted when raising a dispute — key: u64, value: BytesN<32>
+    EvidenceHash(u64),
+    /// Approved arbiter allowlist entry — key: Address, value: bool
+    ApprovedArbiter(Address),
 }
