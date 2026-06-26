@@ -111,6 +111,10 @@ pub const ESCROW_APPROVAL_THRESHOLD_MET: Symbol = symbol_short!("esc_thr");
 pub const RELEASE_PENDING: Symbol = symbol_short!("rel_pend");
 pub const PENDING_RELEASE_EXECUTED: Symbol = symbol_short!("pend_rel");
 
+// ── Platform fee ──────────────────────────────────────────────────────────────
+
+pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");
+
 // ── Admin / contract state ────────────────────────────────────────────────────
 
 pub const ADMIN_INITIALIZED: Symbol = symbol_short!("adm_init");

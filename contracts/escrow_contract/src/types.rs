@@ -740,6 +740,8 @@ pub enum DataKey {
     ReentrancyLock,
     /// Treasury address for platform fee settlement — value: Address
     PlatformTreasury,
+    /// Simple platform fee in basis points (0–10000) — value: u32
+    PlatformFeeBps,
     /// Configured dynamic platform fee tiers — value: Vec<FeeTier>
     PlatformFeeTiers,
     /// Applied fee snapshot for an escrow — key: u64, value: EscrowFeeSnapshot

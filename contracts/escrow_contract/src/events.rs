@@ -270,6 +270,11 @@ pub fn emit_cancellation_rejected(env: &Env, escrow_id: u64, rejected_by: &Addre
         .publish((ev::CANCELLATION_REJECTED, escrow_id), rejected_by.clone());
 }
 
+pub fn emit_fee_collected(env: &Env, escrow_id: u64, amount: i128, treasury: &Address) {
+    env.events()
+        .publish((ev::FEE_COLLECTED, escrow_id), (amount, treasury.clone()));
+}
+
 pub fn emit_cancellation_requested(
     env: &Env,
     escrow_id: u64,

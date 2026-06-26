@@ -1536,6 +1536,7 @@ impl EscrowContract {
         );
         snapshot.collected = true;
         ContractStorage::save_fee_snapshot(env, escrow_id, snapshot);
+        events::emit_fee_collected(env, escrow_id, snapshot.fee_amount, &treasury);
         Ok(snapshot.fee_amount)
     }
 
@@ -1578,6 +1579,32 @@ impl EscrowContract {
 
     pub fn get_platform_treasury(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::PlatformTreasury)
+    }
+
+    /// Sets a flat platform fee in basis points (0–10000). Admin only.
+    pub fn set_platform_fee_bps(
+        env: Env,
+        caller: Address,
+        fee_bps: u32,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        if fee_bps > 10_000 {
+            return Err(EscrowError::E19);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformFeeBps, &fee_bps);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Returns the configured flat platform fee in basis points (defaults to 0).
+    pub fn get_platform_fee_bps(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0_u32)
     }
 
     pub fn set_platform_fee_tiers(
