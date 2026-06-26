@@ -1,4 +1,4 @@
-# Stellar Crowd Fund Escrow .....
+# Stellar Crowd Fund Escrow
 
 **Trustless crowd-funded work agreements on the Stellar blockchain.**
 
@@ -244,8 +244,6 @@ Stellar-Crowd-Fund-Escrow/
 
 ## Getting Started
 
-New contributors should follow the canonical [local development setup guide](docs/local-development.md). It covers prerequisites, environment files, Docker services, a test escrow, troubleshooting, and the first-PR workflow. The condensed steps below remain as a quick reference.
-
 ### What you need
 
 | Dependency  | Minimum | Notes                                         |
@@ -397,8 +395,6 @@ chore/<name> | test/<name>
 ---
 
 ## API Reference
-
-The complete route-by-route reference, including authentication, examples, status codes, and error shapes, is in [`docs/api/`](docs/api/README.md).
 
 ### Authentication
 
@@ -661,40 +657,6 @@ Being honest about where things stand:
 - Elasticsearch is optional; without it, search falls back to Prisma `ILIKE` queries which are slower on large datasets
 - The mobile offline cache stores at most a few hundred escrows before SQLite performance degrades — pagination and eviction mitigate this but do not eliminate it
 - Multi-sig / DAO-gated milestone approval is on the roadmap, not yet implemented
-
----
-
-## Changelog
-
-All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-
-### [Unreleased]
-
-#### Added
-- Changelog section added to README for GitHub diff tracking
-- Roadmap phases 2–4 documented
-
-#### Planned
-- Full milestone state machine on-chain (Phase 2)
-- Multi-sig arbiter resolution (Phase 2)
-- DAO-gated milestone approval (Phase 3)
-
-### [0.1.0] — 2026-06-24
-
-#### Added
-- Soroban escrow contract skeleton (`contracts/escrow_contract/`)
-- Express.js REST API with JWT auth, MFA, rate limiting, and tenant scoping
-- PostgreSQL schema via Prisma with tracked migrations
-- Redis cache with in-memory fallback
-- BullMQ webhook delivery system with exponential backoff
-- Elasticsearch full-text search with Prisma `ILIKE` fallback
-- Next.js 14 web dashboard with Freighter wallet integration
-- Expo / React Native mobile app with biometric auth and offline SQLite cache
-- 39 Jest test suites (425 tests)
-- Pre-push Git hook enforcing tests and branch naming conventions
-- `scripts/preflight.js` for pre-deploy environment validation
-- Docker Compose setup for PostgreSQL + Redis + local Stellar node
-- `scripts/start-sandbox.sh` for local Soroban contract deployment
 
 ---
 

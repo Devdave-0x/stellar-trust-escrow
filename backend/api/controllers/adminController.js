@@ -67,6 +67,18 @@ const getUserRateLimitUsage = (req, res) => {
 import cache from '../../lib/cache.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 
+/** Deterministic JSON serialiser — sorts object keys recursively. */
+function stableStringify(val) {
+  if (Array.isArray(val)) return `[${val.map(stableStringify).join(',')}]`;
+  if (val !== null && typeof val === 'object') {
+    const pairs = Object.keys(val)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(val[k])}`);
+    return `{${pairs.join(',')}}`;
+  }
+  return JSON.stringify(val);
+}
+
 // ── Users ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -80,7 +92,7 @@ const listUsers = async (req, res) => {
 
     const where = search ? { address: { contains: search, mode: 'insensitive' } } : {};
 
-    const cacheKey = `admin:users:${stableStringify({ where, page, limit })}`;
+    const cacheKey = `admin:users:${stableStringify({ limit, page, where })}`;
     const cached = await cache.get(cacheKey);
     if (cached) return res.json(cached);
 
@@ -251,7 +263,7 @@ const listDisputes = async (req, res) => {
           ? { resolvedAt: null }
           : {};
 
-    const cacheKey = `admin:disputes:${stableStringify({ where, page, limit })}`;
+    const cacheKey = `admin:disputes:${stableStringify({ limit, page, where })}`;
     const cached = await cache.get(cacheKey);
     if (cached) return res.json(cached);
 
@@ -488,34 +500,6 @@ const updateSettings = async (req, res) => {
   }
 };
 
-// ── Stellar Monitor ────────────────────────────────────────────────────────────
-
-/**
- * POST /api/admin/stellar/reconcile
- * Triggers a manual reconciliation run against Horizon for the given accounts
- * (or all configured MONITOR_ACCOUNTS when none are supplied).
- *
- * Body (optional): { accounts: string[] }
- */
-const reconcileStellar = async (req, res) => {
-  try {
-    const { reconcile } = await import('../../services/stellarMonitorService.js');
-    const accounts = Array.isArray(req.body?.accounts) ? req.body.accounts : undefined;
-    const result = await reconcile(accounts);
-
-    adminLog.info({
-      message: 'admin_stellar_reconcile',
-      triggeredBy: req.user?.userId ?? 'admin',
-      ...result,
-    });
-
-    res.json({ ok: true, ...result });
-  } catch (err) {
-    logControllerError('admin.reconcileStellar', err, req);
-    res.status(500).json({ error: err.message });
-  }
-};
-
 export default {
   listUsers,
   getUserDetail,
@@ -530,5 +514,4 @@ export default {
   getRateLimits,
   updateRateLimit,
   getUserRateLimitUsage,
-  reconcileStellar,
 };
