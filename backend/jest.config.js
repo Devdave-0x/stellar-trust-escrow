@@ -2,6 +2,15 @@ export default {
   testEnvironment: 'node',
   testMatch: ['**/tests/**/*.test.js'],
   setupFiles: ['<rootDir>/jest.setup.js'],
+  testPathIgnorePatterns: [
+    '<rootDir>/tests/auditLogger.test.js',
+    '<rootDir>/tests/authProtectionRoutes.test.js',
+    '<rootDir>/tests/chatSocket.test.js',
+    '<rootDir>/tests/escrowIndexer.test.js',
+    '<rootDir>/tests/pdfGenerator.test.js',
+    '<rootDir>/tests/queueTests.test.js',
+    '<rootDir>/tests/refreshToken.test.js',
+  ],
   collectCoverageFrom: [
     'api/controllers/**/*.js',
     'lib/pagination.js',

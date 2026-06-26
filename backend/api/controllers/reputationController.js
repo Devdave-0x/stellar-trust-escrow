@@ -4,6 +4,7 @@
  * - getReputation   — single address lookup (Prisma, cached)
  * - getLeaderboard  — top-N by score (ES primary, Prisma fallback, cached)
  * - search          — address autocomplete + full-text (ES primary, Prisma fallback)
+ * - recalculate     — admin-only endpoint to rebuild scores from event history
  *
  * Cache handled by route-level middleware — no manual cache calls here.
  */
@@ -11,6 +12,7 @@
 import prisma from '../../lib/prisma.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 import * as reputationSearch from '../../services/reputationSearchService.js';
+import * as reputationService from '../../services/reputationService.js';
 import { getLogger } from '../../config/logger.js';
 
 const log = getLogger();
@@ -26,23 +28,35 @@ const getReputation = async (req, res) => {
       return res.status(400).json({ error: 'Invalid Stellar address' });
     }
     const record = await prisma.reputationRecord.findUnique({ where: { address } });
-    res.json(record ?? {
-      address, totalScore: 0, completedEscrows: 0,
-      disputedEscrows: 0, disputesWon: 0, totalVolume: '0', lastUpdated: null,
-    });
+    res.json(
+      record ?? {
+        address,
+        totalScore: 0,
+        completedEscrows: 0,
+        disputedEscrows: 0,
+        disputesWon: 0,
+        totalVolume: '0',
+        lastUpdated: null,
+      },
+    );
   } catch (err) {
     logControllerError('reputation.getReputation', err, req);
     res.status(500).json({ error: err.message });
   }
 };
 
+const LEADERBOARD_MAX_LIMIT = 50;
+
 const getLeaderboard = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
+    const { page, skip } = parsePagination(req.query);
+    const limit = Math.min(parsePagination(req.query).limit, LEADERBOARD_MAX_LIMIT);
     const tenantId = req.tenant?.id;
 
     const { hits, total, source } = await reputationSearch.leaderboard({
-      tenantId, limit, from: skip,
+      tenantId,
+      limit,
+      from: skip,
     });
 
     const data = hits.map((r, i) => ({
@@ -76,7 +90,9 @@ const search = async (req, res) => {
     const tenantId = req.tenant?.id;
 
     const { hits, total, source } = await reputationSearch.search(q, {
-      tenantId, limit, from,
+      tenantId,
+      limit,
+      from,
     });
 
     res.set('X-Data-Source', source);
@@ -87,4 +103,34 @@ const search = async (req, res) => {
   }
 };
 
-export default { getReputation, getLeaderboard, search };
+/**
+ * POST /api/reputation/admin/recalculate
+ *
+ * Admin-only endpoint to recompute all reputation scores from event history.
+ * Used for corrections after bugs or audits.
+ */
+const recalculate = async (req, res) => {
+  try {
+    const user = req.user || req.auth || {};
+    const userRole = user.role || 'user';
+
+    // Admin-only check
+    if (userRole !== 'admin' && userRole !== 'superadmin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const tenantId = req.tenant?.id;
+    await reputationService.recalculateFromEventHistory(tenantId);
+
+    res.json({
+      success: true,
+      message: 'Reputation scores recalculated from event history',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    logControllerError('reputation.recalculate', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export default { getReputation, getLeaderboard, search, recalculate };

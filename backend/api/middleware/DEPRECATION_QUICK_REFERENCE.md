@@ -3,53 +3,56 @@
 ## Import
 
 ```javascript
-import { 
-  deprecate, 
-  deprecateVersion, 
+import {
+  deprecate,
+  deprecateVersion,
   enforceSunset,
-  deprecationPresets 
+  deprecationPresets,
 } from './api/middleware/deprecation.js';
 ```
 
 ## Common Patterns
 
 ### Pattern 1: Deprecate Single Endpoint
+
 ```javascript
-router.get('/old', 
+router.get(
+  '/old',
   deprecate({
     version: 'v1',
     sunsetDate: new Date('2026-12-31'),
-    replacement: '/api/v2/new'
+    replacement: '/api/v2/new',
   }),
-  handler
+  handler,
 );
 ```
 
 ### Pattern 2: Deprecate API Version
+
 ```javascript
 app.use('/api/v1', deprecateVersion(deprecationPresets.v1));
 ```
 
 ### Pattern 3: Enforce Sunset
+
 ```javascript
-router.get('/legacy',
-  enforceSunset(new Date('2026-06-01')),
-  handler
-);
+router.get('/legacy', enforceSunset(new Date('2026-06-01')), handler);
 ```
 
 ### Pattern 4: Combined (Recommended)
+
 ```javascript
 const sunset = new Date('2026-12-31');
 
-router.get('/endpoint',
+router.get(
+  '/endpoint',
   enforceSunset(sunset),
   deprecate({
     version: 'v1',
     sunsetDate: sunset,
-    replacement: '/api/v2/endpoint'
+    replacement: '/api/v2/endpoint',
   }),
-  handler
+  handler,
 );
 ```
 
@@ -67,19 +70,19 @@ router.get('/endpoint',
 
 ## Response Headers
 
-| Header | Value |
-|--------|-------|
-| Deprecation | `true` |
-| Sunset | `Sat, 31 Dec 2026 23:59:59 GMT` |
-| Warning | `299 - "Message"` |
-| X-API-Deprecated | `true` |
-| X-API-Replacement | `/api/v2/endpoint` |
+| Header            | Value                           |
+| ----------------- | ------------------------------- |
+| Deprecation       | `true`                          |
+| Sunset            | `Sat, 31 Dec 2026 23:59:59 GMT` |
+| Warning           | `299 - "Message"`               |
+| X-API-Deprecated  | `true`                          |
+| X-API-Replacement | `/api/v2/endpoint`              |
 
 ## Presets
 
 ```javascript
-deprecationPresets.legacyUnversioned  // Sunset: 2026-12-31
-deprecationPresets.v1                 // Sunset: 2027-06-30
+deprecationPresets.legacyUnversioned; // Sunset: 2026-12-31
+deprecationPresets.v1; // Sunset: 2027-06-30
 ```
 
 ## Timeline

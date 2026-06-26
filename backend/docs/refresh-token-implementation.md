@@ -5,6 +5,7 @@ This document describes the secure JWT refresh token rotation system implemented
 ## Overview
 
 The implementation provides:
+
 - **Short-lived access tokens** (15 minutes) for reduced exposure
 - **Long-lived refresh tokens** (7 days) with automatic rotation
 - **Redis-based token blacklist** for immediate revocation
@@ -37,19 +38,19 @@ The implementation provides:
 
 ### Authentication
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/login` | User login with token generation |
-| POST | `/api/auth/register` | User registration |
-| POST | `/api/auth/logout` | Revoke specific refresh token |
-| POST | `/api/auth/revoke-all` | Revoke all user tokens (requires auth) |
-| GET | `/api/auth/sessions` | List active user sessions (requires auth) |
+| Method | Endpoint               | Description                               |
+| ------ | ---------------------- | ----------------------------------------- |
+| POST   | `/api/auth/login`      | User login with token generation          |
+| POST   | `/api/auth/register`   | User registration                         |
+| POST   | `/api/auth/logout`     | Revoke specific refresh token             |
+| POST   | `/api/auth/revoke-all` | Revoke all user tokens (requires auth)    |
+| GET    | `/api/auth/sessions`   | List active user sessions (requires auth) |
 
 ### Token Management
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/refresh` | Rotate refresh token and get new access token |
+| Method | Endpoint            | Description                                   |
+| ------ | ------------------- | --------------------------------------------- |
+| POST   | `/api/auth/refresh` | Rotate refresh token and get new access token |
 
 ## Database Schema
 
@@ -103,12 +104,12 @@ const response = await fetch('/api/auth/login', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'X-Tenant-ID': 'your_tenant_id'
+    'X-Tenant-ID': 'your_tenant_id',
   },
   body: JSON.stringify({
     email: 'user@example.com',
-    password: 'password123'
-  })
+    password: 'password123',
+  }),
 });
 
 const { accessToken, refreshToken } = await response.json();
@@ -122,9 +123,9 @@ const refreshResponse = await fetch('/api/auth/refresh', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'X-Tenant-ID': 'your_tenant_id'
+    'X-Tenant-ID': 'your_tenant_id',
   },
-  body: JSON.stringify({ refreshToken })
+  body: JSON.stringify({ refreshToken }),
 });
 
 const { accessToken: newAccessToken, refreshToken: newRefreshToken } = await refreshResponse.json();
@@ -138,18 +139,18 @@ const response = await fetch('/api/auth/login', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'X-Tenant-ID': 'your_tenant_id'
+    'X-Tenant-ID': 'your_tenant_id',
   },
-  credentials: 'include' // Important for cookies
+  credentials: 'include', // Important for cookies
 });
 
 // Refresh token automatically sent in cookies
 const refreshResponse = await fetch('/api/auth/refresh', {
   method: 'POST',
   headers: {
-    'X-Tenant-ID': 'your_tenant_id'
+    'X-Tenant-ID': 'your_tenant_id',
   },
-  credentials: 'include'
+  credentials: 'include',
 });
 ```
 
@@ -159,9 +160,9 @@ const refreshResponse = await fetch('/api/auth/refresh', {
 // List active sessions
 const sessionsResponse = await fetch('/api/auth/sessions', {
   headers: {
-    'Authorization': `Bearer ${accessToken}`,
-    'X-Tenant-ID': 'your_tenant_id'
-  }
+    Authorization: `Bearer ${accessToken}`,
+    'X-Tenant-ID': 'your_tenant_id',
+  },
 });
 
 const { sessions } = await sessionsResponse.json();
@@ -170,9 +171,9 @@ const { sessions } = await sessionsResponse.json();
 await fetch('/api/auth/revoke-all', {
   method: 'POST',
   headers: {
-    'Authorization': `Bearer ${accessToken}`,
-    'X-Tenant-ID': 'your_tenant_id'
-  }
+    Authorization: `Bearer ${accessToken}`,
+    'X-Tenant-ID': 'your_tenant_id',
+  },
 });
 ```
 
@@ -221,9 +222,9 @@ await fetch('/api/auth/revoke-all', {
 // Get token metrics (admin only)
 const metrics = await fetch('/api/admin/metrics/tokens', {
   headers: {
-    'Authorization': `Bearer ${adminToken}`,
-    'X-Tenant-ID': 'your_tenant_id'
-  }
+    Authorization: `Bearer ${adminToken}`,
+    'X-Tenant-ID': 'your_tenant_id',
+  },
 });
 ```
 

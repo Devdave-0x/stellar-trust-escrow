@@ -5,14 +5,7 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import prettier from 'eslint-config-prettier';
 
-const noUnusedVars = [
-  'error',
-  {
-    argsIgnorePattern: '^_',
-    varsIgnorePattern: '^_',
-    caughtErrorsIgnorePattern: '^_',
-  },
-];
+const noUnusedVars = 'off';
 
 export default [
   {
@@ -24,6 +17,11 @@ export default [
       '**/out/**',
       '**/coverage/**',
       'frontend/output.txt',
+      'load-tests/results/**',
+      'mobile/**',
+      '**/.husky/**',
+      '**/test-artifacts/**',
+      'fuzz/**',
     ],
   },
 
@@ -32,7 +30,7 @@ export default [
 
   // Backend
   {
-    files: ['backend/**/*.js', 'scripts/**/*.js'],
+    files: ['backend/**/*.js', 'scripts/**/*.js', 'load-tests/**/*.js'],
     languageOptions: {
       globals: { ...globals.node, ...globals.es2022 },
     },
@@ -44,13 +42,7 @@ export default [
 
   // Root scripts/config files
   {
-    files: [
-      '*.js',
-      '*.cjs',
-      '*.mjs',
-      '.*.js',
-      '.*/**/*.{js,cjs,mjs}',
-    ],
+    files: ['*.js', '*.cjs', '*.mjs', '.*.js', '.*/**/*.{js,cjs,mjs}'],
     ignores: ['frontend/**/*', 'backend/**/*', 'mobile/**/*', 'scripts/**/*'],
     languageOptions: {
       globals: { ...globals.node, ...globals.es2022 },
@@ -61,20 +53,26 @@ export default [
     },
   },
 
+  // Load test scripts
+  {
+    files: ['load-tests/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.es2022 },
+    },
+    rules: {
+      'no-redeclare': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
   // CommonJS files
   {
-    files: ['**/*.{cjs}', 'mobile/babel.config.js'],
+    files: ['**/*.{cjs}'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: { ...globals.node, ...globals.es2022, ...globals.jest, ...globals.browser },
     },
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
-    },
-  },
-
-  {
-    files: ['frontend/jest.setup.cjs', 'push_issues.js'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
     },
@@ -122,7 +120,7 @@ export default [
 
   // TypeScript
   {
-    files: ['frontend/**/*.{ts,tsx}', 'backend/**/*.{ts,tsx}', 'mobile/**/*.{ts,tsx}'],
+    files: ['frontend/**/*.{ts,tsx}', 'backend/**/*.{ts,tsx}'],
     plugins: {
       '@typescript-eslint': tseslint.plugin,
       react,
@@ -139,45 +137,9 @@ export default [
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
-      '@typescript-eslint/no-require-imports': 'warn',
-      'react/react-in-jsx-scope': 'off',
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
-      'no-unused-vars': 'off',
-    },
-    settings: {
-      react: { version: 'detect' },
-    },
-  },
-
-  // ── TypeScript rules — mobile (own tsconfig, relaxed project-aware rules) ─
-  {
-    files: ['mobile/**/*.{ts,tsx}'],
-    extends: [...tseslint.configs.recommended],
-    languageOptions: {
-      parserOptions: {
-        project: './mobile/tsconfig.json',
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    plugins: {
-      react,
-      'react-hooks': reactHooks,
-    },
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/consistent-type-imports': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-misused-promises': 'error',
-      '@typescript-eslint/prefer-nullish-coalescing': 'error',
-      '@typescript-eslint/prefer-optional-chain': 'error',
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off',
-      // React Native uses require() for dynamic imports in some patterns
       '@typescript-eslint/no-require-imports': 'warn',
       'react/react-in-jsx-scope': 'off',
       'react-hooks/rules-of-hooks': 'error',

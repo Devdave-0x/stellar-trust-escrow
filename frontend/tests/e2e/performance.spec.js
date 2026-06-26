@@ -13,7 +13,9 @@ test.describe('performance smoke', () => {
     const metrics = await page.evaluate(() => {
       const navigation = performance.getEntriesByType('navigation')[0];
       const paintEntries = performance.getEntriesByType('paint');
-      const firstContentfulPaint = paintEntries.find((entry) => entry.name === 'first-contentful-paint');
+      const firstContentfulPaint = paintEntries.find(
+        (entry) => entry.name === 'first-contentful-paint',
+      );
 
       return {
         domContentLoaded: navigation?.domContentLoadedEventEnd ?? 0,

@@ -10,13 +10,15 @@
  * @param {React.ReactNode} [props.children] — label override (used when variant is passed)
  */
 
-// Escrow status colors per acceptance criteria:
-//   Active → green, Completed → blue, Disputed → red, Cancelled → gray
+// Escrow status colors per issue #42:
+//   Active → green, ReleaseRequested → amber, Disputed → red, Expired/Completed/Cancelled → gray
 const STATUS_STYLES = {
   // Escrow statuses
   Active: 'bg-green-500/20 text-green-400 border-green-500/30',
-  Completed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  ReleaseRequested: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   Disputed: 'bg-red-500/20 text-red-400 border-red-500/30',
+  Expired: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
+  Completed: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
   Cancelled: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
 
   // Milestone statuses
@@ -47,8 +49,10 @@ const STATUS_STYLES = {
 
 const ICONS = {
   Active: '🔒',
-  Completed: '✅',
+  ReleaseRequested: '⏳',
   Disputed: '⚠️',
+  Expired: '⌛',
+  Completed: '✅',
   Cancelled: '✕',
   Pending: '○',
   Submitted: '📤',
@@ -76,7 +80,11 @@ export default function Badge({ status, variant, size = 'md', children }) {
       aria-label={`Status: ${label}`}
       className={`inline-flex items-center gap-1 font-medium border rounded-full ${sizeClass} ${styles}`}
     >
-      {icon && <span aria-hidden="true" className="text-[10px]">{icon}</span>}
+      {icon && (
+        <span aria-hidden="true" className="text-[10px]">
+          {icon}
+        </span>
+      )}
       {label}
     </span>
   );

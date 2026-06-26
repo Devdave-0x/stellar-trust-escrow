@@ -24,10 +24,7 @@ export async function enqueueEvent(eventType, payload) {
 }
 
 export async function getQueueSnapshot() {
-  const [waiting, active] = await Promise.all([
-    emailQueue.getWaiting(),
-    emailQueue.getActive(),
-  ]);
+  const [waiting, active] = await Promise.all([emailQueue.getWaiting(), emailQueue.getActive()]);
   return {
     queue: [...waiting, ...active].map((job) => ({
       ...job,

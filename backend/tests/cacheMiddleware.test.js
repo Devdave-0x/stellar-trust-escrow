@@ -41,8 +41,13 @@ function makeRes() {
   let body = null;
   const res = {
     statusCode,
-    setHeader: jest.fn((k, v) => { headers[k] = v; }),
-    json: jest.fn((b) => { body = b; return res; }),
+    setHeader: jest.fn((k, v) => {
+      headers[k] = v;
+    }),
+    json: jest.fn((b) => {
+      body = b;
+      return res;
+    }),
     on: jest.fn(),
     getHeaders: () => headers,
     getBody: () => body,
@@ -105,12 +110,7 @@ test('cacheResponse calls next and stores response on MISS', async () => {
   // Simulate controller calling res.json
   const payload = { data: [] };
   await res.json(payload);
-  expect(mockCache.setWithTags).toHaveBeenCalledWith(
-    expect.any(String),
-    payload,
-    30,
-    ['escrows'],
-  );
+  expect(mockCache.setWithTags).toHaveBeenCalledWith(expect.any(String), payload, 30, ['escrows']);
 });
 
 test('cacheResponse skips non-GET methods', async () => {
@@ -151,12 +151,9 @@ test('cacheResponse resolves tag function with req', async () => {
   await mw(req, res, next);
   await res.json({ id: 42 });
 
-  expect(mockCache.setWithTags).toHaveBeenCalledWith(
-    expect.any(String),
-    { id: 42 },
-    30,
-    ['escrow:42'],
-  );
+  expect(mockCache.setWithTags).toHaveBeenCalledWith(expect.any(String), { id: 42 }, 30, [
+    'escrow:42',
+  ]);
 });
 
 test('invalidateOn after — calls invalidateTags after response finish', async () => {
@@ -167,7 +164,9 @@ test('invalidateOn after — calls invalidateTags after response finish', async 
 
   // Capture the 'finish' listener
   let finishCb;
-  res.on.mockImplementation((event, cb) => { if (event === 'finish') finishCb = cb; });
+  res.on.mockImplementation((event, cb) => {
+    if (event === 'finish') finishCb = cb;
+  });
 
   const mw = invalidateOn({ tags: ['escrows'], when: 'after' });
   mw(req, res, next);

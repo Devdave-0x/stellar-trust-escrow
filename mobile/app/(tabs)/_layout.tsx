@@ -42,19 +42,31 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <TabIcon emoji="🏠" color={color} /> }}
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color }) => <TabIcon emoji="🏠" color={color} />,
+        }}
       />
       <Tabs.Screen
         name="escrows"
-        options={{ title: 'Escrows', tabBarIcon: ({ color }) => <TabIcon emoji="📋" color={color} /> }}
+        options={{
+          title: 'Escrows',
+          tabBarIcon: ({ color }) => <TabIcon emoji="📋" color={color} />,
+        }}
       />
       <Tabs.Screen
         name="explorer"
-        options={{ title: 'Explorer', tabBarIcon: ({ color }) => <TabIcon emoji="🔍" color={color} /> }}
+        options={{
+          title: 'Explorer',
+          tabBarIcon: ({ color }) => <TabIcon emoji="🔍" color={color} />,
+        }}
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: 'Profile', tabBarIcon: ({ color }) => <TabIcon emoji="👤" color={color} /> }}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => <TabIcon emoji="👤" color={color} />,
+        }}
       />
     </Tabs>
   );

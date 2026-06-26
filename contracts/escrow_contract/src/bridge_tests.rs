@@ -200,7 +200,7 @@ mod bridge_tests {
             &None,
             &multisig,
         );
-        assert!(matches!(result, Err(Ok(EscrowError::BridgeError))));
+        assert!(matches!(result, Err(Ok(EscrowError::E54))));
     }
 
     // ── AC: Token representation is canonical ────────────────────────────────
@@ -261,7 +261,7 @@ mod bridge_tests {
             &None,
             &multisig,
         );
-        assert!(matches!(result, Err(Ok(EscrowError::BridgeError))));
+        assert!(matches!(result, Err(Ok(EscrowError::E54))));
 
         client.update_bridge_confirmation(
             &token_addr,

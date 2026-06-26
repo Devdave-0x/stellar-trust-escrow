@@ -90,7 +90,7 @@ mod timelock_enforcement_tests {
             .with_mut(|l| l.timestamp = start_ts + duration - 1);
         let result = client.try_release_funds(&Address::generate(&env), &escrow_id, &mid);
         assert!(
-            matches!(result, Err(Ok(EscrowError::TimelockNotExpired))),
+            matches!(result, Err(Ok(EscrowError::E53))),
             "release_funds must return TimelockNotExpired before timelock elapses"
         );
     }
@@ -148,7 +148,7 @@ mod timelock_enforcement_tests {
     }
 
     /// start_timelock called a second time on the same escrow must return
-    /// TimelockAlreadyActive (52).
+    /// TimelockActive (52).
     #[test]
     fn test_timelock_already_active_on_second_start() {
         let (env, admin, _contract_id, client) = setup();
@@ -175,8 +175,8 @@ mod timelock_enforcement_tests {
 
         let result = client.try_start_timelock(&client_addr, &escrow_id, &3_600_u64);
         assert!(
-            matches!(result, Err(Ok(EscrowError::TimelockAlreadyActive))),
-            "second start_timelock must return TimelockAlreadyActive"
+            matches!(result, Err(Ok(EscrowError::E51))),
+            "second start_timelock must return TimelockActive"
         );
     }
 }

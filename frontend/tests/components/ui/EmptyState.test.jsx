@@ -4,7 +4,7 @@ import EmptyState from '../../../components/ui/EmptyState';
 describe('EmptyState', () => {
   it('renders the default title when no title prop is given', () => {
     render(<EmptyState />);
-    expect(screen.getByText('No escrows found')).toBeInTheDocument();
+    expect(screen.getByText('No content found')).toBeInTheDocument();
   });
 
   it('renders a custom title', () => {
@@ -17,16 +17,28 @@ describe('EmptyState', () => {
     expect(screen.getByText('Try adjusting your filters.')).toBeInTheDocument();
   });
 
-  it('does not render a description element when omitted', () => {
-    render(<EmptyState />);
-    // No <p> with description text should be present
-    expect(screen.queryByText(/Try adjusting/)).not.toBeInTheDocument();
+  it('renders escrows illustration by default', () => {
+    const { container } = render(<EmptyState />);
+    const svg = container.querySelector('svg');
+    expect(svg).toBeInTheDocument();
   });
 
-  it('renders the SVG illustration', () => {
-    render(<EmptyState />);
-    // The SVG is present (aria-hidden so we find by test-id wrapper)
-    expect(screen.getByTestId('empty-state').querySelector('svg')).toBeInTheDocument();
+  it('renders disputes illustration when type is disputes', () => {
+    const { container } = render(<EmptyState type="disputes" />);
+    const svg = container.querySelector('svg');
+    expect(svg).toBeInTheDocument();
+  });
+
+  it('renders notifications illustration when type is notifications', () => {
+    const { container } = render(<EmptyState type="notifications" />);
+    const svg = container.querySelector('svg');
+    expect(svg).toBeInTheDocument();
+  });
+
+  it('renders search illustration when type is search', () => {
+    const { container } = render(<EmptyState type="search" />);
+    const svg = container.querySelector('svg');
+    expect(svg).toBeInTheDocument();
   });
 
   it('renders a button CTA when onAction is provided', () => {
@@ -57,6 +69,22 @@ describe('EmptyState', () => {
   it('is centered with the correct container', () => {
     render(<EmptyState />);
     const container = screen.getByTestId('empty-state');
-    expect(container).toHaveClass('flex', 'flex-col', 'items-center', 'justify-center', 'text-center');
+    expect(container).toHaveClass(
+      'flex',
+      'flex-col',
+      'items-center',
+      'justify-center',
+      'text-center',
+    );
+  });
+
+  it('supports custom className', () => {
+    render(<EmptyState className="custom-class" />);
+    expect(screen.getByTestId('empty-state')).toHaveClass('custom-class');
+  });
+
+  it('does not render description element when omitted', () => {
+    render(<EmptyState />);
+    expect(screen.queryByText(/Try adjusting/)).not.toBeInTheDocument();
   });
 });

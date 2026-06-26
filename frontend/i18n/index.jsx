@@ -43,7 +43,10 @@ export function I18nProvider({ children, initialLocale = defaultLocale }) {
     localStorage.setItem(STORAGE_KEY, l);
   }, []);
 
-  const t = useCallback((key) => resolve(messages[locale] ?? messages[defaultLocale], key), [locale]);
+  const t = useCallback(
+    (key) => resolve(messages[locale] ?? messages[defaultLocale], key),
+    [locale],
+  );
 
   const formatDate = useCallback(
     (date, options = { dateStyle: 'medium' }) =>
@@ -64,7 +67,15 @@ export function I18nProvider({ children, initialLocale = defaultLocale }) {
 
   return (
     <I18nContext.Provider
-      value={{ locale, setLocale, t, formatDate, formatNumber, formatCurrency, isRTL: isRTL(locale) }}
+      value={{
+        locale,
+        setLocale,
+        t,
+        formatDate,
+        formatNumber,
+        formatCurrency,
+        isRTL: isRTL(locale),
+      }}
     >
       {children}
     </I18nContext.Provider>

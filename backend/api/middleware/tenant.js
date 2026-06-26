@@ -3,7 +3,9 @@ import { DEFAULT_TENANT_SLUG, runWithTenantContext } from '../../lib/tenantConte
 
 function extractHostname(req) {
   const forwardedHost = req.headers['x-forwarded-host'];
-  const rawHost = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost || req.headers.host;
+  const rawHost = Array.isArray(forwardedHost)
+    ? forwardedHost[0]
+    : forwardedHost || req.headers.host;
 
   if (!rawHost) return null;
 

@@ -6,14 +6,7 @@
  */
 
 import React from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  RefreshControl,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useWalletStore } from '../../store/useWalletStore';
@@ -41,7 +34,9 @@ export default function DashboardScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={escrowsLoading} onRefresh={refetch} tintColor="#6366f1" />}
+        refreshControl={
+          <RefreshControl refreshing={escrowsLoading} onRefresh={refetch} tintColor="#6366f1" />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
@@ -93,9 +88,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* Active escrows */}
-        <Text style={styles.sectionTitle}>
-          Active Escrows ({activeEscrows.length})
-        </Text>
+        <Text style={styles.sectionTitle}>Active Escrows ({activeEscrows.length})</Text>
 
         {escrowsLoading ? (
           <Text style={styles.loadingText}>Loading…</Text>
@@ -106,9 +99,7 @@ export default function DashboardScreen() {
             subtitle="Create your first escrow to get started"
           />
         ) : (
-          activeEscrows.map((e) => (
-            <EscrowCard key={e.id} escrow={e} userAddress={address} />
-          ))
+          activeEscrows.map((e) => <EscrowCard key={e.id} escrow={e} userAddress={address} />)
         )}
       </ScrollView>
     </SafeAreaView>
@@ -128,18 +119,34 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0f0f0f' },
   scroll: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   greeting: { fontSize: 13, color: '#6b7280' },
   address: { fontSize: 16, fontWeight: '700', color: '#f9fafb', fontFamily: 'monospace' },
   settingsIcon: { fontSize: 22 },
   reputationCard: { marginBottom: 16 },
-  repRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  repRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   repScore: { fontSize: 32, fontWeight: '800', color: '#f9fafb' },
   repLabel: { fontSize: 12, color: '#6b7280', marginTop: 2 },
   repBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   repBadgeText: { fontSize: 13, fontWeight: '700' },
   repStats: { flexDirection: 'row', gap: 8 },
-  statPill: { flex: 1, backgroundColor: '#1f2937', borderRadius: 10, padding: 10, alignItems: 'center' },
+  statPill: {
+    flex: 1,
+    backgroundColor: '#1f2937',
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+  },
   statValue: { fontSize: 14, fontWeight: '700', color: '#f9fafb' },
   statLabel: { fontSize: 10, color: '#6b7280', marginTop: 2 },
   actions: { flexDirection: 'row', gap: 10, marginBottom: 24 },

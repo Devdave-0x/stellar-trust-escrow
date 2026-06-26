@@ -1,46 +1,62 @@
-/**
- * EscrowCard Component
- *
- * Summary card shown in list views (Dashboard, Explorer).
- * Links to the full Escrow Details page.
- *
- * @param {object} props
- * @param {object} props.escrow
- * @param {number}  props.escrow.id
- * @param {string}  props.escrow.title
- * @param {string}  props.escrow.status         — EscrowStatus
- * @param {string}  props.escrow.totalAmount
- * @param {string}  props.escrow.milestoneProgress  — e.g. "2 / 4"
- * @param {string}  props.escrow.counterparty    — truncated address
- * @param {'client'|'freelancer'} props.escrow.role
- *
- * TODO (contributor — easy, Issue #39):
- * - Add hover animation (subtle lift)
- * - Show milestone progress bar (filled segments)
- * - Show time remaining if deadline is set
- * - Add "disputed" warning banner if status === Disputed
- */
+'use client';
 
 import Link from 'next/link';
 import Badge from '../ui/Badge';
-import TruncatedAddress from '../ui/TruncatedAddress';
 import CurrencyAmount from '../ui/CurrencyAmount';
-import CopyButton from '../ui/CopyButton';
 import EscrowCardSkeleton from '../ui/EscrowCardSkeleton';
 import { useI18n } from '../../i18n/index.jsx';
-import { useRef } from 'react';
+import { useRelativeTime } from '../../hooks/useRelativeTime';
+import { useRef, useMemo } from 'react';
+import { cn } from '../../lib/utils';
 
-export default function EscrowCard({ escrow, isLoading = false }) {
+const ACTION_REQUIRED_STATUSES = new Set(['ReleaseRequested']);
+
+function formatTimeRemaining(deadline) {
+  if (!deadline) return null;
+
+  const now = Date.now();
+  const deadlineTime = new Date(deadline).getTime();
+  const diffMs = deadlineTime - now;
+
+  if (diffMs <= 0) return 'Past due';
+
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d remaining`;
+  if (hours > 0) return `${hours}h remaining`;
+  if (minutes > 0) return `${minutes}m remaining`;
+  return 'Due soon';
+}
+
+export default function EscrowCard({
+  escrow,
+  isLoading = false,
+  actionRequired,
+}) {
   const { t } = useI18n();
   const cardRef = useRef(null);
-  if (isLoading) return <EscrowCardSkeleton />;
-  const { id, title, status, totalAmount, milestoneProgress, counterparty, role, transactionHash } = escrow;
 
-  const [done, total] = milestoneProgress?.split(' / ').map(Number) ?? [0, 0];
-  const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
+  if (isLoading) return <EscrowCardSkeleton />;
+
+  const {
+    id,
+    title,
+    status,
+    totalAmount,
+    counterparty,
+    role,
+    deadline,
+    assetSymbol = 'USDC',
+  } = escrow;
+
+  const requiresAction = actionRequired ?? ACTION_REQUIRED_STATUSES.has(status);
+  const timeLabel = useRelativeTime(deadline, 60_000);
+  const remaining = useMemo(() => formatTimeRemaining(deadline), [deadline]);
 
   const handleKeyDown = (event) => {
-    // Activate on Enter or Space key
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       cardRef.current?.click();
@@ -53,7 +69,10 @@ export default function EscrowCard({ escrow, isLoading = false }) {
       ref={cardRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      className="card block hover:border-gray-700 transition-colors group focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-950"
+      className={cn(
+        'card block hover:border-gray-700 transition-colors group focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-950',
+        requiresAction && 'border-amber-500/40 hover:border-amber-500/60',
+      )}
       role="button"
       aria-label={`View details for escrow: ${title}`}
     >
@@ -64,54 +83,69 @@ export default function EscrowCard({ escrow, isLoading = false }) {
             {title}
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            {role === 'client' ? 'Freelancer:' : 'Client:'}{' '}
-            <TruncatedAddress address={counterparty} />
-            {role === 'client' ? `${t('escrow.fields.freelancer')}:` : `${t('escrow.fields.client')}:`}{' '}
+            {role === 'client'
+              ? `${t('escrow.fields.freelancer')}:`
+              : `${t('escrow.fields.client')}:`}{' '}
             <span className="font-mono">{counterparty}</span>
           </p>
         </div>
         <Badge status={status} size="sm" />
       </div>
 
-      {/* Amount — converted to user's selected currency */}
-      <CurrencyAmount amount={totalAmount} showUsdc size="md" className="mb-3" />
+      {/* Amount with asset symbol */}
+      <CurrencyAmount
+        amount={totalAmount}
+        showUsdc={false}
+        size="md"
+        className="mb-3"
+      />
+      {assetSymbol && (
+        <span className="text-xs text-gray-500 -mt-2 mb-3 block">
+          {assetSymbol}
+        </span>
+      )}
 
-      {/* Milestone Progress Bar */}
-      <div>
-        <div className="flex justify-between text-xs text-gray-500 mb-1">
-          <span>{t('escrow.fields.milestones')}</span>
-          <span>{milestoneProgress}</span>
+      {/* Time Remaining / Deadline */}
+      {deadline && (
+        <div className="flex items-center gap-2 text-xs mb-3">
+          <span
+            className={cn(
+              remaining === 'Past due' ? 'text-red-400' : 'text-gray-400',
+            )}
+          >
+            {remaining}
+          </span>
+          <span className="text-gray-600">•</span>
+          <span className="text-gray-500">{timeLabel}</span>
         </div>
-        <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden shadow-inner">
-          <div
-            className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
-      </div>
+      )}
 
-      {/* Transaction Hash */}
-      {transactionHash && (
-        <div className="mt-3 pt-3 border-t border-gray-800">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-gray-500">TX:</span>
-            <span className="text-xs font-mono text-gray-400 truncate">{transactionHash.slice(0, 16)}...</span>
-            <div onClick={(e) => e.preventDefault()}>
-              <CopyButton text={transactionHash} label="Copy" />
-            </div>
-          </div>
+      {/* Action Required Banner */}
+      {requiresAction && (
+        <div className="flex items-center gap-2 mt-2 pt-3 border-t border-amber-500/20">
+          <span className="text-xs font-medium text-amber-400">
+            Action required
+          </span>
         </div>
       )}
 
       {/* Footer */}
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-800">
-        <span className="text-xs text-gray-600">#{id}</span>
+        <span className="flex items-center gap-2">
+          <span className="text-xs text-gray-600">#{id}</span>
+          <div onClick={(e) => e.preventDefault()}>
+            <CopyButton text={String(id)} label="Escrow ID" />
+          </div>
+        </span>
         <span
-          className={`text-xs font-medium ${
-            role === 'client' ? 'text-blue-400' : 'text-emerald-400'
-          }`}
+          className={cn(
+            'text-xs font-medium',
+            role === 'client' ? 'text-blue-400' : 'text-emerald-400',
+          )}
         >
-          You are {role === 'client' ? t('escrow.fields.client') : t('escrow.fields.freelancer')}
+          {role === 'client'
+            ? t('escrow.fields.client')
+            : t('escrow.fields.freelancer')}
         </span>
       </div>
     </Link>

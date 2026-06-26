@@ -1,46 +1,36 @@
-import jwt from 'jsonwebtoken';
-import tokenBlacklistService from '../../services/tokenBlacklistService.js';
+/**
+ * Auth Middleware
+ *
+ * Validates Bearer JWT and checks jti against the session store.
+ * Attaches req.user = { address, jti } on success.
+ */
 
-const authMiddleware = async (req, res, next) => {
-  const authHeader = req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Access denied. No token provided.' });
+import jwt from 'jsonwebtoken';
+import sessionService from '../../services/sessionService.js';
+import { JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
+
+export default async function authMiddleware(req, res, next) {
+  if (req.isAdmin) {
+    req.user = req.user ?? { address: req.adminId ?? 'admin' };
+    return next();
   }
 
-  const token = authHeader.split(' ')[1];
-  
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   try {
-    // Check if token is blacklisted
-    const isBlacklisted = await tokenBlacklistService.isTokenBlacklisted(token, 'access');
-    if (isBlacklisted) {
-      const metadata = await tokenBlacklistService.getBlacklistMetadata(token, 'access');
-      return res.status(403).json({ 
-        error: 'Token has been revoked for security reasons',
-        reason: metadata?.reason || 'security_issue'
-      });
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
+    if (payload.jti) {
+      const valid = await sessionService.isSessionValid(payload.jti);
+      if (!valid) {
+        return res.status(401).json({ error: 'Session revoked or expired. Please log in again.' });
+      }
     }
-
-    const secret = process.env.JWT_ACCESS_SECRET || 'fallback_access_secret';
-    const decoded = jwt.verify(token, secret);
-    
-    // Validate token type
-    if (decoded.type !== 'access') {
-      return res.status(401).json({ error: 'Invalid token type.' });
-    }
-    
-    // Check tenant context
-    if (req.tenant?.id && decoded.tenantId && decoded.tenantId !== req.tenant.id) {
-      return res.status(403).json({ error: 'Token does not belong to this tenant.' });
-    }
-    
-    req.user = decoded; // Contains { userId: user.id, tenantId: user.tenantId, type: 'access' }
+    req.user = { address: payload.address, jti: payload.jti };
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Access token expired.' });
-    }
-    return res.status(401).json({ error: 'Invalid token.' });
+    if (err.name === 'TokenExpiredError') return res.status(401).json({ error: 'Token expired' });
+    return res.status(401).json({ error: 'Invalid token' });
   }
-};
-
-export default authMiddleware;
+}

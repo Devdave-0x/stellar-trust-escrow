@@ -31,8 +31,10 @@
 //! - State is preserved (Soroban upgrades only replace WASM)
 
 #![no_std]
+#![deny(warnings)]
 
 mod errors;
+mod event_names;
 mod events;
 mod types;
 
@@ -42,6 +44,10 @@ pub use types::{
 };
 
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
+use stellar_trust_shared::{
+    bump_instance_ttl as shared_bump_instance_ttl,
+    bump_persistent_ttl as shared_bump_persistent_ttl,
+};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -61,24 +67,16 @@ const UPGRADE_DELAY_SECONDS: u64 = 86_400;
 /// slash losing voters.
 const SLASH_DISSENT_THRESHOLD_BPS: u64 = 9_000; // 90 %
 
-// ── TTL ───────────────────────────────────────────────────────────────────────
-const INSTANCE_TTL_THRESHOLD: u32 = 5_000;
-const INSTANCE_TTL_EXTEND_TO: u32 = 50_000;
-const PERSISTENT_TTL_THRESHOLD: u32 = 5_000;
-const PERSISTENT_TTL_EXTEND_TO: u32 = 50_000;
-
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
+/// Bump instance TTL using shared config constants from `stellar_trust_shared`.
 fn bump_instance(env: &Env) {
-    env.storage()
-        .instance()
-        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
+    shared_bump_instance_ttl(env);
 }
 
+/// Bump persistent TTL using shared config constants from `stellar_trust_shared`.
 fn bump_persistent<K: soroban_sdk::IntoVal<Env, soroban_sdk::Val>>(env: &Env, key: &K) {
-    env.storage()
-        .persistent()
-        .extend_ttl(key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND_TO);
+    shared_bump_persistent_ttl(env, key);
 }
 
 fn require_admin(env: &Env, caller: &Address) -> Result<(), ExtError> {
@@ -510,6 +508,7 @@ impl EscrowExtensions {
     ///   are flagged (actual stake deduction handled by reputation contract)
     ///
     /// Anyone can call this after the window closes.
+    #[deny(clippy::arithmetic_side_effects)]
     pub fn resolve_dispute(env: Env, escrow_id: u64) -> Result<bool, ExtError> {
         let key = DataKey::Dispute(escrow_id);
         let mut dispute: ArbitrationDispute = env
@@ -527,14 +526,22 @@ impl EscrowExtensions {
             return Ok(dispute.client_wins.unwrap_or(false));
         }
 
-        let total_weight = dispute.weight_for_client + dispute.weight_for_freelancer;
+        let total_weight = dispute
+            .weight_for_client
+            .checked_add(dispute.weight_for_freelancer)
+            .ok_or(ExtError::ArithmeticOverflow)?;
         if total_weight == 0 {
             // No votes cast — default to no resolution (admin must intervene)
             return Err(ExtError::QuorumNotReached);
         }
 
         // 51 % threshold
-        let client_wins = dispute.weight_for_client * 100 / total_weight >= 51;
+        let client_wins = dispute
+            .weight_for_client
+            .checked_mul(100)
+            .and_then(|v| v.checked_div(total_weight))
+            .ok_or(ExtError::ArithmeticOverflow)?
+            >= 51;
 
         dispute.resolved = true;
         dispute.client_wins = Some(client_wins);
@@ -547,7 +554,11 @@ impl EscrowExtensions {
             dispute.weight_for_client
         };
 
-        let slash = losing_weight * 10_000 / total_weight > SLASH_DISSENT_THRESHOLD_BPS;
+        let slash = losing_weight
+            .checked_mul(10_000)
+            .and_then(|v| v.checked_div(total_weight))
+            .ok_or(ExtError::ArithmeticOverflow)?
+            > SLASH_DISSENT_THRESHOLD_BPS;
 
         if slash {
             for v in dispute.votes.iter() {

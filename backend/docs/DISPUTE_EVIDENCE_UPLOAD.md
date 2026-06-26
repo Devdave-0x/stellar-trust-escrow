@@ -28,11 +28,13 @@ X-Tenant-ID: {tenantId}
 ```
 
 **Request Body:**
+
 - `files`: Array of files (max 5, max 10MB each)
 - `description`: Text description (optional)
 - `role`: User role (optional, auto-detected if not provided)
 
 **Response:**
+
 ```json
 {
   "message": "Evidence uploaded successfully",
@@ -64,12 +66,14 @@ X-Tenant-ID: {tenantId}
 ```
 
 **Query Parameters:**
+
 - `page`: Page number (default: 1)
 - `limit`: Items per page (default: 20)
 - `evidenceType`: Filter by type (file, image, text, url, hash)
 - `submittedBy`: Filter by submitter address
 
 **Response:**
+
 ```json
 {
   "items": [...],
@@ -83,12 +87,14 @@ X-Tenant-ID: {tenantId}
 ## File Type Support
 
 ### Accepted File Types
+
 - **Images**: JPEG, PNG, GIF, WebP
 - **Documents**: PDF, Word (.doc, .docx), Excel (.xls, .xlsx)
 - **Text**: Plain text (.txt)
 - **Archives**: ZIP files
 
 ### File Restrictions
+
 - Maximum file size: 10MB per file
 - Maximum files per upload: 5
 - Executable files are blocked
@@ -97,13 +103,16 @@ X-Tenant-ID: {tenantId}
 ## IPFS Integration
 
 ### Configuration
+
 Environment variables:
+
 ```env
 IPFS_GATEWAY_URL=https://ipfs.io
 IPFS_API_URL=https://api.thegraph.com/ipfs/api/v0
 ```
 
 ### File Storage Process
+
 1. File is uploaded to memory buffer
 2. Virus scan is performed
 3. File is pinned to IPFS
@@ -112,7 +121,9 @@ IPFS_API_URL=https://api.thegraph.com/ipfs/api/v0
 6. IPFS CID returned for access
 
 ### Accessing Files
+
 Files are accessible via IPFS gateway URLs:
+
 ```
 https://ipfs.io/ipfs/{cid}
 ```
@@ -120,13 +131,16 @@ https://ipfs.io/ipfs/{cid}
 ## Virus Scanning
 
 ### ClamAV Integration
+
 The system uses ClamAV for virus scanning:
+
 - Scans all files before IPFS upload
 - Blocks infected files with detailed error messages
 - Gracefully handles scanner unavailability
 - Includes EICAR test signature detection
 
 ### Scan Results
+
 - `pending`: Scan in progress
 - `clean`: No threats detected
 - `infected`: Malicious content detected
@@ -136,15 +150,19 @@ The system uses ClamAV for virus scanning:
 ## WebSocket Events
 
 ### Subscribe to Dispute Updates
+
 ```javascript
 const ws = new WebSocket('ws://localhost:3000/api/ws');
-ws.send(JSON.stringify({
-  type: 'subscribe',
-  topic: 'dispute:123'
-}));
+ws.send(
+  JSON.stringify({
+    type: 'subscribe',
+    topic: 'dispute:123',
+  }),
+);
 ```
 
 ### Evidence Events
+
 ```json
 {
   "type": "evidence_added",
@@ -158,6 +176,7 @@ ws.send(JSON.stringify({
 ## Database Schema
 
 ### DisputeEvidence Table
+
 ```sql
 CREATE TABLE dispute_evidence (
   id SERIAL PRIMARY KEY,
@@ -184,6 +203,7 @@ CREATE TABLE dispute_evidence (
 ### Common Error Responses
 
 **413 Payload Too Large**
+
 ```json
 {
   "error": "File size exceeds 10MB limit"
@@ -191,6 +211,7 @@ CREATE TABLE dispute_evidence (
 ```
 
 **400 Bad Request - Virus Detected**
+
 ```json
 {
   "error": "Virus detected",
@@ -205,6 +226,7 @@ CREATE TABLE dispute_evidence (
 ```
 
 **403 Forbidden**
+
 ```json
 {
   "error": "Access denied"
@@ -212,6 +234,7 @@ CREATE TABLE dispute_evidence (
 ```
 
 **500 Internal Server Error**
+
 ```json
 {
   "error": "IPFS upload failed",
@@ -222,11 +245,13 @@ CREATE TABLE dispute_evidence (
 ## Testing
 
 ### Running Tests
+
 ```bash
 npm test -- disputeEvidence.test.js
 ```
 
 ### Test Coverage
+
 - File upload with various types
 - Virus scanning with EICAR test file
 - IPFS pinning and thumbnail generation
@@ -235,7 +260,9 @@ npm test -- disputeEvidence.test.js
 - WebSocket notifications
 
 ### EICAR Test File
+
 The system includes EICAR antivirus test file detection:
+
 ```
 X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 ```
@@ -243,18 +270,21 @@ X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 ## Security Considerations
 
 ### File Security
+
 - All files scanned for viruses before storage
 - File type restrictions prevent executable uploads
 - Size limits prevent resource exhaustion
 - IPFS provides content-addressed storage integrity
 
 ### Access Control
+
 - JWT token authentication required
 - Tenant isolation enforced
 - Only dispute participants can upload evidence
 - Role-based permissions enforced
 
 ### Data Privacy
+
 - Files stored on decentralized IPFS network
 - No sensitive data in filenames
 - Scan results stored securely in database
@@ -263,12 +293,14 @@ X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 ## Performance
 
 ### Optimization Features
+
 - Memory-based file processing (no disk I/O)
 - Parallel virus scanning and IPFS upload
 - Thumbnail generation for images
 - Efficient database queries with proper indexing
 
 ### Monitoring
+
 - Upload progress tracking via WebSocket
 - IPFS gateway health monitoring
 - Virus scanner availability checks
@@ -277,12 +309,14 @@ X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 ## Deployment Requirements
 
 ### Dependencies
+
 - ClamAV daemon (clamd) for virus scanning
 - IPFS node or gateway access
 - Sufficient memory for file processing (recommend 1GB+)
 - Database with proper indexing
 
 ### Environment Configuration
+
 ```env
 # IPFS Configuration
 IPFS_GATEWAY_URL=https://ipfs.io
@@ -306,22 +340,27 @@ WS_MAX_CONNECTIONS=100
 ### Common Issues
 
 **IPFS Upload Fails**
+
 - Check IPFS gateway connectivity
 - Verify API URL configuration
 - Monitor IPFS node status
 
 **Virus Scanner Errors**
+
 - Ensure ClamAV daemon is running
 - Check network connectivity to scanner
 - Review scanner configuration
 
 **File Upload Timeouts**
+
 - Increase timeout values for large files
 - Check network bandwidth
 - Monitor server memory usage
 
 ### Debug Logging
+
 Enable debug logging for troubleshooting:
+
 ```env
 DEBUG=ipfs:*
 DEBUG=clamscan:*
@@ -331,6 +370,7 @@ DEBUG=upload:*
 ## Future Enhancements
 
 ### Planned Features
+
 - File encryption before IPFS upload
 - Advanced image processing (OCR, watermarking)
 - File deduplication across disputes
@@ -338,6 +378,7 @@ DEBUG=upload:*
 - File expiration and cleanup policies
 
 ### Scalability Improvements
+
 - Distributed IPFS pinning
 - Load balancing for virus scanning
 - CDN integration for file access

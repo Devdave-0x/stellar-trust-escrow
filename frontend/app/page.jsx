@@ -5,9 +5,21 @@ import LazySection from './LazySection';
 import { useI18n } from '../i18n/index.jsx';
 
 const FEATURES = [
-  { icon: '🔒', title: 'Trustless Milestone Escrow', description: 'Funds are locked and released by contract rules.' },
-  { icon: '⭐', title: 'On-chain Reputation', description: 'Build a verifiable record of completed work.' },
-  { icon: '⚖️', title: 'Dispute Resolution', description: 'Raise and resolve disputes with transparent process.' },
+  {
+    icon: '🔒',
+    title: 'Trustless Milestone Escrow',
+    description: 'Funds are locked and released by contract rules.',
+  },
+  {
+    icon: '⭐',
+    title: 'On-chain Reputation',
+    description: 'Build a verifiable record of completed work.',
+  },
+  {
+    icon: '⚖️',
+    title: 'Dispute Resolution',
+    description: 'Raise and resolve disputes with transparent process.',
+  },
   { icon: '🌐', title: 'Global and Fast', description: 'Work with anyone, anywhere, on Stellar.' },
 ];
 
@@ -56,7 +68,9 @@ export default function HomePage() {
 
       <LazySection minHeight="280px" aria-label="Features">
         <section className="space-y-8">
-          <h2 className="text-3xl font-bold text-white text-center">Built for Freelancers & Clients</h2>
+          <h2 className="text-3xl font-bold text-white text-center">
+            Built for Freelancers & Clients
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {FEATURES.map((f) => (
               <div key={f.title} className="card flex gap-4">

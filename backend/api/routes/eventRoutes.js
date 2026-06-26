@@ -36,10 +36,6 @@ router.get(
   eventController.getEvent,
 );
 
-router.get(
-  '/',
-  cacheResponse({ ttl: TTL.EVENTS, tags: ['events'] }),
-  eventController.listEvents,
-);
+router.get('/', cacheResponse({ ttl: TTL.EVENTS, tags: ['events'] }), eventController.listEvents);
 
 export default router;

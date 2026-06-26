@@ -4,9 +4,7 @@ import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 const VALID = 'GA7YNBW5CBTJZ3ZZOWX3ZNBKD6OE7A7IHUQVWMY62W2ZBG2SGZVOOPVH';
 
 function renderInput(value, onChange = jest.fn()) {
-  return render(
-    <StellarAddressInput value={value} onChange={onChange} id="test-addr" />,
-  );
+  return render(<StellarAddressInput value={value} onChange={onChange} id="test-addr" />);
 }
 
 describe('StellarAddressInput', () => {

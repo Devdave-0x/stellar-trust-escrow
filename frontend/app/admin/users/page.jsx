@@ -61,22 +61,25 @@ export default function AdminUsersPage() {
   const [toast, setToast] = useState('');
   const [modal, setModal] = useState({ user: null, action: '' });
 
-  const fetchUsers = useCallback(async (page = 1, q = '') => {
-    setLoading(true);
-    setError('');
-    try {
-      const params = new URLSearchParams({ page, limit: 20, ...(q ? { search: q } : {}) });
-      const res = await adminFetch(`/api/admin/users?${params}`, apiKey);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch users');
-      setUsers(data.users);
-      setPagination(data.pagination);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiKey]);
+  const fetchUsers = useCallback(
+    async (page = 1, q = '') => {
+      setLoading(true);
+      setError('');
+      try {
+        const params = new URLSearchParams({ page, limit: 20, ...(q ? { search: q } : {}) });
+        const res = await adminFetch(`/api/admin/users?${params}`, apiKey);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch users');
+        setUsers(data.users);
+        setPagination(data.pagination);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiKey],
+  );
 
   useEffect(() => {
     fetchUsers(1, search);

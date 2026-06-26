@@ -49,6 +49,7 @@ Thumbs.db
 coverage/
 .nyc_output/
 **/test_snapshots/
+frontend/accessibility-reports/
 
 # ── Prisma generated ───────────────────────────────────────────────────────────
 backend/database/migrations/*.sql
@@ -56,6 +57,9 @@ backend/database/migrations/*.sql
 # ── Generated / large data files ──────────────────────────────────────────────
 load-tests/data/generated.json
 load-tests/results/*.json
+load-tests/results/*.html
+load-tests/results/stress/*.json
+load-tests/results/stress/*.html
 !load-tests/results/.gitkeep
 bundle-stats.json
 
@@ -67,22 +71,28 @@ backend/data/
 
 # ── Misc ───────────────────────────────────────────────────────────────────────
 .npm
+/.push_progress.json
 /ISSUES.md
 /ISSUES3_formatted.md
 /ISSUES3.md
 /ISSUES4.md
 /ISSUSE2.md
+/issues.md
 
 /REEDME.md
 .codex
 TODO.md
 issues.json
 drips-wave-analysis.md
+/cargo_out.txt
+/out.txt
+/task*.md
 clean-file-paths-with-branch.js
 convert_issues3_to_template.sh
 create-issue-1.js
 create-issues.js
 push-issues-drips.js
+push_wave_issues.js
 push_issues.js
 push_issues.sh
 push_issues_formatted.sh

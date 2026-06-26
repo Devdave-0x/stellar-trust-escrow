@@ -71,7 +71,9 @@ export default async function ProfilePage({ params }) {
           <ReputationBadge score={user.reputationScore} size="lg" />
           <p className="text-xs text-gray-500 mt-1">Reputation Score</p>
           <div className="mt-3">
-            <Button variant="secondary" size="sm">Share Profile</Button>
+            <Button variant="secondary" size="sm">
+              Share Profile
+            </Button>
           </div>
         </div>
       </div>

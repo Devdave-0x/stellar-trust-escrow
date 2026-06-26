@@ -8,7 +8,8 @@
 
 import express from 'express';
 const router = express.Router();
-import adminAuth from '../middleware/adminAuth.js';
+import adminAuth, { issueAdminToken, ADMIN_TOKEN_TTL } from '../middleware/adminAuth.js';
+import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
@@ -17,6 +18,23 @@ import cache from '../../lib/cache.js';
 
 // Apply admin authentication to all routes in this file
 router.use(adminAuth);
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/auth/login
+ * @desc   Exchange a valid admin API key (validated by adminAuth) for a
+ *         short-lived HMAC-signed admin session token. Subsequent requests
+ *         should send `Authorization: Bearer <token>` instead of the raw key.
+ */
+router.post('/auth/login', (req, res) => {
+  const token = issueAdminToken(req.admin.adminId);
+  res.json({
+    token,
+    tokenType: 'Bearer',
+    expiresIn: ADMIN_TOKEN_TTL,
+    adminId: req.admin.adminId,
+  });
+});
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
 /**
@@ -43,15 +61,17 @@ router.get('/users/:address', adminController.getUserDetail);
  * @route  POST /api/admin/users/:address/suspend
  * @desc   Suspend a user; logs action to admin audit log
  * @body   { reason: string }
+ * @security Requires MFA verification
  */
-router.post('/users/:address/suspend', adminController.suspendUser);
+router.post('/users/:address/suspend', requireMfa, adminController.suspendUser);
 
 /**
  * @route  POST /api/admin/users/:address/ban
  * @desc   Permanently ban a user; logs action to admin audit log
  * @body   { reason: string }
+ * @security Requires MFA verification
  */
-router.post('/users/:address/ban', adminController.banUser);
+router.post('/users/:address/ban', requireMfa, adminController.banUser);
 
 // ── Disputes ───────────────────────────────────────────────────────────────────
 /**
@@ -65,8 +85,9 @@ router.get('/disputes', adminController.listDisputes);
  * @route  POST /api/admin/disputes/:id/resolve
  * @desc   Resolve an open dispute
  * @body   { clientAmount: string, freelancerAmount: string, notes: string }
+ * @security Requires MFA verification
  */
-router.post('/disputes/:id/resolve', adminController.resolveDispute);
+router.post('/disputes/:id/resolve', requireMfa, adminController.resolveDispute);
 
 // ── Settings & Fees ────────────────────────────────────────────────────────────
 /**
@@ -79,8 +100,9 @@ router.get('/settings', adminController.getSettings);
  * @route  PATCH /api/admin/settings
  * @desc   Update platform settings (fee percentage, etc.)
  * @body   { platformFeePercent: number }
+ * @security Requires MFA verification
  */
-router.patch('/settings', adminController.updateSettings);
+router.patch('/settings', requireMfa, adminController.updateSettings);
 
 // ── Audit Logs ─────────────────────────────────────────────────────────────────
 /**
@@ -101,14 +123,23 @@ router.get('/rate-limits', adminController.getRateLimits);
  * @route  PATCH /api/admin/rate-limits/:tier
  * @desc   Update rate limit max for a specific tier
  * @body   { max: number }
+ * @security Requires MFA verification
  */
-router.patch('/rate-limits/:tier', adminController.updateRateLimit);
+router.patch('/rate-limits/:tier', requireMfa, adminController.updateRateLimit);
 
 /**
  * @route  GET /api/admin/rate-limits/usage/:userId
  * @desc   Get current usage analytics for a specific user
  */
 router.get('/rate-limits/usage/:userId', adminController.getUserRateLimitUsage);
+
+// ── Stellar Monitor ────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/stellar/reconcile
+ * @desc   Trigger a manual Horizon reconciliation for monitored accounts
+ * @body   { accounts?: string[] }  — omit to reconcile all MONITOR_ACCOUNTS
+ */
+router.post('/stellar/reconcile', adminController.reconcileStellar);
 
 // ── Tenants ───────────────────────────────────────────────────────────────────
 router.get('/tenants', tenantController.listTenants);
@@ -136,8 +167,9 @@ router.get('/secrets/audit', (_req, res) => {
  * @route  POST /api/admin/secrets/rotate
  * @desc   Forces an immediate cache invalidation and re-fetch from the
  *         secrets backend. Use after rotating credentials in Vault.
+ * @security Requires MFA verification
  */
-router.post('/secrets/rotate', async (_req, res) => {
+router.post('/secrets/rotate', requireMfa, async (_req, res) => {
   try {
     await rotateSecrets();
     res.json({ ok: true, message: 'Secrets rotated successfully' });
@@ -158,8 +190,9 @@ router.get('/cache/stats', (_req, res) => {
  * @route  DELETE /api/admin/cache
  * @desc   Flush the entire cache (all tags and keys).
  * @body   { tag?: string, prefix?: string } — optional scope
+ * @security Requires MFA verification
  */
-router.delete('/cache', async (req, res) => {
+router.delete('/cache', requireMfa, async (req, res) => {
   try {
     const { tag, prefix } = req.body ?? {};
     if (tag) {
@@ -172,8 +205,14 @@ router.delete('/cache', async (req, res) => {
     }
     // Full flush — invalidate all known top-level tags
     await cache.invalidateTags([
-      'escrows', 'disputes', 'reputation', 'reputation:leaderboard',
-      'events', 'events:stats', 'events:types', 'milestones',
+      'escrows',
+      'disputes',
+      'reputation',
+      'reputation:leaderboard',
+      'events',
+      'events:stats',
+      'events:types',
+      'milestones',
     ]);
     res.json({ ok: true, invalidated: 'all' });
   } catch (err) {

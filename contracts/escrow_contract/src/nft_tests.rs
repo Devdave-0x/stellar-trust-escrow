@@ -1,9 +1,7 @@
 #[cfg(test)]
 mod nft_gated_tests {
     use crate::{EscrowContract, EscrowContractClient, EscrowError};
-    use soroban_sdk::{
-        contract, contractimpl, testutils::Address as _, Address, BytesN, Env,
-    };
+    use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, BytesN, Env};
 
     // ── Mock NFT contract ─────────────────────────────────────────────────────
 
@@ -113,7 +111,7 @@ mod nft_gated_tests {
 
         assert_eq!(
             result.unwrap_err().unwrap(),
-            EscrowError::Unauthorized,
+            EscrowError::E3,
             "Non-holder should get Unauthorized"
         );
     }

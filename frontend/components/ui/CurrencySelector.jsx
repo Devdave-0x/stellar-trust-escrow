@@ -31,9 +31,7 @@ export default function CurrencySelector({ size = 'md', className = '' }) {
 
   const current = SUPPORTED_CURRENCIES.find((c) => c.code === currency) ?? SUPPORTED_CURRENCIES[0];
 
-  const sizeClasses = size === 'sm'
-    ? 'text-xs px-2 py-1 gap-1'
-    : 'text-sm px-3 py-2 gap-1.5';
+  const sizeClasses = size === 'sm' ? 'text-xs px-2 py-1 gap-1' : 'text-sm px-3 py-2 gap-1.5';
 
   return (
     <div ref={ref} className={`relative ${className}`}>
@@ -49,7 +47,10 @@ export default function CurrencySelector({ size = 'md', className = '' }) {
         <span className="font-medium">{current.code}</span>
         <span className="text-gray-500">{current.symbol}</span>
         {ratesLoading && (
-          <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" title="Loading rates" />
+          <span
+            className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"
+            title="Loading rates"
+          />
         )}
         <ChevronDown
           size={12}
@@ -67,7 +68,10 @@ export default function CurrencySelector({ size = 'md', className = '' }) {
           {SUPPORTED_CURRENCIES.map((c) => (
             <li key={c.code} role="option" aria-selected={c.code === currency}>
               <button
-                onClick={() => { setCurrency(c.code); setOpen(false); }}
+                onClick={() => {
+                  setCurrency(c.code);
+                  setOpen(false);
+                }}
                 className={`w-full flex items-center justify-between px-3 py-2 text-sm
                   transition-colors hover:bg-gray-800
                   ${c.code === currency ? 'text-indigo-400' : 'text-gray-300 hover:text-white'}`}
@@ -79,7 +83,9 @@ export default function CurrencySelector({ size = 'md', className = '' }) {
                     <span className="text-gray-500 ml-1.5 text-xs">{c.name}</span>
                   </span>
                 </span>
-                {c.code === currency && <Check size={13} className="text-indigo-400 flex-shrink-0" />}
+                {c.code === currency && (
+                  <Check size={13} className="text-indigo-400 flex-shrink-0" />
+                )}
               </button>
             </li>
           ))}

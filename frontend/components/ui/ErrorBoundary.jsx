@@ -1,5 +1,5 @@
-import React from "react";
-import RetryButton from "./RetryButton";
+import React from 'react';
+import RetryButton from './RetryButton';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,7 +12,7 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error("ErrorBoundary caught an error:", error, info);
+    console.error('ErrorBoundary caught an error:', error, info);
     // Optionally report to Sentry here
   }
 

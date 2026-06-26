@@ -94,7 +94,9 @@ export function getCurrentOnCall() {
       const start = new Date(entry.startUtc);
       const end = new Date(entry.endUtc);
       return now >= start && now < end;
-    }) ?? schedule[0] ?? null
+    }) ??
+    schedule[0] ??
+    null
   );
 }
 
@@ -125,10 +127,14 @@ async function alertPagerDuty(action, incident) {
     payload: {
       summary: `[${incident.severity}] ${incident.title}`,
       source: 'stellar-trust-escrow',
-      severity: incident.severity === Severity.SEV1 ? 'critical'
-        : incident.severity === Severity.SEV2 ? 'error'
-        : incident.severity === Severity.SEV3 ? 'warning'
-        : 'info',
+      severity:
+        incident.severity === Severity.SEV1
+          ? 'critical'
+          : incident.severity === Severity.SEV2
+            ? 'error'
+            : incident.severity === Severity.SEV3
+              ? 'warning'
+              : 'info',
       timestamp: new Date().toISOString(),
       custom_details: {
         id: incident.id,
@@ -164,23 +170,33 @@ async function alertSlack(incident, message) {
   const webhookUrl = process.env.SLACK_INCIDENT_WEBHOOK;
   if (!webhookUrl) return;
 
-  const severityEmoji = {
-    SEV1: '🔴', SEV2: '🟠', SEV3: '🟡', SEV4: '🔵',
-  }[incident.severity] ?? '⚪';
+  const severityEmoji =
+    {
+      SEV1: '🔴',
+      SEV2: '🟠',
+      SEV3: '🟡',
+      SEV4: '🔵',
+    }[incident.severity] ?? '⚪';
 
   const body = {
     text: message ?? `${severityEmoji} *[${incident.severity}] ${incident.title}*`,
     blocks: [
       {
         type: 'header',
-        text: { type: 'plain_text', text: `${severityEmoji} ${incident.severity}: ${incident.title}` },
+        text: {
+          type: 'plain_text',
+          text: `${severityEmoji} ${incident.severity}: ${incident.title}`,
+        },
       },
       {
         type: 'section',
         fields: [
           { type: 'mrkdwn', text: `*Status:*\n${incident.status}` },
           { type: 'mrkdwn', text: `*ID:*\n${incident.id}` },
-          { type: 'mrkdwn', text: `*Services:*\n${incident.affectedServices.join(', ') || 'unknown'}` },
+          {
+            type: 'mrkdwn',
+            text: `*Services:*\n${incident.affectedServices.join(', ') || 'unknown'}`,
+          },
           { type: 'mrkdwn', text: `*Commander:*\n${incident.commander || 'unassigned'}` },
         ],
       },
@@ -188,10 +204,14 @@ async function alertSlack(incident, message) {
         type: 'section',
         text: { type: 'mrkdwn', text: `*Description:*\n${incident.description}` },
       },
-      ...(incident.runbookUrl ? [{
-        type: 'section',
-        text: { type: 'mrkdwn', text: `*Runbook:* <${incident.runbookUrl}|View runbook>` },
-      }] : []),
+      ...(incident.runbookUrl
+        ? [
+            {
+              type: 'section',
+              text: { type: 'mrkdwn', text: `*Runbook:* <${incident.runbookUrl}|View runbook>` },
+            },
+          ]
+        : []),
     ],
   };
 
@@ -215,15 +235,16 @@ async function alertSlack(incident, message) {
  * @param {string} [message]
  */
 async function dispatchAlerts(action, incident, message) {
-  const pdAction = action === 'trigger' ? 'trigger'
-    : action === 'acknowledge' ? 'acknowledge'
-    : action === 'resolve' ? 'resolve'
-    : 'trigger'; // updates re-trigger to keep PD in sync
+  const pdAction =
+    action === 'trigger'
+      ? 'trigger'
+      : action === 'acknowledge'
+        ? 'acknowledge'
+        : action === 'resolve'
+          ? 'resolve'
+          : 'trigger'; // updates re-trigger to keep PD in sync
 
-  await Promise.allSettled([
-    alertPagerDuty(pdAction, incident),
-    alertSlack(incident, message),
-  ]);
+  await Promise.allSettled([alertPagerDuty(pdAction, incident), alertSlack(incident, message)]);
 }
 
 // ── Incident CRUD ─────────────────────────────────────────────────────────────
@@ -323,9 +344,12 @@ export async function updateIncidentStatus(id, newStatus, { actor = 'system', no
   incident.timeline.push({ ts: now, status: newStatus, actor, note });
   incidents.set(id, incident);
 
-  const pdAction = newStatus === Status.ACKNOWLEDGED ? 'acknowledge'
-    : newStatus === Status.RESOLVED || newStatus === Status.CLOSED ? 'resolve'
-    : 'update';
+  const pdAction =
+    newStatus === Status.ACKNOWLEDGED
+      ? 'acknowledge'
+      : newStatus === Status.RESOLVED || newStatus === Status.CLOSED
+        ? 'resolve'
+        : 'update';
 
   await dispatchAlerts(pdAction, incident, note || undefined);
   console.log(`[Incident] ${id} → ${newStatus} by ${actor}`);
@@ -383,7 +407,9 @@ export function listIncidents(filters = {}) {
 
 /** Returns the default runbook URL for a given severity. */
 function resolvedRunbookUrl(severity) {
-  const base = process.env.RUNBOOK_BASE_URL || 'https://github.com/your-org/stellar-trust-escrow/blob/main/docs/incidents/runbooks';
+  const base =
+    process.env.RUNBOOK_BASE_URL ||
+    'https://github.com/your-org/stellar-trust-escrow/blob/main/docs/incidents/runbooks';
   const map = {
     [Severity.SEV1]: `${base}/sev1-critical-outage.md`,
     [Severity.SEV2]: `${base}/sev2-high-impact.md`,

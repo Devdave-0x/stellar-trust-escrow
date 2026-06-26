@@ -14,22 +14,22 @@ StellarTrustEscrow operates as a data controller for off-chain user data (email,
 
 ### Legal Basis
 
-| Data Type | Legal Basis | Purpose |
-|-----------|-------------|---------|
-| Email address | Contract performance | Account management, notifications |
-| KYC documents | Legal obligation | Anti-money laundering (AML) compliance |
-| Wallet address | Contract performance | Escrow creation, reputation tracking |
-| Usage logs | Legitimate interest | Security monitoring, fraud prevention |
+| Data Type      | Legal Basis          | Purpose                                |
+| -------------- | -------------------- | -------------------------------------- |
+| Email address  | Contract performance | Account management, notifications      |
+| KYC documents  | Legal obligation     | Anti-money laundering (AML) compliance |
+| Wallet address | Contract performance | Escrow creation, reputation tracking   |
+| Usage logs     | Legitimate interest  | Security monitoring, fraud prevention  |
 
 ### User Rights
 
-| Right | Implementation |
-|-------|---------------|
-| Access | `GET /api/users/me` |
-| Rectification | `PATCH /api/users/me` |
-| Erasure | `DELETE /api/users/me` (off-chain data only) |
-| Portability | `GET /api/users/me/export` |
-| Objection | Contact privacy@stellartrustescrow.example.com |
+| Right         | Implementation                                 |
+| ------------- | ---------------------------------------------- |
+| Access        | `GET /api/users/me`                            |
+| Rectification | `PATCH /api/users/me`                          |
+| Erasure       | `DELETE /api/users/me` (off-chain data only)   |
+| Portability   | `GET /api/users/me/export`                     |
+| Objection     | Contact privacy@stellartrustescrow.example.com |
 
 **Note**: On-chain data (wallet addresses, escrow history) cannot be deleted. Users can disassociate email from wallet by deleting account.
 
@@ -47,13 +47,13 @@ StellarTrustEscrow operates as a data controller for off-chain user data (email,
 
 ## Third-Party Services
 
-| Service | Purpose | Data Shared | GDPR Compliance |
-|---------|---------|-------------|-----------------|
-| Stellar Network | Smart contract execution | Wallet addresses, escrow data | Public ledger (not GDPR scope) |
-| Freighter Wallet | Client-side key management | None (client-side only) | N/A |
-| AWS RDS | PostgreSQL hosting | Email, profile, KYC | AWS GDPR DPA |
-| SendGrid | Email delivery | Email address | Twilio GDPR DPA |
-| KYC Provider | Identity verification | KYC documents | Provider GDPR DPA |
+| Service          | Purpose                    | Data Shared                   | GDPR Compliance                |
+| ---------------- | -------------------------- | ----------------------------- | ------------------------------ |
+| Stellar Network  | Smart contract execution   | Wallet addresses, escrow data | Public ledger (not GDPR scope) |
+| Freighter Wallet | Client-side key management | None (client-side only)       | N/A                            |
+| AWS RDS          | PostgreSQL hosting         | Email, profile, KYC           | AWS GDPR DPA                   |
+| SendGrid         | Email delivery             | Email address                 | Twilio GDPR DPA                |
+| KYC Provider     | Identity verification      | KYC documents                 | Provider GDPR DPA              |
 
 ### Risk Assessment
 

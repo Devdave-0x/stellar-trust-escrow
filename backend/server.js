@@ -1,5 +1,6 @@
-// Sentry must be initialised before any other imports so it can
-// instrument all subsequent modules (HTTP, DB, etc.)
+import { initTracing } from './lib/tracing.js';
+// Tracing and Sentry must be initialised before other imports so instrumentation patches apply.
+initTracing();
 import './lib/sentry.js';
 import * as Sentry from '@sentry/node';
 
@@ -8,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { initSecrets } from './lib/secrets.js';
 import http from 'http';
 import compressionMiddleware from './middleware/compression.js';
-import cors from 'cors';
+import { corsMiddleware } from './middleware/cors.js';
 import express from 'express';
 import helmet from 'helmet';
 import { requestLogger } from './lib/logger.js';
@@ -38,11 +39,13 @@ import authRoutes from './api/routes/authRoutes.js';
 import complianceRoutes from './api/routes/complianceRoutes.js';
 import incidentRoutes from './api/routes/incidentRoutes.js';
 import batchRoutes from './api/routes/batchRoutes.js';
+import webhookRoutes from './api/routes/webhookRoutes.js';
 import tenantMiddleware from './api/middleware/tenant.js';
 import auditMiddleware from './api/middleware/audit.js';
 import { createWebSocketServer, pool } from './api/websocket/handlers.js';
 import cache from './lib/cache.js';
 import { attachPrismaMetrics } from './lib/prismaMetrics.js';
+import { attachPrismaTracing } from './lib/prismaTracing.js';
 import healthRoutes from './api/routes/healthRoutes.js';
 import tenantRoutes from './api/routes/tenantRoutes.js';
 import wsHealthRoutes from './api/routes/wsHealth.js';
@@ -51,17 +54,23 @@ import { errorsTotal } from './lib/metrics.js';
 import { leaderboardRateLimit } from './middleware/rateLimit.js';
 import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
+import tracingMiddleware from './middleware/tracingMiddleware.js';
 import logger, { getLogger } from './config/logger.js';
 import emailService from './services/emailService.js';
 import complianceService from './services/complianceService.js';
 import { startIndexer } from './services/eventIndexer.js';
+import { startRpcMonitor } from './monitoring/rpcMonitor.js';
+import { createEventWorker, createDeadLetterWorker } from './services/eventWorker.js';
 import { setupSwagger } from './api/docs/swagger.js';
 import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
 import { createGateway } from './gateway/index.js';
+import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
+import chatRoutes from './api/routes/chatRoutes.js';
 
-// Attach Prisma query instrumentation and monitoring
+// Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
+attachPrismaTracing(prisma);
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -82,6 +91,7 @@ app.use(helmet());
 app.use(compressionMiddleware);
 app.use(metricsMiddleware);
 app.use(responseTime);
+app.use(tracingMiddleware);
 app.use(requestLogger);
 app.use((req, res, next) => {
   const requestId =
@@ -90,12 +100,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', requestId);
   next();
 });
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    credentials: true,
-  }),
-);
+app.use(corsMiddleware);
 app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
 app.use(cookieParser());
@@ -189,6 +194,7 @@ app.use('/api/reputation', reputationRoutes);
 app.use('/api/disputes', disputeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/webhooks', webhookRoutes);
 app.use('/api/kyc', kycRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/relayer', relayerRoutes);
@@ -198,6 +204,8 @@ app.use('/api/incidents', incidentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/batch', batchRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/admin/queues', queueDashboardRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
 app.use('/api-docs', docsRouter);
@@ -260,6 +268,22 @@ async function startServer() {
         startConnectionMonitoring(prisma);
         // Load secrets first — merges vault/env secrets into process.env
         await initSecrets();
+
+        // ── Stellar / Soroban env validation ───────────────────────────────
+        if (!process.env.SOROBAN_RPC_URL) {
+          throw new Error(
+            '[Config] SOROBAN_RPC_URL is not set. The indexer and broadcast endpoint require a Soroban RPC endpoint.',
+          );
+        }
+        if (
+          process.env.STELLAR_NETWORK === 'testnet' &&
+          process.env.NODE_ENV !== 'development' &&
+          process.env.NODE_ENV !== 'test'
+        ) {
+          throw new Error(
+            `[Config] STELLAR_NETWORK=testnet is not allowed in NODE_ENV=${process.env.NODE_ENV}. Set STELLAR_NETWORK=mainnet for production deployments.`,
+          );
+        }
         logger.info(
           { secretsBackend: process.env.SECRETS_BACKEND || 'env' },
           'Secrets backend loaded',
@@ -270,10 +294,30 @@ async function startServer() {
         complianceService.startScheduler();
         logger.info('[ComplianceService] Scheduler started');
         logger.info('[WebSocket] Server attached');
+
+        try {
+          const eventWorker = createEventWorker();
+          const deadLetterWorker = createDeadLetterWorker();
+          logger.info('[BullMQ] Event processing workers started');
+
+          const closeWorkers = async () => {
+            logger.info('[BullMQ] Shutting down workers...');
+            await eventWorker.close();
+            await deadLetterWorker.close();
+          };
+
+          process.once('SIGTERM', closeWorkers);
+          process.once('SIGINT', closeWorkers);
+        } catch (error) {
+          logger.error({ err: error }, '[BullMQ] Failed to start workers');
+          Sentry.captureException(error, { tags: { component: 'bullmq-workers' } });
+        }
+
         startIndexer().catch((err) => {
           logger.error({ err, component: 'indexer' }, 'Indexer failed to start');
           Sentry.captureException(err, { tags: { component: 'indexer' } });
         });
+        startRpcMonitor();
 
         // Reputation ES sync — ensure index + initial sync on startup
         ensureIndex().then(() =>

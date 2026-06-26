@@ -50,11 +50,17 @@ const updateStatus = async (req, res) => {
     const { status, note } = req.body;
     if (!status) return res.status(400).json({ error: 'status is required' });
     const actor = req.user?.address ?? 'admin';
-    const incident = await incidentService.updateIncidentStatus(req.params.id, status, { actor, note });
+    const incident = await incidentService.updateIncidentStatus(req.params.id, status, {
+      actor,
+      note,
+    });
     res.json(incident);
   } catch (err) {
-    const code = err.message.includes('not found') ? 404
-      : err.message.includes('Invalid transition') ? 422 : 500;
+    const code = err.message.includes('not found')
+      ? 404
+      : err.message.includes('Invalid transition')
+        ? 422
+        : 500;
     res.status(code).json({ error: err.message });
   }
 };
@@ -76,4 +82,11 @@ const getOnCall = (_req, res) => {
   });
 };
 
-export default { createIncident, listIncidents, getIncident, updateStatus, attachPostMortem, getOnCall };
+export default {
+  createIncident,
+  listIncidents,
+  getIncident,
+  updateStatus,
+  attachPostMortem,
+  getOnCall,
+};

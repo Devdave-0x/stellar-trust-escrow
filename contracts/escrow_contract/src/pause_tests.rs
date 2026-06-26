@@ -81,7 +81,7 @@ mod pause_tests {
         );
 
         assert!(
-            matches!(result, Err(Ok(EscrowError::ContractPaused))),
+            matches!(result, Err(Ok(EscrowError::E31))),
             "Should fail with ContractPaused error"
         );
     }
@@ -117,7 +117,7 @@ mod pause_tests {
         );
 
         assert!(
-            matches!(result, Err(Ok(EscrowError::ContractPaused))),
+            matches!(result, Err(Ok(EscrowError::E31))),
             "Should fail with ContractPaused error"
         );
     }
@@ -155,14 +155,14 @@ mod pause_tests {
         // submit_milestone must be blocked
         let result = client.try_submit_milestone(&freelancer, &escrow_id, &mid);
         assert!(
-            matches!(result, Err(Ok(EscrowError::ContractPaused))),
+            matches!(result, Err(Ok(EscrowError::E31))),
             "submit_milestone should fail with ContractPaused"
         );
 
         // approve_milestone must be blocked
         let result = client.try_approve_milestone(&client_addr, &escrow_id, &mid);
         assert!(
-            matches!(result, Err(Ok(EscrowError::ContractPaused))),
+            matches!(result, Err(Ok(EscrowError::E31))),
             "approve_milestone should fail with ContractPaused"
         );
 
@@ -205,7 +205,7 @@ mod pause_tests {
             &500,
         );
         assert!(
-            matches!(result, Err(Ok(EscrowError::ContractPaused))),
+            matches!(result, Err(Ok(EscrowError::E31))),
             "Should fail with ContractPaused error"
         );
 

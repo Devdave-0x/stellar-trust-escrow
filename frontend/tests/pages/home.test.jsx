@@ -46,13 +46,17 @@ describe('HomePage', () => {
       screen.getByRole('heading', {
         level: 1,
         name: /Trustless Escrow for the Decentralized Economy/i,
-      })
+      }),
     ).toBeInTheDocument();
   });
 
   it('renders platform stats placeholders', () => {
     renderWithAppProviders(<HomePage />);
     expect(screen.getByText('Built for Freelancers & Clients')).toBeInTheDocument();
-    expect(screen.getByText('Lock funds in milestone-based smart contracts and build on-chain reputation.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Lock funds in milestone-based smart contracts and build on-chain reputation.',
+      ),
+    ).toBeInTheDocument();
   });
 });

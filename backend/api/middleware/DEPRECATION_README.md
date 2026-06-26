@@ -7,13 +7,14 @@
 ```javascript
 import { deprecate } from './deprecation.js';
 
-router.get('/old-endpoint',
+router.get(
+  '/old-endpoint',
   deprecate({
     version: 'v1',
     sunsetDate: new Date('2026-12-31'),
-    replacement: '/api/v2/new-endpoint'
+    replacement: '/api/v2/new-endpoint',
   }),
-  controller.handler
+  controller.handler,
 );
 ```
 
@@ -33,10 +34,11 @@ import { enforceSunset, deprecate } from './deprecation.js';
 
 const sunsetDate = new Date('2026-06-01');
 
-router.get('/legacy',
+router.get(
+  '/legacy',
   enforceSunset(sunsetDate),
   deprecate({ version: 'legacy', sunsetDate }),
-  controller.handler
+  controller.handler,
 );
 ```
 

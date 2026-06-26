@@ -47,11 +47,7 @@ class ErrorBoundary extends Component {
   render() {
     if (!this.state.hasError) {
       // Render children with key for remount on retry
-      return (
-        <div key={this.props.childrenKey || Math.random()}>
-          {this.props.children}
-        </div>
-      );
+      return <div key={this.props.childrenKey || Math.random()}>{this.props.children}</div>;
     }
 
     const { fallback = this.renderFallback() } = this.props;

@@ -2,7 +2,8 @@
 #[allow(clippy::module_inception)]
 mod tests {
     use crate::{
-        BatchEscrowParams, EscrowExtensions, EscrowExtensionsClient, ExtError, FeeRecipient,
+        ArbitrationDispute, BatchEscrowParams, DataKey, EscrowExtensions, EscrowExtensionsClient,
+        ExtError, FeeRecipient,
     };
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
@@ -196,19 +197,95 @@ mod tests {
         assert_eq!(token_client.balance(&r2), 120); // 400 * 30%
     }
 
+    /// Verifies that `distribute_fees` correctly splits 1000 stroops across two
+    /// recipients using a 70/30 basis-point split:
+    ///   - addr1 (7000 bps) must receive exactly 700 stroops
+    ///   - addr2 (3000 bps) must receive exactly 300 stroops
+    ///   - `get_fee_balance` must return 0 after distribution (no dust in this case)
     #[test]
-    fn test_emergency_withdraw() {
-        let s = setup_with_fee(100);
-        s.client.collect_fee(&1_u64, &s.token_id, &10_000_i128); // fee = 100
-        mint(&s.env, &s.admin, &s.token_id, &s.contract_id, 100);
+    fn test_distribute_fees_proportional_split() {
+        // Initialize with 10 % fee so collect_fee accumulates predictable amounts.
+        // 10 % of 10_000 = 1_000 stroops in one call.
+        let s = setup_with_fee(100); // 1 % fee — we'll use gross=100_000 → fee=1_000
 
-        let to = soroban_sdk::Address::generate(&s.env);
-        let withdrawn = s.client.emergency_withdraw_fees(&s.admin, &s.token_id, &to);
-        assert_eq!(withdrawn, 100);
+        let addr1 = soroban_sdk::Address::generate(&s.env);
+        let addr2 = soroban_sdk::Address::generate(&s.env);
 
+        // Set up a 70/30 split
+        let mut recipients = Vec::new(&s.env);
+        recipients.push_back(FeeRecipient {
+            address: addr1.clone(),
+            share_bps: 7_000, // 70 %
+        });
+        recipients.push_back(FeeRecipient {
+            address: addr2.clone(),
+            share_bps: 3_000, // 30 %
+        });
+        s.client.set_fee_recipients(&s.admin, &recipients);
+
+        // Accumulate exactly 1_000 stroops: 1 % of 100_000
+        s.client.collect_fee(&1_u64, &s.token_id, &100_000_i128);
+        assert_eq!(s.client.get_fee_balance(&s.token_id), 1_000);
+
+        // Fund the contract so it can transfer tokens to recipients
+        mint(&s.env, &s.admin, &s.token_id, &s.contract_id, 1_000);
+
+        // Distribute and verify the returned total
+        let distributed = s.client.distribute_fees(&s.token_id);
+        assert_eq!(distributed, 1_000);
+
+        // Verify each recipient received the correct stroop amount
         let token_client = token::Client::new(&s.env, &s.token_id);
-        assert_eq!(token_client.balance(&to), 100);
+        assert_eq!(token_client.balance(&addr1), 700); // 1_000 * 70 % = 700
+        assert_eq!(token_client.balance(&addr2), 300); // 1_000 * 30 % = 300
+
+        // FeeBalance must be zeroed after a clean split (no dust)
         assert_eq!(s.client.get_fee_balance(&s.token_id), 0);
+    }
+
+    #[test]
+    fn test_emergency_withdraw_fees_full_transfer() {
+        let s = setup_with_fee(100); // 1 %
+        let (_net, fee) = s.client.collect_fee(&1_u64, &s.token_id, &50_000_i128); // fee = 500
+        assert_eq!(fee, 500);
+
+        // Fund contract with the exact fee amount to make token transfer possible.
+        mint(&s.env, &s.admin, &s.token_id, &s.contract_id, 500);
+
+        let recipient = soroban_sdk::Address::generate(&s.env);
+        let token_client = token::Client::new(&s.env, &s.token_id);
+        let before = token_client.balance(&recipient);
+
+        let withdrawn = s
+            .client
+            .emergency_withdraw_fees(&s.admin, &s.token_id, &recipient);
+        assert_eq!(withdrawn, 500);
+        assert_eq!(token_client.balance(&recipient) - before, 500);
+        assert_eq!(s.client.get_fee_balance(&s.token_id), 0);
+    }
+
+    #[test]
+    fn test_emergency_withdraw_fees_unauthorized() {
+        let s = setup_with_fee(100);
+        s.client.collect_fee(&1_u64, &s.token_id, &50_000_i128); // fee = 500
+        mint(&s.env, &s.admin, &s.token_id, &s.contract_id, 500);
+
+        let non_admin = soroban_sdk::Address::generate(&s.env);
+        let recipient = soroban_sdk::Address::generate(&s.env);
+        let result = s
+            .client
+            .try_emergency_withdraw_fees(&non_admin, &s.token_id, &recipient);
+        assert_eq!(result.unwrap_err().unwrap(), ExtError::AdminOnly);
+    }
+
+    #[test]
+    fn test_emergency_withdraw_fees_zero_balance() {
+        let s = setup_with_fee(100);
+        let recipient = soroban_sdk::Address::generate(&s.env);
+        let result = s
+            .client
+            .try_emergency_withdraw_fees(&s.admin, &s.token_id, &recipient);
+        assert_eq!(result.unwrap_err().unwrap(), ExtError::NoFeesAccumulated);
     }
 
     // ── Dispute arbitration ───────────────────────────────────────────────────
@@ -329,6 +406,78 @@ mod tests {
         );
     }
 
+    // ── Batch fee deduction ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_batch_create_fee_deduction() {
+        // Initialize with fee_bps = 100 (1%)
+        let s = setup_with_fee(100);
+        let client_addr = soroban_sdk::Address::generate(&s.env);
+
+        // Mint enough tokens for 3 × 1000 stroops
+        mint(&s.env, &s.admin, &s.token_id, &client_addr, 3_000);
+
+        let fl1 = soroban_sdk::Address::generate(&s.env);
+        let fl2 = soroban_sdk::Address::generate(&s.env);
+        let fl3 = soroban_sdk::Address::generate(&s.env);
+
+        let mut params = Vec::new(&s.env);
+        params.push_back(BatchEscrowParams {
+            freelancer: fl1,
+            token: s.token_id.clone(),
+            total_amount: 1_000,
+            brief_hash: make_hash(&s.env, 1),
+            arbiter: None,
+            deadline: None,
+        });
+        params.push_back(BatchEscrowParams {
+            freelancer: fl2,
+            token: s.token_id.clone(),
+            total_amount: 1_000,
+            brief_hash: make_hash(&s.env, 2),
+            arbiter: None,
+            deadline: None,
+        });
+        params.push_back(BatchEscrowParams {
+            freelancer: fl3,
+            token: s.token_id.clone(),
+            total_amount: 1_000,
+            brief_hash: make_hash(&s.env, 3),
+            arbiter: None,
+            deadline: None,
+        });
+
+        let ids = s.client.create_batch(&client_addr, &params);
+        assert_eq!(ids.len(), 3);
+
+        // batch_escrow_count must equal 3 after the batch
+        assert_eq!(s.client.batch_escrow_count(), 3);
+
+        // Simulate fee collection on release for each escrow (1% of 1000 = 10 per escrow)
+        let (net0, fee0) = s
+            .client
+            .collect_fee(&ids.get(0).unwrap(), &s.token_id, &1_000_i128);
+        let (net1, fee1) = s
+            .client
+            .collect_fee(&ids.get(1).unwrap(), &s.token_id, &1_000_i128);
+        let (net2, fee2) = s
+            .client
+            .collect_fee(&ids.get(2).unwrap(), &s.token_id, &1_000_i128);
+
+        // Each escrow's net amount after fee deduction must be 990 (1000 - 10)
+        assert_eq!(net0, 990);
+        assert_eq!(net1, 990);
+        assert_eq!(net2, 990);
+
+        // Each fee must be 10 (1% of 1000)
+        assert_eq!(fee0, 10);
+        assert_eq!(fee1, 10);
+        assert_eq!(fee2, 10);
+
+        // get_fee_balance must accumulate 3 × 10 = 30 stroops
+        assert_eq!(s.client.get_fee_balance(&s.token_id), 30);
+    }
+
     #[test]
     fn test_isqrt_values() {
         // Verify quadratic voting weights
@@ -430,6 +579,43 @@ mod tests {
             pending.unwrap().new_wasm_hash,
             hash,
             "Pending upgrade hash must be unchanged"
+        );
+    }
+
+    // ── Arithmetic overflow hardening ─────────────────────────────────────────
+
+    /// `resolve_dispute` must reject an overflowing weight calculation with
+    /// `ArithmeticOverflow` instead of silently wrapping to a wrong winner.
+    #[test]
+    fn test_resolve_dispute_overflow_returns_arithmetic_overflow() {
+        let s = setup_with_fee(0);
+        let escrow_id = 1u64;
+
+        s.env.as_contract(&s.contract_id, || {
+            let dispute = ArbitrationDispute {
+                escrow_id,
+                voting_opens_at: 0,
+                voting_closes_at: 100,
+                weight_for_client: u64::MAX,
+                weight_for_freelancer: 1,
+                total_stake: 0,
+                votes: Vec::new(&s.env),
+                resolved: false,
+                client_wins: None,
+            };
+            s.env
+                .storage()
+                .persistent()
+                .set(&DataKey::Dispute(escrow_id), &dispute);
+        });
+
+        s.env.ledger().with_mut(|l| l.timestamp = 200);
+
+        let result = s.client.try_resolve_dispute(&escrow_id);
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            ExtError::ArithmeticOverflow,
+            "weight_for_client.checked_mul(100) must overflow for u64::MAX"
         );
     }
 }

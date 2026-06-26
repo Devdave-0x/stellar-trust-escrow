@@ -2,6 +2,8 @@
 
 This guide is the fastest path from clone to first PR. It covers local setup, testing, linting, the review process, and how to find newcomer-friendly issues.
 
+For the canonical clone-to-running-app walkthrough, use [Local development setup](docs/local-development.md).
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
@@ -76,12 +78,12 @@ soroban keys fund contributor --network testnet
 
 The Cargo workspace (`Cargo.toml` at the repository root) contains four contract crates:
 
-| Crate                | Path                           | Purpose                        |
-| -------------------- | ------------------------------ | ------------------------------ |
-| `escrow_contract`    | `contracts/escrow_contract`    | Core milestone escrow logic    |
-| `governance`         | `contracts/governance`         | On-chain governance and voting |
-| `insurance_contract` | `contracts/insurance_contract` | Dispute insurance pool         |
-| `escrow_extensions`  | `contracts/escrow_extensions`  | Optional escrow add-ons        |
+| Crate                              | Path                           | Purpose                        |
+| ---------------------------------- | ------------------------------ | ------------------------------ |
+| `stellar-trust-escrow-contract`    | `contracts/escrow_contract`    | Core milestone escrow logic    |
+| `stellar-trust-governance`         | `contracts/governance`         | On-chain governance and voting |
+| `stellar-trust-insurance-contract` | `contracts/insurance_contract` | Dispute insurance pool         |
+| `stellar-trust-escrow-extensions`  | `contracts/escrow_extensions`  | Optional escrow add-ons        |
 
 All four share a single `[profile.release]` in the root `Cargo.toml`:
 
@@ -105,13 +107,13 @@ Run tests for a single crate to keep feedback fast:
 
 ```bash
 # Core escrow contract
-cargo test -p escrow_contract
+cargo test -p stellar-trust-escrow-contract
 
 # Governance contract
-cargo test -p governance
+cargo test -p stellar-trust-governance
 
 # Escrow extensions
-cargo test -p escrow_extensions
+cargo test -p stellar-trust-escrow-extensions
 
 # All crates at once
 cargo test --workspace
@@ -120,7 +122,7 @@ cargo test --workspace
 Run a specific test by name:
 
 ```bash
-cargo test -p escrow_contract test_approve_milestone_o1_completion_check
+cargo test -p stellar-trust-escrow-contract test_approve_milestone_o1_completion_check
 ```
 
 ### Soroban test harness patterns
@@ -252,41 +254,122 @@ Open `http://localhost:3000`.
 ### 7. Optional: build the contracts locally
 
 ```bash
-cargo build -p escrow_contract --target wasm32-unknown-unknown
-cargo build -p insurance_contract --target wasm32-unknown-unknown
+cargo build -p stellar-trust-escrow-contract --target wasm32-unknown-unknown
+cargo build -p stellar-trust-insurance-contract --target wasm32-unknown-unknown
 ```
 
 ## Development Workflow
 
 ### Branch naming
 
-Use a short descriptive branch name:
+Branches must follow this pattern (enforced by the pre-push hook):
 
-- `docs/contributor-onboarding`
-- `feature/add-wallet-retry`
-- `fix/backend-health-route`
-- `test/improve-escrow-coverage`
+```
+<type>/<short-description>
+```
+
+| Prefix | When to use |
+| --- | --- |
+| `feat/` | New functionality |
+| `fix/` | Bug fix |
+| `refactor/` | Code improvement, no behaviour change |
+| `docs/` | Documentation only |
+| `test/` | Tests only |
+| `chore/` | Tooling, dependencies, config |
+| `hotfix/` | Urgent production fix branched from `main` |
+| `release/` | Release preparation (version bump, CHANGELOG) |
+
+Examples:
+
+```
+feat/wallet-retry-logic
+fix/backend-health-route
+docs/contributor-onboarding
+chore/upgrade-prisma-5
+```
+
+Keep the description short, lowercase, and hyphen-separated. No ticket numbers in the branch name — link the issue in the PR instead.
+
+---
+
+### Commit message format — Conventional Commits
+
+Every commit must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+<type>(<scope>): <short summary>
+
+<optional body — explain WHY if the diff doesn't make it obvious>
+
+<optional footer>
+BREAKING CHANGE: <description>
+Closes #<issue>
+```
+
+**Type must be one of:**
+
+| Type | When to use |
+| --- | --- |
+| `feat` | New feature visible to users or callers |
+| `fix` | Bug fix |
+| `perf` | Performance improvement |
+| `security` | Security fix or hardening |
+| `refactor` | Code restructuring, no behaviour change |
+| `test` | Adding or fixing tests |
+| `docs` | Documentation only |
+| `chore` | Build process, tooling, dependency updates |
+
+**Scope** is optional but encouraged — use the layer or domain (`backend`, `contracts`, `frontend`, `mobile`, `webhooks`, `auth`, etc.).
+
+**Subject line rules:**
+- Imperative mood: "add pagination" not "adds pagination" or "added pagination"
+- No capital first letter
+- No trailing period
+- 72 characters max
+
+**Examples:**
+
+```
+feat(backend): add cursor pagination to /api/escrows
+fix(contracts): prevent integer overflow in milestone release
+docs: expand PR lifecycle section in CONTRIBUTING
+chore(deps): upgrade @stellar/stellar-sdk to 12.1.0
+test(backend): add dispute resolution edge cases
+```
+
+If a commit introduces a breaking change, add a `BREAKING CHANGE:` footer:
+
+```
+feat(api)!: rename client_address to clientAddress in all responses
+
+BREAKING CHANGE: all API consumers must update field references.
+Closes #200
+```
+
+The `!` after the type is shorthand — the footer is still required.
+
+---
 
 ### Typical flow
 
 ```bash
-git checkout -b docs/contributor-onboarding
+# 1. Branch from develop
+git checkout develop
+git pull upstream develop
+git checkout -b feat/my-feature
+
+# 2. Make changes, then run the relevant checks
+#    (see Testing All Layers and Code Style sections below)
+
+# 3. Commit
+git add <files>
+git commit -m "feat(backend): add my feature"
+
+# 4. Push
+git push -u origin feat/my-feature
 ```
 
-Make your change, then run the relevant checks from the sections below.
-
-Commit using Conventional Commits:
-
-```bash
-git add .
-git commit -m "docs: create contributor onboarding guide"
-```
-
-Push your branch:
-
-```bash
-git push -u origin docs/contributor-onboarding
-```
+Open the pull request on GitHub, targeting `develop`. Use the PR template — filling it in completely is a requirement, not a suggestion.
 
 ## Testing All Layers
 
@@ -303,16 +386,16 @@ cargo test --workspace
 Run a single crate for faster iteration:
 
 ```bash
-cargo test -p escrow_contract
-cargo test -p governance
-cargo test -p escrow_extensions
-cargo test -p insurance_contract
+cargo test -p stellar-trust-escrow-contract
+cargo test -p stellar-trust-governance
+cargo test -p stellar-trust-escrow-extensions
+cargo test -p stellar-trust-insurance-contract
 ```
 
 Run a specific test by name:
 
 ```bash
-cargo test -p escrow_contract <test_name>
+cargo test -p stellar-trust-escrow-contract <test_name>
 ```
 
 For deeper contract verification on macOS, Linux, or WSL:
@@ -395,28 +478,67 @@ Notes:
 
 ## Pull Request Process
 
-1. Pick or claim an issue before starting substantial work.
-2. Keep the branch scoped to one fix, feature, or documentation change.
-3. Open a pull request against `main`.
-4. Fill in the PR template completely.
-5. Link the issue with `Closes #<issue-number>`.
-6. Run the relevant tests and list the exact commands in the PR.
-7. Wait for maintainer review and address feedback with follow-up commits.
+### Before you open a PR
 
-Review expectations:
+- Claim or create an issue first. Leave a comment so no one duplicates your work.
+- Keep the branch scoped to **one logical change**. If you find an unrelated bug while working, fix it in a separate branch.
+- Run all relevant checks for the layer(s) you touched (see [Testing All Layers](#testing-all-layers) and [Code Style and Linting](#code-style-and-linting)).
+- Update documentation when behaviour changes. If you add an endpoint, update `docs/api/`. If you change an env variable, update README and `.env.example`.
 
-- Documentation-only changes should still be checked for command accuracy and broken links.
-- Code changes should include tests or explain why test coverage was not added.
-- UI changes should include screenshots or a short recording.
-- Breaking changes must be called out explicitly in the PR body.
+### PR lifecycle
 
-Minimum checklist before requesting review:
+```
+Draft  →  Ready for Review  →  Approved  →  Merged
+```
 
-- [ ] Code compiles or the changed docs reference working commands
-- [ ] Tests added or updated when behavior changed
-- [ ] Linting and formatting pass
-- [ ] Relevant docs were updated
-- [ ] No breaking changes, or they are clearly documented
+**Draft** — open as a draft as soon as the branch exists if you want early visibility or async feedback before the work is done. Drafts do not trigger maintainer review.
+
+**Ready for Review** — convert to "Ready for review" only when:
+- All checklist items in the PR template are ticked
+- CI is green (or you have explained a known transient failure)
+- You have resolved or replied to every comment from the draft phase
+
+**Approved** — at least one maintainer must approve. For changes to contract logic, two approvals are required. Approval does not mean merge — it means the reviewer is satisfied. The author does the merge after approval.
+
+**Merged** — always merge into `develop`, never directly into `main`. Use the **"Squash and merge"** strategy for feature and fix branches so the commit history on `develop` stays clean and follows Conventional Commits. Use **"Merge commit"** for `release/` branches so the merge point is visible.
+
+### Target branch
+
+| Branch type | Target |
+| --- | --- |
+| `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/` | `develop` |
+| `release/vX.Y.Z` | `main` |
+| `hotfix/` | `main` **and** back-merged into `develop` |
+
+Never open a PR directly against `main` unless it is a release or hotfix.
+
+### What every PR must include
+
+| Requirement | Details |
+| --- | --- |
+| **Passing CI** | All checks must be green. Do not ask for review with a red pipeline. |
+| **Tests** | New features need tests. Bug fixes need a regression test. Refactors with no behaviour change are exempt — state this explicitly. |
+| **Documentation** | Update any affected doc, README section, or `.env.example`. Link the relevant file in the PR body. |
+| **CHANGELOG entry** | Add a line under `## [Unreleased]` for any user- or caller-visible change. See [Versioning Policy](#versioning-policy). |
+| **Linked issue** | `Closes #<number>` in the PR body. |
+| **Filled-in template** | Every section of the PR template must be completed — do not delete sections and leave them blank. |
+
+### Addressing review feedback
+
+- Push follow-up commits to the same branch — do not close and reopen the PR.
+- Resolve a comment thread only after the requested change is made; let the reviewer re-check.
+- If you disagree with feedback, reply with reasoning. Maintainers can be wrong.
+- Mark trivial acknowledgements ("good catch, fixed") with a thumbs-up rather than a new comment to keep the thread readable.
+
+### Review expectations by change type
+
+| Change type | Expectation |
+| --- | --- |
+| Documentation only | Commands must be tested locally; no broken links |
+| Backend / API | Tests covering the new or changed behaviour; migration status verified |
+| Contract logic | Two approvals; new Soroban test using `Env::default()` + `mock_all_auths()` |
+| Frontend / UI | Screenshots or short screen recording included |
+| Breaking change | Clearly labelled in the PR title (`!` suffix on type) and body; CHANGELOG updated |
 
 ## Finding a First Issue
 
@@ -483,3 +605,57 @@ npx playwright install --with-deps chromium firefox
 ```
 
 Questions are welcome in the issue tracker or pull request discussion. Small first contributions are absolutely fine.
+
+---
+
+## Versioning Policy
+
+This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`MAJOR.MINOR.PATCH`).
+
+### What triggers each version component
+
+| Component | When to increment | Examples |
+|---|---|---|
+| MAJOR | Breaking change — existing integrations must change to upgrade | Renamed API field, removed endpoint, contract storage migration, changed JWT format |
+| MINOR | New backward-compatible feature | New endpoint, new optional field, new contract function that doesn't break existing callers |
+| PATCH | Bug fix or internal improvement that doesn't change the API contract | Fixed off-by-one in pagination, improved error message, dependency security patch |
+
+A **breaking change** is any change that requires callers to update their code or data to continue working. When in doubt, treat it as breaking.
+
+### CHANGELOG maintenance
+
+- The CHANGELOG is updated **manually** as part of every PR that changes behaviour.
+- Every entry goes under `## [Unreleased]` until a release is cut.
+- Follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format: subsections are `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`.
+- Include the PR or issue number in parentheses: `- Added foo bar (#123)`.
+- Do **not** auto-generate the CHANGELOG from commit messages — the audience is integrators, not Git history readers.
+
+### Release process
+
+1. Create a `release/vX.Y.Z` branch from `develop`.
+2. Move all entries from `## [Unreleased]` to a new `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
+3. Update the comparison link at the bottom of `CHANGELOG.md`.
+4. Open a PR targeting `main`. Title: `release: vX.Y.Z`.
+5. After merge, create a Git tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and push it.
+6. Publish a GitHub Release using the CHANGELOG section as the body.
+7. The `.github/workflows/release.yml` workflow validates that the CHANGELOG contains an entry for the tag being released.
+
+### CHANGELOG entry format example
+
+```markdown
+## [3.0.0] - 2026-09-01
+
+> **Breaking change:** Renamed `client_address` to `clientAddress` in all API responses.
+
+### Added
+- `GET /api/escrows/:id/timeline` — ordered list of on-chain events for an escrow (#201)
+
+### Changed
+- Renamed `client_address` field to `clientAddress` in escrow API responses (#200)
+
+### Fixed
+- Cursor pagination no longer skips the last record on page boundaries (#199)
+
+### Security
+- Upgraded `@stellar/stellar-sdk` to address CVE-2026-XXXX (#198)
+```

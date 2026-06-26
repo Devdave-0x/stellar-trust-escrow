@@ -1,6 +1,6 @@
 /**
  * Refresh Token Flow Tests
- * 
+ *
  * Comprehensive tests for JWT refresh token rotation,
  * security features, and edge cases.
  */
@@ -19,7 +19,7 @@ describe('Refresh Token Flow', () => {
   beforeAll(async () => {
     // Set up test tenant and user
     tenantId = 'test_tenant';
-    
+
     tenant = await prisma.tenant.create({
       data: {
         id: tenantId,
@@ -43,13 +43,13 @@ describe('Refresh Token Flow', () => {
   afterAll(async () => {
     // Clean up test data
     await prisma.refreshToken.deleteMany({
-      where: { userId: testUser.id }
+      where: { userId: testUser.id },
     });
     await prisma.user.delete({
-      where: { id: testUser.id }
+      where: { id: testUser.id },
     });
     await prisma.tenant.delete({
-      where: { id: tenant.id }
+      where: { id: tenant.id },
     });
   });
 
@@ -65,7 +65,7 @@ describe('Refresh Token Flow', () => {
         .set('X-Tenant-ID', tenantId)
         .send({
           email: 'test@example.com',
-          password: 'password123'
+          password: 'password123',
         });
 
       expect(response.status).toBe(200);
@@ -90,7 +90,7 @@ describe('Refresh Token Flow', () => {
       // Check refresh token was stored in database
       const tokenHash = tokenBlacklistService.hashToken(refreshToken);
       const storedToken = await prisma.refreshToken.findFirst({
-        where: { tokenHash }
+        where: { tokenHash },
       });
       expect(storedToken).toBeTruthy();
       expect(storedToken.isActive).toBe(true);
@@ -98,14 +98,11 @@ describe('Refresh Token Flow', () => {
 
     test('should record metrics on token generation', async () => {
       const initialMetrics = await tokenMetricsService.getMetrics();
-      
-      await request(app)
-        .post('/api/auth/login')
-        .set('X-Tenant-ID', tenantId)
-        .send({
-          email: 'test@example.com',
-          password: 'password123'
-        });
+
+      await request(app).post('/api/auth/login').set('X-Tenant-ID', tenantId).send({
+        email: 'test@example.com',
+        password: 'password123',
+      });
 
       const finalMetrics = await tokenMetricsService.getMetrics();
       expect(finalMetrics.tokensGenerated).toBeGreaterThan(initialMetrics.tokensGenerated);
@@ -130,20 +127,23 @@ describe('Refresh Token Flow', () => {
       const newRefreshToken = response.body.refreshToken;
 
       // Old refresh token should be blacklisted
-      const isOldTokenBlacklisted = await tokenBlacklistService.isTokenBlacklisted(refreshToken, 'refresh');
+      const isOldTokenBlacklisted = await tokenBlacklistService.isTokenBlacklisted(
+        refreshToken,
+        'refresh',
+      );
       expect(isOldTokenBlacklisted).toBe(true);
 
       // Old token record should be inactive
       const oldTokenHash = tokenBlacklistService.hashToken(refreshToken);
       const oldTokenRecord = await prisma.refreshToken.findFirst({
-        where: { tokenHash: oldTokenHash }
+        where: { tokenHash: oldTokenHash },
       });
       expect(oldTokenRecord.isActive).toBe(false);
 
       // New token should be active
       const newTokenHash = tokenBlacklistService.hashToken(newRefreshToken);
       const newTokenRecord = await prisma.refreshToken.findFirst({
-        where: { tokenHash: newTokenHash }
+        where: { tokenHash: newTokenHash },
       });
       expect(newTokenRecord.isActive).toBe(true);
 
@@ -153,7 +153,7 @@ describe('Refresh Token Flow', () => {
 
     test('should record metrics on successful refresh', async () => {
       const initialMetrics = await tokenMetricsService.getMetrics();
-      
+
       await request(app)
         .post('/api/auth/refresh')
         .set('X-Tenant-ID', tenantId)
@@ -190,14 +190,14 @@ describe('Refresh Token Flow', () => {
     test('should reject expired refresh tokens', async () => {
       // Create an expired refresh token
       const expiredToken = jwt.sign(
-        { 
-          userId: testUser.id, 
+        {
+          userId: testUser.id,
           tenantId: testUser.tenantId,
           tokenId: 'expired_token',
-          type: 'refresh'
+          type: 'refresh',
         },
         process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret',
-        { expiresIn: '-1h' } // Expired 1 hour ago
+        { expiresIn: '-1h' }, // Expired 1 hour ago
       );
 
       const response = await request(app)
@@ -227,12 +227,16 @@ describe('Refresh Token Flow', () => {
         .set('X-Tenant-ID', tenantId)
         .send({
           email: 'test@example.com',
-          password: 'password123'
+          password: 'password123',
         });
       const blacklistedAccessToken = loginResponse.body.accessToken;
 
       // Blacklist a throwaway access token so the shared suite token remains usable.
-      await tokenBlacklistService.blacklistToken(blacklistedAccessToken, 'access', 'test_blacklist');
+      await tokenBlacklistService.blacklistToken(
+        blacklistedAccessToken,
+        'access',
+        'test_blacklist',
+      );
 
       const response = await request(app)
         .get('/api/auth/sessions')
@@ -246,13 +250,13 @@ describe('Refresh Token Flow', () => {
     test('should reject expired access tokens', async () => {
       // Create an expired access token
       const expiredToken = jwt.sign(
-        { 
-          userId: testUser.id, 
+        {
+          userId: testUser.id,
           tenantId: testUser.tenantId,
-          type: 'access'
+          type: 'access',
         },
         process.env.JWT_ACCESS_SECRET || 'fallback_access_secret',
-        { expiresIn: '-1h' } // Expired 1 hour ago
+        { expiresIn: '-1h' }, // Expired 1 hour ago
       );
 
       const response = await request(app)
@@ -273,22 +277,22 @@ describe('Refresh Token Flow', () => {
         .set('X-Tenant-ID', tenantId)
         .send({
           email: 'test@example.com',
-          password: 'password123'
+          password: 'password123',
         });
 
       const logoutResponse = await request(app)
         .post('/api/auth/logout')
         .set('X-Tenant-ID', tenantId)
-        .send({ 
-          refreshToken: loginResponse.body.refreshToken 
+        .send({
+          refreshToken: loginResponse.body.refreshToken,
         });
 
       expect(logoutResponse.status).toBe(200);
 
       // Token should be blacklisted
       const isBlacklisted = await tokenBlacklistService.isTokenBlacklisted(
-        loginResponse.body.refreshToken, 
-        'refresh'
+        loginResponse.body.refreshToken,
+        'refresh',
       );
       expect(isBlacklisted).toBe(true);
 
@@ -296,8 +300,8 @@ describe('Refresh Token Flow', () => {
       const refreshResponse = await request(app)
         .post('/api/auth/refresh')
         .set('X-Tenant-ID', tenantId)
-        .send({ 
-          refreshToken: loginResponse.body.refreshToken 
+        .send({
+          refreshToken: loginResponse.body.refreshToken,
         });
 
       expect(refreshResponse.status).toBe(403);
@@ -312,7 +316,7 @@ describe('Refresh Token Flow', () => {
           .set('X-Tenant-ID', tenantId)
           .send({
             email: 'test@example.com',
-            password: 'password123'
+            password: 'password123',
           });
         tokens.push(response.body.refreshToken);
       }
@@ -346,13 +350,10 @@ describe('Refresh Token Flow', () => {
   describe('Session Management', () => {
     test('should list active sessions', async () => {
       // Create multiple sessions
-      await request(app)
-        .post('/api/auth/login')
-        .set('X-Tenant-ID', tenantId)
-        .send({
-          email: 'test@example.com',
-          password: 'password123'
-        });
+      await request(app).post('/api/auth/login').set('X-Tenant-ID', tenantId).send({
+        email: 'test@example.com',
+        password: 'password123',
+      });
 
       const response = await request(app)
         .get('/api/auth/sessions')
@@ -362,7 +363,7 @@ describe('Refresh Token Flow', () => {
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.sessions)).toBe(true);
       expect(response.body.sessions.length).toBeGreaterThan(0);
-      
+
       // Check session structure
       const session = response.body.sessions[0];
       expect(session.id).toBeDefined();
@@ -384,7 +385,7 @@ describe('Refresh Token Flow', () => {
           .set('X-Tenant-ID', tenantId)
           .send({
             email: 'test@example.com',
-            password: 'password123'
+            password: 'password123',
           });
         tokens.push(response.body.refreshToken);
       }
@@ -395,8 +396,8 @@ describe('Refresh Token Flow', () => {
           userId: testUser.id,
           tenantId,
           isActive: true,
-          expiresAt: { gt: new Date() }
-        }
+          expiresAt: { gt: new Date() },
+        },
       });
 
       expect(activeTokens.length).toBeLessThanOrEqual(5);
@@ -407,7 +408,7 @@ describe('Refresh Token Flow', () => {
     test('should detect suspicious refresh patterns', async () => {
       // Simulate rapid refresh attempts (potential token theft)
       const suspiciousToken = refreshToken;
-      
+
       for (let i = 0; i < 5; i++) {
         await request(app)
           .post('/api/auth/refresh')
@@ -423,13 +424,13 @@ describe('Refresh Token Flow', () => {
     test('should validate token type in JWT', async () => {
       // Create a token with wrong type
       const wrongTypeToken = jwt.sign(
-        { 
-          userId: testUser.id, 
+        {
+          userId: testUser.id,
           tenantId: testUser.tenantId,
-          type: 'wrong_type'
+          type: 'wrong_type',
         },
         process.env.JWT_ACCESS_SECRET || 'fallback_access_secret',
-        { expiresIn: '15m' }
+        { expiresIn: '15m' },
       );
 
       const response = await request(app)

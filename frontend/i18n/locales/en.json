@@ -12,8 +12,10 @@
     "title": "Escrow",
     "status": {
       "active": "Active",
-      "completed": "Completed",
+      "releaseRequested": "Release Requested",
       "disputed": "Disputed",
+      "expired": "Expired",
+      "completed": "Completed",
       "cancelled": "Cancelled"
     },
     "fields": {

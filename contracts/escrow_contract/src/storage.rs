@@ -37,6 +37,9 @@ use crate::{DataKey, Milestone, OptionalTimelock, MS_APPROVED, MS_RELEASED, MS_S
 // Current storage version - increment when storage layout changes
 pub const STORAGE_VERSION: u32 = 2;
 
+/// Maximum number of escrows to migrate in a single v1-to-v2 batch.
+pub const MAX_MIGRATION_BATCH: u32 = 20;
+
 /// Storage keys for version management (stored in instance storage)
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -116,16 +119,39 @@ impl StorageManager {
 
         if current_version > STORAGE_VERSION {
             // Downgrade not supported - this could corrupt data
-            return Err(crate::EscrowError::StorageMigrationFailed);
+            return Err(crate::EscrowError::E42);
         }
 
         // Run migrations in order from current to target version
 
         // v1 -> v2: Migration from monolithic EscrowState to granular storage
-        // This was done in issue #65 for gas optimization
+        // This is now run in configurable batches to avoid per-transaction ledger entry limits.
         if current_version < 2 {
-            Self::migrate_v1_to_v2(env)?;
-            Self::set_version(env, 2);
+            let cursor: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::MigrationCursor)
+                .unwrap_or(1_u64);
+            let escrow_counter: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::EscrowCounter)
+                .unwrap_or(0_u64);
+
+            if cursor > escrow_counter {
+                Self::set_version(env, 2);
+                return Ok(());
+            }
+
+            let last_id = Self::migrate_v1_to_v2(env, cursor, MAX_MIGRATION_BATCH)?;
+            let next_cursor = last_id.saturating_add(1);
+            env.storage()
+                .instance()
+                .set(&DataKey::MigrationCursor, &next_cursor);
+
+            if next_cursor > escrow_counter {
+                Self::set_version(env, 2);
+            }
         }
 
         Ok(())
@@ -141,16 +167,29 @@ impl StorageManager {
     /// 2. Extracts EscrowMeta fields and stores separately
     /// 3. Stores each milestone with its own key
     /// 4. Removes the v1 storage entry
-    fn migrate_v1_to_v2(env: &Env) -> Result<(), crate::EscrowError> {
-        // Get the escrow counter to know how many escrows to migrate
+    #[deny(clippy::arithmetic_side_effects)]
+    fn migrate_v1_to_v2(
+        env: &Env,
+        start_id: u64,
+        max_count: u32,
+    ) -> Result<u64, crate::EscrowError> {
         let escrow_counter: u64 = env
             .storage()
             .instance()
             .get(&DataKey::EscrowCounter)
             .unwrap_or(0_u64);
 
-        // Migrate each escrow from v1 to v2 format
-        for escrow_id in 1..=escrow_counter {
+        let start_id = if start_id == 0 { 1 } else { start_id };
+        if start_id > escrow_counter {
+            return Ok(escrow_counter);
+        }
+
+        let end_id = core::cmp::min(
+            start_id.saturating_add(u64::from(max_count).saturating_sub(1)),
+            escrow_counter,
+        );
+
+        for escrow_id in start_id..=end_id {
             // In v1, escrows were stored with DataKey::Escrow(id)
             // In v2, we use PackedDataKey::EscrowMeta(id) and PackedDataKey::Milestone(id, milestone_id)
             let v1_key = DataKey::Escrow(escrow_id);
@@ -186,7 +225,11 @@ impl StorageManager {
                     token: v1_escrow.token,
                     total_amount: v1_escrow.total_amount,
                     // Note: allocated_amount was added in v2, calculate from milestones
-                    allocated_amount: v1_escrow.milestones.iter().map(|m| m.amount).sum(),
+                    allocated_amount: v1_escrow
+                        .milestones
+                        .iter()
+                        .try_fold(0i128, |acc, m| acc.checked_add(m.amount))
+                        .ok_or(crate::EscrowError::E28)?,
                     remaining_balance: v1_escrow.remaining_balance,
                     status: v1_escrow.status,
                     milestone_count: v1_escrow.milestones.len(),
@@ -201,9 +244,12 @@ impl StorageManager {
                     lock_time: v1_escrow.lock_time,
                     lock_time_extension: v1_escrow.lock_time_extension,
                     timelock: OptionalTimelock::None,
+                    dispute_timeout_ledger: None,
+                    dispute_started_ledger: None,
                     brief_hash: v1_escrow.brief_hash,
                     rent_balance: 0,
                     last_rent_collection_at: v1_escrow.created_at,
+                    dispute_start_ledger: None,
                 };
 
                 // Store meta in v2 format using PackedDataKey
@@ -221,7 +267,7 @@ impl StorageManager {
             }
         }
 
-        Ok(())
+        Ok(end_id)
     }
 
     /// Initialize storage version on first deploy.
@@ -245,6 +291,9 @@ impl StorageManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ApprovalRecord, EscrowStatus, OptionalBytesN32};
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::String;
 
     #[test]
     fn test_storage_version_constant() {
@@ -265,5 +314,69 @@ mod tests {
         #[allow(dead_code)]
         fn check_v1_fields(_: &EscrowStateV1) {}
         // The function signature verifies the type exists
+    }
+
+    fn v1_milestone(env: &Env, id: u32, amount: i128) -> Milestone {
+        Milestone {
+            id,
+            title: String::from_str(env, "m"),
+            description_hash: BytesN::from_array(env, &[0u8; 32]),
+            amount,
+            status: MS_APPROVED,
+            submitted_at: None,
+            resolved_at: None,
+            approvals: Vec::<ApprovalRecord>::new(env),
+            rejection_reason: OptionalBytesN32::None,
+            price_condition: crate::OptionalPriceCondition::None,
+            depends_on: None,
+        }
+    }
+
+    /// A v1 escrow whose milestone amounts sum past `i128::MAX` must fail
+    /// migration with `ArithmeticOverflow` instead of silently wrapping
+    /// `allocated_amount` to a wrong (negative) value.
+    #[test]
+    fn test_migrate_v1_to_v2_rejects_overflowing_milestone_sum() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, crate::EscrowContract);
+
+        env.as_contract(&contract_id, || {
+            let client = Address::generate(&env);
+            let freelancer = Address::generate(&env);
+            let token = Address::generate(&env);
+
+            let mut milestones = Vec::new(&env);
+            milestones.push_back(v1_milestone(&env, 0, i128::MAX));
+            milestones.push_back(v1_milestone(&env, 1, 1));
+
+            let v1_escrow = EscrowStateV1 {
+                escrow_id: 1,
+                client,
+                freelancer,
+                token,
+                total_amount: i128::MAX,
+                remaining_balance: 0,
+                status: EscrowStatus::Active,
+                milestones,
+                arbiter: None,
+                created_at: 0,
+                deadline: None,
+                lock_time: None,
+                lock_time_extension: None,
+                brief_hash: BytesN::from_array(&env, &[0u8; 32]),
+            };
+
+            env.storage()
+                .persistent()
+                .set(&DataKey::Escrow(1), &v1_escrow);
+            env.storage().instance().set(&DataKey::EscrowCounter, &1u64);
+
+            let result = StorageManager::migrate_v1_to_v2(&env, 1, MAX_MIGRATION_BATCH);
+            assert_eq!(result, Err(crate::EscrowError::E28));
+
+            // The v1 entry must be left untouched so a retry is possible.
+            assert!(env.storage().persistent().has(&DataKey::Escrow(1)));
+        });
     }
 }

@@ -9,13 +9,13 @@
 
 ## Summary
 
-| Severity | Count | Resolved | Acknowledged |
-|---|---|---|---|
-| Critical | 0 | 0 | 0 |
-| High | 0 | 0 | 0 |
-| Medium | 0 | 0 | 0 |
-| Low | 0 | 0 | 0 |
-| Informational | 0 | 0 | 0 |
+| Severity      | Count | Resolved | Acknowledged |
+| ------------- | ----- | -------- | ------------ |
+| Critical      | 0     | 0        | 0            |
+| High          | 0     | 0        | 0            |
+| Medium        | 0     | 0        | 0            |
+| Low           | 0     | 0        | 0            |
+| Informational | 0     | 0        | 0            |
 
 ---
 
@@ -52,10 +52,10 @@ How it was fixed (fill in after resolution).
 
 ## Test Coverage
 
-| Contract | Line coverage | Branch coverage |
-|---|---|---|
-| escrow_contract | % | % |
-| insurance_contract | % | % |
+| Contract           | Line coverage | Branch coverage |
+| ------------------ | ------------- | --------------- |
+| escrow_contract    | %             | %               |
+| insurance_contract | %             | %               |
 
 ---
 

@@ -6,7 +6,7 @@
 **Duration:** Xh Ym (HH:MM UTC — HH:MM UTC)  
 **Author(s):**  
 **Reviewers:**  
-**Status:** Draft | In Review | Final  
+**Status:** Draft | In Review | Final
 
 ---
 
@@ -18,13 +18,13 @@ _One paragraph describing what happened, the impact, and how it was resolved._
 
 ## Impact
 
-| Metric | Value |
-|--------|-------|
-| User-facing downtime | X minutes |
-| Affected users (estimated) | X |
-| Affected escrows | X |
-| Revenue impact | $X |
-| Data loss | None / Partial / Full |
+| Metric                     | Value                 |
+| -------------------------- | --------------------- |
+| User-facing downtime       | X minutes             |
+| Affected users (estimated) | X                     |
+| Affected escrows           | X                     |
+| Revenue impact             | $X                    |
+| Data loss                  | None / Partial / Full |
 
 ---
 
@@ -32,14 +32,14 @@ _One paragraph describing what happened, the impact, and how it was resolved._
 
 All times in UTC.
 
-| Time | Event |
-|------|-------|
-| HH:MM | First alert fired |
-| HH:MM | On-call acknowledged |
+| Time  | Event                 |
+| ----- | --------------------- |
+| HH:MM | First alert fired     |
+| HH:MM | On-call acknowledged  |
 | HH:MM | Root cause identified |
-| HH:MM | Mitigation applied |
-| HH:MM | Service restored |
-| HH:MM | Incident resolved |
+| HH:MM | Mitigation applied    |
+| HH:MM | Service restored      |
+| HH:MM | Incident resolved     |
 
 ---
 
@@ -74,12 +74,12 @@ _Describe the technical root cause in detail. Be specific — "database was slow
 
 ## Action Items
 
-| Action | Owner | Due Date | Priority |
-|--------|-------|----------|----------|
-| Add index on `escrows.status` | @alice | 2026-02-01 | High |
-| Update SEV2 runbook with new RPC endpoint | @bob | 2026-02-03 | Medium |
-| Add alert for DB connection pool > 80% | @alice | 2026-02-05 | High |
-| Write integration test for this failure mode | @carol | 2026-02-10 | Medium |
+| Action                                       | Owner  | Due Date   | Priority |
+| -------------------------------------------- | ------ | ---------- | -------- |
+| Add index on `escrows.status`                | @alice | 2026-02-01 | High     |
+| Update SEV2 runbook with new RPC endpoint    | @bob   | 2026-02-03 | Medium   |
+| Add alert for DB connection pool > 80%       | @alice | 2026-02-05 | High     |
+| Write integration test for this failure mode | @carol | 2026-02-10 | Medium   |
 
 ---
 

@@ -98,7 +98,9 @@ export default function MilestoneItem({
                 <h4 className="text-white font-medium">{milestone.title}</h4>
               </div>
               {milestone.submittedAt && (
-                <p className="text-xs text-gray-500 mt-0.5">{t('milestone.status.submitted')}: {formatDate(milestone.submittedAt)}</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {t('milestone.status.submitted')}: {formatDate(milestone.submittedAt)}
+                </p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">

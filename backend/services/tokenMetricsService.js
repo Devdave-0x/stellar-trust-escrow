@@ -1,6 +1,6 @@
 /**
  * Token Metrics Service
- * 
+ *
  * Provides comprehensive logging and metrics for token usage,
  * rotation rates, and security monitoring.
  */
@@ -21,7 +21,7 @@ const metrics = {
   refreshFailures: 0,
   autoRefreshes: 0,
   concurrentSessions: 0,
-  suspiciousActivity: 0
+  suspiciousActivity: 0,
 };
 
 /**
@@ -34,7 +34,7 @@ async function initializeMetrics() {
     if (cachedMetrics) {
       Object.assign(metrics, cachedMetrics);
     }
-    
+
     console.log('[TokenMetrics] Service initialized');
   } catch (error) {
     console.error('[TokenMetrics] Initialization failed:', error.message);
@@ -47,26 +47,22 @@ async function initializeMetrics() {
 async function recordTokenGeneration(userId, tenantId, tokenType = 'access', deviceInfo = {}) {
   try {
     metrics.tokensGenerated++;
-    
+
     const metricData = {
       event: 'token_generated',
       userId,
       tenantId,
       tokenType,
       deviceInfo,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     // Store in cache for analytics
-    await cacheService.set(
-      `${METRICS_PREFIX}generated:${Date.now()}`,
-      metricData,
-      METRICS_TTL
-    );
+    await cacheService.set(`${METRICS_PREFIX}generated:${Date.now()}`, metricData, METRICS_TTL);
 
     // Update global metrics
     await updateGlobalMetrics();
-    
+
     console.log(`[TokenMetrics] Generated ${tokenType} token for user ${userId}`);
   } catch (error) {
     console.error('[TokenMetrics] Failed to record token generation:', error.message);
@@ -79,7 +75,7 @@ async function recordTokenGeneration(userId, tenantId, tokenType = 'access', dev
 async function recordTokenRefresh(userId, tenantId, success = true, reason = '') {
   try {
     metrics.refreshAttempts++;
-    
+
     if (success) {
       metrics.tokensRefreshed++;
     } else {
@@ -92,18 +88,16 @@ async function recordTokenRefresh(userId, tenantId, success = true, reason = '')
       tenantId,
       success,
       reason,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    await cacheService.set(
-      `${METRICS_PREFIX}refresh:${Date.now()}`,
-      metricData,
-      METRICS_TTL
-    );
+    await cacheService.set(`${METRICS_PREFIX}refresh:${Date.now()}`, metricData, METRICS_TTL);
 
     await updateGlobalMetrics();
-    
-    console.log(`[TokenMetrics] Token refresh ${success ? 'success' : 'failed'} for user ${userId}`);
+
+    console.log(
+      `[TokenMetrics] Token refresh ${success ? 'success' : 'failed'} for user ${userId}`,
+    );
   } catch (error) {
     console.error('[TokenMetrics] Failed to record token refresh:', error.message);
   }
@@ -121,17 +115,13 @@ async function recordTokenRevocation(userId, tenantId, reason = 'logout') {
       userId,
       tenantId,
       reason,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    await cacheService.set(
-      `${METRICS_PREFIX}revoked:${Date.now()}`,
-      metricData,
-      METRICS_TTL
-    );
+    await cacheService.set(`${METRICS_PREFIX}revoked:${Date.now()}`, metricData, METRICS_TTL);
 
     await updateGlobalMetrics();
-    
+
     console.log(`[TokenMetrics] Token revoked for user ${userId}: ${reason}`);
   } catch (error) {
     console.error('[TokenMetrics] Failed to record token revocation:', error.message);
@@ -149,17 +139,13 @@ async function recordTokenBlacklist(tokenType, reason = 'compromised') {
       event: 'token_blacklisted',
       tokenType,
       reason,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    await cacheService.set(
-      `${METRICS_PREFIX}blacklisted:${Date.now()}`,
-      metricData,
-      METRICS_TTL
-    );
+    await cacheService.set(`${METRICS_PREFIX}blacklisted:${Date.now()}`, metricData, METRICS_TTL);
 
     await updateGlobalMetrics();
-    
+
     console.log(`[TokenMetrics] ${tokenType} token blacklisted: ${reason}`);
   } catch (error) {
     console.error('[TokenMetrics] Failed to record token blacklist:', error.message);
@@ -177,14 +163,10 @@ async function recordAutoRefresh(userId, tenantId) {
       event: 'auto_refresh',
       userId,
       tenantId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    await cacheService.set(
-      `${METRICS_PREFIX}auto_refresh:${Date.now()}`,
-      metricData,
-      METRICS_TTL
-    );
+    await cacheService.set(`${METRICS_PREFIX}auto_refresh:${Date.now()}`, metricData, METRICS_TTL);
 
     await updateGlobalMetrics();
   } catch (error) {
@@ -205,18 +187,18 @@ async function recordSuspiciousActivity(userId, tenantId, activity, details = {}
       tenantId,
       activity,
       details,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     // Store suspicious activity with longer TTL
     await cacheService.set(
       `${METRICS_PREFIX}suspicious:${Date.now()}`,
       metricData,
-      7 * 24 * 60 * 60 // 7 days
+      7 * 24 * 60 * 60, // 7 days
     );
 
     await updateGlobalMetrics();
-    
+
     console.warn(`[TokenMetrics] Suspicious activity for user ${userId}: ${activity}`);
   } catch (error) {
     console.error('[TokenMetrics] Failed to record suspicious activity:', error.message);
@@ -231,10 +213,10 @@ async function updateConcurrentSessions() {
     const count = await prisma.refreshToken.count({
       where: {
         isActive: true,
-        expiresAt: { gt: new Date() }
-      }
+        expiresAt: { gt: new Date() },
+      },
     });
-    
+
     metrics.concurrentSessions = count;
     await updateGlobalMetrics();
   } catch (error) {
@@ -275,7 +257,7 @@ async function getMetricsByTimeRange(_startTime, _endTime) {
     // For now, return basic metrics
     return {
       message: 'Time-range metrics require Redis time-series or database queries',
-      currentMetrics: await getMetrics()
+      currentMetrics: await getMetrics(),
     };
   } catch (error) {
     console.error('[TokenMetrics] Failed to get time-range metrics:', error.message);
@@ -293,15 +275,15 @@ async function getUserMetrics(userId, tenantId) {
         userId,
         tenantId,
         isActive: true,
-        expiresAt: { gt: new Date() }
-      }
+        expiresAt: { gt: new Date() },
+      },
     });
 
     return {
       userId,
       tenantId,
       activeTokens,
-      lastActivity: new Date().toISOString()
+      lastActivity: new Date().toISOString(),
     };
   } catch (error) {
     console.error('[TokenMetrics] Failed to get user metrics:', error.message);
@@ -315,7 +297,7 @@ async function getUserMetrics(userId, tenantId) {
 async function generateReport() {
   try {
     const currentMetrics = await getMetrics();
-    
+
     const report = {
       timestamp: new Date().toISOString(),
       summary: {
@@ -323,16 +305,20 @@ async function generateReport() {
         totalTokensRefreshed: currentMetrics.tokensRefreshed,
         totalTokensRevoked: currentMetrics.tokensRevoked,
         totalTokensBlacklisted: currentMetrics.tokensBlacklisted,
-        refreshSuccessRate: currentMetrics.refreshAttempts > 0 
-          ? ((currentMetrics.tokensRefreshed / currentMetrics.refreshAttempts) * 100).toFixed(2) + '%'
-          : 'N/A',
+        refreshSuccessRate:
+          currentMetrics.refreshAttempts > 0
+            ? ((currentMetrics.tokensRefreshed / currentMetrics.refreshAttempts) * 100).toFixed(2) +
+              '%'
+            : 'N/A',
         concurrentSessions: currentMetrics.concurrentSessions,
         suspiciousActivities: currentMetrics.suspiciousActivity,
-        autoRefreshRate: currentMetrics.tokensGenerated > 0
-          ? ((currentMetrics.autoRefreshes / currentMetrics.tokensGenerated) * 100).toFixed(2) + '%'
-          : 'N/A'
+        autoRefreshRate:
+          currentMetrics.tokensGenerated > 0
+            ? ((currentMetrics.autoRefreshes / currentMetrics.tokensGenerated) * 100).toFixed(2) +
+              '%'
+            : 'N/A',
       },
-      details: currentMetrics
+      details: currentMetrics,
     };
 
     return report;
@@ -347,12 +333,12 @@ async function generateReport() {
  */
 async function resetMetrics() {
   try {
-    Object.keys(metrics).forEach(key => {
+    Object.keys(metrics).forEach((key) => {
       if (typeof metrics[key] === 'number') {
         metrics[key] = 0;
       }
     });
-    
+
     await updateGlobalMetrics();
     console.log('[TokenMetrics] Metrics reset');
   } catch (error) {
@@ -375,5 +361,5 @@ export default {
   getMetricsByTimeRange,
   getUserMetrics,
   generateReport,
-  resetMetrics
+  resetMetrics,
 };

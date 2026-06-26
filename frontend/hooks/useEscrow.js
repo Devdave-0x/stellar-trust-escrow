@@ -17,9 +17,9 @@ export function useEscrow(id) {
     id ? `${API_URL}/api/escrows/${id}` : null,
     fetcher,
     {
-      refreshInterval: 30_000,  // poll every 30 seconds
+      refreshInterval: 30_000, // poll every 30 seconds
       refreshWhenHidden: false, // pause polling when page is not visible
-    }
+    },
   );
   return { escrow: data, isLoading, error, mutate };
 }

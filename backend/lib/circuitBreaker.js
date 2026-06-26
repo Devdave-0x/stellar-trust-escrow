@@ -32,10 +32,10 @@ export const STATES = Object.freeze({
 const STATE_VALUES = { CLOSED: 0, OPEN: 1, HALF_OPEN: 2 };
 
 const DEFAULT_OPTIONS = {
-  failureThreshold: 5,    // failures before opening
-  successThreshold: 2,    // consecutive successes in HALF_OPEN to close
-  timeout: 30_000,        // ms to wait in OPEN before probing
-  windowSize: 10_000,     // ms sliding window for failure counting
+  failureThreshold: 5, // failures before opening
+  successThreshold: 2, // consecutive successes in HALF_OPEN to close
+  timeout: 30_000, // ms to wait in OPEN before probing
+  windowSize: 10_000, // ms sliding window for failure counting
 };
 
 export class CircuitBreaker {
@@ -46,9 +46,9 @@ export class CircuitBreaker {
   constructor(name, options = {}) {
     this.name = name;
     this._state = STATES.CLOSED;
-    this._failureTimestamps = [];  // sliding window of failure times
-    this._successCount = 0;        // consecutive successes in HALF_OPEN
-    this._nextAttemptAt = 0;       // epoch ms when OPEN → HALF_OPEN allowed
+    this._failureTimestamps = []; // sliding window of failure times
+    this._successCount = 0; // consecutive successes in HALF_OPEN
+    this._nextAttemptAt = 0; // epoch ms when OPEN → HALF_OPEN allowed
 
     this._opts = { ...DEFAULT_OPTIONS, ...options };
 
@@ -156,7 +156,7 @@ export class CircuitBreaker {
       this._successCount = 0;
       console.warn(
         `[CircuitBreaker] "${this.name}": ${oldState} → OPEN` +
-        ` (probe at ${new Date(this._nextAttemptAt).toISOString()})`,
+          ` (probe at ${new Date(this._nextAttemptAt).toISOString()})`,
       );
     } else if (newState === STATES.HALF_OPEN) {
       this._successCount = 0;
@@ -188,7 +188,9 @@ export class CircuitBreaker {
  */
 export class CircuitOpenError extends Error {
   constructor(name, nextAttemptAt) {
-    super(`Circuit breaker OPEN for "${name}". Next probe at ${new Date(nextAttemptAt).toISOString()}.`);
+    super(
+      `Circuit breaker OPEN for "${name}". Next probe at ${new Date(nextAttemptAt).toISOString()}.`,
+    );
     this.name = 'CircuitOpenError';
     this.circuit = name;
     this.nextAttemptAt = nextAttemptAt;

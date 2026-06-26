@@ -24,8 +24,8 @@ import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 
 const SIZE_CLASSES = {
   sm: { value: 'text-sm font-semibold', sub: 'text-xs' },
-  md: { value: 'text-base font-bold',   sub: 'text-xs' },
-  lg: { value: 'text-2xl font-bold',    sub: 'text-sm' },
+  md: { value: 'text-base font-bold', sub: 'text-xs' },
+  lg: { value: 'text-2xl font-bold', sub: 'text-sm' },
 };
 
 export default function CurrencyAmount({
@@ -53,9 +53,7 @@ export default function CurrencyAmount({
       >
         {fiatStr}
       </span>
-      {showUsdc && (
-        <span className={`${classes.sub} text-gray-500`}>{usdcStr}</span>
-      )}
+      {showUsdc && <span className={`${classes.sub} text-gray-500`}>{usdcStr}</span>}
     </span>
   );
 }

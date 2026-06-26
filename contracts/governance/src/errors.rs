@@ -17,7 +17,7 @@ pub enum GovError {
     ProposalNotActive = 6,
     ProposalNotPassed = 7,
     ProposalAlreadyExecuted = 8,
-    ProposalAlreadyCancelled = 21,
+    ProposalAlreadyCancelled = 34,
     ProposalExpired = 9,
     TimelockNotElapsed = 10,
     InvalidProposalType = 11,
@@ -36,4 +36,24 @@ pub enum GovError {
     // Parameters
     InvalidParameter = 19,
     InvalidDuration = 20,
+
+    // Arbitrator DAO
+    AlreadyArbitrator = 21,
+    NotArbitrator = 22,
+    InsufficientStake = 23,
+    StakeCooldownActive = 24,
+    NoStakeToWithdraw = 25,
+    SlashExceedsStake = 26,
+
+    // ve-token (voting escrow)
+    LockDurationTooShort = 27,
+    LockDurationTooLong = 28,
+    LockAlreadyExists = 29,
+    NoLockFound = 30,
+    LockNotExpired = 31,
+    NewUnlockTimeTooEarly = 32,
+    ZeroLockAmount = 33,
+
+    // Arithmetic
+    ArithmeticOverflow = 35,
 }

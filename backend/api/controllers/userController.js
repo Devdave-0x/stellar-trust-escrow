@@ -194,7 +194,11 @@ const updateUserProfile = async (req, res) => {
   try {
     const { address } = req.params;
     if (!validateAddress(address, res)) return;
-    
+
+    if (req.user?.address !== address) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     const { displayName, bio, preferences } = req.body;
 
     const updatedProfile = await prisma.userProfile.upsert({
@@ -223,7 +227,7 @@ const uploadAvatar = async (req, res) => {
   try {
     const { address } = req.params;
     if (!validateAddress(address, res)) return;
-    
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }

@@ -16,8 +16,12 @@ const WINDOW_MS = parseInt(process.env.PUBLIC_RATE_LIMIT_WINDOW_MS || '60000', 1
 const WINDOW_SECS = Math.ceil(WINDOW_MS / 1000);
 
 // Read limits lazily so tests can override via process.env per-case
-function getIpMax() { return parseInt(process.env.PUBLIC_RATE_LIMIT_IP_MAX || '100', 10); }
-function getWalletMax() { return parseInt(process.env.PUBLIC_RATE_LIMIT_WALLET_MAX || '50', 10); }
+function getIpMax() {
+  return parseInt(process.env.PUBLIC_RATE_LIMIT_IP_MAX || '100', 10);
+}
+function getWalletMax() {
+  return parseInt(process.env.PUBLIC_RATE_LIMIT_WALLET_MAX || '50', 10);
+}
 
 // Whitelisted IPs — bypass all rate limiting
 // Read lazily so tests can set RATE_LIMIT_WHITELIST_IPS before each case
@@ -25,7 +29,10 @@ const STATIC_WHITELIST = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 function isWhitelisted(ip) {
   if (STATIC_WHITELIST.has(ip)) return true;
-  const extra = process.env.RATE_LIMIT_WHITELIST_IPS?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  const extra =
+    process.env.RATE_LIMIT_WHITELIST_IPS?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
   return extra.includes(ip);
 }
 
@@ -51,7 +58,9 @@ function getRedis() {
 const memStore = new Map(); // key → { count, resetAt }
 
 /** Reset all in-memory counters — for use in tests only. */
-export function _resetMemStore() { memStore.clear(); }
+export function _resetMemStore() {
+  memStore.clear();
+}
 
 function memIncr(key) {
   const now = Date.now();

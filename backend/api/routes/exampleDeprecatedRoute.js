@@ -1,18 +1,14 @@
 /**
  * Example: Deprecated Route Implementation
- * 
+ *
  * This file demonstrates how to properly deprecate API endpoints
  * using the deprecation middleware.
- * 
+ *
  * DO NOT USE IN PRODUCTION - This is for reference only
  */
 
 import express from 'express';
-import {
-  deprecate,
-  enforceSunset,
-  addDeprecationToResponse,
-} from '../middleware/deprecation.js';
+import { deprecate, enforceSunset, addDeprecationToResponse } from '../middleware/deprecation.js';
 
 const router = express.Router();
 
@@ -98,26 +94,30 @@ router.get(
  * @route  GET /api/conditional/feature
  * @desc   Feature that's only deprecated for certain conditions
  */
-router.get('/conditional/feature', (req, res, next) => {
-  // Example: Deprecate only for specific API versions or clients
-  const clientVersion = req.get('X-Client-Version');
-  
-  if (clientVersion && clientVersion.startsWith('1.')) {
-    // Apply deprecation middleware for old clients
-    return deprecate({
-      version: 'client-v1',
-      sunsetDate: new Date('2026-09-30'),
-      replacement: '/api/v2/feature',
-      message: 'Please upgrade your client to v2.x',
-    })(req, res, next);
-  }
-  
-  next();
-}, (req, res) => {
-  res.json({
-    feature: 'data',
-  });
-});
+router.get(
+  '/conditional/feature',
+  (req, res, next) => {
+    // Example: Deprecate only for specific API versions or clients
+    const clientVersion = req.get('X-Client-Version');
+
+    if (clientVersion && clientVersion.startsWith('1.')) {
+      // Apply deprecation middleware for old clients
+      return deprecate({
+        version: 'client-v1',
+        sunsetDate: new Date('2026-09-30'),
+        replacement: '/api/v2/feature',
+        message: 'Please upgrade your client to v2.x',
+      })(req, res, next);
+    }
+
+    next();
+  },
+  (req, res) => {
+    res.json({
+      feature: 'data',
+    });
+  },
+);
 
 // ── Example 6: Multiple deprecation stages ────────────────────────────────────
 /**
@@ -127,33 +127,37 @@ router.get('/conditional/feature', (req, res, next) => {
 const phase1Date = new Date('2026-06-30'); // Warning phase
 const phase2Date = new Date('2026-12-31'); // Sunset phase
 
-router.get('/phased/endpoint', (req, res, next) => {
-  const now = new Date();
-  
-  if (now > phase2Date) {
-    // Phase 2: Enforce sunset
-    return enforceSunset(phase2Date)(req, res, next);
-  } else if (now > phase1Date) {
-    // Phase 1: Strong warning
-    return deprecate({
+router.get(
+  '/phased/endpoint',
+  (req, res, next) => {
+    const now = new Date();
+
+    if (now > phase2Date) {
+      // Phase 2: Enforce sunset
+      return enforceSunset(phase2Date)(req, res, next);
+    } else if (now > phase1Date) {
+      // Phase 1: Strong warning
+      return deprecate({
+        version: 'v1',
+        sunsetDate: phase2Date,
+        replacement: '/api/v2/endpoint',
+        message: 'URGENT: This endpoint will be removed soon. Please migrate immediately.',
+      })(req, res, next);
+    }
+
+    // Before phase 1: Soft warning
+    deprecate({
       version: 'v1',
       sunsetDate: phase2Date,
       replacement: '/api/v2/endpoint',
-      message: 'URGENT: This endpoint will be removed soon. Please migrate immediately.',
+      message: 'This endpoint will be deprecated. Start planning your migration.',
     })(req, res, next);
-  }
-  
-  // Before phase 1: Soft warning
-  deprecate({
-    version: 'v1',
-    sunsetDate: phase2Date,
-    replacement: '/api/v2/endpoint',
-    message: 'This endpoint will be deprecated. Start planning your migration.',
-  })(req, res, next);
-}, (req, res) => {
-  res.json({
-    message: 'Phased deprecation example',
-  });
-});
+  },
+  (req, res) => {
+    res.json({
+      message: 'Phased deprecation example',
+    });
+  },
+);
 
 export default router;

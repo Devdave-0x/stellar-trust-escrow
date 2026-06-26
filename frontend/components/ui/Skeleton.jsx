@@ -12,12 +12,7 @@ const Skeleton = ({ className, variant = 'text', ...props }) => {
     table: 'h-10 rounded',
   };
 
-  return (
-    <div
-      className={clsx(base, variants[variant], className)}
-      {...props}
-    />
-  );
+  return <div className={clsx(base, variants[variant], className)} {...props} />;
 };
 
 export default Skeleton;
