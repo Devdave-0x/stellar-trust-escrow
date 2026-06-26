@@ -766,4 +766,8 @@ pub enum DataKey {
     EvidenceHash(u64),
     /// Approved arbiter allowlist entry — key: Address, value: bool
     ApprovedArbiter(Address),
+    /// Admin-configurable minimum escrow amount — value: i128
+    MinEscrowAmount,
+    /// Admin-configurable maximum escrow amount — value: i128
+    MaxEscrowAmount,
 }
