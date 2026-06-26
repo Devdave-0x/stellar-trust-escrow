@@ -17,6 +17,7 @@
  */
 
 import { createClient } from 'redis';
+import { REDIS_TIMEOUT_MS } from '../lib/timeout.js';
 import { createModuleLogger } from '../config/logger.js';
 import { scopeCacheKey, scopeCacheTag } from '../lib/tenantContext.js';
 
@@ -72,7 +73,7 @@ let redis = null;
 let redisReady = false;
 
 if (process.env.REDIS_URL) {
-  redis = createClient({ url: process.env.REDIS_URL });
+  redis = createClient({ url: process.env.REDIS_URL, commandTimeout: REDIS_TIMEOUT_MS });
   redis.on('ready', () => {
     redisReady = true;
     log.info({ message: 'redis_connected' });

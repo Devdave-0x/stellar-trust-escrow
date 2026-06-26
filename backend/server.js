@@ -51,6 +51,7 @@ import tenantRoutes from './api/routes/tenantRoutes.js';
 import wsHealthRoutes from './api/routes/wsHealth.js';
 import prisma, { startConnectionMonitoring } from './lib/prisma.js';
 import { errorsTotal } from './lib/metrics.js';
+import { TimeoutError } from './lib/timeout.js';
 import { leaderboardRateLimit } from './middleware/rateLimit.js';
 import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
@@ -235,6 +236,12 @@ app.use(sentryErrorHandler);
 // ── Generic error handler ─────────────────────────────────────────────────────
 
 app.use((err, req, res, _next) => {
+  if (err instanceof TimeoutError) {
+    return res.status(504).json({
+      error: { code: err.code, message: err.message },
+    });
+  }
+
   const statusCode = err.statusCode || 500;
 
   // Attach Sentry event ID to response so support can correlate reports

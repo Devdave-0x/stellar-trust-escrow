@@ -4,9 +4,11 @@
  * Versioned migration system with rollback support built on top of Prisma Migrate.
  *
  * Usage:
- *   node database/migrations/migrate.js up        # apply all pending migrations
- *   node database/migrations/migrate.js down      # roll back the last migration
- *   node database/migrations/migrate.js status    # show migration status
+ *   node database/migrations/migrate.js up             # apply all pending migrations
+ *   node database/migrations/migrate.js up --dry-run   # preview SQL without executing
+ *   node database/migrations/migrate.js down           # roll back the last migration
+ *   node database/migrations/migrate.js down --dry-run # preview rollback SQL
+ *   node database/migrations/migrate.js status         # show migration status
  *   node database/migrations/migrate.js create <name>  # scaffold a new migration
  */
 
@@ -18,6 +20,29 @@ import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ── Dry-run proxy ─────────────────────────────────────────────────────────────
+// Wraps a PrismaClient so that $executeRawUnsafe and $queryRawUnsafe log
+// the SQL they would run without touching the database. Used by --dry-run.
+
+function createDryRunPrisma(real) {
+  const noop = async (sql, ...params) => {
+    console.log('\n  [DRY-RUN] SQL:\n  ' + String(sql).trim().replace(/\n/g, '\n  '));
+    if (params.length) console.log('  [DRY-RUN] Params:', JSON.stringify(params));
+    return [];
+  };
+  return new Proxy(real, {
+    get(target, prop) {
+      if (prop === '$executeRawUnsafe' || prop === '$executeRaw') return noop;
+      if (prop === '$queryRawUnsafe' || prop === '$queryRaw') return noop;
+      if (prop === '$transaction') {
+        return (fn) => (typeof fn === 'function' ? fn(createDryRunPrisma(real)) : Promise.resolve([]));
+      }
+      return typeof target[prop] === 'function' ? target[prop].bind(target) : target[prop];
+    },
+  });
+}
+
 const prisma = new PrismaClient();
 
 // ── Migration log table (created on first run) ────────────────────────────────
@@ -66,7 +91,10 @@ function getMigrationFiles() {
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
-async function up() {
+async function up({ dryRun = false } = {}) {
+  const client = dryRun ? createDryRunPrisma(prisma) : prisma;
+  if (dryRun) console.log('\n🔍 DRY-RUN mode — no changes will be written to the database.\n');
+
   await ensureMigrationLog();
   const applied = await getApplied();
   const files = getMigrationFiles();
@@ -79,15 +107,22 @@ async function up() {
 
   for (const file of pending) {
     const version = file.replace('.js', '');
-    console.log(`⬆  Applying ${version}…`);
+    console.log(`⬆  ${dryRun ? '[DRY-RUN] Would apply' : 'Applying'} ${version}…`);
     const mod = await import(join(__dirname, file));
-    await mod.up(prisma);
-    await logMigration(version, file);
-    console.log(`   ✅ Applied ${version}`);
+    await mod.up(client);
+    if (!dryRun) {
+      await logMigration(version, file);
+      console.log(`   ✅ Applied ${version}`);
+    } else {
+      console.log(`   ✅ [DRY-RUN] Previewed ${version}`);
+    }
   }
 }
 
-async function down() {
+async function down({ dryRun = false } = {}) {
+  const client = dryRun ? createDryRunPrisma(prisma) : prisma;
+  if (dryRun) console.log('\n🔍 DRY-RUN mode — no changes will be written to the database.\n');
+
   await ensureMigrationLog();
   const applied = await getApplied();
 
@@ -97,7 +132,7 @@ async function down() {
   }
 
   const last = applied[applied.length - 1];
-  console.log(`⬇  Rolling back ${last}…`);
+  console.log(`⬇  ${dryRun ? '[DRY-RUN] Would roll back' : 'Rolling back'} ${last}…`);
   const mod = await import(join(__dirname, `${last}.js`));
 
   if (!mod.down) {
@@ -105,9 +140,13 @@ async function down() {
     process.exit(1);
   }
 
-  await mod.down(prisma);
-  await unlogMigration(last);
-  console.log(`   ✅ Rolled back ${last}`);
+  await mod.down(client);
+  if (!dryRun) {
+    await unlogMigration(last);
+    console.log(`   ✅ Rolled back ${last}`);
+  } else {
+    console.log(`   ✅ [DRY-RUN] Previewed rollback of ${last}`);
+  }
 }
 
 async function status() {
@@ -178,23 +217,25 @@ export async function down(prisma) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 const [, , command, ...args] = process.argv;
+const dryRun = args.includes('--dry-run');
+const remainingArgs = args.filter((a) => a !== '--dry-run');
 
 try {
   switch (command) {
     case 'up':
-      await up();
+      await up({ dryRun });
       break;
     case 'down':
-      await down();
+      await down({ dryRun });
       break;
     case 'status':
       await status();
       break;
     case 'create':
-      create(args.join(' '));
+      create(remainingArgs.join(' '));
       break;
     default:
-      console.error('Usage: migrate.js <up|down|status|create <name>>');
+      console.error('Usage: migrate.js <up|down|status|create <name>> [--dry-run]');
       process.exit(1);
   }
 } finally {

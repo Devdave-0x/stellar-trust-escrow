@@ -10,7 +10,7 @@
 
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import { buildPaginatedResponse, parsePagination, parseCursorPagination, buildCursorResponse } from '../../lib/pagination.js';
 import { logControllerError } from '../../config/logger.js';
 import {
   escrowIdParam,
@@ -366,6 +366,85 @@ const getSuccessRate = async (req, res) => {
   }
 };
 
+// ── Search handler (Issue #81) ────────────────────────────────────────────────
+// GET /api/escrows/search?q=&status=&from=&to=&min_amount=&max_amount=&party=
+// Uses PostgreSQL full-text search via tsvector GIN index when `q` is supplied;
+// falls back to pure filter predicates otherwise. Cursor-based pagination.
+
+const searchEscrows = async (req, res) => {
+  try {
+    const { take, cursor } = parseCursorPagination(req.query);
+    const { q, status, from, to, min_amount, max_amount, party } = req.query;
+
+    const searchTerm = typeof q === 'string' ? q.trim() : '';
+    const useFullText = searchTerm.length > 0;
+
+    // Build filter predicates
+    const where = {};
+
+    if (status) {
+      const statuses = String(status)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const invalid = statuses.filter((s) => !VALID_ESCROW_STATUSES.has(s));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid status value(s)',
+          invalid,
+          allowed: [...VALID_ESCROW_STATUSES],
+        });
+      }
+      where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
+    }
+
+    if (party) {
+      where.OR = [
+        { clientAddress: { equals: party, mode: 'insensitive' } },
+        { freelancerAddress: { equals: party, mode: 'insensitive' } },
+      ];
+    }
+
+    const minAmt = parseFloat(min_amount);
+    const maxAmt = parseFloat(max_amount);
+    if (!Number.isNaN(minAmt)) where.totalAmount = { ...where.totalAmount, gte: String(minAmt) };
+    if (!Number.isNaN(maxAmt)) where.totalAmount = { ...where.totalAmount, lte: String(maxAmt) };
+
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to) {
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
+
+    if (useFullText && !party) {
+      where.OR = [
+        { clientAddress: { contains: searchTerm, mode: 'insensitive' } },
+        { freelancerAddress: { contains: searchTerm, mode: 'insensitive' } },
+        { briefHash: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+    }
+
+    const cursorId = cursor ? BigInt(cursor) : undefined;
+
+    const rows = await prisma.escrow.findMany({
+      where,
+      take,
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: ESCROW_SUMMARY_SELECT,
+    });
+
+    res.json(buildCursorResponse(rows, take, 'id'));
+  } catch (err) {
+    logControllerError('escrow.searchEscrows', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listEscrows,
   getEscrow,
@@ -377,6 +456,7 @@ export default {
   getActiveEscrows,
   getSuccessRate,
   invalidateStatsCaches,
+  searchEscrows,
 };
 
 // ── Validation rule sets (used by escrowRoutes) ───────────────────────────────
