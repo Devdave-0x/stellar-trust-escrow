@@ -1602,10 +1602,10 @@ impl EscrowContract {
         deadline: Option<u64>,
         lock_time: Option<u64>,
         _timelock: Option<Timelock>,
-        _multisig_config: MultisigConfig,
+        multisig_config: MultisigConfig,
     ) -> Result<u64, EscrowError> {
-        Self::create_escrow_internal(
-            env,
+        let escrow_id = Self::create_escrow_internal(
+            env.clone(),
             client,
             freelancer,
             token,
@@ -1616,7 +1616,13 @@ impl EscrowContract {
             lock_time,
             None,
             None,
-        )
+        )?;
+        if !multisig_config.approvers.is_empty() {
+            let key = DataKey::MultisigCfg(escrow_id);
+            env.storage().persistent().set(&key, &multisig_config);
+            ContractStorage::bump_persistent_ttl(&env, &key);
+        }
+        Ok(escrow_id)
     }
 
     pub fn create_escrow_dispute_timeout(
@@ -3433,6 +3439,163 @@ impl EscrowContract {
             events::emit_pending_release_executed(&env, escrow_id, milestone_id, amount);
             Ok(())
         })
+    }
+
+    // ── Escrow-level M-of-N multisig release ──────────────────────────────────
+
+    /// Records one approver's vote for releasing all remaining escrow funds.
+    ///
+    /// Each approver in the configured `MultisigConfig.approvers` list may call
+    /// this once.  Weights are summed; when the running total reaches
+    /// `MultisigConfig.threshold`, remaining funds are transferred to the
+    /// freelancer and the escrow is marked `Completed`.
+    ///
+    /// Emits `esc_apr` per approval and `esc_thr` when the threshold is met.
+    pub fn approve_release(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let cfg: MultisigConfig = env
+                .storage()
+                .persistent()
+                .get(&DataKey::MultisigCfg(escrow_id))
+                .ok_or(EscrowError::E66)?;
+
+            if !cfg.approvers.contains(&caller) {
+                return Err(EscrowError::E67);
+            }
+
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            if meta.status != EscrowStatus::Active {
+                return Err(EscrowError::E9);
+            }
+
+            let approvals_key = DataKey::MultisigApprovals(escrow_id);
+            let mut approvals: soroban_sdk::Vec<Address> = env
+                .storage()
+                .persistent()
+                .get(&approvals_key)
+                .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+
+            if approvals.contains(&caller) {
+                return Err(EscrowError::E68);
+            }
+            approvals.push_back(caller.clone());
+
+            // Sum weights of all current approvers.
+            let mut accrued_weight: u32 = 0;
+            for approver in approvals.iter() {
+                for i in 0..cfg.approvers.len() {
+                    if let Some(addr) = cfg.approvers.get(i) {
+                        if addr == approver {
+                            let w = cfg.weights.get(i).unwrap_or(1);
+                            accrued_weight = accrued_weight.saturating_add(w);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            env.storage().persistent().set(&approvals_key, &approvals);
+            ContractStorage::bump_persistent_ttl(&env, &approvals_key);
+
+            let approval_count = approvals.len();
+            events::emit_escrow_approval_submitted(
+                &env,
+                escrow_id,
+                &caller,
+                approval_count,
+                cfg.threshold,
+            );
+
+            if accrued_weight >= cfg.threshold {
+                let remaining = meta.remaining_balance;
+                if remaining > 0 {
+                    token::Client::new(&env, &meta.token).transfer(
+                        &env.current_contract_address(),
+                        &meta.freelancer,
+                        &remaining,
+                    );
+                    events::emit_funds_released(&env, escrow_id, &meta.freelancer, remaining);
+                }
+                meta.remaining_balance = 0;
+                meta.status = EscrowStatus::Completed;
+                Self::remove_from_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Active),
+                    escrow_id,
+                );
+                Self::append_to_vec_index(
+                    &env,
+                    &DataKey::EscrowsByStatus(EscrowStatus::Completed),
+                    escrow_id,
+                );
+                events::emit_escrow_approval_threshold_met(&env, escrow_id, cfg.threshold);
+                events::emit_escrow_completed(&env, escrow_id);
+            }
+
+            ContractStorage::save_escrow_meta(&env, &meta);
+            Ok(())
+        })
+    }
+
+    /// Revokes a previously submitted escrow-level release approval.
+    ///
+    /// Only callable before the approval threshold has been reached (i.e. the
+    /// escrow must still be `Active`).  Emits `esc_rev`.
+    pub fn revoke_approval(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+
+        let _cfg: MultisigConfig = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MultisigCfg(escrow_id))
+            .ok_or(EscrowError::E66)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+
+        let approvals_key = DataKey::MultisigApprovals(escrow_id);
+        let approvals: soroban_sdk::Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&approvals_key)
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+
+        let mut found = false;
+        let mut new_approvals = soroban_sdk::Vec::new(&env);
+        for addr in approvals.iter() {
+            if addr == caller {
+                found = true;
+            } else {
+                new_approvals.push_back(addr);
+            }
+        }
+
+        if !found {
+            return Err(EscrowError::E67);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&approvals_key, &new_approvals);
+        ContractStorage::bump_persistent_ttl(&env, &approvals_key);
+        ContractStorage::save_escrow_meta(&env, &meta);
+
+        events::emit_escrow_approval_revoked(&env, escrow_id, &caller);
+        Ok(())
     }
 
     // ── Time Lock Extension ─────────────────────────────────────────────────────

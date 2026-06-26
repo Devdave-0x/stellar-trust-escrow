@@ -93,6 +93,12 @@ pub const RENT_EXPIRED: Symbol = symbol_short!("rent_exp");
 
 pub const NFT_GATED_ESCROW_CREATED: Symbol = symbol_short!("nft_esc");
 
+// ── Escrow-level multisig ─────────────────────────────────────────────────────
+
+pub const ESCROW_APPROVAL_SUBMITTED: Symbol = symbol_short!("esc_apr");
+pub const ESCROW_APPROVAL_REVOKED: Symbol = symbol_short!("esc_rev");
+pub const ESCROW_APPROVAL_THRESHOLD_MET: Symbol = symbol_short!("esc_thr");
+
 // ── Release timelock ──────────────────────────────────────────────────────────
 
 pub const RELEASE_PENDING: Symbol = symbol_short!("rel_pend");

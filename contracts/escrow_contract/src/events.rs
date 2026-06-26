@@ -450,6 +450,29 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
     );
 }
 
+pub fn emit_escrow_approval_submitted(
+    env: &Env,
+    escrow_id: u64,
+    signer: &Address,
+    approval_count: u32,
+    threshold: u32,
+) {
+    env.events().publish(
+        (ev::ESCROW_APPROVAL_SUBMITTED, escrow_id),
+        (signer.clone(), approval_count, threshold),
+    );
+}
+
+pub fn emit_escrow_approval_revoked(env: &Env, escrow_id: u64, signer: &Address) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_REVOKED, escrow_id), signer.clone());
+}
+
+pub fn emit_escrow_approval_threshold_met(env: &Env, escrow_id: u64, threshold: u32) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_THRESHOLD_MET, escrow_id), threshold);
+}
+
 pub fn emit_release_pending(env: &Env, escrow_id: u64, milestone_id: u32, release_at: u64) {
     env.events().publish(
         (ev::RELEASE_PENDING, escrow_id),

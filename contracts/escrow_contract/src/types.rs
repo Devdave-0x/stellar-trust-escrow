@@ -752,4 +752,8 @@ pub enum DataKey {
     TrustedOracleKey,
     /// Configured release timelock duration in seconds for an escrow — key: u64, value: u64
     EscrowTimelockSecs(u64),
+    /// M-of-N multisig config for escrow-level release approval — key: u64, value: MultisigConfig
+    MultisigCfg(u64),
+    /// Addresses that have submitted an escrow-level release approval — key: u64, value: Vec<Address>
+    MultisigApprovals(u64),
 }
