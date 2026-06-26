@@ -92,6 +92,7 @@ mod timelock_enforcement_tests;
 mod transfer_client_tests;
 mod types;
 mod upgrade_tests;
+mod version_tests;
 
 pub use errors::EscrowError;
 use storage::StorageManager;
@@ -158,6 +159,9 @@ pub const MIN_ESCROW_AMOUNT: i128 = 1_i128;
 /// This prevents sybil attacks where fresh addresses with zero reputation
 /// could be used to gain control over dispute resolution.
 pub const MIN_ARBITER_REPUTATION_SCORE: u64 = 100;
+
+/// Semantic version of the deployed contract. Must match `version` in Cargo.toml.
+pub const CONTRACT_VERSION: &str = "0.1.0";
 
 /// Threshold for high-value escrows that can be escalated to governance (1000 XLM in stroops).
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
@@ -277,6 +281,10 @@ impl ContractStorage {
         instance.set(&DataKey::AdminThreshold, &1_u32);
         instance.set(&DataKey::EscrowCounter, &0_u64);
         instance.set(&DataKey::PlatformTreasury, admin);
+        instance.set(
+            &DataKey::ContractVersion,
+            &String::from_str(env, CONTRACT_VERSION),
+        );
         // Initialize storage version for upgradeable storage
         StorageManager::init_version(env);
         Self::bump_instance_ttl(env);
@@ -4423,6 +4431,11 @@ impl EscrowContract {
         // This ensures data is in the correct format for the new version
         StorageManager::migrate(&env)?;
 
+        env.storage().instance().set(
+            &DataKey::ContractVersion,
+            &String::from_str(&env, CONTRACT_VERSION),
+        );
+
         env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
     }
@@ -4460,6 +4473,14 @@ impl EscrowContract {
     /// Returns the current pause state of the contract.
     pub fn is_paused(env: Env) -> bool {
         ContractStorage::is_paused(&env)
+    }
+
+    /// Returns the semantic version of the deployed contract.
+    pub fn get_version(env: Env) -> String {
+        env.storage()
+            .instance()
+            .get(&DataKey::ContractVersion)
+            .unwrap_or_else(|| String::from_str(&env, "0.0.0"))
     }
 
     /// Returns the current admin address.

@@ -766,4 +766,6 @@ pub enum DataKey {
     EvidenceHash(u64),
     /// Approved arbiter allowlist entry — key: Address, value: bool
     ApprovedArbiter(Address),
+    /// Semantic version string (e.g. "1.0.0") — value: String
+    ContractVersion,
 }
