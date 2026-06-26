@@ -10,7 +10,13 @@
 
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import {
+  buildPaginatedResponse,
+  parsePagination,
+  parseCursorPagination,
+  buildPrismaFindArgs,
+  buildCursorResponse,
+} from '../../lib/pagination.js';
 import { logControllerError } from '../../config/logger.js';
 import {
   escrowIdParam,
@@ -65,7 +71,6 @@ async function onEscrowStatusChange(id) {
 
 const listEscrows = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
     const {
       status,
       client,
@@ -75,9 +80,17 @@ const listEscrows = async (req, res) => {
       maxAmount,
       dateFrom,
       dateTo,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
     } = req.query;
+
+    // ── Cursor-based pagination ────────────────────────────────────────────
+    const { take, parsedCursor, sortField, sortDir } = parseCursorPagination(
+      req.query,
+      'createdAt',
+      'desc',
+    );
+
+    const resolvedSortBy = VALID_SORT_FIELDS.includes(sortField) ? sortField : 'createdAt';
+    const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortDir) ? sortDir : 'desc';
 
     const where = {};
 
@@ -122,16 +135,24 @@ const listEscrows = async (req, res) => {
       }
     }
 
-    const resolvedSortBy = VALID_SORT_FIELDS.includes(sortBy) ? sortBy : 'createdAt';
-    const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortOrder) ? sortOrder : 'desc';
-    const orderBy = { [resolvedSortBy]: resolvedSortOrder };
+    // Escrow id is a BigInt — cursor id needs BigInt conversion
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: BigInt(parsedCursor.id) }
+        : null,
+      take,
+      sortField: resolvedSortBy,
+      sortDir: resolvedSortOrder,
+      idField: 'id',
+    });
 
-    const [data, total] = await prisma.$transaction([
-      prisma.escrow.findMany({ where, select: ESCROW_SUMMARY_SELECT, skip, take: limit, orderBy }),
-      prisma.escrow.count({ where }),
-    ]);
+    const data = await prisma.escrow.findMany({
+      where,
+      select: ESCROW_SUMMARY_SELECT,
+      ...findArgs,
+    });
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    res.json(buildCursorResponse(data, take, 'id', resolvedSortBy, resolvedSortOrder));
   } catch (err) {
     logControllerError('escrow.listEscrows', err, req);
     res.status(500).json({ error: err.message });
@@ -200,28 +221,33 @@ const broadcastCreateEscrow = async (req, res) => {
 const getMilestones = async (req, res) => {
   try {
     const escrowId = BigInt(req.params.id);
-    const { page, limit, skip } = parsePagination(req.query);
+    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'milestoneIndex', 'asc');
 
-    const [data, total] = await prisma.$transaction([
-      prisma.milestone.findMany({
-        where: { escrowId },
-        skip,
-        take: limit,
-        orderBy: { milestoneIndex: 'asc' },
-        select: {
-          id: true,
-          milestoneIndex: true,
-          title: true,
-          amount: true,
-          status: true,
-          submittedAt: true,
-          resolvedAt: true,
-        },
-      }),
-      prisma.milestone.count({ where: { escrowId } }),
-    ]);
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
+        : null,
+      take,
+      sortField: 'milestoneIndex',
+      sortDir,
+      idField: 'id',
+    });
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    const data = await prisma.milestone.findMany({
+      where: { escrowId },
+      ...findArgs,
+      select: {
+        id: true,
+        milestoneIndex: true,
+        title: true,
+        amount: true,
+        status: true,
+        submittedAt: true,
+        resolvedAt: true,
+      },
+    });
+
+    res.json(buildCursorResponse(data, take, 'id', 'milestoneIndex', sortDir));
   } catch (err) {
     if (err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });

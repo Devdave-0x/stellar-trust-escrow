@@ -6,7 +6,11 @@
  */
 
 import prisma from '../../lib/prisma.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import {
+  parseCursorPagination,
+  buildPrismaFindArgs,
+  buildCursorResponse,
+} from '../../lib/pagination.js';
 import { uploadEvidence } from '../middleware/fileUpload.js';
 import ipfsService from '../../services/ipfsService.js';
 import { broadcastToDispute } from '../websocket/handlers.js';
@@ -24,29 +28,22 @@ const DISPUTE_MAX_LIMIT = 50;
 
 const listDisputes = async (req, res) => {
   try {
-    const { page, skip } = parsePagination(req.query);
-    const limit = Math.min(parsePagination(req.query).limit, DISPUTE_MAX_LIMIT);
+    const { take, parsedCursor, sortField, sortDir } = parseCursorPagination(
+      req.query,
+      'raisedAt',
+      'desc',
+    );
+    const limit = Math.min(take, DISPUTE_MAX_LIMIT);
+
     const {
       status,
       raisedBy,
       dateFrom,
       dateTo,
-      sortBy = 'raisedAt',
-      sortOrder = 'desc',
     } = req.query;
 
-    if (!VALID_DISPUTE_SORT_FIELDS.has(sortBy)) {
-      return res.status(400).json({
-        error: 'Invalid sortBy value',
-        allowed: [...VALID_DISPUTE_SORT_FIELDS],
-      });
-    }
-    if (!VALID_SORT_ORDERS.has(sortOrder)) {
-      return res.status(400).json({
-        error: 'Invalid sortOrder value',
-        allowed: [...VALID_SORT_ORDERS],
-      });
-    }
+    const resolvedSortBy = VALID_DISPUTE_SORT_FIELDS.has(sortField) ? sortField : 'raisedAt';
+    const resolvedSortOrder = VALID_SORT_ORDERS.has(sortDir) ? sortDir : 'desc';
 
     if (dateFrom && isNaN(Date.parse(dateFrom))) {
       return res.status(400).json({ error: 'dateFrom must be a valid ISO date string' });
@@ -75,49 +72,48 @@ const listDisputes = async (req, res) => {
       if (dateTo) where.raisedAt.lte = new Date(dateTo);
     }
 
-    const [disputes, total] = await Promise.all([
-      prisma.dispute.findMany({
-        where,
-        include: {
-          escrow: {
-            select: {
-              clientAddress: true,
-              freelancerAddress: true,
-              totalAmount: true,
-              status: true,
-            },
-          },
-          evidence: {
-            select: {
-              id: true,
-              evidenceType: true,
-              submittedBy: true,
-              submittedAt: true,
-              filename: true,
-              ipfsCid: true,
-              thumbnailCid: true,
-              scanStatus: true,
-            },
-            orderBy: { submittedAt: 'desc' },
-          },
-          _count: {
-            select: { evidence: true, appeals: true },
-          },
-        },
-        orderBy: { [sortBy]: sortOrder },
-        skip,
-        take: limit,
-      }),
-      prisma.dispute.count({ where }),
-    ]);
-
-    const response = buildPaginatedResponse(disputes, {
-      total,
-      page,
-      limit,
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
+        : null,
+      take: limit,
+      sortField: resolvedSortBy,
+      sortDir: resolvedSortOrder,
+      idField: 'id',
     });
 
-    res.json(response);
+    const disputes = await prisma.dispute.findMany({
+      where,
+      include: {
+        escrow: {
+          select: {
+            clientAddress: true,
+            freelancerAddress: true,
+            totalAmount: true,
+            status: true,
+          },
+        },
+        evidence: {
+          select: {
+            id: true,
+            evidenceType: true,
+            submittedBy: true,
+            submittedAt: true,
+            filename: true,
+            ipfsCid: true,
+            thumbnailCid: true,
+            scanStatus: true,
+          },
+          orderBy: { submittedAt: 'desc' },
+        },
+        _count: {
+          select: { evidence: true, appeals: true },
+        },
+      },
+      ...findArgs,
+    });
+
+    res.json(buildCursorResponse(disputes, limit, 'id', resolvedSortBy, resolvedSortOrder));
   } catch (error) {
     console.error('Error listing disputes:', error);
     res.status(500).json({ error: 'Failed to list disputes' });
@@ -285,7 +281,7 @@ const postEvidence = async (req, res) => {
 const listEvidence = async (req, res) => {
   try {
     const { id } = req.params;
-    const { page, limit, skip } = parsePagination(req.query);
+    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'submittedAt', 'desc');
     const { evidenceType, submittedBy } = req.query;
 
     const where = {
@@ -296,15 +292,20 @@ const listEvidence = async (req, res) => {
     if (evidenceType) where.evidenceType = evidenceType;
     if (submittedBy) where.submittedBy = submittedBy;
 
-    const [evidence, total] = await Promise.all([
-      prisma.disputeEvidence.findMany({
-        where,
-        orderBy: { submittedAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.disputeEvidence.count({ where }),
-    ]);
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
+        : null,
+      take,
+      sortField: 'submittedAt',
+      sortDir,
+      idField: 'id',
+    });
+
+    const evidence = await prisma.disputeEvidence.findMany({
+      where,
+      ...findArgs,
+    });
 
     const evidenceWithUrls = await Promise.all(
       evidence.map(async (evidenceItem) => {
@@ -319,13 +320,7 @@ const listEvidence = async (req, res) => {
       }),
     );
 
-    const response = buildPaginatedResponse(evidenceWithUrls, {
-      total,
-      page,
-      limit,
-    });
-
-    res.json(response);
+    res.json(buildCursorResponse(evidenceWithUrls, take, 'id', 'submittedAt', sortDir));
   } catch (error) {
     console.error('Error listing evidence:', error);
     res.status(500).json({ error: 'Failed to list evidence' });
@@ -467,44 +462,38 @@ const patchAppeal = async (req, res) => {
 
 const getResolutionHistory = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
+    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'resolvedAt', 'desc');
 
-    const [disputes, total] = await Promise.all([
-      prisma.dispute.findMany({
-        where: {
-          tenantId: req.tenant.id,
-          resolvedAt: { not: null },
-        },
-        include: {
-          escrow: {
-            select: {
-              clientAddress: true,
-              freelancerAddress: true,
-              totalAmount: true,
-            },
-          },
-        },
-        orderBy: { resolvedAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.dispute.count({
-        where: {
-          tenantId: req.tenant.id,
-          resolvedAt: { not: null },
-        },
-      }),
-    ]);
+    const where = {
+      tenantId: req.tenant.id,
+      resolvedAt: { not: null },
+    };
 
-    const response = buildPaginatedResponse({
-      items: disputes,
-      total,
-      page,
-      limit,
-      request: req,
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
+        : null,
+      take,
+      sortField: 'resolvedAt',
+      sortDir,
+      idField: 'id',
     });
 
-    res.json(response);
+    const disputes = await prisma.dispute.findMany({
+      where,
+      include: {
+        escrow: {
+          select: {
+            clientAddress: true,
+            freelancerAddress: true,
+            totalAmount: true,
+          },
+        },
+      },
+      ...findArgs,
+    });
+
+    res.json(buildCursorResponse(disputes, take, 'id', 'resolvedAt', sortDir));
   } catch (error) {
     console.error('Error getting resolution history:', error);
     res.status(500).json({ error: 'Failed to get resolution history' });
