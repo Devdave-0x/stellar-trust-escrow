@@ -147,4 +147,14 @@ pub enum EscrowError {
     InvalidFeeSplit = 56,
     /// No platform treasury address has been configured.
     TreasuryNotConfigured = 57,
+
+    // ── Typed Validation ────────────────────────────────────────────────────
+    /// An address argument is the zero/default address.
+    ZeroAddress = 58,
+    /// Client and freelancer addresses must be different.
+    ClientFreelancerSame = 59,
+    /// Arbiter cannot be the client or freelancer.
+    ArbiterConflict = 60,
+    /// The milestone percentage sum does not equal 100.
+    MilestoneSumMismatch = 61,
 }

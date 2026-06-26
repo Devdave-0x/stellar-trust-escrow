@@ -1285,20 +1285,16 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         if client == freelancer {
-            return Err(EscrowError::Unauthorized);
+            return Err(EscrowError::ClientFreelancerSame);
         }
 
         if let Some(ref a) = arbiter {
             if a == &client || a == &freelancer {
-                return Err(EscrowError::Unauthorized);
+                return Err(EscrowError::ArbiterConflict);
             }
         }
 
         Self::validate_escrow_inputs(&env, total_amount, deadline, lock_time)?;
-
-        if brief_hash == BytesN::from_array(&env, &[0u8; 32]) {
-            // TODO: return Err(EscrowError::InvalidBriefHash);
-        }
 
         let now = env.ledger().timestamp();
 
@@ -3027,10 +3023,9 @@ impl EscrowContract {
         meta.client.require_auth();
         meta.freelancer.require_auth();
 
-        // Validate: arbiter must not be client or freelancer.
         if let Some(ref a) = new_arbiter {
             if a == &meta.client || a == &meta.freelancer {
-                return Err(EscrowError::Unauthorized);
+                return Err(EscrowError::ArbiterConflict);
             }
         }
 
