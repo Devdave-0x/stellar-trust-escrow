@@ -481,6 +481,31 @@ pub struct SlashRecord {
     pub disputed: bool,
 }
 
+/// On-chain dispute record storing evidence hashes and metadata.
+///
+/// Created when `raise_dispute` is called. The `evidence_hashes` list is
+/// immutable after creation — no function may modify it. Each hash is the
+/// SHA-256 digest of an off-chain evidence file (e.g., stored on IPFS or S3).
+///
+/// ## Verifying evidence against its on-chain hash
+///
+/// 1. Retrieve the evidence file from off-chain storage (IPFS, S3, etc.).
+/// 2. Compute `SHA-256(file_bytes)` to get a 32-byte digest.
+/// 3. Call `get_evidence_hashes(escrow_id)` and check that the computed
+///    digest matches one of the returned `BytesN<32>` values.
+/// 4. If the digests match, the file is authentic and unmodified since
+///    the dispute was raised.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct DisputeRecord {
+    pub escrow_id: u64,
+    pub raised_by: Address,
+    pub raised_at: u64,
+    pub milestone_id: Option<u32>,
+    /// SHA-256 hashes of evidence files. Immutable after dispute creation.
+    pub evidence_hashes: soroban_sdk::Vec<BytesN<32>>,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // META-TRANSACTIONS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -572,4 +597,6 @@ pub enum DataKey {
     MetaTxNonce(Address),
     /// Storage migration cursor — value: u64
     MigrationCursor,
+    /// Dispute record by escrow ID — key: u64, value: DisputeRecord
+    DisputeRecord(u64),
 }

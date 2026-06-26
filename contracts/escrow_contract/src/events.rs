@@ -326,20 +326,7 @@ pub fn emit_nft_gated_escrow_created(
     );
 }
 
-/// Emitted when an NFT-gated escrow is created.
-///
-/// # Arguments
-/// * `escrow_id`    - The newly assigned escrow ID
-/// * `nft_contract` - The NFT contract address used for gating
-/// * `token_id`     - The NFT token ID that was checked
-pub fn emit_nft_gated_escrow_created(
-    env: &Env,
-    escrow_id: u64,
-    nft_contract: &Address,
-    token_id: u64,
-) {
-    env.events().publish(
-        (symbol_short!("nft_esc"), escrow_id),
-        (nft_contract.clone(), token_id),
-    );
+pub fn emit_evidence_hashes_stored(env: &Env, escrow_id: u64, hash_count: u32) {
+    env.events()
+        .publish((ev::EVIDENCE_STORED, escrow_id), hash_count);
 }

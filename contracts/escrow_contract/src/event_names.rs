@@ -40,3 +40,4 @@ pub const RENT_WITHDRAWN: Symbol = symbol_short!("rent_out");
 pub const ARBITER_UPDATED: Symbol = symbol_short!("arb_upd");
 pub const RENT_COLLECTED: Symbol = symbol_short!("rent_col");
 pub const RENT_EXPIRED: Symbol = symbol_short!("rent_exp");
+pub const EVIDENCE_STORED: Symbol = symbol_short!("evd_stor");

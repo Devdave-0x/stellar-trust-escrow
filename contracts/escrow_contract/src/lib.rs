@@ -81,7 +81,9 @@ pub use types::{
     RecurringScheduleStatus, ReputationRecord, Timelock, MS_APPROVED, MS_DISPUTED, MS_PENDING,
     MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
 };
-use types::{CancellationRequest, RecurringInterval, RecurringPaymentConfig, SlashRecord};
+use types::{
+    CancellationRequest, DisputeRecord, RecurringInterval, RecurringPaymentConfig, SlashRecord,
+};
 
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, BytesN, Env, String, Vec};
 
@@ -458,6 +460,31 @@ impl ContractStorage {
         env.storage()
             .persistent()
             .remove(&DataKey::SlashRecord(escrow_id));
+    }
+
+    // ── Dispute record ───────────────────────────────────────────────────────
+
+    fn load_dispute_record(env: &Env, escrow_id: u64) -> Result<DisputeRecord, EscrowError> {
+        let key = DataKey::DisputeRecord(escrow_id);
+        let record = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(EscrowError::EscrowNotDisputed)?;
+        Self::bump_persistent_ttl(env, &key);
+        Ok(record)
+    }
+
+    fn save_dispute_record(env: &Env, record: &DisputeRecord) {
+        let key = DataKey::DisputeRecord(record.escrow_id);
+        env.storage().persistent().set(&key, record);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    fn remove_dispute_record(env: &Env, escrow_id: u64) {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::DisputeRecord(escrow_id));
     }
 
     // ── Meta-transaction nonce tracking ────────────────────────────────────────
@@ -2424,11 +2451,17 @@ impl EscrowContract {
     // ── Dispute Resolution ────────────────────────────────────────────────────
 
     /// Raises a dispute, freezing further fund releases.
+    ///
+    /// `evidence_hashes` is a list of SHA-256 digests of off-chain evidence files.
+    /// These hashes are stored immutably on-chain and can be retrieved via
+    /// `get_evidence_hashes`. To verify a file, compute `SHA-256(file_bytes)`
+    /// and compare it to the stored hash.
     pub fn raise_dispute(
         env: Env,
         caller: Address,
         escrow_id: u64,
         milestone_id: Option<u32>,
+        evidence_hashes: soroban_sdk::Vec<BytesN<32>>,
     ) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
@@ -2444,6 +2477,21 @@ impl EscrowContract {
             return Err(EscrowError::EscrowNotActive);
         }
 
+        let now = env.ledger().timestamp();
+
+        let dispute_record = DisputeRecord {
+            escrow_id,
+            raised_by: caller.clone(),
+            raised_at: now,
+            milestone_id,
+            evidence_hashes: evidence_hashes.clone(),
+        };
+        ContractStorage::save_dispute_record(&env, &dispute_record);
+
+        if !evidence_hashes.is_empty() {
+            events::emit_evidence_hashes_stored(&env, escrow_id, evidence_hashes.len());
+        }
+
         meta.status = EscrowStatus::Disputed;
         ContractStorage::save_escrow_meta(&env, &meta);
         events::emit_dispute_raised(&env, escrow_id, &caller);
@@ -2453,10 +2501,8 @@ impl EscrowContract {
             let was_submitted = milestone.status == MS_SUBMITTED;
             if was_submitted || milestone.status == MS_PENDING {
                 milestone.status = MS_DISPUTED;
-                milestone.resolved_at = Some(env.ledger().timestamp());
+                milestone.resolved_at = Some(now);
                 ContractStorage::save_milestone(&env, escrow_id, &milestone);
-                // Keep submitted_count consistent — meta already saved above,
-                // so reload, decrement, and save again.
                 if was_submitted {
                     let mut meta2 = ContractStorage::load_escrow_meta(&env, escrow_id)?;
                     meta2.submitted_count = meta2.submitted_count.saturating_sub(1);
@@ -2512,6 +2558,8 @@ impl EscrowContract {
         meta.remaining_balance = 0;
         meta.status = EscrowStatus::Completed;
         ContractStorage::save_escrow_meta(&env, &meta);
+
+        ContractStorage::remove_dispute_record(&env, escrow_id);
 
         events::emit_dispute_resolved(&env, escrow_id, client_amount, freelancer_amount);
 
@@ -2833,6 +2881,22 @@ impl EscrowContract {
     pub fn get_slash_record(env: Env, escrow_id: u64) -> Result<SlashRecord, EscrowError> {
         ContractStorage::ensure_live_escrow(&env, escrow_id)?;
         ContractStorage::load_slash_record(&env, escrow_id)
+    }
+
+    /// Returns the immutable list of SHA-256 evidence hashes stored when a
+    /// dispute was raised for this escrow.
+    ///
+    /// ## Verifying evidence
+    /// 1. Retrieve the evidence file from its off-chain location.
+    /// 2. Compute `SHA-256(file_bytes)` to produce a 32-byte digest.
+    /// 3. Compare the digest against the hashes returned by this function.
+    /// 4. A match proves the file has not been modified since dispute creation.
+    pub fn get_evidence_hashes(
+        env: Env,
+        escrow_id: u64,
+    ) -> Result<soroban_sdk::Vec<BytesN<32>>, EscrowError> {
+        let record = ContractStorage::load_dispute_record(&env, escrow_id)?;
+        Ok(record.evidence_hashes)
     }
 
     /// Replaces the arbiter on an active escrow.
@@ -4452,7 +4516,7 @@ mod tests {
     fn test_raise_dispute_blocked_when_paused() {
         let (_env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
         client.pause(&admin);
-        client.raise_dispute(&escrow_client, &escrow_id, &None);
+        client.raise_dispute(&escrow_client, &escrow_id, &None, &soroban_sdk::Vec::new(&_env));
     }
 
     #[test]
