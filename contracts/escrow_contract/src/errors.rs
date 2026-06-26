@@ -73,6 +73,13 @@ pub enum EcErr {
     E73 = 73,
     /// Depositor has insufficient token balance (trustline or funds check failed).
     E74 = 74,
+    /// Caller is not in the escrow-level multisig approver list.
+    /// Discriminant offset from 67 because 67-69 are taken by oracle error names.
+    E67 = 75,
+    /// Caller has already submitted an escrow-level multisig approval.
+    E68 = 76,
+    /// Invalid percentage value for percentage-based milestone (must be 1-100).
+    E69 = 77,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
