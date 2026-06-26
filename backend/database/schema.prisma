@@ -631,6 +631,36 @@ enum MilestoneStatus {
   Rejected
 }
 
+// ── Escrow Audit Log ──────────────────────────────────────────────────────────
+
+/// Immutable, append-only record of every escrow state transition.
+/// Rows are protected by PostgreSQL rules that block UPDATE and DELETE.
+/// Use the escrowAuditService helper — never write to this table directly.
+model EscrowAuditLog {
+  id        BigInt   @id @default(autoincrement())
+  escrowId  BigInt   @map("escrow_id")
+  tenantId  String   @map("tenant_id")
+  /// Stellar address of the actor who triggered the transition
+  actorId   String   @map("actor_id")
+  /// Client IP address at the time of the transition
+  actorIp   String?  @map("actor_ip")
+  /// Action that caused this transition (e.g. CREATE, FUND, RELEASE, RAISE_DISPUTE, CANCEL)
+  action    String
+  /// Escrow status before the transition (null for CREATE)
+  fromState String?  @map("from_state")
+  /// Escrow status after the transition
+  toState   String   @map("to_state")
+  /// Arbitrary JSON context (tx hash, milestone index, resolution details, etc.)
+  metadata  Json?
+  /// Immutable insert timestamp — never updated
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([escrowId, createdAt(sort: Desc)])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@map("escrow_audit_log")
+}
+
 // ── Feature Flags ─────────────────────────────────────────────────────────────
 
 model FeatureFlag {

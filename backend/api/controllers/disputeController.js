@@ -11,6 +11,7 @@ import {
   buildPrismaFindArgs,
   buildCursorResponse,
 } from '../../lib/pagination.js';
+import { logTransition, EscrowAuditAction } from '../../services/escrowAuditService.js';
 import { uploadEvidence } from '../middleware/fileUpload.js';
 import ipfsService from '../../services/ipfsService.js';
 import { broadcastToDispute } from '../websocket/handlers.js';
@@ -339,6 +340,22 @@ const autoResolve = async (req, res) => {
         resolutionType: 'AUTO',
         autoResolved: true,
         resolution: 'Automatically resolved based on evidence and contract terms',
+      },
+    });
+
+    // Log the state transition to the immutable audit trail
+    await logTransition({
+      escrowId: dispute.escrowId,
+      tenantId: req.tenant?.id ?? dispute.tenantId,
+      actorId: 'system',
+      actorIp: req.ip || null,
+      action: EscrowAuditAction.RESOLVE_DISPUTE,
+      fromState: 'Disputed',
+      toState: 'Completed',
+      metadata: {
+        disputeId: dispute.id,
+        resolutionType: 'AUTO',
+        resolvedBy: 'system',
       },
     });
 

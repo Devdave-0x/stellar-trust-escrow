@@ -24,6 +24,7 @@ import {
   paginationQuery,
   handleValidationErrors,
 } from '../../middleware/validation.js';
+import { getEscrowAuditLog } from '../../services/escrowAuditService.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -392,6 +393,47 @@ const getSuccessRate = async (req, res) => {
   }
 };
 
+// ── Audit trail ───────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/escrows/:id/audit
+ * Returns the immutable state-transition audit trail for a single escrow.
+ * Access is restricted to: admins, the client address, and the freelancer address.
+ */
+const getEscrowAudit = async (req, res) => {
+  try {
+    const id = BigInt(req.params.id);
+
+    // Load the escrow to check party access
+    const escrow = await prisma.escrow.findUnique({
+      where: { id },
+      select: { clientAddress: true, freelancerAddress: true, tenantId: true },
+    });
+
+    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+
+    // Only admins and the escrow parties may access the audit log
+    const callerAddress = req.user?.address;
+    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
+    const isParty =
+      callerAddress === escrow.clientAddress ||
+      callerAddress === escrow.freelancerAddress;
+
+    if (!isAdmin && !isParty) {
+      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    }
+
+    const result = await getEscrowAuditLog(id, escrow.tenantId, req.query);
+    res.json(result);
+  } catch (err) {
+    if (err.message?.includes('Cannot convert')) {
+      return res.status(400).json({ error: 'Invalid escrow id' });
+    }
+    logControllerError('escrow.getEscrowAudit', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listEscrows,
   getEscrow,
@@ -403,6 +445,7 @@ export default {
   getActiveEscrows,
   getSuccessRate,
   invalidateStatsCaches,
+  getEscrowAudit,
 };
 
 // ── Validation rule sets (used by escrowRoutes) ───────────────────────────────
