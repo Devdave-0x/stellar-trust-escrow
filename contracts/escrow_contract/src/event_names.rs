@@ -115,6 +115,10 @@ pub const PENDING_RELEASE_EXECUTED: Symbol = symbol_short!("pend_rel");
 
 pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");
 
+// ── Deadline extension ────────────────────────────────────────────────────────
+
+pub const ESCROW_EXTENDED: Symbol = symbol_short!("esc_extd");
+
 // ── Admin / contract state ────────────────────────────────────────────────────
 
 pub const ADMIN_INITIALIZED: Symbol = symbol_short!("adm_init");

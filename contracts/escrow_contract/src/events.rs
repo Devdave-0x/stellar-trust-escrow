@@ -275,6 +275,11 @@ pub fn emit_fee_collected(env: &Env, escrow_id: u64, amount: i128, treasury: &Ad
         .publish((ev::FEE_COLLECTED, escrow_id), (amount, treasury.clone()));
 }
 
+pub fn emit_escrow_extended(env: &Env, escrow_id: u64, old_deadline: Option<u64>, new_deadline: u64) {
+    env.events()
+        .publish((ev::ESCROW_EXTENDED, escrow_id), (old_deadline, new_deadline));
+}
+
 pub fn emit_cancellation_requested(
     env: &Env,
     escrow_id: u64,

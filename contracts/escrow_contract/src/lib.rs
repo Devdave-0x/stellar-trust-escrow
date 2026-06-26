@@ -89,7 +89,7 @@ pub use types::{
     PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord, Timelock,
     MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
 };
-use types::{CancellationRequest, RecurringPaymentConfig, SlashRecord};
+use types::{CancellationRequest, EscrowExtensionRequest, RecurringPaymentConfig, SlashRecord};
 use types::{FundPayload, ProposalPayload, ProposalType};
 
 use soroban_sdk::{
@@ -120,6 +120,7 @@ mod storage;
 pub const MAX_ESCROW_AMOUNT: i128 = 100_000_000_000_000_000i128;
 
 const CANCELLATION_DISPUTE_PERIOD: u64 = 259_200; // 72 hours in seconds
+const EXTENSION_EXPIRY_SECS: u64 = 172_800; // 48 hours in seconds
 const SLASH_DISPUTE_PERIOD: u64 = 51_840;
 const SLASH_PERCENTAGE: u64 = 10;
 const RENT_PERIOD_SECONDS: u64 = 86_400;
@@ -968,6 +969,32 @@ impl ContractStorage {
             .persistent()
             .get(&DataKey::Template(id))
             .ok_or(EscrowError::E8)
+    }
+
+    fn load_extension_request(
+        env: &Env,
+        escrow_id: u64,
+    ) -> Result<EscrowExtensionRequest, EscrowError> {
+        let key = DataKey::ExtensionRequest(escrow_id);
+        let req = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(EscrowError::E71)?;
+        Self::bump_persistent_ttl(env, &key);
+        Ok(req)
+    }
+
+    fn save_extension_request(env: &Env, request: &EscrowExtensionRequest) {
+        let key = DataKey::ExtensionRequest(request.escrow_id);
+        env.storage().persistent().set(&key, request);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    fn remove_extension_request(env: &Env, escrow_id: u64) {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ExtensionRequest(escrow_id));
     }
 }
 
@@ -5328,6 +5355,97 @@ impl EscrowContract {
         ContractStorage::remove_cancellation_request(&env, escrow_id);
 
         events::emit_cancellation_rejected(&env, escrow_id, &caller);
+        Ok(())
+    }
+
+    // ── Deadline Extension Functions ───────────────────────────────────────────
+
+    /// Proposes a new deadline for the escrow. Either party may call this.
+    /// The counterparty must call `confirm_extension` for it to take effect.
+    pub fn request_extension(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        new_deadline: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        let now = env.ledger().timestamp();
+
+        // New deadline must be in the future
+        if new_deadline <= now {
+            return Err(EscrowError::E72);
+        }
+
+        // New deadline must not be earlier than the current deadline
+        if let Some(current) = meta.deadline {
+            if new_deadline < current {
+                return Err(EscrowError::E72);
+            }
+        }
+
+        // Reject duplicate requests
+        if ContractStorage::load_extension_request(&env, escrow_id).is_ok() {
+            return Err(EscrowError::E73);
+        }
+
+        let request = EscrowExtensionRequest {
+            escrow_id,
+            requested_by: caller,
+            proposed_deadline: new_deadline,
+            requested_at: now,
+            expires_at: now + EXTENSION_EXPIRY_SECS,
+        };
+        ContractStorage::save_extension_request(&env, &request);
+        Ok(())
+    }
+
+    /// Confirms a pending deadline extension as the counterparty.
+    /// The new deadline takes effect immediately.
+    pub fn confirm_extension(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        let request = ContractStorage::load_extension_request(&env, escrow_id)?;
+
+        // Only the counterparty may confirm
+        if caller == request.requested_by {
+            return Err(EscrowError::E3);
+        }
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        // Request must not have expired
+        let now = env.ledger().timestamp();
+        if now > request.expires_at {
+            return Err(EscrowError::E36);
+        }
+
+        let old_deadline = meta.deadline;
+        meta.deadline = Some(request.proposed_deadline);
+        ContractStorage::save_escrow_meta(&env, &meta);
+        ContractStorage::remove_extension_request(&env, escrow_id);
+
+        events::emit_escrow_extended(&env, escrow_id, old_deadline, request.proposed_deadline);
         Ok(())
     }
 

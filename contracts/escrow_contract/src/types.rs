@@ -507,6 +507,26 @@ pub struct CancellationRequest {
     pub counterparty_approved: bool,
 }
 
+/// A pending mutual-consent deadline extension request.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EscrowExtensionRequest {
+    /// The escrow ID this request belongs to.
+    pub escrow_id: u64,
+
+    /// Address of the party that proposed the extension.
+    pub requested_by: Address,
+
+    /// The proposed new deadline (ledger timestamp).
+    pub proposed_deadline: u64,
+
+    /// When the request was created (ledger timestamp).
+    pub requested_at: u64,
+
+    /// When the request expires if not confirmed (ledger timestamp).
+    pub expires_at: u64,
+}
+
 /// Oracle-signed resolution payload for fallback dispute resolution.
 ///
 /// Submitted by any caller once the grace period has elapsed.
@@ -768,4 +788,6 @@ pub enum DataKey {
     EvidenceHash(u64),
     /// Approved arbiter allowlist entry — key: Address, value: bool
     ApprovedArbiter(Address),
+    /// Pending mutual-consent deadline extension — key: u64, value: EscrowExtensionRequest
+    ExtensionRequest(u64),
 }
