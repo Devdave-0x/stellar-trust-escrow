@@ -33,6 +33,7 @@ import Button from '../../../components/ui/Button';
 import ReputationBadge from '../../../components/ui/ReputationBadge';
 import CurrencyAmount from '../../../components/ui/CurrencyAmount';
 import TransactionHash from '../../../components/ui/TransactionHash';
+import TruncatedAddress from '../../../components/ui/TruncatedAddress';
 import Avatar from '../../../components/ui/Avatar';
 import {
   buildApproveMilestoneTx,
@@ -339,15 +340,12 @@ function PartyCard({ role, address, score, isYou }) {
       <div className="flex items-center gap-3">
         <Avatar address={address} size="md" className="rounded-full" />
         <div>
-          <p className="text-white text-sm font-mono">
-            {address}
-            {isYou && (
-              <span className="ml-2 text-xs bg-indigo-600/20 text-indigo-400 px-1.5 py-0.5 rounded">
-                You
-              </span>
-            )}
-          </p>
-          {/* TODO (contributor): link to /profile/[address] */}
+          <TruncatedAddress address={address} />
+          {isYou && (
+            <span className="ml-2 text-xs bg-indigo-600/20 text-indigo-400 px-1.5 py-0.5 rounded">
+              You
+            </span>
+          )}
         </div>
         <ReputationBadge score={score} size="sm" />
       </div>
