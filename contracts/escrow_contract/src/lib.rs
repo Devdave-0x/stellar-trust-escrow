@@ -121,6 +121,7 @@ pub const MAX_ESCROW_AMOUNT: i128 = 100_000_000_000_000_000i128;
 
 const CANCELLATION_DISPUTE_PERIOD: u64 = 259_200; // 72 hours in seconds
 const EXTENSION_EXPIRY_SECS: u64 = 172_800; // 48 hours in seconds
+pub const UNPAUSE_MIN_DELAY_SECS: u64 = 3_600; // 1 hour minimum before unpause
 const SLASH_DISPUTE_PERIOD: u64 = 51_840;
 const SLASH_PERCENTAGE: u64 = 10;
 const RENT_PERIOD_SECONDS: u64 = 86_400;
@@ -4453,8 +4454,8 @@ impl EscrowContract {
 
     // ── Emergency Pause ──────────────────────────────────────────────────────
 
-    /// Pauses the contract, preventing new escrows and milestone additions.
-    pub fn pause(env: Env, caller: Address) -> Result<(), EscrowError> {
+    /// Pauses the contract, preventing all fund-moving operations. Admin only.
+    pub fn pause(env: Env, caller: Address, reason: String) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_admin(&env, &caller)?;
 
@@ -4462,12 +4463,15 @@ impl EscrowContract {
             return Ok(());
         }
 
+        let now = env.ledger().timestamp();
+        env.storage().instance().set(&DataKey::PausedAt, &now);
+        env.storage().instance().set(&DataKey::PauseReason, &reason);
         ContractStorage::set_paused(&env, true);
         events::emit_contract_paused(&env, &caller);
         Ok(())
     }
 
-    /// Unpauses the contract, resuming normal operation.
+    /// Unpauses the contract. Admin only. Requires at least 1 hour since pausing.
     pub fn unpause(env: Env, caller: Address) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_admin(&env, &caller)?;
@@ -4476,6 +4480,18 @@ impl EscrowContract {
             return Ok(());
         }
 
+        let paused_at: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PausedAt)
+            .unwrap_or(0);
+        let now = env.ledger().timestamp();
+        if now.saturating_sub(paused_at) < UNPAUSE_MIN_DELAY_SECS {
+            return Err(EscrowError::E70);
+        }
+
+        env.storage().instance().remove(&DataKey::PausedAt);
+        env.storage().instance().remove(&DataKey::PauseReason);
         ContractStorage::set_paused(&env, false);
         events::emit_contract_unpaused(&env, &caller);
         Ok(())
@@ -4484,6 +4500,14 @@ impl EscrowContract {
     /// Returns the current pause state of the contract.
     pub fn is_paused(env: Env) -> bool {
         ContractStorage::is_paused(&env)
+    }
+
+    /// Returns the current pause state, the timestamp when it was paused, and the reason.
+    pub fn get_pause_status(env: Env) -> (bool, Option<u64>, Option<String>) {
+        let paused = ContractStorage::is_paused(&env);
+        let paused_at: Option<u64> = env.storage().instance().get(&DataKey::PausedAt);
+        let reason: Option<String> = env.storage().instance().get(&DataKey::PauseReason);
+        (paused, paused_at, reason)
     }
 
     /// Returns the current admin address.
@@ -7361,27 +7385,28 @@ mod tests {
 
     #[test]
     fn test_pause_sets_state_and_emits_event() {
-        let (_env, admin, _, _, _, _, client) = setup_pause_escrow(100);
+        let (env, admin, _, _, _, _, client) = setup_pause_escrow(100);
         assert!(!client.is_paused());
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
     }
 
     #[test]
     fn test_unpause_clears_state_and_emits_event() {
-        let (_env, admin, _, _, _, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, _, _, _, _, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
 
     #[test]
     fn test_pause_is_idempotent() {
-        let (_env, admin, _, _, _, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, _, _, _, _, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
         // Second pause should not panic
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
     }
 
@@ -7396,16 +7421,17 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_pause_non_admin_rejected() {
-        let (_env, _admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
+        let (env, _admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
         // Non-admin cannot pause
-        client.pause(&escrow_client);
+        client.pause(&escrow_client, &String::from_str(&env, ""));
     }
 
     #[test]
     #[should_panic]
     fn test_unpause_non_admin_rejected() {
-        let (_env, admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         // Non-admin cannot unpause
         client.unpause(&escrow_client);
     }
@@ -7414,7 +7440,7 @@ mod tests {
     #[should_panic]
     fn test_create_escrow_blocked_when_paused() {
         let (env, admin, escrow_client, freelancer, token_id, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         let token_admin = token::StellarAssetClient::new(&env, &token_id);
         token_admin.mint(&escrow_client, &200_i128);
         client.create_escrow(
@@ -7439,7 +7465,7 @@ mod tests {
     #[should_panic]
     fn test_add_milestone_blocked_when_paused() {
         let (env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.add_milestone(
             &escrow_client,
             &escrow_id,
@@ -7461,7 +7487,7 @@ mod tests {
             &BytesN::from_array(&env, &[0u8; 32]),
             &50_i128,
         );
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.submit_milestone(&freelancer, &escrow_id, &0);
     }
 
@@ -7477,7 +7503,7 @@ mod tests {
             &50_i128,
         );
         client.submit_milestone(&freelancer, &escrow_id, &0);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.approve_milestone(&escrow_client, &escrow_id, &0);
     }
 
@@ -7485,7 +7511,7 @@ mod tests {
     #[should_panic]
     fn test_cancel_escrow_blocked_when_paused() {
         let (_env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.cancel_escrow(&escrow_client, &escrow_id);
     }
 
@@ -7493,7 +7519,7 @@ mod tests {
     #[should_panic]
     fn test_raise_dispute_blocked_when_paused() {
         let (_env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.raise_dispute(&escrow_client, &escrow_id, &None);
     }
 
@@ -7501,7 +7527,7 @@ mod tests {
     #[should_panic]
     fn test_request_cancellation_blocked_when_paused() {
         let (env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.request_cancellation(
             &escrow_client,
             &escrow_id,
@@ -7512,8 +7538,8 @@ mod tests {
     /// View functions must remain accessible while paused.
     #[test]
     fn test_view_functions_work_when_paused() {
-        let (_env, admin, _, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, _, _, _, escrow_id, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
 
         // All reads should succeed
         let _ = client.get_escrow(&escrow_id);
@@ -7527,7 +7553,7 @@ mod tests {
         let (env, admin, escrow_client, _freelancer, _, escrow_id, client) =
             setup_pause_escrow(100);
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
 
         // Mutation blocked
@@ -7540,6 +7566,7 @@ mod tests {
         );
         assert!(result.is_err(), "add_milestone should fail while paused");
 
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         assert!(!client.is_paused());
 

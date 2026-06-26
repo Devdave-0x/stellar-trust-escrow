@@ -716,6 +716,10 @@ pub enum DataKey {
     AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
+    /// Timestamp when the contract was paused — value: u64
+    PausedAt,
+    /// Reason the contract was paused — value: String
+    PauseReason,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
     CancellationRequest(u64),
     /// Slash record by escrow ID — key: u64, value: SlashRecord

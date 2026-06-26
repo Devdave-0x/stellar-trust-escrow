@@ -2,8 +2,13 @@
 #[allow(clippy::module_inception)]
 mod pause_tests {
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig, MS_PENDING,
+        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig,
+        UNPAUSE_MIN_DELAY_SECS, MS_PENDING,
     };
+
+    fn advance(env: &soroban_sdk::Env, seconds: u64) {
+        env.ledger().with_mut(|l| l.timestamp += seconds);
+    }
 
     fn no_multisig(env: &Env) -> MultisigConfig {
         MultisigConfig {
@@ -40,12 +45,12 @@ mod pause_tests {
         let non_admin = Address::generate(&env);
 
         // Non-admin cannot pause
-        let result = client.try_pause(&non_admin);
+        let result = client.try_pause(&non_admin, &String::from_str(&env, ""));
         assert!(result.is_err());
         assert!(!client.is_paused());
 
         // Admin can pause
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
 
         // Non-admin cannot unpause
@@ -53,7 +58,8 @@ mod pause_tests {
         assert!(result.is_err());
         assert!(client.is_paused());
 
-        // Admin can unpause
+        // Admin can unpause after the mandatory delay
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
@@ -65,7 +71,7 @@ mod pause_tests {
         let freelancer = Address::generate(&env);
         let token = register_token(&env, &admin, &client_addr, 1030);
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
 
         let result = client.try_create_escrow(
             &client_addr,
@@ -106,7 +112,7 @@ mod pause_tests {
             &no_multisig(&env),
         );
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
 
         let result = client.try_add_milestone(
             &client_addr,
@@ -150,7 +156,7 @@ mod pause_tests {
             &1000,
         );
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
 
         // submit_milestone must be blocked
         let result = client.try_submit_milestone(&freelancer, &escrow_id, &mid);
@@ -194,7 +200,7 @@ mod pause_tests {
             &no_multisig(&env),
         );
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
 
         let result = client.try_add_milestone(
@@ -209,6 +215,7 @@ mod pause_tests {
             "Should fail with ContractPaused error"
         );
 
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         assert!(!client.is_paused());
 
