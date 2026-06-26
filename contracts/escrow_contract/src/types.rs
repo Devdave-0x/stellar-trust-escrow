@@ -603,4 +603,6 @@ pub enum DataKey {
     ArbiterFeeSplitPct,
     /// Platform treasury address — value: Address
     PlatformTreasury,
+    /// Approved arbiter flag by address — key: Address, value: bool
+    ApprovedArbiter(Address),
 }

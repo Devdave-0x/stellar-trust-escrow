@@ -331,6 +331,16 @@ pub fn emit_evidence_hashes_stored(env: &Env, escrow_id: u64, hash_count: u32) {
         .publish((ev::EVIDENCE_STORED, escrow_id), hash_count);
 }
 
+pub fn emit_arbiter_approved(env: &Env, arbiter: &Address) {
+    env.events()
+        .publish((ev::ARBITER_APPROVED,), arbiter.clone());
+}
+
+pub fn emit_arbiter_removed(env: &Env, arbiter: &Address) {
+    env.events()
+        .publish((ev::ARBITER_REMOVED,), arbiter.clone());
+}
+
 pub fn emit_arbitration_fee_paid(
     env: &Env,
     arbiter: &Address,

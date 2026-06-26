@@ -157,4 +157,8 @@ pub enum EscrowError {
     ArbiterConflict = 60,
     /// The milestone percentage sum does not equal 100.
     MilestoneSumMismatch = 61,
+
+    // ── Arbiter Allowlist ────────────────────────────────────────────────────
+    /// The arbiter address is not on the approved allowlist.
+    ArbiterNotApproved = 62,
 }

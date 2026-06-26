@@ -841,6 +841,51 @@ impl EscrowContract {
         ContractStorage::initialize(&env, &admin)
     }
 
+    // ── Arbiter Allowlist ──────────────────────────────────────────────────
+
+    /// Adds an address to the approved arbiter allowlist. Admin only.
+    pub fn add_approved_arbiter(
+        env: Env,
+        caller: Address,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ApprovedArbiter(arbiter.clone()), &true);
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::ApprovedArbiter(arbiter.clone()));
+
+        events::emit_arbiter_approved(&env, &arbiter);
+        Ok(())
+    }
+
+    /// Removes an address from the approved arbiter allowlist. Admin only.
+    pub fn remove_approved_arbiter(
+        env: Env,
+        caller: Address,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ApprovedArbiter(arbiter.clone()));
+
+        events::emit_arbiter_removed(&env, &arbiter);
+        Ok(())
+    }
+
+    /// Returns whether an address is on the approved arbiter allowlist.
+    pub fn is_approved_arbiter(env: Env, arbiter: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ApprovedArbiter(arbiter))
+            .unwrap_or(false)
+    }
+
     // ── Arbitration Fee Configuration ────────────────────────────────────────
 
     /// Sets the arbiter/treasury fee split percentage. Admin only.
@@ -1291,6 +1336,14 @@ impl EscrowContract {
         if let Some(ref a) = arbiter {
             if a == &client || a == &freelancer {
                 return Err(EscrowError::ArbiterConflict);
+            }
+            let approved: bool = env
+                .storage()
+                .persistent()
+                .get(&DataKey::ApprovedArbiter(a.clone()))
+                .unwrap_or(false);
+            if !approved {
+                return Err(EscrowError::ArbiterNotApproved);
             }
         }
 
@@ -3026,6 +3079,14 @@ impl EscrowContract {
         if let Some(ref a) = new_arbiter {
             if a == &meta.client || a == &meta.freelancer {
                 return Err(EscrowError::ArbiterConflict);
+            }
+            let approved: bool = env
+                .storage()
+                .persistent()
+                .get(&DataKey::ApprovedArbiter(a.clone()))
+                .unwrap_or(false);
+            if !approved {
+                return Err(EscrowError::ArbiterNotApproved);
             }
         }
 
