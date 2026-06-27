@@ -55,12 +55,16 @@ function buildApp() {
   return app;
 }
 
+// PDF magic bytes (%PDF) — accepted by the ALLOWED_MIME_TYPES whitelist.
+const validPdfBuffer = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // %PDF-1.4
+// JPEG magic bytes (SOI + JFIF marker) — needed for the image/thumbnail test.
+const validJpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+
 describe('Dispute Evidence Upload', () => {
   let app;
   let testDispute;
   let testUser;
   const authToken = 'Bearer test-token';
-  const validFileBuffer = Buffer.from('test file content');
 
   beforeEach(() => {
     app = buildApp();
@@ -94,14 +98,14 @@ describe('Dispute Evidence Upload', () => {
     prisma.disputeEvidence.findMany.mockResolvedValue([]);
     prisma.disputeEvidence.count.mockResolvedValue(0);
 
-    ipfsService.pinFile.mockResolvedValue({ cid: 'QmTest123456789', size: validFileBuffer.length });
+    ipfsService.pinFile.mockResolvedValue({ cid: 'QmTest123456789', size: validPdfBuffer.length });
     ipfsService.generateThumbnail.mockResolvedValue(Buffer.from('thumbnail-data'));
     ipfsService.getFileUrl.mockImplementation(async (cid) => `https://ipfs.io/ipfs/${cid}`);
     ipfsService.isImage.mockReturnValue(false);
     ipfsService.getFileMetadata.mockResolvedValue({
-      filename: 'test.txt',
-      mimeType: 'text/plain',
-      fileSize: validFileBuffer.length,
+      filename: 'test.pdf',
+      mimeType: 'application/pdf',
+      fileSize: validPdfBuffer.length,
     });
 
     virusScanner.quickScan.mockResolvedValue({
@@ -116,20 +120,19 @@ describe('Dispute Evidence Upload', () => {
       const response = await request(app)
         .post('/api/disputes/1/evidence')
         .set('Authorization', authToken)
-        .attach('files', validFileBuffer, 'test.txt')
+        .attach('files', validPdfBuffer, { filename: 'test.pdf', contentType: 'application/pdf' })
         .field('description', 'Test evidence description');
 
       expect(response.status).toBe(201);
-      expect(response.body.message).toBe('Evidence uploaded successfully');
-      expect(response.body.evidence).toHaveLength(1);
-      expect(response.body.count).toBe(1);
+      expect(response.body.data.evidence).toHaveLength(1);
+      expect(response.body.data.count).toBe(1);
       expect(ipfsService.pinFile).toHaveBeenCalled();
       expect(virusScanner.quickScan).toHaveBeenCalled();
       expect(prisma.disputeEvidence.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             disputeId: 1,
-            filename: 'test.txt',
+            filename: 'test.pdf',
             ipfsCid: 'QmTest123456789',
             scanStatus: 'clean',
           }),
@@ -139,6 +142,11 @@ describe('Dispute Evidence Upload', () => {
 
     it('uploads image evidence with thumbnail', async () => {
       ipfsService.isImage.mockReturnValue(true);
+      ipfsService.getFileMetadata.mockResolvedValue({
+        filename: 'test.jpg',
+        mimeType: 'image/jpeg',
+        fileSize: validJpegBuffer.length,
+      });
       ipfsService.pinFile
         .mockResolvedValueOnce({ cid: 'QmImage123', size: 100 })
         .mockResolvedValueOnce({ cid: 'QmThumb456', size: 50 });
@@ -146,10 +154,10 @@ describe('Dispute Evidence Upload', () => {
       const response = await request(app)
         .post('/api/disputes/1/evidence')
         .set('Authorization', authToken)
-        .attach('files', validFileBuffer, 'test.jpg');
+        .attach('files', validJpegBuffer, { filename: 'test.jpg', contentType: 'image/jpeg' });
 
       expect(response.status).toBe(201);
-      expect(response.body.evidence[0].thumbnailCid).toBe('QmThumb456');
+      expect(response.body.data.evidence[0].thumbnailCid).toBe('QmThumb456');
       expect(ipfsService.generateThumbnail).toHaveBeenCalled();
     });
 
@@ -160,7 +168,7 @@ describe('Dispute Evidence Upload', () => {
         .field('description', 'Text-only evidence submission');
 
       expect(response.status).toBe(201);
-      expect(response.body.evidence[0].evidenceType).toBe('text');
+      expect(response.body.data.evidence[0].evidenceType).toBe('text');
     });
 
     it('returns 413 for files larger than 10MB', async () => {
@@ -169,7 +177,7 @@ describe('Dispute Evidence Upload', () => {
       const response = await request(app)
         .post('/api/disputes/1/evidence')
         .set('Authorization', authToken)
-        .attach('files', largeBuffer, 'large.txt');
+        .attach('files', largeBuffer, { filename: 'large.pdf', contentType: 'application/pdf' });
 
       expect(response.status).toBe(413);
       expect(response.body.error).toMatch(/File size/);
@@ -179,7 +187,10 @@ describe('Dispute Evidence Upload', () => {
       const req = request(app).post('/api/disputes/1/evidence').set('Authorization', authToken);
 
       for (let i = 1; i <= 6; i += 1) {
-        req.attach('files', validFileBuffer, `test${i}.txt`);
+        req.attach('files', validPdfBuffer, {
+          filename: `test${i}.pdf`,
+          contentType: 'application/pdf',
+        });
       }
 
       const response = await req;
@@ -198,7 +209,10 @@ describe('Dispute Evidence Upload', () => {
       const response = await request(app)
         .post('/api/disputes/1/evidence')
         .set('Authorization', authToken)
-        .attach('files', validFileBuffer, 'infected.txt');
+        .attach('files', validPdfBuffer, {
+          filename: 'infected.pdf',
+          contentType: 'application/pdf',
+        });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('Virus detected');
@@ -213,7 +227,7 @@ describe('Dispute Evidence Upload', () => {
       const response = await request(app)
         .post('/api/disputes/1/evidence')
         .set('Authorization', authToken)
-        .attach('files', validFileBuffer, 'test.txt');
+        .attach('files', validPdfBuffer, { filename: 'test.pdf', contentType: 'application/pdf' });
 
       expect(response.status).toBe(403);
       expect(response.body.error).toBe('Access denied');
@@ -225,7 +239,7 @@ describe('Dispute Evidence Upload', () => {
       const response = await request(app)
         .post('/api/disputes/1/evidence')
         .set('Authorization', authToken)
-        .attach('files', validFileBuffer, 'test.txt');
+        .attach('files', validPdfBuffer, { filename: 'test.pdf', contentType: 'application/pdf' });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('IPFS upload failed');
@@ -241,7 +255,7 @@ describe('Dispute Evidence Upload', () => {
           evidenceType: 'file',
           ipfsCid: 'QmTest123',
           thumbnailCid: null,
-          filename: 'test.txt',
+          filename: 'test.pdf',
           submittedBy: testUser.walletAddress,
           submittedAt: new Date(),
         },

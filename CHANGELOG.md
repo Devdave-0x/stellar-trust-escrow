@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Runnable Soroban CLI simulation scripts for all major escrow lifecycle scenarios in `scripts/simulate/`: happy-path release, arbiter dispute resolution (buyer's favour), expiry refund, and mutual cancellation (#112)
+
 - GitHub Actions CI workflow with lint, backend/frontend/contract tests, and WCAG AA accessibility scan job that uploads HTML reports and blocks PRs on threshold violations (#912)
 - GitHub Actions nightly stress-test workflow scheduled at 02:00 UTC; runs both sustained load and stress scenarios, uploads 90-day artifact reports, and sends Slack notifications on failure/success (#913)
 - Test coverage for governance quorum-not-reached scenario resulting in `Defeated` proposal status (#658)

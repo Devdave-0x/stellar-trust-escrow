@@ -268,16 +268,16 @@ Branches must follow this pattern (enforced by the pre-push hook):
 <type>/<short-description>
 ```
 
-| Prefix | When to use |
-| --- | --- |
-| `feat/` | New functionality |
-| `fix/` | Bug fix |
-| `refactor/` | Code improvement, no behaviour change |
-| `docs/` | Documentation only |
-| `test/` | Tests only |
-| `chore/` | Tooling, dependencies, config |
-| `hotfix/` | Urgent production fix branched from `main` |
-| `release/` | Release preparation (version bump, CHANGELOG) |
+| Prefix      | When to use                                   |
+| ----------- | --------------------------------------------- |
+| `feat/`     | New functionality                             |
+| `fix/`      | Bug fix                                       |
+| `refactor/` | Code improvement, no behaviour change         |
+| `docs/`     | Documentation only                            |
+| `test/`     | Tests only                                    |
+| `chore/`    | Tooling, dependencies, config                 |
+| `hotfix/`   | Urgent production fix branched from `main`    |
+| `release/`  | Release preparation (version bump, CHANGELOG) |
 
 Examples:
 
@@ -308,20 +308,21 @@ Closes #<issue>
 
 **Type must be one of:**
 
-| Type | When to use |
-| --- | --- |
-| `feat` | New feature visible to users or callers |
-| `fix` | Bug fix |
-| `perf` | Performance improvement |
-| `security` | Security fix or hardening |
-| `refactor` | Code restructuring, no behaviour change |
-| `test` | Adding or fixing tests |
-| `docs` | Documentation only |
-| `chore` | Build process, tooling, dependency updates |
+| Type       | When to use                                |
+| ---------- | ------------------------------------------ |
+| `feat`     | New feature visible to users or callers    |
+| `fix`      | Bug fix                                    |
+| `perf`     | Performance improvement                    |
+| `security` | Security fix or hardening                  |
+| `refactor` | Code restructuring, no behaviour change    |
+| `test`     | Adding or fixing tests                     |
+| `docs`     | Documentation only                         |
+| `chore`    | Build process, tooling, dependency updates |
 
 **Scope** is optional but encouraged — use the layer or domain (`backend`, `contracts`, `frontend`, `mobile`, `webhooks`, `auth`, etc.).
 
 **Subject line rules:**
+
 - Imperative mood: "add pagination" not "adds pagination" or "added pagination"
 - No capital first letter
 - No trailing period
@@ -402,6 +403,60 @@ For deeper contract verification on macOS, Linux, or WSL:
 
 ```bash
 bash scripts/test-contract.sh --gas --coverage
+```
+
+### End-to-end simulation scripts
+
+`scripts/simulate/` contains self-contained shell scripts that deploy the escrow contract to Soroban testnet and walk through real lifecycle scenarios. Use them to verify behaviour end-to-end or to demonstrate the contract to integrators.
+
+| Script                   | Scenario                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `happy-path.sh`          | Create escrow → add milestones → freelancer submits → client approves → funds released |
+| `dispute-resolution.sh`  | Escrow disputed by client → arbiter rules entirely in client's favour → full refund    |
+| `expiry-refund.sh`       | Escrow with a short deadline → freelancer misses it → `expire_escrow` refunds client   |
+| `mutual-cancellation.sh` | Client requests cancellation → freelancer consents → immediate settlement              |
+
+**Prerequisites:**
+
+```bash
+# Install the Stellar CLI (includes Soroban support)
+cargo install --locked stellar-cli
+# or, for older installs:
+cargo install --locked soroban-cli --version 21.0.0
+```
+
+**Running a simulation:**
+
+Each script is self-contained — it generates fresh key-pairs, funds them from Friendbot, builds the WASM, and deploys the contract from scratch. No existing credentials or `.env` file needed.
+
+```bash
+# Make scripts executable (first time only)
+chmod +x scripts/simulate/*.sh
+
+# Full happy-path lifecycle
+bash scripts/simulate/happy-path.sh
+
+# Arbiter dispute resolution
+bash scripts/simulate/dispute-resolution.sh
+
+# Expiry with automatic refund (waits ~60 s for deadline to pass)
+bash scripts/simulate/expiry-refund.sh
+
+# Mutual cancellation by both parties
+bash scripts/simulate/mutual-cancellation.sh
+```
+
+Each script prints a numbered step log and a summary table showing contract ID, escrow ID, outcome, and a Stellar Expert link for on-chain inspection. Expected runtime: under 2 minutes per script.
+
+**Network configuration:**
+
+By default, all scripts target Soroban testnet. Override with environment variables:
+
+```bash
+SOROBAN_NETWORK=testnet \
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org \
+SOROBAN_NETWORK_PASSPHRASE="Test SDF Network ; September 2015" \
+bash scripts/simulate/happy-path.sh
 ```
 
 PRs that touch contract logic must include at least one new test. Use `Env::default()` and `mock_all_auths()` (see [Soroban test harness patterns](#soroban-test-harness-patterns) above). Time-sensitive behaviour must be covered with `env.ledger().with_mut()`.
@@ -494,6 +549,7 @@ Draft  →  Ready for Review  →  Approved  →  Merged
 **Draft** — open as a draft as soon as the branch exists if you want early visibility or async feedback before the work is done. Drafts do not trigger maintainer review.
 
 **Ready for Review** — convert to "Ready for review" only when:
+
 - All checklist items in the PR template are ticked
 - CI is green (or you have explained a known transient failure)
 - You have resolved or replied to every comment from the draft phase
@@ -504,24 +560,24 @@ Draft  →  Ready for Review  →  Approved  →  Merged
 
 ### Target branch
 
-| Branch type | Target |
-| --- | --- |
-| `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/` | `develop` |
-| `release/vX.Y.Z` | `main` |
-| `hotfix/` | `main` **and** back-merged into `develop` |
+| Branch type                                              | Target                                    |
+| -------------------------------------------------------- | ----------------------------------------- |
+| `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/` | `develop`                                 |
+| `release/vX.Y.Z`                                         | `main`                                    |
+| `hotfix/`                                                | `main` **and** back-merged into `develop` |
 
 Never open a PR directly against `main` unless it is a release or hotfix.
 
 ### What every PR must include
 
-| Requirement | Details |
-| --- | --- |
-| **Passing CI** | All checks must be green. Do not ask for review with a red pipeline. |
-| **Tests** | New features need tests. Bug fixes need a regression test. Refactors with no behaviour change are exempt — state this explicitly. |
-| **Documentation** | Update any affected doc, README section, or `.env.example`. Link the relevant file in the PR body. |
-| **CHANGELOG entry** | Add a line under `## [Unreleased]` for any user- or caller-visible change. See [Versioning Policy](#versioning-policy). |
-| **Linked issue** | `Closes #<number>` in the PR body. |
-| **Filled-in template** | Every section of the PR template must be completed — do not delete sections and leave them blank. |
+| Requirement            | Details                                                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Passing CI**         | All checks must be green. Do not ask for review with a red pipeline.                                                              |
+| **Tests**              | New features need tests. Bug fixes need a regression test. Refactors with no behaviour change are exempt — state this explicitly. |
+| **Documentation**      | Update any affected doc, README section, or `.env.example`. Link the relevant file in the PR body.                                |
+| **CHANGELOG entry**    | Add a line under `## [Unreleased]` for any user- or caller-visible change. See [Versioning Policy](#versioning-policy).           |
+| **Linked issue**       | `Closes #<number>` in the PR body.                                                                                                |
+| **Filled-in template** | Every section of the PR template must be completed — do not delete sections and leave them blank.                                 |
 
 ### Addressing review feedback
 
@@ -532,13 +588,13 @@ Never open a PR directly against `main` unless it is a release or hotfix.
 
 ### Review expectations by change type
 
-| Change type | Expectation |
-| --- | --- |
-| Documentation only | Commands must be tested locally; no broken links |
-| Backend / API | Tests covering the new or changed behaviour; migration status verified |
-| Contract logic | Two approvals; new Soroban test using `Env::default()` + `mock_all_auths()` |
-| Frontend / UI | Screenshots or short screen recording included |
-| Breaking change | Clearly labelled in the PR title (`!` suffix on type) and body; CHANGELOG updated |
+| Change type        | Expectation                                                                       |
+| ------------------ | --------------------------------------------------------------------------------- |
+| Documentation only | Commands must be tested locally; no broken links                                  |
+| Backend / API      | Tests covering the new or changed behaviour; migration status verified            |
+| Contract logic     | Two approvals; new Soroban test using `Env::default()` + `mock_all_auths()`       |
+| Frontend / UI      | Screenshots or short screen recording included                                    |
+| Breaking change    | Clearly labelled in the PR title (`!` suffix on type) and body; CHANGELOG updated |
 
 ## Finding a First Issue
 
@@ -614,11 +670,11 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`M
 
 ### What triggers each version component
 
-| Component | When to increment | Examples |
-|---|---|---|
-| MAJOR | Breaking change — existing integrations must change to upgrade | Renamed API field, removed endpoint, contract storage migration, changed JWT format |
-| MINOR | New backward-compatible feature | New endpoint, new optional field, new contract function that doesn't break existing callers |
-| PATCH | Bug fix or internal improvement that doesn't change the API contract | Fixed off-by-one in pagination, improved error message, dependency security patch |
+| Component | When to increment                                                    | Examples                                                                                    |
+| --------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| MAJOR     | Breaking change — existing integrations must change to upgrade       | Renamed API field, removed endpoint, contract storage migration, changed JWT format         |
+| MINOR     | New backward-compatible feature                                      | New endpoint, new optional field, new contract function that doesn't break existing callers |
+| PATCH     | Bug fix or internal improvement that doesn't change the API contract | Fixed off-by-one in pagination, improved error message, dependency security patch           |
 
 A **breaking change** is any change that requires callers to update their code or data to continue working. When in doubt, treat it as breaking.
 
@@ -648,14 +704,18 @@ A **breaking change** is any change that requires callers to update their code o
 > **Breaking change:** Renamed `client_address` to `clientAddress` in all API responses.
 
 ### Added
+
 - `GET /api/escrows/:id/timeline` — ordered list of on-chain events for an escrow (#201)
 
 ### Changed
+
 - Renamed `client_address` field to `clientAddress` in escrow API responses (#200)
 
 ### Fixed
+
 - Cursor pagination no longer skips the last record on page boundaries (#199)
 
 ### Security
+
 - Upgraded `@stellar/stellar-sdk` to address CVE-2026-XXXX (#198)
 ```

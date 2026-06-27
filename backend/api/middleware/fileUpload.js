@@ -13,12 +13,7 @@ const MAX_FILES = parseInt(process.env.MAX_FILES || '5', 10);
 const storage = multer.memoryStorage();
 
 // Only these four MIME types are accepted for dispute evidence
-const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'application/pdf',
-  'video/mp4',
-]);
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf', 'video/mp4']);
 
 // Magic byte signatures for each allowed MIME type.
 // Validation is done against file content, not the Content-Type header.
@@ -71,7 +66,7 @@ export function handleUploadError(err, _req, res, next) {
   if (!err) return next();
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res
-      .status(400)
+      .status(413)
       .json({ error: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit` });
   }
   if (err.code === 'LIMIT_FILE_COUNT') {
