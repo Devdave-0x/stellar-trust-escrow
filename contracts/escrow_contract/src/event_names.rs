@@ -13,9 +13,11 @@ use soroban_sdk::{symbol_short, Symbol};
 // ── Escrow lifecycle ──────────────────────────────────────────────────────────
 
 pub const ESCROW_CREATED: Symbol = symbol_short!("esc_crt");
+pub const ESCROW_FUNDED: Symbol = symbol_short!("esc_fund");
 pub const ESCROW_COMPLETED: Symbol = symbol_short!("esc_done");
 pub const ESCROW_CANCELLED: Symbol = symbol_short!("esc_can");
 pub const ESCROW_SPLIT: Symbol = symbol_short!("esc_spl");
+pub const ESCROW_EXPIRED: Symbol = symbol_short!("esc_exp");
 
 // ── Milestones ────────────────────────────────────────────────────────────────
 
@@ -109,6 +111,7 @@ pub const ESCROW_APPROVAL_THRESHOLD_MET: Symbol = symbol_short!("esc_thr");
 // ── Release timelock ──────────────────────────────────────────────────────────
 
 pub const RELEASE_PENDING: Symbol = symbol_short!("rel_pend");
+pub const RELEASE_APPROVED: Symbol = symbol_short!("rel_apr");
 pub const PENDING_RELEASE_EXECUTED: Symbol = symbol_short!("pend_rel");
 
 // ── Platform fee ──────────────────────────────────────────────────────────────

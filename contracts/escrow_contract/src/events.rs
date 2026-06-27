@@ -29,6 +29,39 @@ pub fn emit_escrow_created(
     );
 }
 
+/// Emitted immediately after the depositor's tokens are transferred to the contract.
+///
+/// Schema: topic=(ESCROW_FUNDED, escrow_id), data=(depositor, amount, timestamp)
+pub fn emit_escrow_funded(
+    env: &Env,
+    escrow_id: u64,
+    depositor: &Address,
+    amount: i128,
+    timestamp: u64,
+) {
+    env.events().publish(
+        (ev::ESCROW_FUNDED, escrow_id),
+        (depositor.clone(), amount, timestamp),
+    );
+}
+
+/// Emitted when a milestone transitions to the Approved state (release approved by client).
+///
+/// Schema: topic=(RELEASE_APPROVED, escrow_id), data=(approver, milestone_id, amount, timestamp)
+pub fn emit_release_approved(
+    env: &Env,
+    escrow_id: u64,
+    approver: &Address,
+    milestone_id: u32,
+    amount: i128,
+    timestamp: u64,
+) {
+    env.events().publish(
+        (ev::RELEASE_APPROVED, escrow_id),
+        (approver.clone(), milestone_id, amount, timestamp),
+    );
+}
+
 pub fn emit_milestone_added(env: &Env, escrow_id: u64, milestone_id: u32, amount: i128) {
     env.events()
         .publish((ev::MILESTONE_ADDED, escrow_id), (milestone_id, amount));
@@ -167,6 +200,11 @@ pub fn emit_recurring_schedule_cancelled(
 pub fn emit_escrow_cancelled(env: &Env, escrow_id: u64, returned_amount: i128) {
     env.events()
         .publish((ev::ESCROW_CANCELLED, escrow_id), returned_amount);
+}
+
+pub fn emit_escrow_expired(env: &Env, escrow_id: u64, refund_amount: i128) {
+    env.events()
+        .publish((ev::ESCROW_EXPIRED, escrow_id), refund_amount);
 }
 
 pub fn emit_dispute_raised(env: &Env, escrow_id: u64, raised_by: &Address) {
