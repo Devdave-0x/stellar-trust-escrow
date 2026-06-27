@@ -2,12 +2,10 @@
 #[allow(clippy::module_inception)]
 mod property_tests {
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig,
-        MAX_ESCROW_AMOUNT, MS_APPROVED, MS_PENDING, MS_RELEASED, MS_SUBMITTED,
+        EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MS_APPROVED,
+        MS_PENDING, MS_RELEASED, MS_SUBMITTED,
     };
-    use soroban_sdk::{
-        testutils::Address as _, token, Address, BytesN, Env, String, Vec,
-    };
+    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

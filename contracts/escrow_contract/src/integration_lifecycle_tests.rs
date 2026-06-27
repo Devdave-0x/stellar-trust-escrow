@@ -9,17 +9,16 @@ mod integration_lifecycle_tests {
     //! account trustlines as provided by the SDK test environment.
 
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig,
-        MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
+        EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MS_DISPUTED,
+        MS_PENDING, MS_REJECTED, MS_SUBMITTED,
     };
-    use soroban_sdk::{
-        testutils::Address as _, token, Address, BytesN, Env, IntoVal, String, Vec,
-    };
+    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     struct TestEnv {
         env: Env,
+        #[allow(dead_code)]
         contract_id: Address,
         client: EscrowContractClient<'static>,
         admin: Address,
@@ -192,8 +191,7 @@ mod integration_lifecycle_tests {
         );
 
         t.client.submit_milestone(&freelancer, &escrow_id, &m0);
-        t.client
-            .raise_dispute(&client_addr, &escrow_id, &Some(m0));
+        t.client.raise_dispute(&client_addr, &escrow_id, &Some(m0));
 
         let state = t.client.get_escrow(&escrow_id);
         assert_eq!(state.status, EscrowStatus::Disputed);
@@ -364,7 +362,7 @@ mod integration_lifecycle_tests {
             &no_multisig(&t.env),
         );
 
-        t.client.pause(&t.admin);
+        t.client.pause(&t.admin, &String::from_str(&t.env, ""));
         assert!(t.client.is_paused());
 
         let milestone_result = t.client.try_add_milestone(
@@ -388,7 +386,10 @@ mod integration_lifecycle_tests {
             &None,
             &no_multisig(&t.env),
         );
-        assert!(create_result.is_err(), "Should reject creation during pause");
+        assert!(
+            create_result.is_err(),
+            "Should reject creation during pause"
+        );
 
         t.client.unpause(&t.admin);
         assert!(!t.client.is_paused());
@@ -431,7 +432,11 @@ mod integration_lifecycle_tests {
             &no_multisig(&t.env),
         );
 
-        t.client.freeze_escrow(&t.admin, &escrow_id);
+        {
+            let mut __v = soroban_sdk::Vec::new(&t.env);
+            __v.push_back(t.admin.clone());
+            t.client.freeze_escrow(&escrow_id, &__v);
+        }
 
         let add_result = t.client.try_add_milestone(
             &client_addr,
@@ -443,9 +448,16 @@ mod integration_lifecycle_tests {
         assert!(add_result.is_err(), "Should reject on frozen escrow");
 
         let cancel_result = t.client.try_cancel_escrow(&client_addr, &escrow_id);
-        assert!(cancel_result.is_err(), "Should reject cancel on frozen escrow");
+        assert!(
+            cancel_result.is_err(),
+            "Should reject cancel on frozen escrow"
+        );
 
-        t.client.unfreeze_escrow(&t.admin, &escrow_id);
+        {
+            let mut __v = soroban_sdk::Vec::new(&t.env);
+            __v.push_back(t.admin.clone());
+            t.client.unfreeze_escrow(&escrow_id, &__v);
+        }
 
         let m0 = t.client.add_milestone(
             &client_addr,
@@ -470,10 +482,13 @@ mod integration_lifecycle_tests {
         t.client.accept_admin(&new_admin);
         assert_eq!(t.client.get_admin(), new_admin);
 
-        let old_admin_pause = t.client.try_pause(&t.admin);
-        assert!(old_admin_pause.is_err(), "Old admin should not be able to pause");
+        let old_admin_pause = t.client.try_pause(&t.admin, &String::from_str(&t.env, ""));
+        assert!(
+            old_admin_pause.is_err(),
+            "Old admin should not be able to pause"
+        );
 
-        t.client.pause(&new_admin);
+        t.client.pause(&new_admin, &String::from_str(&t.env, ""));
         assert!(t.client.is_paused());
         t.client.unpause(&new_admin);
     }
@@ -609,7 +624,7 @@ mod integration_lifecycle_tests {
             &no_multisig(&t.env),
         );
 
-        let m1 = t.client.add_milestone(
+        let _m1 = t.client.add_milestone(
             &client1,
             &e1,
             &String::from_str(&t.env, "W1"),
@@ -677,13 +692,8 @@ mod integration_lifecycle_tests {
         amounts.push_back(1_000_i128);
         amounts.push_back(1_000_i128);
 
-        t.client.batch_add_milestones(
-            &client_addr,
-            &escrow_id,
-            &titles,
-            &hashes,
-            &amounts,
-        );
+        t.client
+            .batch_add_milestones(&client_addr, &escrow_id, &titles, &hashes, &amounts);
 
         for mid in 0..3_u32 {
             t.client.submit_milestone(&freelancer, &escrow_id, &mid);
@@ -730,11 +740,14 @@ mod integration_lifecycle_tests {
         mint_for_escrow(&t.env, &t.token_id, &client_addr, 1_000, 2);
         let escrow_id = t.client.create_escrow_from_template(
             &client_addr,
+            &template_id,
+            &client_addr,
             &freelancer,
             &t.token_id,
             &1_000,
             &hash(&t.env, 1),
-            &template_id,
+            &None,
+            &None,
         );
 
         let state = t.client.get_escrow(&escrow_id);
@@ -749,13 +762,14 @@ mod integration_lifecycle_tests {
     #[test]
     fn integration_reputation_accumulates() {
         let t = setup();
-        let client_addr = Address::generate(&t.env);
+        let _client_addr = Address::generate(&t.env);
         let freelancer = Address::generate(&t.env);
 
         let rep_before = t.client.get_reputation(&freelancer);
         assert_eq!(rep_before.total_score, 0);
 
-        t.client.update_reputation(&freelancer, &true, &false, &1_000);
+        t.client
+            .update_reputation(&freelancer, &true, &false, &1_000);
 
         let rep_after = t.client.get_reputation(&freelancer);
         assert!(
@@ -776,7 +790,7 @@ mod integration_lifecycle_tests {
         let freelancer = Address::generate(&t.env);
         mint_for_escrow(&t.env, &t.token_id, &client_addr, 5_000, 0);
 
-        let e1 = t.client.create_escrow(
+        let _e1 = t.client.create_escrow(
             &client_addr,
             &freelancer,
             &t.token_id,
@@ -788,7 +802,7 @@ mod integration_lifecycle_tests {
             &None,
             &no_multisig(&t.env),
         );
-        let e2 = t.client.create_escrow(
+        let _e2 = t.client.create_escrow(
             &client_addr,
             &freelancer,
             &t.token_id,
@@ -801,10 +815,14 @@ mod integration_lifecycle_tests {
             &no_multisig(&t.env),
         );
 
-        let client_escrows = t.client.get_escrow_ids_by_participant(&client_addr);
+        let client_escrows = t
+            .client
+            .get_escrow_ids_by_participant(&client_addr, &0_u32, &50_u32);
         assert!(client_escrows.len() >= 2);
 
-        let active_escrows = t.client.get_escrow_ids_by_status(&EscrowStatus::Active);
+        let active_escrows =
+            t.client
+                .get_escrow_ids_by_status(&EscrowStatus::Active, &0_u32, &50_u32);
         assert!(active_escrows.len() >= 2);
     }
 

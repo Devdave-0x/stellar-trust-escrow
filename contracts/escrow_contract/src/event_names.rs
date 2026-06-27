@@ -133,3 +133,11 @@ pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
 // ── Dispute cooldown ─────────────────────────────────────────────────────────
 
 pub const COOLDOWN_ELAPSED: Symbol = symbol_short!("cd_done");
+
+// ── Admin limits ─────────────────────────────────────────────────────────────
+
+pub const LIMITS_UPDATED: Symbol = symbol_short!("lim_upd");
+
+// ── Dispute fees ─────────────────────────────────────────────────────────────
+
+pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");

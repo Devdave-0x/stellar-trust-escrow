@@ -3,7 +3,7 @@
 mod pause_tests {
     use crate::{
         EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig,
-        UNPAUSE_MIN_DELAY_SECS, MS_PENDING,
+        MS_PENDING, UNPAUSE_MIN_DELAY_SECS,
     };
 
     fn advance(env: &soroban_sdk::Env, seconds: u64) {
@@ -18,7 +18,7 @@ mod pause_tests {
         }
     }
     use soroban_sdk::{
-        testutils::{Address as _, Events},
+        testutils::{Address as _, Events, Ledger as _},
         Address, BytesN, Env, String, Symbol, TryFromVal,
     };
 

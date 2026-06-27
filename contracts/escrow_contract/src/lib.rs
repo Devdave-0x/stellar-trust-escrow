@@ -109,8 +109,8 @@ pub use types::{
     Timelock, MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
 };
 use types::{
-    CancellationRequest, DisputeRecord, EscrowExtensionRequest, FeatDataKey, RecurringPaymentConfig,
-    SlashRecord,
+    CancellationRequest, DisputeRecord, EscrowExtensionRequest, FeatDataKey,
+    RecurringPaymentConfig, SlashRecord,
 };
 use types::{FundPayload, ProposalPayload, ProposalType};
 
