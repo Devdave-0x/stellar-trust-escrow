@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GitHub Actions CI workflow with lint, backend/frontend/contract tests, and WCAG AA accessibility scan job that uploads HTML reports and blocks PRs on threshold violations (#912)
+- GitHub Actions nightly stress-test workflow scheduled at 02:00 UTC; runs both sustained load and stress scenarios, uploads 90-day artifact reports, and sends Slack notifications on failure/success (#913)
 - Test coverage for governance quorum-not-reached scenario resulting in `Defeated` proposal status (#658)
 - Test coverage for `execute_proposal` rejection on `Defeated` proposals (#658)
 - Test coverage for `cast_vote` rejection after `cancel_proposal` (#659)
