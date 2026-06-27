@@ -698,8 +698,8 @@ async function requiresMfa(userId, tenantId) {
 
   if (!user) return false;
 
-  // Admins always require MFA if enabled
-  if (user.role === 'admin' || user.role === 'superadmin') {
+  // Admins and arbiters always require MFA if enabled
+  if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'arbiter') {
     return user.mfaEnabled;
   }
 

@@ -37,6 +37,17 @@ export default [
     rules: {
       'no-unused-vars': noUnusedVars,
       '@typescript-eslint/no-unused-vars': 'off',
+      // SQL injection prevention: flag template literals passed to raw query methods
+      // Use parameterized queries ($1, $2, …) or Prisma ORM methods instead
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector:
+            'CallExpression[callee.property.name=/^(\\$queryRawUnsafe|\\$executeRawUnsafe|\\$queryRaw|\\$executeRaw)$/] > TemplateLiteral',
+          message:
+            'Avoid template literals in raw SQL calls — use parameterized queries with $1/$2 placeholders to prevent SQL injection.',
+        },
+      ],
     },
   },
 

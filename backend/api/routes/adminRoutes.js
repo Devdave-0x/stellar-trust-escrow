@@ -133,6 +133,14 @@ router.patch('/rate-limits/:tier', requireMfa, adminController.updateRateLimit);
  */
 router.get('/rate-limits/usage/:userId', adminController.getUserRateLimitUsage);
 
+// ── Escrow Archive ─────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/escrows/archive
+ * @desc   Manually trigger archival of completed/cancelled escrows older than 90 days
+ * @security Requires MFA verification
+ */
+router.post('/escrows/archive', requireMfa, adminController.triggerEscrowArchive);
+
 // ── Stellar Monitor ────────────────────────────────────────────────────────────
 /**
  * @route  POST /api/admin/stellar/reconcile
@@ -153,6 +161,12 @@ router.get('/flags', featureFlagController.index);
 router.post('/flags', featureFlagController.create);
 router.patch('/flags/:key', featureFlagController.update);
 router.delete('/flags/:key', featureFlagController.destroy);
+
+// Canonical paths per issue #79 (GET /admin/feature-flags, PATCH /admin/feature-flags/:name)
+router.get('/feature-flags', featureFlagController.index);
+router.post('/feature-flags', featureFlagController.create);
+router.patch('/feature-flags/:name', featureFlagController.update);
+router.delete('/feature-flags/:name', featureFlagController.destroy);
 
 /**
  * @route  GET /api/admin/secrets/audit

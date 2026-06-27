@@ -63,14 +63,10 @@ pub enum EcErr {
     OracleStaleFeed = 67,
     OracleInvalidPrice = 68,
     OraclePriceConversionFailed = 69,
-    /// Unpause called before the mandatory 1-hour cooldown has elapsed.
-    E70 = 70,
-    /// No extension request found for the given escrow.
     E71 = 71,
-    /// Proposed extension deadline is in the past or earlier than current deadline.
     E72 = 72,
-    /// An extension request already exists for this escrow.
     E73 = 73,
+    E74 = 74,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
