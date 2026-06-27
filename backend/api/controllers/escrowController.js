@@ -20,6 +20,7 @@ import {
   paginationQuery,
   handleValidationErrors,
 } from '../../middleware/validation.js';
+import respond from '../../lib/respond.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -411,6 +412,110 @@ const getSuccessRate = async (req, res) => {
   }
 };
 
+// ── Batch endpoints ───────────────────────────────────────────────────────────
+
+const BATCH_STATUS_MAX = 100;
+const BATCH_RELEASE_MAX = 20;
+
+/**
+ * POST /api/escrows/batch-status
+ * Body: { ids: string[] }  — up to 100 escrow IDs
+ *
+ * Returns per-item status results so callers can distinguish partial failures.
+ */
+const batchStatus = async (req, res) => {
+  const { ids } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return respond.error(res, 400, 'VALIDATION_ERROR', 'ids must be a non-empty array');
+  }
+  if (ids.length > BATCH_STATUS_MAX) {
+    return respond.error(
+      res,
+      400,
+      'BATCH_TOO_LARGE',
+      `Maximum ${BATCH_STATUS_MAX} IDs per request`,
+    );
+  }
+
+  const results = await Promise.allSettled(
+    ids.map(async (rawId) => {
+      const id = BigInt(rawId);
+      const escrow = await prisma.escrow.findUnique({
+        where: { id },
+        select: ESCROW_SUMMARY_SELECT,
+      });
+      if (!escrow) return { id: rawId, status: null, error: 'Not found' };
+      return { id: rawId, status: escrow.status, data: escrow };
+    }),
+  );
+
+  const items = results.map((r, i) =>
+    r.status === 'fulfilled'
+      ? r.value
+      : { id: ids[i], status: null, error: r.reason?.message || 'Internal error' },
+  );
+
+  return respond.success(res, items);
+};
+
+/**
+ * POST /api/escrows/batch-release
+ * Body: { ids: string[] }  — up to 20 escrow IDs
+ *
+ * Role-gated: only Admin/Arbitrator may bulk-release.
+ * Applies the same tenant scoping as individual release endpoints.
+ * Returns per-item results to surface partial failures.
+ */
+const batchRelease = async (req, res) => {
+  const { ids } = req.body;
+  const userRoles = req.user?.roles ?? (req.user?.role ? [req.user.role] : []);
+  const isAuthorized =
+    userRoles.includes('Admin') || userRoles.includes('admin') || userRoles.includes('Arbitrator');
+
+  if (!isAuthorized) {
+    return respond.error(res, 403, 'FORBIDDEN', 'Admin or Arbitrator role required');
+  }
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return respond.error(res, 400, 'VALIDATION_ERROR', 'ids must be a non-empty array');
+  }
+  if (ids.length > BATCH_RELEASE_MAX) {
+    return respond.error(
+      res,
+      400,
+      'BATCH_TOO_LARGE',
+      `Maximum ${BATCH_RELEASE_MAX} IDs per batch-release request`,
+    );
+  }
+
+  const results = await Promise.allSettled(
+    ids.map(async (rawId) => {
+      const id = BigInt(rawId);
+      const escrow = await prisma.escrow.findUnique({ where: { id } });
+      if (!escrow) return { id: rawId, success: false, error: 'Not found' };
+      if (escrow.status !== 'Active') {
+        return { id: rawId, success: false, error: `Escrow is ${escrow.status}, cannot release` };
+      }
+
+      await prisma.escrow.update({
+        where: { id },
+        data: { status: 'Completed' },
+      });
+      await onEscrowStatusChange(id);
+      return { id: rawId, success: true };
+    }),
+  );
+
+  const items = results.map((r, i) =>
+    r.status === 'fulfilled'
+      ? r.value
+      : { id: ids[i], success: false, error: r.reason?.message || 'Internal error' },
+  );
+
+  return respond.success(res, items);
+};
+
 export default {
   listEscrows,
   getEscrow,
@@ -422,6 +527,8 @@ export default {
   getActiveEscrows,
   getSuccessRate,
   invalidateStatsCaches,
+  batchStatus,
+  batchRelease,
 };
 
 // ── Validation rule sets (used by escrowRoutes) ───────────────────────────────

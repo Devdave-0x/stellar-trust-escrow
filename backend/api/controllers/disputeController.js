@@ -11,6 +11,7 @@ import { uploadEvidence } from '../middleware/fileUpload.js';
 import ipfsService from '../../services/ipfsService.js';
 import { broadcastToDispute } from '../websocket/handlers.js';
 import { verifyFile, merkleRoot, hashFile } from '../../services/ipfsHashService.js';
+import respond from '../../lib/respond.js';
 
 /**
  * List and get handlers assume query/params are already validated by
@@ -111,16 +112,19 @@ const listDisputes = async (req, res) => {
       prisma.dispute.count({ where }),
     ]);
 
-    const response = buildPaginatedResponse(disputes, {
-      total,
-      page,
-      limit,
+    const paginated = buildPaginatedResponse(disputes, { total, page, limit });
+    return respond.success(res, paginated.data, {
+      pagination: {
+        total: paginated.total,
+        totalPages: paginated.totalPages,
+        hasMore: paginated.hasNextPage,
+        page: paginated.page,
+        limit: paginated.limit,
+      },
     });
-
-    res.json(response);
   } catch (error) {
     console.error('Error listing disputes:', error);
-    res.status(500).json({ error: 'Failed to list disputes' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to list disputes');
   }
 };
 
@@ -161,7 +165,7 @@ const getDispute = async (req, res) => {
     });
 
     if (!dispute) {
-      return res.status(404).json({ error: 'Dispute not found' });
+      return respond.error(res, 404, 'NOT_FOUND', 'Dispute not found');
     }
 
     const evidenceWithUrls = await Promise.all(
@@ -177,13 +181,10 @@ const getDispute = async (req, res) => {
       }),
     );
 
-    res.json({
-      ...dispute,
-      evidence: evidenceWithUrls,
-    });
+    return respond.success(res, { ...dispute, evidence: evidenceWithUrls });
   } catch (error) {
     console.error('Error getting dispute:', error);
-    res.status(500).json({ error: 'Failed to get dispute' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to get dispute');
   }
 };
 
@@ -193,7 +194,7 @@ const postEvidence = async (req, res) => {
     const userAddress = req.userAddress; // set by validateDisputeAccess in fileUpload middleware
 
     if (!userAddress) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return respond.error(res, 401, 'UNAUTHENTICATED', 'User not authenticated');
     }
 
     const dispute = req.dispute;
@@ -201,10 +202,12 @@ const postEvidence = async (req, res) => {
     const scanResults = req.virusScanResults || [];
 
     if (uploadResults.length === 0 && !description) {
-      return res.status(400).json({
-        error: 'No evidence provided',
-        message: 'Either files or text description is required',
-      });
+      return respond.error(
+        res,
+        400,
+        'VALIDATION_ERROR',
+        'Either files or text description is required',
+      );
     }
 
     const evidenceRecords = [];
@@ -271,14 +274,10 @@ const postEvidence = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    res.status(201).json({
-      message: 'Evidence uploaded successfully',
-      evidence: evidenceWithUrls,
-      count: evidenceRecords.length,
-    });
+    return respond.success(res, { evidence: evidenceWithUrls, count: evidenceRecords.length }, { created: true });
   } catch (error) {
     console.error('Error posting evidence:', error);
-    res.status(500).json({ error: 'Failed to post evidence' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to post evidence');
   }
 };
 
@@ -319,16 +318,13 @@ const listEvidence = async (req, res) => {
       }),
     );
 
-    const response = buildPaginatedResponse(evidenceWithUrls, {
-      total,
-      page,
-      limit,
+    const paginated = buildPaginatedResponse(evidenceWithUrls, { total, page, limit });
+    return respond.success(res, paginated.data, {
+      pagination: { total: paginated.total, hasMore: paginated.hasNextPage, page: paginated.page, limit: paginated.limit },
     });
-
-    res.json(response);
   } catch (error) {
     console.error('Error listing evidence:', error);
-    res.status(500).json({ error: 'Failed to list evidence' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to list evidence');
   }
 };
 
