@@ -92,6 +92,7 @@ mod pause_tests;
 mod property_tests;
 mod reentrancy_tests;
 mod self_escrow_tests;
+mod slippage_tests;
 mod timelock_enforcement_tests;
 mod transfer_client_tests;
 mod types;
@@ -282,6 +283,27 @@ pub struct EscrowMeta {
     ///
     /// Generate with: `sha256sum <terms.txt>` or `crypto.subtle.digest('SHA-256', ...)`.
     pub terms_hash: OptionalBytesN32,
+    /// Optional maximum acceptable price deviation in basis points (1 bps = 0.01%).
+    ///
+    /// Only applies to non-XLM token escrows. When set, the oracle price at deposit
+    /// time is compared to the expected price; if the deviation exceeds this tolerance
+    /// the transaction is rejected with `SlippageExceeded` (E78).
+    ///
+    /// Pass `None` to skip the price check entirely.
+    ///
+    /// # How the check works
+    /// The caller provides an `expected_price_usd` alongside this field. At deposit
+    /// time the contract fetches `oracle::get_price_usd(token)` and computes:
+    ///
+    /// ```text
+    /// deviation_bps = |actual - expected| * 10_000 / expected
+    /// ```
+    ///
+    /// If `deviation_bps > max_price_deviation_bps` the escrow is rejected.
+    pub max_price_deviation_bps: Option<u32>,
+    /// Reference price used together with `max_price_deviation_bps`.
+    /// Must be provided when `max_price_deviation_bps` is `Some(_)`.
+    pub slippage_expected_price: Option<i128>,
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -1785,6 +1807,8 @@ impl EscrowContract {
             None,
             None,
             None,
+            None,
+            None,
         )?;
         if !multisig_config.approvers.is_empty() {
             let key = DataKey::MultisigCfg(escrow_id);
@@ -1828,6 +1852,8 @@ impl EscrowContract {
             None,
             None,
             terms_hash,
+            None,
+            None,
         )
     }
 
@@ -1854,6 +1880,8 @@ impl EscrowContract {
             deadline,
             lock_time,
             Some(dispute_timeout_ledger),
+            None,
+            None,
             None,
             None,
         )
@@ -1894,6 +1922,8 @@ impl EscrowContract {
             None,
             None,
             None,
+            None,
+            None,
         )?;
         events::emit_nft_gated_escrow_created(&env, escrow_id, &nft_contract, token_id);
         Ok(escrow_id)
@@ -1927,6 +1957,55 @@ impl EscrowContract {
             None,
             Some(buyer_signers),
             None,
+            None,
+            None,
+        )
+    }
+
+    /// Creates an escrow with optional slippage protection for non-XLM token escrows.
+    ///
+    /// # Slippage protection
+    ///
+    /// Token prices can move between the time an escrow is proposed and when the
+    /// transaction is submitted. `max_price_deviation_bps` lets the caller specify
+    /// the maximum acceptable price deviation (in [basis points], 1 bps = 0.01%).
+    ///
+    /// If both `max_price_deviation_bps` and `expected_price_usd` are `Some`:
+    /// - The contract fetches the current oracle price for `token`.
+    /// - Computes `deviation_bps = |actual − expected| × 10_000 / expected`.
+    /// - Rejects with `SlippageExceeded` (E78) if `deviation_bps > max_price_deviation_bps`.
+    ///
+    /// Passing `None` for either parameter skips the price check (recommended for XLM).
+    ///
+    /// [basis points]: https://en.wikipedia.org/wiki/Basis_point
+    pub fn create_escrow_with_slippage(
+        env: Env,
+        client: Address,
+        freelancer: Address,
+        token: Address,
+        total_amount: i128,
+        brief_hash: BytesN<32>,
+        arbiter: Option<Address>,
+        deadline: Option<u64>,
+        lock_time: Option<u64>,
+        max_price_deviation_bps: Option<u32>,
+        expected_price_usd: Option<i128>,
+    ) -> Result<u64, EscrowError> {
+        Self::create_escrow_internal(
+            env,
+            client,
+            freelancer,
+            token,
+            total_amount,
+            brief_hash,
+            arbiter,
+            deadline,
+            lock_time,
+            None,
+            None,
+            None,
+            max_price_deviation_bps,
+            expected_price_usd,
         )
     }
 
@@ -1987,6 +2066,8 @@ impl EscrowContract {
         dispute_timeout_ledger: Option<u32>,
         buyer_signers: Option<soroban_sdk::Vec<Address>>,
         terms_hash: Option<BytesN<32>>,
+        max_price_deviation_bps: Option<u32>,
+        slippage_expected_price: Option<i128>,
     ) -> Result<u64, EscrowError> {
         // Auth + validation before any storage I/O
         client.require_auth();
@@ -2049,6 +2130,27 @@ impl EscrowContract {
         let escrow_id = ContractStorage::next_escrow_id(&env)?;
         let rent_reserve = ContractStorage::reserve_for_entries(1);
 
+        // ── Slippage protection ───────────────────────────────────────────────
+        // Only checked when the caller provides both a tolerance and an expected price.
+        // XLM-denominated escrows can pass None/None to skip the check entirely.
+        if let (Some(max_bps), Some(expected_price)) =
+            (max_price_deviation_bps, slippage_expected_price)
+        {
+            if expected_price <= 0 {
+                return Err(EscrowError::SlippageExceeded);
+            }
+            let actual_price = oracle::get_price_usd(&env, &token)?;
+            let diff = (actual_price - expected_price).abs();
+            // deviation_bps = |actual - expected| * 10_000 / expected
+            let deviation_bps = diff
+                .checked_mul(10_000)
+                .and_then(|v| v.checked_div(expected_price))
+                .ok_or(EscrowError::OraclePriceConversionFailed)?;
+            if deviation_bps > max_bps as i128 {
+                return Err(EscrowError::SlippageExceeded);
+            }
+        }
+
         // Transfer tokens — single cross-contract call
         token::Client::new(&env, &token).transfer(
             &client,
@@ -2087,6 +2189,8 @@ impl EscrowContract {
                 last_rent_collection_at: now,
                 dispute_start_ledger: None,
                 terms_hash: terms_hash.into(),
+                max_price_deviation_bps,
+                slippage_expected_price,
             },
         );
 
@@ -2195,6 +2299,8 @@ impl EscrowContract {
             last_rent_collection_at: now,
             dispute_start_ledger: None,
             terms_hash: OptionalBytesN32::None,
+            max_price_deviation_bps: None,
+            slippage_expected_price: None,
         };
         ContractStorage::charge_entry_rent(&env, &mut meta, &client, 1)?;
         ContractStorage::save_escrow_meta(&env, &meta);
@@ -3606,6 +3712,8 @@ impl EscrowContract {
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
             None,
+            None,
+            None,
         )?;
 
         // Create second child escrow
@@ -3621,6 +3729,8 @@ impl EscrowContract {
             meta.lock_time,
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
+            None,
+            None,
             None,
         )?;
 
@@ -3754,6 +3864,8 @@ impl EscrowContract {
             arbiter,
             deadline,
             lock_time,
+            None,
+            None,
             None,
             None,
             None,
@@ -4949,6 +5061,8 @@ impl EscrowContract {
             None, // dispute_timeout_ledger
             None, // buyer_signers
             None, // terms_hash
+            None, // max_price_deviation_bps
+            None, // slippage_expected_price
         )?;
 
         // Add template milestones

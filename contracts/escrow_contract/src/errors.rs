@@ -74,6 +74,8 @@ pub enum EcErr {
     NotInitialized = 76,
     /// Platform treasury address has not been configured
     TreasuryNotConfigured = 77,
+    /// Token price deviation exceeds the caller's configured slippage tolerance
+    SlippageExceeded = 78,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
