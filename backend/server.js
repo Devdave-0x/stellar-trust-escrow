@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { initSecrets } from './lib/secrets.js';
 import http from 'http';
 import compressionMiddleware from './middleware/compression.js';
-import cors from 'cors';
+import { corsMiddleware } from './middleware/cors.js';
 import express from 'express';
 import helmet from 'helmet';
 import { requestLogger } from './lib/logger.js';
@@ -52,7 +52,6 @@ import wsHealthRoutes from './api/routes/wsHealth.js';
 import prisma, { startConnectionMonitoring } from './lib/prisma.js';
 import { errorsTotal } from './lib/metrics.js';
 import { leaderboardRateLimit } from './middleware/rateLimit.js';
-import { authRateLimit, routeTierLimiter } from './middleware/tieredRateLimit.js';
 import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
 import tracingMiddleware from './middleware/tracingMiddleware.js';
@@ -63,12 +62,11 @@ import { startIndexer } from './services/eventIndexer.js';
 import { startRpcMonitor } from './monitoring/rpcMonitor.js';
 import { createEventWorker, createDeadLetterWorker } from './services/eventWorker.js';
 import { setupSwagger } from './api/docs/swagger.js';
+import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
-import stellarMonitor from './services/stellarMonitorService.js';
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
-import v1Router from './api/v1/index.js';
-import { idempotencyMiddleware } from './api/middleware/idempotency.js';
+import chatRoutes from './api/routes/chatRoutes.js';
 
 // Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
@@ -76,16 +74,6 @@ attachPrismaTracing(prisma);
 
 const PORT = process.env.PORT || 4000;
 const app = express();
-
-// ── In-flight request tracking (for graceful shutdown) ────────────────────────
-let inFlightCount = 0;
-
-function inFlightTracker(req, res, next) {
-  inFlightCount++;
-  res.on('finish', () => { inFlightCount--; });
-  res.on('close', () => { inFlightCount--; });
-  next();
-}
 const sentryRequestHandler = Sentry.expressRequestHandler?.() ?? ((_req, _res, next) => next());
 const sentryTracingHandler = Sentry.expressTracingHandler?.() ?? ((_req, _res, next) => next());
 const sentryErrorHandler =
@@ -98,7 +86,6 @@ const sentryErrorHandler =
 // ── Sentry request handler — must be first middleware ─────────────────────────
 // Attaches trace context and request data to every event captured downstream.
 app.use(sentryRequestHandler);
-app.use(inFlightTracker);
 
 app.use(helmet());
 app.use(compressionMiddleware);
@@ -113,12 +100,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', requestId);
   next();
 });
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    credentials: true,
-  }),
-);
+app.use(corsMiddleware);
 app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
 app.use(cookieParser());
@@ -138,9 +120,63 @@ app.use('/api', ...createGateway());
 // Leaderboard gets a tighter dedicated limit on top of the gateway limit
 app.use('/api/reputation/leaderboard', leaderboardRateLimit);
 
-// ── Top-level health probes (no auth required, outside the API gateway) ───────
-// Mounts GET /health, GET /health/live, GET /health/ready
-app.use('/health', healthRoutes);
+app.get('/health', async (_req, res) => {
+  let dbStatus = 'ok';
+  let dbLatencyMs = null;
+  let dbPoolInfo = null;
+
+  try {
+    const t0 = Date.now();
+    // Test basic connectivity
+    await prisma.$queryRaw`SELECT 1`;
+    dbLatencyMs = Date.now() - t0;
+
+    // Get basic pool info if available
+    try {
+      // This is a simplified check - in production with direct pg access,
+      // you could get detailed pool stats
+      const poolCheck = await prisma.$queryRaw`
+        SELECT
+          count(*) as connection_count,
+          now() as current_time
+        FROM pg_stat_activity
+        WHERE datname = current_database()
+      `;
+      dbPoolInfo = {
+        activeConnections: parseInt(poolCheck[0].connection_count),
+        timestamp: poolCheck[0].current_time,
+      };
+    } catch (poolError) {
+      getLogger().warn({
+        message: 'health_db_pool_info_unavailable',
+        error: poolError.message,
+      });
+    }
+  } catch (error) {
+    dbStatus = 'error';
+    getLogger().error({
+      message: 'health_database_check_failed',
+      error: error.message,
+      stack: error.stack,
+    });
+  }
+
+  const backupStatus = await getBackupStatus();
+  const status = dbStatus === 'ok' ? 'ok' : 'degraded';
+  res.status(dbStatus === 'ok' ? 200 : 503).json({
+    status,
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    cache: cache.analytics(),
+    websocket: pool.getMetrics(),
+    db: {
+      status: dbStatus,
+      latencyMs: dbLatencyMs,
+      pool: dbPoolInfo,
+    },
+    backup: backupStatus,
+  });
+});
 
 app.get('/api/csrf-token', generateCsrfToken);
 
@@ -149,27 +185,28 @@ app.get('/api/csrf-token', generateCsrfToken);
 app.use('/api/health', healthRoutes);
 app.use('/ws/health', wsHealthRoutes);
 app.use('/api', tenantMiddleware);
-app.use('/api/auth', authRateLimit, authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/tenant', tenantRoutes);
-app.use('/api/escrows', routeTierLimiter, escrowRoutes);
+app.use('/api/escrows', escrowRoutes);
 
 // ── API Documentation ─────────────────────────────────────────────────────────
 setupSwagger(app);
-app.use('/api/users', routeTierLimiter, userRoutes);
-app.use('/api/reputation', routeTierLimiter, reputationRoutes);
-app.use('/api/disputes', routeTierLimiter, disputeRoutes);
-app.use('/api/notifications', routeTierLimiter, notificationRoutes);
-app.use('/api/events', routeTierLimiter, eventRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/reputation', reputationRoutes);
+app.use('/api/disputes', disputeRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/events', eventRoutes);
 app.use('/api/webhooks', webhookRoutes);
-app.use('/api/kyc', routeTierLimiter, kycRoutes);
-app.use('/api/payments', routeTierLimiter, paymentRoutes);
-app.use('/api/relayer', routeTierLimiter, relayerRoutes);
-app.use('/api/audit', routeTierLimiter, auditRoutes);
-app.use('/api/compliance', routeTierLimiter, complianceRoutes);
-app.use('/api/incidents', routeTierLimiter, incidentRoutes);
-app.use('/api/admin', routeTierLimiter, adminRoutes);
-app.use('/api/batch', routeTierLimiter, batchRoutes);
-app.use('/api/search', routeTierLimiter, searchRoutes);
+app.use('/api/kyc', kycRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/relayer', relayerRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/compliance', complianceRoutes);
+app.use('/api/incidents', incidentRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/batch', batchRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/admin/queues', queueDashboardRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
@@ -233,6 +270,22 @@ async function startServer() {
         startConnectionMonitoring(prisma);
         // Load secrets first — merges vault/env secrets into process.env
         await initSecrets();
+
+        // ── Stellar / Soroban env validation ───────────────────────────────
+        if (!process.env.SOROBAN_RPC_URL) {
+          throw new Error(
+            '[Config] SOROBAN_RPC_URL is not set. The indexer and broadcast endpoint require a Soroban RPC endpoint.',
+          );
+        }
+        if (
+          process.env.STELLAR_NETWORK === 'testnet' &&
+          process.env.NODE_ENV !== 'development' &&
+          process.env.NODE_ENV !== 'test'
+        ) {
+          throw new Error(
+            `[Config] STELLAR_NETWORK=testnet is not allowed in NODE_ENV=${process.env.NODE_ENV}. Set STELLAR_NETWORK=mainnet for production deployments.`,
+          );
+        }
         logger.info(
           { secretsBackend: process.env.SECRETS_BACKEND || 'env' },
           'Secrets backend loaded',
@@ -244,17 +297,15 @@ async function startServer() {
         logger.info('[ComplianceService] Scheduler started');
         logger.info('[WebSocket] Server attached');
 
-        let eventWorker, deadLetterWorker;
         try {
-          eventWorker = createEventWorker();
-          deadLetterWorker = createDeadLetterWorker();
+          const eventWorker = createEventWorker();
+          const deadLetterWorker = createDeadLetterWorker();
           logger.info('[BullMQ] Event processing workers started');
 
           const closeWorkers = async () => {
             logger.info('[BullMQ] Shutting down workers...');
             await eventWorker.close();
             await deadLetterWorker.close();
-            stellarMonitor.stop();
           };
 
           process.once('SIGTERM', closeWorkers);
@@ -264,60 +315,11 @@ async function startServer() {
           Sentry.captureException(error, { tags: { component: 'bullmq-workers' } });
         }
 
-        // ── Graceful shutdown ─────────────────────────────────────────────────
-        const GRACE_PERIOD_MS = parseInt(process.env.SHUTDOWN_GRACE_MS || '30000', 10);
-
-        async function gracefulShutdown(signal) {
-          logger.info({ signal, ts: new Date().toISOString() }, '[Shutdown] Signal received — stopping new connections');
-
-          // 1. Stop accepting new connections
-          server.close(() => {
-            logger.info({ ts: new Date().toISOString() }, '[Shutdown] HTTP server closed');
-          });
-
-          // 2. Wait for in-flight requests (up to grace period)
-          const deadline = Date.now() + GRACE_PERIOD_MS;
-          while (inFlightCount > 0 && Date.now() < deadline) {
-            logger.info({ inFlightCount, ts: new Date().toISOString() }, '[Shutdown] Draining in-flight requests');
-            await new Promise((r) => setTimeout(r, 250));
-          }
-          if (inFlightCount > 0) {
-            logger.warn({ inFlightCount, ts: new Date().toISOString() }, '[Shutdown] Grace period expired — forcing shutdown');
-          } else {
-            logger.info({ ts: new Date().toISOString() }, '[Shutdown] All in-flight requests drained');
-          }
-
-          // 3. Close BullMQ workers
-          if (eventWorker || deadLetterWorker) {
-            logger.info({ ts: new Date().toISOString() }, '[Shutdown] Closing BullMQ workers');
-            await Promise.allSettled([eventWorker?.close(), deadLetterWorker?.close()]);
-          }
-
-          // 4. Close DB connection pool
-          logger.info({ ts: new Date().toISOString() }, '[Shutdown] Disconnecting database');
-          await prisma.$disconnect().catch((e) => logger.error({ err: e }, '[Shutdown] DB disconnect error'));
-
-          // 5. Close Redis / cache
-          logger.info({ ts: new Date().toISOString() }, '[Shutdown] Closing cache connections');
-          await cache.close?.().catch?.((e) => logger.error({ err: e }, '[Shutdown] Cache close error'));
-
-          logger.info({ ts: new Date().toISOString() }, '[Shutdown] Clean exit');
-          process.exit(0);
-        }
-
-        process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
-        process.once('SIGINT', () => gracefulShutdown('SIGINT'));
-
         startIndexer().catch((err) => {
           logger.error({ err, component: 'indexer' }, 'Indexer failed to start');
           Sentry.captureException(err, { tags: { component: 'indexer' } });
         });
         startRpcMonitor();
-
-        stellarMonitor.start().catch((err) => {
-          logger.error({ err, component: 'stellar-monitor' }, 'StellarMonitor failed to start');
-          Sentry.captureException(err, { tags: { component: 'stellar-monitor' } });
-        });
 
         // Reputation ES sync — ensure index + initial sync on startup
         ensureIndex().then(() =>

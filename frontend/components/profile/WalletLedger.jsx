@@ -13,6 +13,7 @@ import {
   Award,
   Loader2,
 } from 'lucide-react';
+import CopyButton from '../ui/CopyButton';
 
 const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 
@@ -335,8 +336,9 @@ export default function WalletLedger() {
                   <dl className="grid grid-cols-2 gap-3">
                     <div>
                       <dt className="text-gray-500 text-xs">Block / Tx Hash</dt>
-                      <dd className="text-gray-300 font-mono text-xs truncate">
-                        {op.transactionHash || '—'}
+                      <dd className="flex items-center gap-2 text-gray-300 font-mono text-xs truncate">
+                        <span className="truncate">{op.transactionHash || '—'}</span>
+                        {op.transactionHash && <CopyButton text={op.transactionHash} label="Transaction hash" />}
                       </dd>
                     </div>
                     <div>

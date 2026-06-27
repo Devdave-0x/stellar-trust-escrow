@@ -12,8 +12,10 @@
     "title": "托管",
     "status": {
       "active": "活跃",
-      "completed": "已完成",
+      "releaseRequested": "请求释放",
       "disputed": "争议中",
+      "expired": "已过期",
+      "completed": "已完成",
       "cancelled": "已取消"
     },
     "fields": {

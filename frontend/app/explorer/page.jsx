@@ -32,6 +32,8 @@ function normaliseEscrow(e) {
       ? `${e.clientAddress.slice(0, 4)}…${e.clientAddress.slice(-4)}`
       : '—',
     role: 'client',
+    deadline: e.deadline || null,
+    assetSymbol: e.assetSymbol || 'USDC',
   };
 }
 
