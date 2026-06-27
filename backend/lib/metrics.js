@@ -153,6 +153,19 @@ export const activeEscrowsGauge = new client.Gauge({
   registers: [register],
 });
 
+export const escrowStateTransitionsTotal = new client.Counter({
+  name: 'escrow_state_transitions_total',
+  help: 'Total number of escrow state transitions by transition type',
+  labelNames: ['from', 'to'],
+  registers: [register],
+});
+
+export const redisMemoryUsageBytes = new client.Gauge({
+  name: 'redis_memory_usage_bytes',
+  help: 'Redis used_memory in bytes as reported by INFO memory',
+  registers: [register],
+});
+
 // ── Circuit Breaker Metrics ───────────────────────────────────────────────────
 
 export const circuitBreakerState = new client.Gauge({
