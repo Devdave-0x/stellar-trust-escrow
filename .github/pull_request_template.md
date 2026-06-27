@@ -88,6 +88,19 @@ Anything reviewers should know:
 
 ---
 
+## Migration safety checklist
+
+<!-- Complete this section if this PR includes database migrations. Delete if not applicable. -->
+
+- [ ] **Dry-run verified** — `node database/migrations/migrate.js up --dry-run` was run and SQL reviewed
+- [ ] **Rollback exists** — every new migration file exports a `down()` function
+- [ ] **Rollback tested** — `node database/migrations/migrate.js down` was executed in staging and succeeded
+- [ ] **Two-phase approach** — destructive operations (column removal, table drops) use a deprecate-first strategy; the removal ships in a subsequent deploy
+- [ ] **Index strategy** — new indexes are created `CONCURRENTLY` where possible to avoid table locks
+- [ ] No migration is included — reason: <!-- fill in -->
+
+---
+
 ## Checklist
 
 <!-- Complete every item before converting from Draft to Ready for Review. -->

@@ -17,6 +17,7 @@
     "db:migrate": "node database/migrations/migrate.js up",
     "db:migrate:up": "node database/migrations/migrate.js up",
     "db:migrate:down": "node database/migrations/migrate.js down",
+    "db:migrate:dry-run": "node database/migrations/migrate.js up --dry-run",
     "db:migrate:status": "node database/migrations/migrate.js status",
     "db:migrate:create": "node database/migrations/migrate.js create",
     "db:migrate:deploy": "node database/migrations/migrate.js up",

@@ -6,7 +6,7 @@ mod event_tests {
         token, Address, BytesN, Env, String, Symbol, TryFromVal, Val,
     };
 
-    use crate::{EscrowContract, EscrowContractClient, EscrowError, MultisigConfig};
+    use crate::{EscrowContract, EscrowContractClient, EscrowError, MultisigConfig, UNPAUSE_MIN_DELAY_SECS};
 
     fn no_multisig(env: &Env) -> MultisigConfig {
         MultisigConfig {
@@ -462,7 +462,7 @@ mod event_tests {
     fn test_event_contract_paused_and_unpaused() {
         let (env, admin, contract_id, client) = setup();
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         let events = contract_events(&env, &contract_id);
         let (_, _, data) = events
             .iter()
@@ -471,6 +471,7 @@ mod event_tests {
         let emitted_admin: Address = soroban_sdk::FromVal::from_val(&env, &data);
         assert_eq!(emitted_admin, admin);
 
+        env.ledger().with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         let events = contract_events(&env, &contract_id);
         let (_, _, data) = events
