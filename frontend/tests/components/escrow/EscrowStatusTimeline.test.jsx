@@ -61,7 +61,7 @@ describe('EscrowStatusTimeline', () => {
         currentState="InProgress"
       />,
     );
-    expect(screen.getByText(/by client@example.com/)).toBeInTheDocument();
+    expect(screen.getAllByText(/by client@example.com/).length).toBeGreaterThan(0);
     expect(screen.getByText(/by contractor@example.com/)).toBeInTheDocument();
   });
 

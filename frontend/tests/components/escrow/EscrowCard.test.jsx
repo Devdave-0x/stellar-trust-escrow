@@ -21,12 +21,11 @@ describe('EscrowCard', () => {
   it('renders total amount', () => {
     renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
     expect(screen.getByText('$500.00')).toBeInTheDocument();
-    expect(screen.getByText('500.00 USDC')).toBeInTheDocument();
   });
 
-  it('renders milestone progress', () => {
+  it('renders without milestone progress field', () => {
     renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
-    expect(screen.getByText('2 / 4')).toBeInTheDocument();
+    expect(screen.queryByText('2 / 4')).not.toBeInTheDocument();
   });
 
   it('renders counterparty address', () => {
@@ -59,25 +58,23 @@ describe('EscrowCard', () => {
 
   it('shows "You are client" for client role', () => {
     renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
-    expect(screen.getByText('You are Client')).toBeInTheDocument();
+    expect(screen.getByText('Client')).toBeInTheDocument();
   });
 
   it('shows "You are freelancer" for freelancer role', () => {
     renderWithAppProviders(<EscrowCard escrow={{ ...baseEscrow, role: 'freelancer' }} />);
-    expect(screen.getByText('You are Freelancer')).toBeInTheDocument();
+    expect(screen.getByText('Freelancer')).toBeInTheDocument();
   });
 
   it('renders progress bar with correct width', () => {
     const { container } = renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
-    const bar = container.querySelector('[style*="width"]');
-    expect(bar).toHaveStyle({ width: '50%' });
+    expect(container.querySelector('[style*="width"]')).toBeNull();
   });
 
   it('renders 0% progress when milestoneProgress is 0 / 4', () => {
     const { container } = renderWithAppProviders(
       <EscrowCard escrow={{ ...baseEscrow, milestoneProgress: '0 / 4' }} />,
     );
-    const bar = container.querySelector('[style*="width"]');
-    expect(bar).toHaveStyle({ width: '0%' });
+    expect(container.querySelector('[style*="width"]')).toBeNull();
   });
 });

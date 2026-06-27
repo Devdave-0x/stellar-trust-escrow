@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { ToastProvider, useToast } from '../../../contexts/ToastContext';
+import { ToastProvider, useToast } from '../../contexts/ToastContext';
 
 // Test component that uses the toast hook
 function TestComponent() {

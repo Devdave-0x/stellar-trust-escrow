@@ -26,8 +26,8 @@ export default function EscrowStatusTimeline({ events = [], currentState, classN
   };
 
   const getStateColor = (state, isCurrent, isCompleted) => {
-    if (isCompleted) return 'bg-green-600';
     if (isCurrent) return 'bg-indigo-600 animate-pulse';
+    if (isCompleted) return 'bg-green-600';
     return 'bg-gray-700';
   };
 

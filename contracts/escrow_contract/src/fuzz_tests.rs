@@ -134,7 +134,7 @@ mod fuzz_tests {
                 &no_multisig(&t.env),
             );
 
-            if amount >= 1 && amount <= MAX_ESCROW_AMOUNT {
+            if (1..=MAX_ESCROW_AMOUNT).contains(&amount) {
                 assert!(result.is_ok(), "Should accept valid amount {amount}");
             } else {
                 assert!(result.is_err(), "Should reject invalid amount {amount}");
