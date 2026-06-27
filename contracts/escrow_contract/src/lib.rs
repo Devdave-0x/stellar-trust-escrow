@@ -104,7 +104,7 @@ pub use types::{
     PriceCondition, PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord,
     Timelock, MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
 };
-use types::{CancellationRequest, RecurringPaymentConfig, SlashRecord};
+use types::{CancellationRequest, EscrowExtensionRequest, RecurringPaymentConfig, SlashRecord};
 use types::{FundPayload, ProposalPayload, ProposalType};
 
 use soroban_sdk::{
@@ -134,7 +134,9 @@ mod storage;
 /// validate amounts client-side before submitting a transaction.
 pub const MAX_ESCROW_AMOUNT: i128 = 100_000_000_000_000_000i128;
 
-const CANCELLATION_DISPUTE_PERIOD: u64 = 120_960;
+const CANCELLATION_DISPUTE_PERIOD: u64 = 259_200; // 72 hours in seconds
+const EXTENSION_EXPIRY_SECS: u64 = 172_800; // 48 hours in seconds
+pub const UNPAUSE_MIN_DELAY_SECS: u64 = 3_600; // 1 hour minimum before unpause
 const SLASH_DISPUTE_PERIOD: u64 = 51_840;
 const SLASH_PERCENTAGE: u64 = 10;
 const RENT_PERIOD_SECONDS: u64 = 86_400;
@@ -994,6 +996,32 @@ impl ContractStorage {
             .get(&DataKey::Template(id))
             .ok_or(EscrowError::E8)
     }
+
+    fn load_extension_request(
+        env: &Env,
+        escrow_id: u64,
+    ) -> Result<EscrowExtensionRequest, EscrowError> {
+        let key = DataKey::ExtensionRequest(escrow_id);
+        let req = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(EscrowError::E71)?;
+        Self::bump_persistent_ttl(env, &key);
+        Ok(req)
+    }
+
+    fn save_extension_request(env: &Env, request: &EscrowExtensionRequest) {
+        let key = DataKey::ExtensionRequest(request.escrow_id);
+        env.storage().persistent().set(&key, request);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    fn remove_extension_request(env: &Env, escrow_id: u64) {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ExtensionRequest(escrow_id));
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1588,6 +1616,7 @@ impl EscrowContract {
         );
         snapshot.collected = true;
         ContractStorage::save_fee_snapshot(env, escrow_id, snapshot);
+        events::emit_fee_collected(env, escrow_id, snapshot.fee_amount, &treasury);
         Ok(snapshot.fee_amount)
     }
 
@@ -1630,6 +1659,32 @@ impl EscrowContract {
 
     pub fn get_platform_treasury(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::PlatformTreasury)
+    }
+
+    /// Sets a flat platform fee in basis points (0–10000). Admin only.
+    pub fn set_platform_fee_bps(
+        env: Env,
+        caller: Address,
+        fee_bps: u32,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        if fee_bps > 10_000 {
+            return Err(EscrowError::E19);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformFeeBps, &fee_bps);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Returns the configured flat platform fee in basis points (defaults to 0).
+    pub fn get_platform_fee_bps(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0_u32)
     }
 
     pub fn set_platform_fee_tiers(
@@ -4513,8 +4568,8 @@ impl EscrowContract {
 
     // ── Emergency Pause ──────────────────────────────────────────────────────
 
-    /// Pauses the contract, preventing new escrows and milestone additions.
-    pub fn pause(env: Env, caller: Address) -> Result<(), EscrowError> {
+    /// Pauses the contract, preventing all fund-moving operations. Admin only.
+    pub fn pause(env: Env, caller: Address, reason: String) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_admin(&env, &caller)?;
 
@@ -4522,12 +4577,15 @@ impl EscrowContract {
             return Ok(());
         }
 
+        let now = env.ledger().timestamp();
+        env.storage().instance().set(&DataKey::PausedAt, &now);
+        env.storage().instance().set(&DataKey::PauseReason, &reason);
         ContractStorage::set_paused(&env, true);
         events::emit_contract_paused(&env, &caller);
         Ok(())
     }
 
-    /// Unpauses the contract, resuming normal operation.
+    /// Unpauses the contract. Admin only. Requires at least 1 hour since pausing.
     pub fn unpause(env: Env, caller: Address) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_admin(&env, &caller)?;
@@ -4536,6 +4594,18 @@ impl EscrowContract {
             return Ok(());
         }
 
+        let paused_at: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PausedAt)
+            .unwrap_or(0);
+        let now = env.ledger().timestamp();
+        if now.saturating_sub(paused_at) < UNPAUSE_MIN_DELAY_SECS {
+            return Err(EscrowError::E70);
+        }
+
+        env.storage().instance().remove(&DataKey::PausedAt);
+        env.storage().instance().remove(&DataKey::PauseReason);
         ContractStorage::set_paused(&env, false);
         events::emit_contract_unpaused(&env, &caller);
         Ok(())
@@ -5337,6 +5407,212 @@ impl EscrowContract {
 
         events::emit_dispute_raised(&env, escrow_id, &caller);
 
+        Ok(())
+    }
+
+    /// Confirms a pending cancellation as the counterparty, returning all
+    /// remaining funds to the client (depositor) immediately.
+    pub fn confirm_cancellation(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::with_reentrancy_guard(&env, || {
+            let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            let request = ContractStorage::load_cancellation_request(&env, escrow_id)?;
+
+            // Only the counterparty (non-requester) may confirm
+            if caller == request.requester {
+                return Err(EscrowError::E3);
+            }
+            if caller != meta.client && caller != meta.freelancer {
+                return Err(EscrowError::E3);
+            }
+
+            // Request must not have expired
+            let now = env.ledger().timestamp();
+            if now > request.dispute_deadline {
+                return Err(EscrowError::E36);
+            }
+
+            let refund_amount = meta.remaining_balance;
+            if refund_amount > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.client,
+                    &refund_amount,
+                );
+            }
+
+            meta.status = EscrowStatus::Cancelled;
+            meta.remaining_balance = 0;
+            Self::remove_from_address_index(
+                &env,
+                &DataKey::CancellationsByRequester(request.requester.clone()),
+                escrow_id,
+            );
+            Self::remove_from_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::CancellationPending),
+                escrow_id,
+            );
+            Self::append_to_vec_index(
+                &env,
+                &DataKey::EscrowsByStatus(EscrowStatus::Cancelled),
+                escrow_id,
+            );
+            ContractStorage::save_escrow_meta(&env, &meta);
+            ContractStorage::remove_cancellation_request(&env, escrow_id);
+            ContractStorage::remove_fee_snapshot(&env, escrow_id);
+
+            events::emit_cancellation_completed(&env, escrow_id, refund_amount);
+            Ok(())
+        })
+    }
+
+    /// Rejects a pending cancellation as the counterparty, clearing the request
+    /// and restoring the escrow to Active status.
+    pub fn reject_cancellation(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        let request = ContractStorage::load_cancellation_request(&env, escrow_id)?;
+
+        // Only the counterparty (non-requester) may reject
+        if caller == request.requester {
+            return Err(EscrowError::E3);
+        }
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        // Request must not have expired
+        let now = env.ledger().timestamp();
+        if now > request.dispute_deadline {
+            return Err(EscrowError::E36);
+        }
+
+        // Restore escrow to Active
+        meta.status = EscrowStatus::Active;
+        Self::remove_from_address_index(
+            &env,
+            &DataKey::CancellationsByRequester(request.requester.clone()),
+            escrow_id,
+        );
+        Self::remove_from_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::CancellationPending),
+            escrow_id,
+        );
+        Self::append_to_vec_index(
+            &env,
+            &DataKey::EscrowsByStatus(EscrowStatus::Active),
+            escrow_id,
+        );
+        ContractStorage::save_escrow_meta(&env, &meta);
+        ContractStorage::remove_cancellation_request(&env, escrow_id);
+
+        events::emit_cancellation_rejected(&env, escrow_id, &caller);
+        Ok(())
+    }
+
+    // ── Deadline Extension Functions ───────────────────────────────────────────
+
+    /// Proposes a new deadline for the escrow. Either party may call this.
+    /// The counterparty must call `confirm_extension` for it to take effect.
+    pub fn request_extension(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        new_deadline: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        let now = env.ledger().timestamp();
+
+        // New deadline must be in the future
+        if new_deadline <= now {
+            return Err(EscrowError::E72);
+        }
+
+        // New deadline must not be earlier than the current deadline
+        if let Some(current) = meta.deadline {
+            if new_deadline < current {
+                return Err(EscrowError::E72);
+            }
+        }
+
+        // Reject duplicate requests
+        if ContractStorage::load_extension_request(&env, escrow_id).is_ok() {
+            return Err(EscrowError::E73);
+        }
+
+        let request = EscrowExtensionRequest {
+            escrow_id,
+            requested_by: caller,
+            proposed_deadline: new_deadline,
+            requested_at: now,
+            expires_at: now + EXTENSION_EXPIRY_SECS,
+        };
+        ContractStorage::save_extension_request(&env, &request);
+        Ok(())
+    }
+
+    /// Confirms a pending deadline extension as the counterparty.
+    /// The new deadline takes effect immediately.
+    pub fn confirm_extension(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        let request = ContractStorage::load_extension_request(&env, escrow_id)?;
+
+        // Only the counterparty may confirm
+        if caller == request.requested_by {
+            return Err(EscrowError::E3);
+        }
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        // Request must not have expired
+        let now = env.ledger().timestamp();
+        if now > request.expires_at {
+            return Err(EscrowError::E36);
+        }
+
+        let old_deadline = meta.deadline;
+        meta.deadline = Some(request.proposed_deadline);
+        ContractStorage::save_escrow_meta(&env, &meta);
+        ContractStorage::remove_extension_request(&env, escrow_id);
+
+        events::emit_escrow_extended(&env, escrow_id, old_deadline, request.proposed_deadline);
         Ok(())
     }
 
@@ -7249,27 +7525,28 @@ mod tests {
 
     #[test]
     fn test_pause_sets_state_and_emits_event() {
-        let (_env, admin, _, _, _, _, client) = setup_pause_escrow(100);
+        let (env, admin, _, _, _, _, client) = setup_pause_escrow(100);
         assert!(!client.is_paused());
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
     }
 
     #[test]
     fn test_unpause_clears_state_and_emits_event() {
-        let (_env, admin, _, _, _, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, _, _, _, _, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
 
     #[test]
     fn test_pause_is_idempotent() {
-        let (_env, admin, _, _, _, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, _, _, _, _, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
         // Second pause should not panic
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
     }
 
@@ -7284,16 +7561,17 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_pause_non_admin_rejected() {
-        let (_env, _admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
+        let (env, _admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
         // Non-admin cannot pause
-        client.pause(&escrow_client);
+        client.pause(&escrow_client, &String::from_str(&env, ""));
     }
 
     #[test]
     #[should_panic]
     fn test_unpause_non_admin_rejected() {
-        let (_env, admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, escrow_client, _, _, _, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         // Non-admin cannot unpause
         client.unpause(&escrow_client);
     }
@@ -7302,7 +7580,7 @@ mod tests {
     #[should_panic]
     fn test_create_escrow_blocked_when_paused() {
         let (env, admin, escrow_client, freelancer, token_id, _, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         let token_admin = token::StellarAssetClient::new(&env, &token_id);
         token_admin.mint(&escrow_client, &200_i128);
         client.create_escrow(
@@ -7327,7 +7605,7 @@ mod tests {
     #[should_panic]
     fn test_add_milestone_blocked_when_paused() {
         let (env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.add_milestone(
             &escrow_client,
             &escrow_id,
@@ -7349,7 +7627,7 @@ mod tests {
             &BytesN::from_array(&env, &[0u8; 32]),
             &50_i128,
         );
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.submit_milestone(&freelancer, &escrow_id, &0);
     }
 
@@ -7365,7 +7643,7 @@ mod tests {
             &50_i128,
         );
         client.submit_milestone(&freelancer, &escrow_id, &0);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.approve_milestone(&escrow_client, &escrow_id, &0);
     }
 
@@ -7373,7 +7651,7 @@ mod tests {
     #[should_panic]
     fn test_cancel_escrow_blocked_when_paused() {
         let (_env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.cancel_escrow(&escrow_client, &escrow_id);
     }
 
@@ -7381,7 +7659,7 @@ mod tests {
     #[should_panic]
     fn test_raise_dispute_blocked_when_paused() {
         let (_env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.raise_dispute(&escrow_client, &escrow_id, &None);
     }
 
@@ -7389,7 +7667,7 @@ mod tests {
     #[should_panic]
     fn test_request_cancellation_blocked_when_paused() {
         let (env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         client.request_cancellation(
             &escrow_client,
             &escrow_id,
@@ -7400,8 +7678,8 @@ mod tests {
     /// View functions must remain accessible while paused.
     #[test]
     fn test_view_functions_work_when_paused() {
-        let (_env, admin, _, _, _, escrow_id, client) = setup_pause_escrow(100);
-        client.pause(&admin);
+        let (env, admin, _, _, _, escrow_id, client) = setup_pause_escrow(100);
+        client.pause(&admin, &String::from_str(&env, ""));
 
         // All reads should succeed
         let _ = client.get_escrow(&escrow_id);
@@ -7415,7 +7693,7 @@ mod tests {
         let (env, admin, escrow_client, _freelancer, _, escrow_id, client) =
             setup_pause_escrow(100);
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
 
         // Mutation blocked
@@ -7428,6 +7706,7 @@ mod tests {
         );
         assert!(result.is_err(), "add_milestone should fail while paused");
 
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         assert!(!client.is_paused());
 
