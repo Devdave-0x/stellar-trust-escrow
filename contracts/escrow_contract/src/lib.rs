@@ -67,6 +67,10 @@
 mod admin_transfer_tests;
 mod arbiter_reputation_tests;
 mod batch_add_milestones_cap_tests;
+mod fuzz_tests;
+mod integration_lifecycle_tests;
+mod property_tests;
+mod unit_coverage_tests;
 mod batch_approve_release_e2e_tests;
 mod bridge;
 mod bridge_tests;
