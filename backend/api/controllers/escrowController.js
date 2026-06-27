@@ -10,7 +10,13 @@
 
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import {
+  buildPaginatedResponse,
+  parsePagination,
+  parseCursorPagination,
+  buildPrismaFindArgs,
+  buildCursorResponse,
+} from '../../lib/pagination.js';
 import { logControllerError } from '../../config/logger.js';
 import { submitTransaction } from '../../services/stellarService.js';
 import { xdr, scValToNative } from '@stellar/stellar-sdk';
@@ -20,7 +26,7 @@ import {
   paginationQuery,
   handleValidationErrors,
 } from '../../middleware/validation.js';
-import { getArchiveTableName, listArchiveTables } from '../../services/escrowArchiveService.js';
+import { getEscrowAuditLog } from '../../services/escrowAuditService.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -58,6 +64,8 @@ function logCacheMetrics() {
 async function onEscrowStatusChange(id) {
   try {
     await invalidateEscrowCache(id);
+    // Also invalidate dashboard stats since they reflect current escrow states
+    await invalidateStatsCaches();
     logCacheMetrics();
   } catch (err) {
     console.error('[Cache] invalidateEscrowCache failed:', err.message);
@@ -68,7 +76,6 @@ async function onEscrowStatusChange(id) {
 
 const listEscrows = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
     const {
       status,
       client,
@@ -78,9 +85,17 @@ const listEscrows = async (req, res) => {
       maxAmount,
       dateFrom,
       dateTo,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
     } = req.query;
+
+    // ── Cursor-based pagination ────────────────────────────────────────────
+    const { take, parsedCursor, sortField, sortDir } = parseCursorPagination(
+      req.query,
+      'createdAt',
+      'desc',
+    );
+
+    const resolvedSortBy = VALID_SORT_FIELDS.includes(sortField) ? sortField : 'createdAt';
+    const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortDir) ? sortDir : 'desc';
 
     const where = {};
 
@@ -125,16 +140,24 @@ const listEscrows = async (req, res) => {
       }
     }
 
-    const resolvedSortBy = VALID_SORT_FIELDS.includes(sortBy) ? sortBy : 'createdAt';
-    const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortOrder) ? sortOrder : 'desc';
-    const orderBy = { [resolvedSortBy]: resolvedSortOrder };
+    // Escrow id is a BigInt — cursor id needs BigInt conversion
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: BigInt(parsedCursor.id) }
+        : null,
+      take,
+      sortField: resolvedSortBy,
+      sortDir: resolvedSortOrder,
+      idField: 'id',
+    });
 
-    const [data, total] = await prisma.$transaction([
-      prisma.escrow.findMany({ where, select: ESCROW_SUMMARY_SELECT, skip, take: limit, orderBy }),
-      prisma.escrow.count({ where }),
-    ]);
+    const data = await prisma.escrow.findMany({
+      where,
+      select: ESCROW_SUMMARY_SELECT,
+      ...findArgs,
+    });
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    res.json(buildCursorResponse(data, take, 'id', resolvedSortBy, resolvedSortOrder));
   } catch (err) {
     logControllerError('escrow.listEscrows', err, req);
     res.status(500).json({ error: err.message });
@@ -259,28 +282,33 @@ const broadcastCreateEscrow = async (req, res) => {
 const getMilestones = async (req, res) => {
   try {
     const escrowId = BigInt(req.params.id);
-    const { page, limit, skip } = parsePagination(req.query);
+    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'milestoneIndex', 'asc');
 
-    const [data, total] = await prisma.$transaction([
-      prisma.milestone.findMany({
-        where: { escrowId },
-        skip,
-        take: limit,
-        orderBy: { milestoneIndex: 'asc' },
-        select: {
-          id: true,
-          milestoneIndex: true,
-          title: true,
-          amount: true,
-          status: true,
-          submittedAt: true,
-          resolvedAt: true,
-        },
-      }),
-      prisma.milestone.count({ where: { escrowId } }),
-    ]);
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
+        : null,
+      take,
+      sortField: 'milestoneIndex',
+      sortDir,
+      idField: 'id',
+    });
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    const data = await prisma.milestone.findMany({
+      where: { escrowId },
+      ...findArgs,
+      select: {
+        id: true,
+        milestoneIndex: true,
+        title: true,
+        amount: true,
+        status: true,
+        submittedAt: true,
+        resolvedAt: true,
+      },
+    });
+
+    res.json(buildCursorResponse(data, take, 'id', 'milestoneIndex', sortDir));
   } catch (err) {
     if (err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
@@ -319,7 +347,7 @@ const getMilestone = async (req, res) => {
 
 // ── Stats endpoints (with Redis caching) ─────────────────────────────────────
 
-const STATS_CACHE_TTL = 3600; // 1 hour in seconds
+const STATS_CACHE_TTL = 30; // 30 seconds as per issue #4 requirements
 
 /**
  * Helper to get cached stats or fetch from DB with cache population
@@ -425,6 +453,47 @@ const getSuccessRate = async (req, res) => {
   }
 };
 
+// ── Audit trail ───────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/escrows/:id/audit
+ * Returns the immutable state-transition audit trail for a single escrow.
+ * Access is restricted to: admins, the client address, and the freelancer address.
+ */
+const getEscrowAudit = async (req, res) => {
+  try {
+    const id = BigInt(req.params.id);
+
+    // Load the escrow to check party access
+    const escrow = await prisma.escrow.findUnique({
+      where: { id },
+      select: { clientAddress: true, freelancerAddress: true, tenantId: true },
+    });
+
+    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+
+    // Only admins and the escrow parties may access the audit log
+    const callerAddress = req.user?.address;
+    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
+    const isParty =
+      callerAddress === escrow.clientAddress ||
+      callerAddress === escrow.freelancerAddress;
+
+    if (!isAdmin && !isParty) {
+      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    }
+
+    const result = await getEscrowAuditLog(id, escrow.tenantId, req.query);
+    res.json(result);
+  } catch (err) {
+    if (err.message?.includes('Cannot convert')) {
+      return res.status(400).json({ error: 'Invalid escrow id' });
+    }
+    logControllerError('escrow.getEscrowAudit', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listEscrows,
   getEscrow,
@@ -436,6 +505,7 @@ export default {
   getActiveEscrows,
   getSuccessRate,
   invalidateStatsCaches,
+  getEscrowAudit,
 };
 
 // ── Validation rule sets (used by escrowRoutes) ───────────────────────────────

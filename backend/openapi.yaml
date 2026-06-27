@@ -11,14 +11,25 @@ info:
     Admin endpoints additionally require the `x-admin-api-key` header.
 
     ## Pagination
-    All collection endpoints return a standardised envelope:
+    All collection endpoints use **cursor-based pagination** and return:
     ```
     {
       "data": [...],
-      "page": 1, "limit": 20, "total": 42,
-      "totalPages": 3, "hasNextPage": true, "hasPreviousPage": false
+      "next_cursor": "<opaque-base64url-token>",
+      "has_more": true
     }
     ```
+    Pass `?cursor=<next_cursor>` to fetch the next page. The cursor encodes the
+    sort key and direction and is stable across concurrent inserts.
+
+    ## Idempotency Keys
+    All `POST` and `PATCH` endpoints accept an optional `Idempotency-Key` header.
+    Supplying this header makes the call safe to retry:
+    - The response is cached in Redis for **24 hours** under `(tenantId, method, path, key)`.
+    - Duplicate requests within the TTL return the cached response immediately
+      (status `X-Idempotency-Replayed: true`).
+    - If a duplicate arrives while the first is still in-flight, a **409 Conflict** is returned.
+    - Use any unique string (UUID recommended): `Idempotency-Key: <uuid-v4>`
 
     ## Environments
     - **Testnet**: `https://api.test.stellar-trust-escrow.example.com`

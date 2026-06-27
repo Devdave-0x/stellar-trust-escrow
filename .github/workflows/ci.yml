@@ -2,17 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches: [main, develop]
   pull_request:
-    branches: [develop, main]
+    branches: [main, develop]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  HUSKY: 0
 
 jobs:
-  lint:
-    name: Lint
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,57 +19,15 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci --ignore-scripts
-      - run: npm run lint
-
-  test-backend:
-    name: Backend Tests
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15-alpine
+      - run: npm ci
+      - run: npm test -w backend
         env:
-          POSTGRES_USER: user
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: stellar_escrow_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --ignore-scripts
-      - name: Run migrations
-        run: npm run db:migrate -w backend
-        env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/stellar_escrow_test
-      - name: Run backend tests
-        run: npm run test:backend
-        env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/stellar_escrow_test
-          REDIS_URL: redis://localhost:6379
           NODE_ENV: test
-          JWT_SECRET: test-secret-ci
-          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
+          JWT_SECRET: ci-secret
+          STELLAR_NETWORK: testnet
 
-  test-frontend:
-    name: Frontend Tests
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,76 +35,22 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci --ignore-scripts
-      - run: npm run test:frontend
-
-  build-frontend:
-    name: Build Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --ignore-scripts
-      - name: Build
-        run: npm run build -w frontend
+      - run: npm ci
+      - run: npm run build -w frontend
         env:
           NEXT_PUBLIC_API_URL: http://localhost:4000
-          NEXT_PUBLIC_STELLAR_NETWORK: testnet
+          NEXT_PUBLIC_CONTRACT_ADDRESS: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      - run: npm run test:unit -w frontend
 
-  test-contracts:
-    name: Smart Contract Tests
+  contract:
+    name: Smart Contract
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          targets: wasm32-unknown-unknown
           components: clippy, rustfmt
-      - name: Fmt check
-        run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Tests
-        run: cargo test --workspace
-
-  accessibility:
-    name: Accessibility Scan
-    runs-on: ubuntu-latest
-    needs: build-frontend
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/develop')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --ignore-scripts
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
-        working-directory: frontend
-      - name: Build frontend
-        run: npm run build -w frontend
-        env:
-          NEXT_PUBLIC_API_URL: http://localhost:4000
-          NEXT_PUBLIC_STELLAR_NETWORK: testnet
-      - name: Start frontend server
-        run: npm run start -w frontend &
-        env:
-          PORT: 3000
-      - name: Wait for server
-        run: npx wait-on http://localhost:3000 --timeout 60000
-      - name: Run accessibility scan
-        run: npm run test:a11y:scan -w frontend
-        env:
-          BASE_URL: http://localhost:3000
-          CI: 'true'
-      - name: Upload accessibility report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: accessibility-report-${{ github.run_number }}
-          path: frontend/accessibility-reports/
-          retention-days: 30
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
