@@ -27,6 +27,7 @@ import {
   handleValidationErrors,
 } from '../../middleware/validation.js';
 import { getEscrowAuditLog } from '../../services/escrowAuditService.js';
+import { listArchiveTables } from '../../services/escrowArchiveService.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -76,16 +77,8 @@ async function onEscrowStatusChange(id) {
 
 const listEscrows = async (req, res) => {
   try {
-    const {
-      status,
-      client,
-      freelancer,
-      search,
-      minAmount,
-      maxAmount,
-      dateFrom,
-      dateTo,
-    } = req.query;
+    const { status, client, freelancer, search, minAmount, maxAmount, dateFrom, dateTo } =
+      req.query;
 
     // ── Cursor-based pagination ────────────────────────────────────────────
     const { take, parsedCursor, sortField, sortDir } = parseCursorPagination(
@@ -142,9 +135,7 @@ const listEscrows = async (req, res) => {
 
     // Escrow id is a BigInt — cursor id needs BigInt conversion
     const findArgs = buildPrismaFindArgs({
-      parsedCursor: parsedCursor
-        ? { ...parsedCursor, id: BigInt(parsedCursor.id) }
-        : null,
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: BigInt(parsedCursor.id) } : null,
       take,
       sortField: resolvedSortBy,
       sortDir: resolvedSortOrder,
@@ -272,7 +263,9 @@ const broadcastCreateEscrow = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ hash: result.hash, escrowId: escrowId ? String(escrowId) : null });
+    return res
+      .status(200)
+      .json({ hash: result.hash, escrowId: escrowId ? String(escrowId) : null });
   } catch (err) {
     logControllerError('escrow.broadcastCreateEscrow', err, req);
     res.status(500).json({ error: err.message });
@@ -282,12 +275,14 @@ const broadcastCreateEscrow = async (req, res) => {
 const getMilestones = async (req, res) => {
   try {
     const escrowId = BigInt(req.params.id);
-    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'milestoneIndex', 'asc');
+    const { take, parsedCursor, sortDir } = parseCursorPagination(
+      req.query,
+      'milestoneIndex',
+      'asc',
+    );
 
     const findArgs = buildPrismaFindArgs({
-      parsedCursor: parsedCursor
-        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
-        : null,
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) } : null,
       take,
       sortField: 'milestoneIndex',
       sortDir,
@@ -476,8 +471,7 @@ const getEscrowAudit = async (req, res) => {
     const callerAddress = req.user?.address;
     const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
     const isParty =
-      callerAddress === escrow.clientAddress ||
-      callerAddress === escrow.freelancerAddress;
+      callerAddress === escrow.clientAddress || callerAddress === escrow.freelancerAddress;
 
     if (!isAdmin && !isParty) {
       return res.status(403).json({ error: 'Access denied: not a party to this escrow' });

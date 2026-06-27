@@ -28,6 +28,7 @@ const cacheMock = {
 
 const prismaMock = {
   $transaction: jest.fn(async (operations) => operations),
+  $queryRawUnsafe: jest.fn().mockResolvedValue([]),
   escrow: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
@@ -59,7 +60,10 @@ jest.unstable_mockModule('@stellar/stellar-sdk', () => ({
   scValToNative: jest.fn(() => 42n),
   SorobanRpc: {},
   Transaction: jest.fn(),
-  Networks: { TESTNET: 'Test SDF Network ; September 2015', PUBLIC: 'Public Global Stellar Network ; September 2015' },
+  Networks: {
+    TESTNET: 'Test SDF Network ; September 2015',
+    PUBLIC: 'Public Global Stellar Network ; September 2015',
+  },
 }));
 
 const { default: escrowController } = await import('../api/controllers/escrowController.js');
@@ -106,7 +110,6 @@ describe('escrowController', () => {
 
       expect(res.json).toHaveBeenCalled();
       expect(res.body.data).toHaveLength(fixtures.escrows.length);
-      expect(res.body.total).toBe(fixtures.escrows.length);
     });
 
     it('returns the normalized paginated response shape', async () => {
@@ -117,12 +120,8 @@ describe('escrowController', () => {
 
       expect(res.json).toHaveBeenCalledWith({
         data: [],
-        page: 1,
-        limit: 20,
-        total: 0,
-        totalPages: 0,
-        hasNextPage: false,
-        hasPreviousPage: false,
+        next_cursor: null,
+        has_more: false,
       });
     });
 
@@ -177,7 +176,7 @@ describe('escrowController', () => {
     it('returns 500 on error', async () => {
       const req = { query: {} };
       const res = createMockRes();
-      prismaMock.$transaction.mockRejectedValue(new Error('DB Error'));
+      prismaMock.escrow.findMany.mockRejectedValue(new Error('DB Error'));
 
       await escrowController.listEscrows(req, res);
 
@@ -230,7 +229,11 @@ describe('escrowController', () => {
     });
 
     it('returns 200 with { hash, escrowId } on SUCCESS', async () => {
-      submitTransactionMock.mockResolvedValue({ hash: 'tx_abc', status: 'SUCCESS', returnValue: null });
+      submitTransactionMock.mockResolvedValue({
+        hash: 'tx_abc',
+        status: 'SUCCESS',
+        returnValue: null,
+      });
       const req = { body: { signedXdr: 'AAAA...' } };
       const res = createMockRes();
 
@@ -241,7 +244,11 @@ describe('escrowController', () => {
     });
 
     it('returns 422 on Soroban FAILED status', async () => {
-      submitTransactionMock.mockResolvedValue({ hash: 'tx_fail', status: 'FAILED', errorResultXdr: 'AAAA' });
+      submitTransactionMock.mockResolvedValue({
+        hash: 'tx_fail',
+        status: 'FAILED',
+        errorResultXdr: 'AAAA',
+      });
       const req = { body: { signedXdr: 'AAAA...' } };
       const res = createMockRes();
 
