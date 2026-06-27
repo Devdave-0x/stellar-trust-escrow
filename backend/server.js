@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { initSecrets } from './lib/secrets.js';
 import http from 'http';
 import compressionMiddleware from './middleware/compression.js';
-import cors from 'cors';
+import { corsMiddleware } from './middleware/cors.js';
 import express from 'express';
 import helmet from 'helmet';
 import { requestLogger } from './lib/logger.js';
@@ -65,9 +65,9 @@ import { createEventWorker, createDeadLetterWorker } from './services/eventWorke
 import { setupSwagger } from './api/docs/swagger.js';
 import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
-import stellarMonitor from './services/stellarMonitorService.js';
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
+import chatRoutes from './api/routes/chatRoutes.js';
 
 // Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
@@ -101,12 +101,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', requestId);
   next();
 });
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    credentials: true,
-  }),
-);
+app.use(corsMiddleware);
 app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
 app.use(cookieParser());
@@ -114,6 +109,8 @@ app.use(sanitizeInputs);
 app.use(csrfProtection);
 app.use('/uploads', express.static('uploads'));
 app.use(auditMiddleware);
+// Idempotency key enforcement for all POST and PATCH requests
+app.use(idempotencyMiddleware());
 
 // ── Sentry tracing handler — after body parsers, before routes ────────────────
 app.use(sentryTracingHandler);
@@ -210,6 +207,7 @@ app.use('/api/incidents', incidentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/batch', batchRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/admin/queues', queueDashboardRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
@@ -279,6 +277,22 @@ async function startServer() {
         startConnectionMonitoring(prisma);
         // Load secrets first — merges vault/env secrets into process.env
         await initSecrets();
+
+        // ── Stellar / Soroban env validation ───────────────────────────────
+        if (!process.env.SOROBAN_RPC_URL) {
+          throw new Error(
+            '[Config] SOROBAN_RPC_URL is not set. The indexer and broadcast endpoint require a Soroban RPC endpoint.',
+          );
+        }
+        if (
+          process.env.STELLAR_NETWORK === 'testnet' &&
+          process.env.NODE_ENV !== 'development' &&
+          process.env.NODE_ENV !== 'test'
+        ) {
+          throw new Error(
+            `[Config] STELLAR_NETWORK=testnet is not allowed in NODE_ENV=${process.env.NODE_ENV}. Set STELLAR_NETWORK=mainnet for production deployments.`,
+          );
+        }
         logger.info(
           { secretsBackend: process.env.SECRETS_BACKEND || 'env' },
           'Secrets backend loaded',
@@ -299,7 +313,6 @@ async function startServer() {
             logger.info('[BullMQ] Shutting down workers...');
             await eventWorker.close();
             await deadLetterWorker.close();
-            stellarMonitor.stop();
           };
 
           process.once('SIGTERM', closeWorkers);
@@ -314,11 +327,6 @@ async function startServer() {
           Sentry.captureException(err, { tags: { component: 'indexer' } });
         });
         startRpcMonitor();
-
-        stellarMonitor.start().catch((err) => {
-          logger.error({ err, component: 'stellar-monitor' }, 'StellarMonitor failed to start');
-          Sentry.captureException(err, { tags: { component: 'stellar-monitor' } });
-        });
 
         // Reputation ES sync — ensure index + initial sync on startup
         ensureIndex().then(() =>

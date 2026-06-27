@@ -480,6 +480,26 @@ pub struct RecurringScheduleStatus {
     pub payment_amount: i128,
 }
 
+/// Dispute information for frontend display.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeInfo {
+    /// Escrow ID this dispute belongs to.
+    pub escrow_id: u64,
+    /// Whether the escrow is currently disputed.
+    pub is_disputed: bool,
+    /// Ledger timestamp when the dispute was raised.
+    pub disputed_at: Option<u64>,
+    /// Configured cooldown duration in seconds.
+    pub cooldown_secs: u64,
+    /// Ledger timestamp when the cooldown ends and a ruling can be submitted.
+    pub cooldown_ends_at: Option<u64>,
+    /// Whether the cooldown has elapsed.
+    pub cooldown_elapsed: bool,
+    /// Assigned arbiter address, if any.
+    pub arbiter: Option<Address>,
+}
+
 /// A cancellation request for an escrow.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -505,6 +525,26 @@ pub struct CancellationRequest {
     /// Whether the counterparty (non-requester) has explicitly approved the cancellation.
     /// When true, `execute_cancellation` skips the dispute window check.
     pub counterparty_approved: bool,
+}
+
+/// A pending mutual-consent deadline extension request.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EscrowExtensionRequest {
+    /// The escrow ID this request belongs to.
+    pub escrow_id: u64,
+
+    /// Address of the party that proposed the extension.
+    pub requested_by: Address,
+
+    /// The proposed new deadline (ledger timestamp).
+    pub proposed_deadline: u64,
+
+    /// When the request was created (ledger timestamp).
+    pub requested_at: u64,
+
+    /// When the request expires if not confirmed (ledger timestamp).
+    pub expires_at: u64,
 }
 
 /// Oracle-signed resolution payload for fallback dispute resolution.
@@ -696,6 +736,10 @@ pub enum DataKey {
     AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
+    /// Timestamp when the contract was paused — value: u64
+    PausedAt,
+    /// Reason the contract was paused — value: String
+    PauseReason,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
     CancellationRequest(u64),
     /// Slash record by escrow ID — key: u64, value: SlashRecord
@@ -740,14 +784,36 @@ pub enum DataKey {
     ReentrancyLock,
     /// Treasury address for platform fee settlement — value: Address
     PlatformTreasury,
+    /// Simple platform fee in basis points (0–10000) — value: u32
+    PlatformFeeBps,
     /// Configured dynamic platform fee tiers — value: Vec<FeeTier>
     PlatformFeeTiers,
     /// Applied fee snapshot for an escrow — key: u64, value: EscrowFeeSnapshot
     PlatformFeeSnapshot(u64),
     /// Escrow frozen flag (security freeze) — key: u64, value: bool
     EscrowFrozen(u64),
+    /// Oracle staleness threshold configuration — value: u64
+    OracleStaleThreshold,
     /// Dispute resolution oracle payload by escrow ID — key: u64, value: OracleResolutionPayload
     OracleResolution(u64),
     /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
     TrustedOracleKey,
+    /// Configured release timelock duration in seconds for an escrow — key: u64, value: u64
+    EscrowTimelockSecs(u64),
+    /// M-of-N multisig config for escrow-level release approval — key: u64, value: MultisigConfig
+    MultisigCfg(u64),
+    /// Addresses that have submitted an escrow-level release approval — key: u64, value: Vec<Address>
+    MultisigApprovals(u64),
+    /// Cumulative percentage allocated via add_milestone_pct — key: u64, value: u32
+    AllocatedPct(u64),
+    /// Count of percentage-based milestones added to an escrow — key: u64, value: u32
+    PctMilestoneCount(u64),
+    /// Evidence hash submitted when raising a dispute — key: u64, value: BytesN<32>
+    EvidenceHash(u64),
+    /// Approved arbiter allowlist entry — key: Address, value: bool
+    ApprovedArbiter(Address),
+    /// Semantic version string (e.g. "1.0.0") — value: String
+    ContractVersion,
+    /// Configurable dispute cooldown in seconds — value: u64
+    DisputeCooldownSecs,
 }

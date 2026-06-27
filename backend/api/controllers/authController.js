@@ -9,9 +9,8 @@ import crypto, { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import sessionService from '../../services/sessionService.js';
+import { JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 const NONCE_TTL_MS = 5 * 60 * 1000;
 
@@ -106,8 +105,28 @@ export const verifySignatureAndLogin = async (req, res) => {
 
   const jti = await createSessionJti(address, req);
   const token = jwt.sign({ address, jti, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, {
+    algorithm: JWT_ALGORITHM,
     expiresIn: JWT_EXPIRES_IN,
   });
+
+  // Check if user requires 2FA (admin/arbiter with MFA enabled)
+  const user = await prisma.user.findFirst({
+    where: { walletAddress: address },
+    select: { id: true, role: true, mfaEnabled: true, mfaEnforced: true, tenantId: true },
+  });
+
+  if (user) {
+    const mfaRequired = await mfaService.requiresMfa(user.id, user.tenantId);
+    if (mfaRequired) {
+      return res.json({
+        token,
+        address,
+        expiresIn: JWT_EXPIRES_IN,
+        mfaRequired: true,
+        message: 'MFA verification required. Use the token to authenticate at /api/mfa/totp/verify.',
+      });
+    }
+  }
 
   return res.json({ token, address, expiresIn: JWT_EXPIRES_IN });
 };
@@ -119,13 +138,14 @@ export const refreshToken = async (req, res) => {
   }
 
   try {
-    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
     if (payload.jti && typeof sessionService?.revokeSession === 'function') {
       await sessionService.revokeSession(payload.jti);
     }
 
     const jti = await createSessionJti(payload.address, req);
     const token = jwt.sign({ address: payload.address, jti }, JWT_SECRET, {
+      algorithm: JWT_ALGORITHM,
       expiresIn: JWT_EXPIRES_IN,
     });
 
@@ -140,7 +160,7 @@ export const logout = async (req, res) => {
 
   if (authHeader?.startsWith('Bearer ')) {
     try {
-      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
       if (payload.jti && typeof sessionService?.revokeSession === 'function') {
         await sessionService.revokeSession(payload.jti);
       }

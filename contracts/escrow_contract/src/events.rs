@@ -238,6 +238,10 @@ pub fn emit_contract_paused(env: &Env, admin: &Address) {
     env.events().publish((ev::CONTRACT_PAUSED,), admin.clone());
 }
 
+pub fn emit_limits_updated(env: &Env, min: i128, max: i128) {
+    env.events().publish((ev::LIMITS_UPDATED,), (min, max));
+}
+
 pub fn emit_contract_unpaused(env: &Env, admin: &Address) {
     env.events()
         .publish((ev::CONTRACT_UNPAUSED,), admin.clone());
@@ -258,6 +262,26 @@ pub fn emit_cancellation_executed(
 pub fn emit_cancellation_approved(env: &Env, escrow_id: u64, approver: &Address) {
     env.events()
         .publish((ev::CANCELLATION_APPROVED, escrow_id), approver.clone());
+}
+
+pub fn emit_cancellation_completed(env: &Env, escrow_id: u64, refund_amount: i128) {
+    env.events()
+        .publish((ev::CANCELLATION_COMPLETED, escrow_id), refund_amount);
+}
+
+pub fn emit_cancellation_rejected(env: &Env, escrow_id: u64, rejected_by: &Address) {
+    env.events()
+        .publish((ev::CANCELLATION_REJECTED, escrow_id), rejected_by.clone());
+}
+
+pub fn emit_fee_collected(env: &Env, escrow_id: u64, amount: i128, treasury: &Address) {
+    env.events()
+        .publish((ev::FEE_COLLECTED, escrow_id), (amount, treasury.clone()));
+}
+
+pub fn emit_escrow_extended(env: &Env, escrow_id: u64, old_deadline: Option<u64>, new_deadline: u64) {
+    env.events()
+        .publish((ev::ESCROW_EXTENDED, escrow_id), (old_deadline, new_deadline));
 }
 
 pub fn emit_cancellation_requested(
@@ -448,4 +472,54 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
         (symbol_short!("ref_pay"), escrow_id),
         (referrer.clone(), amount),
     );
+}
+
+pub fn emit_arbiter_assigned(env: &Env, escrow_id: u64, arbiter: &Address) {
+    env.events()
+        .publish((ev::ARBITER_ASSIGNED, escrow_id), arbiter.clone());
+}
+
+pub fn emit_evidence_submitted(env: &Env, escrow_id: u64, evidence_hash: &soroban_sdk::BytesN<32>) {
+    env.events()
+        .publish((ev::EVIDENCE_SUBMITTED, escrow_id), evidence_hash.clone());
+}
+
+pub fn emit_escrow_approval_submitted(
+    env: &Env,
+    escrow_id: u64,
+    signer: &Address,
+    approval_count: u32,
+    threshold: u32,
+) {
+    env.events().publish(
+        (ev::ESCROW_APPROVAL_SUBMITTED, escrow_id),
+        (signer.clone(), approval_count, threshold),
+    );
+}
+
+pub fn emit_escrow_approval_revoked(env: &Env, escrow_id: u64, signer: &Address) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_REVOKED, escrow_id), signer.clone());
+}
+
+pub fn emit_escrow_approval_threshold_met(env: &Env, escrow_id: u64, threshold: u32) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_THRESHOLD_MET, escrow_id), threshold);
+}
+
+pub fn emit_release_pending(env: &Env, escrow_id: u64, milestone_id: u32, release_at: u64) {
+    env.events()
+        .publish((ev::RELEASE_PENDING, escrow_id), (milestone_id, release_at));
+}
+
+pub fn emit_pending_release_executed(env: &Env, escrow_id: u64, milestone_id: u32, amount: i128) {
+    env.events().publish(
+        (ev::PENDING_RELEASE_EXECUTED, escrow_id),
+        (milestone_id, amount),
+    );
+}
+
+pub fn emit_cooldown_elapsed(env: &Env, escrow_id: u64, cooldown_ended_at: u64) {
+    env.events()
+        .publish((ev::COOLDOWN_ELAPSED, escrow_id), cooldown_ended_at);
 }

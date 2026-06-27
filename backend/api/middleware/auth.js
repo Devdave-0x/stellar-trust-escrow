@@ -7,17 +7,20 @@
 
 import jwt from 'jsonwebtoken';
 import sessionService from '../../services/sessionService.js';
-
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+import { JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
 
 export default async function authMiddleware(req, res, next) {
+  if (req.isAdmin) {
+    req.user = req.user ?? { address: req.adminId ?? 'admin' };
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
-    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
     if (payload.jti) {
       const valid = await sessionService.isSessionValid(payload.jti);
       if (!valid) {

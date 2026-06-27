@@ -22,8 +22,10 @@
  *
  * ## Cache key
  *
- * Default: `http:<method>:<path>:<sorted-query-string>`
- * Override with the `keyFn` option.
+ * Default: `t:<tenant-slug>:http:<method>:<path>:<sha256-query-16chars>`
+ * Public (tenantless) routes fall back to `t:_global:...`.
+ * Override with the `keyFn` option — custom keyFn MUST include tenant context
+ * to avoid cross-tenant collisions.
  *
  * ## TTL configuration
  *
@@ -39,6 +41,7 @@
  * @module middleware/cache
  */
 
+import { createHash } from 'crypto';
 import cache from '../../lib/cache.js';
 
 // ── TTL presets (overridable via env) ─────────────────────────────────────────
@@ -46,7 +49,10 @@ import cache from '../../lib/cache.js';
 export const TTL = {
   DEFAULT: parseInt(process.env.CACHE_TTL_DEFAULT || '60', 10),
   LIST: parseInt(process.env.CACHE_TTL_LIST || '15', 10),
-  DETAIL: parseInt(process.env.CACHE_TTL_DETAIL || '30', 10),
+  /** Escrow detail responses cached for 60s as per issue #4 requirements */
+  DETAIL: parseInt(process.env.CACHE_TTL_DETAIL || '60', 10),
+  /** Dashboard stats cached for 30s as per issue #4 requirements */
+  STATS: parseInt(process.env.CACHE_TTL_STATS || '30', 10),
   LEADERBOARD: parseInt(process.env.CACHE_TTL_LEADERBOARD || '300', 10),
   EVENTS: parseInt(process.env.CACHE_TTL_EVENTS || '15', 10),
   REPUTATION: parseInt(process.env.CACHE_TTL_REPUTATION || '60', 10),
@@ -56,19 +62,43 @@ export const TTL = {
 // ── Key builder ───────────────────────────────────────────────────────────────
 
 /**
- * Builds a deterministic cache key from the request.
- * Query params are sorted so ?b=2&a=1 and ?a=1&b=2 hit the same entry.
+ * Builds a deterministic cache key from the request, scoped by tenant slug.
+ *
+ * Keys are prefixed with `t:<slug>:` so two tenants requesting the same path
+ * never collide. The `_global` sentinel is used for requests that have no
+ * tenant (health checks, public metrics).
+ *
+ * Query params are sorted and SHA-256 hashed (first 16 hex chars) to keep
+ * long query strings from bloating Redis key storage.
  *
  * @param {import('express').Request} req
  * @returns {string}
  */
 export function buildCacheKey(req) {
-  const tenant = req.tenant?.slug || 'global';
+
+  const tenantSlug = req.tenant?.slug ?? '_global';
   const sortedQuery = Object.keys(req.query)
     .sort()
     .map((k) => `${k}=${req.query[k]}`)
     .join('&');
-  return `http:${tenant}:${req.method}:${req.path}${sortedQuery ? ':' + sortedQuery : ''}`;
+  const queryPart = sortedQuery
+    ? ':' + createHash('sha256').update(sortedQuery).digest('hex').slice(0, 16)
+    : '';
+  return `t:${tenantSlug}:http:${req.method}:${req.path}${queryPart}`;
+}
+
+/**
+ * Prefixes a tag with the request's tenant id so Tenant A's tag invalidation
+ * never touches Tenant B's cached entries.
+ * Falls back to the bare tag for tenantless (public) routes.
+ *
+ * @param {string} tag
+ * @param {import('express').Request} req
+ * @returns {string}
+ */
+function tenantTag(tag, req) {
+  const tenantId = req.tenant?.id;
+  return tenantId ? `t:${tenantId}:${tag}` : tag;
 }
 
 // ── Cache response middleware ─────────────────────────────────────────────────
@@ -110,13 +140,14 @@ export function cacheResponse(options = {}) {
 
     res.setHeader('X-Cache', 'MISS');
     res.setHeader('X-Cache-Key', key);
-
     // ── Intercept res.json to store the response ──────────────────────────────
     const originalJson = res.json.bind(res);
     res.json = async (body) => {
       // Only cache successful responses
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        const resolvedTags = typeof tags === 'function' ? tags(req) : tags;
+        const resolvedTags = (typeof tags === 'function' ? tags(req) : tags).map((t) =>
+          tenantTag(t, req),
+        );
         await cache.setWithTags(key, body, ttl, resolvedTags);
       }
       return originalJson(body);
@@ -146,7 +177,9 @@ export function invalidateOn(options = {}) {
   const { tags = [], keys = [], prefixes = [], when = 'after' } = options;
 
   const doInvalidate = async (req) => {
-    const resolvedTags = typeof tags === 'function' ? tags(req) : tags;
+    const resolvedTags = (typeof tags === 'function' ? tags(req) : tags).map((t) =>
+      tenantTag(t, req),
+    );
     const resolvedKeys = typeof keys === 'function' ? keys(req) : keys;
     const resolvedPrefixes = typeof prefixes === 'function' ? prefixes(req) : prefixes;
 

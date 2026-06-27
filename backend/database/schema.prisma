@@ -43,6 +43,7 @@ model Tenant {
   escrows              Escrow[]
   milestones           Milestone[]
   reputationRecords    ReputationRecord[]
+  reputationEvents     ReputationEvent[]
   disputes             Dispute[]
   disputeEvidence      DisputeEvidence[]
   disputeAppeals       DisputeAppeal[]
@@ -53,6 +54,8 @@ model Tenant {
   kycVerifications     KycVerification[]
   adminAuditLogs       AdminAuditLog[]
   auditLogs            AuditLog[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@map("tenants")
 }
@@ -71,10 +74,12 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  refreshTokens RefreshToken[]
-  mfaMethods    MfaMethod[]
-  mfaAttempts   MfaAttempt[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  refreshTokens           RefreshToken[]
+  mfaMethods              MfaMethod[]
+  mfaAttempts             MfaAttempt[]
+  notifications           Notification[]
+  notificationPreference  NotificationPreference?
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
@@ -169,6 +174,11 @@ model RefreshToken {
   userId     Int       @map("user_id")
   tenantId   String    @map("tenant_id")
   tokenHash  String    @unique @map("token_hash")
+  /// Token family — all rotations from the same login share a family_id.
+  /// Reuse detection revokes the entire family.
+  familyId   String?   @map("family_id")
+  /// Whether this token has already been consumed (rotated or used once).
+  used       Boolean   @default(false) @map("used")
   deviceInfo Json?     @map("device_info")
   ipAddress  String?   @map("ip_address")
   userAgent  String?   @map("user_agent")
@@ -182,6 +192,7 @@ model RefreshToken {
 
   @@index([userId, tenantId])
   @@index([tokenHash])
+  @@index([familyId])
   @@index([expiresAt])
   @@index([isActive])
   @@map("refresh_tokens")
@@ -278,11 +289,39 @@ model ReputationRecord {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
+  events ReputationEvent[]
 
   @@index([tenantId, address])
   @@index([tenantId, totalScore(sort: Desc)])
   @@index([totalScore(sort: Desc)])
   @@map("reputation_records")
+}
+
+// ── Reputation Events (Audit & Recalculation) ──────────────────────────────────
+
+enum ReputationEventType {
+  ESCROW_COMPLETED
+  DISPUTE_WON
+  DISPUTE_LOST
+  CANCELLATION
+}
+
+model ReputationEvent {
+  id            String                 @id @default(cuid())
+  tenantId      String                 @map("tenant_id")
+  address       String
+  eventType     ReputationEventType    @map("event_type")
+  escrowId      BigInt?                @map("escrow_id")
+  scoreDelta    Int                    @map("score_delta")
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  reputationRecord ReputationRecord @relation(fields: [address], references: [address])
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@unique([address, eventType, escrowId])
+  @@index([tenantId, address, createdAt(sort: Desc)])
+  @@index([address, eventType])
+  @@map("reputation_events")
 }
 
 // ── Disputes ─────────────────────────────────────────────────────────────────
@@ -306,13 +345,15 @@ model Dispute {
   resolutionType   String?   @map("resolution_type")
   /// Whether this dispute was auto-resolved
   autoResolved     Boolean   @default(false) @map("auto_resolved")
+  /// Timestamp of most recent escalation (NULL = never escalated)
+  escalatedAt      DateTime? @map("escalated_at")
+  /// How many times this dispute has been escalated
+  escalationCount  Int       @default(0) @map("escalation_count")
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id])
-  escrow       Escrow            @relation(fields: [escrowId], references: [id])
-  evidence     DisputeEvidence[]
-  appeals      DisputeAppeal[]
-  chatRoomKeys ChatRoomKey[]
-  chatMessages ChatMessage[]
+  tenant   Tenant            @relation(fields: [tenantId], references: [id])
+  escrow   Escrow            @relation(fields: [escrowId], references: [id])
+  evidence DisputeEvidence[]
+  appeals  DisputeAppeal[]
 
   @@index([tenantId, raisedByAddress])
   @@index([tenantId, resolvedAt])
@@ -617,6 +658,51 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String           @map("tenant_id")
+  userId    Int              @map("user_id")
+  event     NotificationEvent
+  data      Json
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([userId, read, createdAt(sort: Desc)])
+  @@index([tenantId, userId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id               String   @id @default(cuid())
+  userId           Int      @unique @map("user_id")
+  tenantId         String   @map("tenant_id")
+  /// JSON map of NotificationEvent -> { email: bool, inApp: bool }
+  preferences      Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, userId])
+  @@map("notification_preferences")
+}
+
+enum NotificationEvent {
+  escrow_funded
+  release_requested
+  dispute_raised
+  dispute_resolved
+  escrow_expiring
+  milestone_completed
+  escrow_status_changed
+}
+
 enum EscrowStatus {
   Active
   Completed
@@ -631,16 +717,48 @@ enum MilestoneStatus {
   Rejected
 }
 
+// ── Escrow Audit Log ──────────────────────────────────────────────────────────
+
+/// Immutable, append-only record of every escrow state transition.
+/// Rows are protected by PostgreSQL rules that block UPDATE and DELETE.
+/// Use the escrowAuditService helper — never write to this table directly.
+model EscrowAuditLog {
+  id        BigInt   @id @default(autoincrement())
+  escrowId  BigInt   @map("escrow_id")
+  tenantId  String   @map("tenant_id")
+  /// Stellar address of the actor who triggered the transition
+  actorId   String   @map("actor_id")
+  /// Client IP address at the time of the transition
+  actorIp   String?  @map("actor_ip")
+  /// Action that caused this transition (e.g. CREATE, FUND, RELEASE, RAISE_DISPUTE, CANCEL)
+  action    String
+  /// Escrow status before the transition (null for CREATE)
+  fromState String?  @map("from_state")
+  /// Escrow status after the transition
+  toState   String   @map("to_state")
+  /// Arbitrary JSON context (tx hash, milestone index, resolution details, etc.)
+  metadata  Json?
+  /// Immutable insert timestamp — never updated
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([escrowId, createdAt(sort: Desc)])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@map("escrow_audit_log")
+}
+
 // ── Feature Flags ─────────────────────────────────────────────────────────────
 
 model FeatureFlag {
   key         String   @id
+  tenantId    String?  @map("tenant_id") // null = global flag
   isEnabled   Boolean  @default(false) @map("is_enabled")
   percentage  Int      @default(0)
   targetUsers String[] @default([]) @map("target_users")
   description String   @default("")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@map("feature_flags")
 }
 
@@ -660,117 +778,48 @@ enum PaymentStatus {
   Refunded
 }
 
-// ── Chat ──────────────────────────────────────────────────────────────────────
+// ── Chat (Encrypted Dispute Messaging) ───────────────────────────────────────
+// roomId convention: "dispute:<escrowId>"
+// encryptedKey: AES-256 session key wrapped with recipient's Stellar public key (ECIES).
+// The server stores but never decrypts — plaintext never touches the backend.
 
-/// Symmetric encryption key shared between parties to a dispute chat room.
-/// One row per (disputeId, participantAddress) pair so each participant
-/// stores their own encrypted copy.
+/// Per-participant AES session key for a dispute chat room.
+/// @@unique([roomId, address]) allows key rotation via upsert.
 model ChatRoomKey {
-  id           Int      @id @default(autoincrement())
-  tenantId     String   @map("tenant_id")
-  disputeId    Int      @map("dispute_id")
-  /// Stellar address of the participant holding this key
+  id           String   @id @default(cuid())
+  roomId       String   @map("room_id")
   address      String
-  /// AES-256-GCM key encrypted with the participant's public key (base64)
-  encryptedKey String   @map("encrypted_key")
+  /// AES-256 session key encrypted with recipient's Stellar public key (ECIES), base64-encoded
+  encryptedKey String   @map("encrypted_key") @db.Text
+  tenantId     String   @map("tenant_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  @@unique([disputeId, address])
-  @@index([tenantId, disputeId])
-  @@index([address])
+  @@unique([roomId, address])
+  @@index([roomId])
+  @@index([tenantId, roomId])
   @@map("chat_room_keys")
 }
 
-/// Individual message in a dispute chat room.
+/// Encrypted message in a dispute chat room.
+/// ciphertext/iv/tag: AES-256-GCM encrypted payload — server never decrypts.
 model ChatMessage {
-  id         Int      @id @default(autoincrement())
-  tenantId   String   @map("tenant_id")
-  disputeId  Int      @map("dispute_id")
-  /// Sender's Stellar address
-  sender     String
-  /// Encrypted ciphertext (AES-256-GCM, base64)
-  ciphertext String
-  /// AES-GCM nonce (base64, 12 bytes)
-  nonce      String
-  /// SHA-256 integrity check of the plaintext (hex) — verified client-side
-  checksum   String
-  sentAt     DateTime @default(now()) @map("sent_at")
+  id            String   @id @default(cuid())
+  roomId        String   @map("room_id")
+  senderAddress String   @map("sender_address")
+  /// AES-256-GCM ciphertext, base64-encoded
+  ciphertext    String   @db.Text
+  /// 12-byte GCM nonce, base64-encoded
+  iv            String   @db.Text
+  /// 16-byte GCM auth tag, base64-encoded
+  tag           String   @db.Text
+  tenantId      String   @map("tenant_id")
+  sentAt        DateTime @default(now()) @map("sent_at")
 
-  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  @@index([tenantId, disputeId, sentAt(sort: Asc)])
-  @@index([disputeId, sentAt(sort: Asc)])
-  @@index([sender])
+  @@index([roomId, sentAt])
+  @@index([tenantId, roomId])
   @@map("chat_messages")
-}
-
-// ── Reputation Events ─────────────────────────────────────────────────────────
-
-/// Append-only ledger of every reputation-affecting event. The ReputationRecord
-/// aggregate is derived from these rows and can be rebuilt at any time.
-model ReputationEvent {
-  id        BigInt   @id @default(autoincrement())
-  tenantId  String   @map("tenant_id")
-  /// Address whose reputation changed
-  address   String
-  /// Type of event: ESCROW_COMPLETED | DISPUTE_WON | DISPUTE_LOST | ESCROW_CANCELLED
-  eventType String   @map("event_type")
-  /// Signed integer delta applied to total_score
-  delta     Int
-  /// Related escrow (nullable for admin adjustments)
-  escrowId  BigInt?  @map("escrow_id")
-  /// Related dispute (nullable)
-  disputeId Int?     @map("dispute_id")
-  /// Ledger sequence when the on-chain event was finalised
-  ledger    BigInt?
-  /// Free-form metadata (resolution details, admin notes, etc.)
-  metadata  Json?
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@index([tenantId, address, createdAt(sort: Desc)])
-  @@index([address, createdAt(sort: Desc)])
-  @@index([tenantId, eventType])
-  @@index([escrowId])
-  @@index([disputeId])
-  @@index([createdAt(sort: Desc)])
-  @@map("reputation_events")
-}
-
-// ── Stellar Monitor ───────────────────────────────────────────────────────────
-
-/// Persists the Horizon SSE cursor for each monitored account so the stream
-/// can resume from the correct position after a restart.
-model StellarMonitorCursor {
-  account   String   @id
-  /// Horizon paging_token of the last successfully processed transaction
-  cursor    String
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@map("stellar_monitor_cursors")
-}
-
-/// Records every on-chain transaction that has no matching database record.
-/// Rows remain until manually resolved or automatically cleared once the
-/// corresponding DB record appears.
-model StellarMonitorDivergence {
-  id         Int       @id @default(autoincrement())
-  /// Stellar transaction hash
-  txHash     String    @unique @map("tx_hash")
-  /// Monitored account address this tx appeared on
-  account    String
-  /// Derived event type from tx memo (e.g. "fund", "release", "dispute")
-  eventType  String    @map("event_type")
-  /// When the divergence was first detected
-  detectedAt DateTime  @map("detected_at")
-  /// Whether an admin or automated process resolved it
-  resolved   Boolean   @default(false)
-  resolvedAt DateTime? @map("resolved_at")
-  /// When the first alert was sent (null = not yet alerted)
-  alertedAt  DateTime? @map("alerted_at")
-
-  @@index([resolved, detectedAt])
-  @@index([account])
-  @@map("stellar_monitor_divergences")
 }

@@ -8,7 +8,7 @@
 
 import express from 'express';
 const router = express.Router();
-import adminAuth from '../middleware/adminAuth.js';
+import adminAuth, { issueAdminToken, ADMIN_TOKEN_TTL } from '../middleware/adminAuth.js';
 import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
 import tenantController from '../controllers/tenantController.js';
@@ -18,6 +18,23 @@ import cache from '../../lib/cache.js';
 
 // Apply admin authentication to all routes in this file
 router.use(adminAuth);
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/auth/login
+ * @desc   Exchange a valid admin API key (validated by adminAuth) for a
+ *         short-lived HMAC-signed admin session token. Subsequent requests
+ *         should send `Authorization: Bearer <token>` instead of the raw key.
+ */
+router.post('/auth/login', (req, res) => {
+  const token = issueAdminToken(req.admin.adminId);
+  res.json({
+    token,
+    tokenType: 'Bearer',
+    expiresIn: ADMIN_TOKEN_TTL,
+    adminId: req.admin.adminId,
+  });
+});
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
 /**
@@ -116,6 +133,14 @@ router.patch('/rate-limits/:tier', requireMfa, adminController.updateRateLimit);
  */
 router.get('/rate-limits/usage/:userId', adminController.getUserRateLimitUsage);
 
+// ── Escrow Archive ─────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/escrows/archive
+ * @desc   Manually trigger archival of completed/cancelled escrows older than 90 days
+ * @security Requires MFA verification
+ */
+router.post('/escrows/archive', requireMfa, adminController.triggerEscrowArchive);
+
 // ── Stellar Monitor ────────────────────────────────────────────────────────────
 /**
  * @route  POST /api/admin/stellar/reconcile
@@ -136,6 +161,12 @@ router.get('/flags', featureFlagController.index);
 router.post('/flags', featureFlagController.create);
 router.patch('/flags/:key', featureFlagController.update);
 router.delete('/flags/:key', featureFlagController.destroy);
+
+// Canonical paths per issue #79 (GET /admin/feature-flags, PATCH /admin/feature-flags/:name)
+router.get('/feature-flags', featureFlagController.index);
+router.post('/feature-flags', featureFlagController.create);
+router.patch('/feature-flags/:name', featureFlagController.update);
+router.delete('/feature-flags/:name', featureFlagController.destroy);
 
 /**
  * @route  GET /api/admin/secrets/audit

@@ -60,6 +60,8 @@ pub const DISPUTE_TIMEOUT_CLAIMED: Symbol = symbol_short!("dis_to");
 pub const CANCELLATION_REQUESTED: Symbol = symbol_short!("can_req");
 pub const CANCELLATION_APPROVED: Symbol = symbol_short!("can_apr");
 pub const CANCELLATION_EXECUTED: Symbol = symbol_short!("can_exe");
+pub const CANCELLATION_COMPLETED: Symbol = symbol_short!("can_done");
+pub const CANCELLATION_REJECTED: Symbol = symbol_short!("can_rej");
 
 // ── Slashing ──────────────────────────────────────────────────────────────────
 
@@ -93,6 +95,30 @@ pub const RENT_EXPIRED: Symbol = symbol_short!("rent_exp");
 
 pub const NFT_GATED_ESCROW_CREATED: Symbol = symbol_short!("nft_esc");
 
+// ── On-chain arbitration ──────────────────────────────────────────────────────
+
+pub const ARBITER_ASSIGNED: Symbol = symbol_short!("arb_asgn");
+pub const EVIDENCE_SUBMITTED: Symbol = symbol_short!("ev_sub");
+
+// ── Escrow-level multisig ─────────────────────────────────────────────────────
+
+pub const ESCROW_APPROVAL_SUBMITTED: Symbol = symbol_short!("esc_apr");
+pub const ESCROW_APPROVAL_REVOKED: Symbol = symbol_short!("esc_rev");
+pub const ESCROW_APPROVAL_THRESHOLD_MET: Symbol = symbol_short!("esc_thr");
+
+// ── Release timelock ──────────────────────────────────────────────────────────
+
+pub const RELEASE_PENDING: Symbol = symbol_short!("rel_pend");
+pub const PENDING_RELEASE_EXECUTED: Symbol = symbol_short!("pend_rel");
+
+// ── Platform fee ──────────────────────────────────────────────────────────────
+
+pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");
+
+// ── Deadline extension ────────────────────────────────────────────────────────
+
+pub const ESCROW_EXTENDED: Symbol = symbol_short!("esc_extd");
+
 // ── Admin / contract state ────────────────────────────────────────────────────
 
 pub const ADMIN_INITIALIZED: Symbol = symbol_short!("adm_init");
@@ -100,3 +126,7 @@ pub const ADMIN_PROPOSED: Symbol = symbol_short!("adm_prop");
 pub const ADMIN_CHANGED: Symbol = symbol_short!("adm_chg");
 pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
 pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
+
+// ── Dispute cooldown ─────────────────────────────────────────────────────────
+
+pub const COOLDOWN_ELAPSED: Symbol = symbol_short!("cd_done");
