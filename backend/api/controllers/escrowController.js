@@ -10,7 +10,13 @@
 
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import {
+  buildPaginatedResponse,
+  parsePagination,
+  parseCursorPagination,
+  buildPrismaFindArgs,
+  buildCursorResponse,
+} from '../../lib/pagination.js';
 import { logControllerError } from '../../config/logger.js';
 import { submitTransaction } from '../../services/stellarService.js';
 import { xdr, scValToNative } from '@stellar/stellar-sdk';
@@ -20,7 +26,7 @@ import {
   paginationQuery,
   handleValidationErrors,
 } from '../../middleware/validation.js';
-import respond from '../../lib/respond.js';
+import { getEscrowAuditLog } from '../../services/escrowAuditService.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -58,6 +64,8 @@ function logCacheMetrics() {
 async function onEscrowStatusChange(id) {
   try {
     await invalidateEscrowCache(id);
+    // Also invalidate dashboard stats since they reflect current escrow states
+    await invalidateStatsCaches();
     logCacheMetrics();
   } catch (err) {
     console.error('[Cache] invalidateEscrowCache failed:', err.message);
@@ -68,7 +76,6 @@ async function onEscrowStatusChange(id) {
 
 const listEscrows = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
     const {
       status,
       client,
@@ -78,9 +85,17 @@ const listEscrows = async (req, res) => {
       maxAmount,
       dateFrom,
       dateTo,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
     } = req.query;
+
+    // ── Cursor-based pagination ────────────────────────────────────────────
+    const { take, parsedCursor, sortField, sortDir } = parseCursorPagination(
+      req.query,
+      'createdAt',
+      'desc',
+    );
+
+    const resolvedSortBy = VALID_SORT_FIELDS.includes(sortField) ? sortField : 'createdAt';
+    const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortDir) ? sortDir : 'desc';
 
     const where = {};
 
@@ -125,16 +140,24 @@ const listEscrows = async (req, res) => {
       }
     }
 
-    const resolvedSortBy = VALID_SORT_FIELDS.includes(sortBy) ? sortBy : 'createdAt';
-    const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortOrder) ? sortOrder : 'desc';
-    const orderBy = { [resolvedSortBy]: resolvedSortOrder };
+    // Escrow id is a BigInt — cursor id needs BigInt conversion
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: BigInt(parsedCursor.id) }
+        : null,
+      take,
+      sortField: resolvedSortBy,
+      sortDir: resolvedSortOrder,
+      idField: 'id',
+    });
 
-    const [data, total] = await prisma.$transaction([
-      prisma.escrow.findMany({ where, select: ESCROW_SUMMARY_SELECT, skip, take: limit, orderBy }),
-      prisma.escrow.count({ where }),
-    ]);
+    const data = await prisma.escrow.findMany({
+      where,
+      select: ESCROW_SUMMARY_SELECT,
+      ...findArgs,
+    });
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    res.json(buildCursorResponse(data, take, 'id', resolvedSortBy, resolvedSortOrder));
   } catch (err) {
     logControllerError('escrow.listEscrows', err, req);
     res.status(500).json({ error: err.message });
@@ -176,8 +199,21 @@ const getEscrow = async (req, res) => {
       },
     });
 
-    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
-    res.json(escrow);
+    if (escrow) return res.json(escrow);
+
+    // Fallback: search archive partition tables
+    const tables = await listArchiveTables(prisma);
+    for (const table of tables) {
+      const ARCHIVE_TABLE_RE = /^escrows_archive_\d{4}_\d{2}$/;
+      if (!ARCHIVE_TABLE_RE.test(table)) continue;
+      const [archived] = await prisma.$queryRawUnsafe(
+        `SELECT * FROM ${table} WHERE id = $1 LIMIT 1`,
+        id,
+      );
+      if (archived) return res.json({ ...archived, _source: 'archive' });
+    }
+
+    return res.status(404).json({ error: 'Escrow not found' });
   } catch (err) {
     if (err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
@@ -246,28 +282,33 @@ const broadcastCreateEscrow = async (req, res) => {
 const getMilestones = async (req, res) => {
   try {
     const escrowId = BigInt(req.params.id);
-    const { page, limit, skip } = parsePagination(req.query);
+    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'milestoneIndex', 'asc');
 
-    const [data, total] = await prisma.$transaction([
-      prisma.milestone.findMany({
-        where: { escrowId },
-        skip,
-        take: limit,
-        orderBy: { milestoneIndex: 'asc' },
-        select: {
-          id: true,
-          milestoneIndex: true,
-          title: true,
-          amount: true,
-          status: true,
-          submittedAt: true,
-          resolvedAt: true,
-        },
-      }),
-      prisma.milestone.count({ where: { escrowId } }),
-    ]);
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor
+        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
+        : null,
+      take,
+      sortField: 'milestoneIndex',
+      sortDir,
+      idField: 'id',
+    });
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    const data = await prisma.milestone.findMany({
+      where: { escrowId },
+      ...findArgs,
+      select: {
+        id: true,
+        milestoneIndex: true,
+        title: true,
+        amount: true,
+        status: true,
+        submittedAt: true,
+        resolvedAt: true,
+      },
+    });
+
+    res.json(buildCursorResponse(data, take, 'id', 'milestoneIndex', sortDir));
   } catch (err) {
     if (err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
@@ -306,7 +347,7 @@ const getMilestone = async (req, res) => {
 
 // ── Stats endpoints (with Redis caching) ─────────────────────────────────────
 
-const STATS_CACHE_TTL = 3600; // 1 hour in seconds
+const STATS_CACHE_TTL = 30; // 30 seconds as per issue #4 requirements
 
 /**
  * Helper to get cached stats or fetch from DB with cache population
@@ -412,108 +453,45 @@ const getSuccessRate = async (req, res) => {
   }
 };
 
-// ── Batch endpoints ───────────────────────────────────────────────────────────
-
-const BATCH_STATUS_MAX = 100;
-const BATCH_RELEASE_MAX = 20;
+// ── Audit trail ───────────────────────────────────────────────────────────────
 
 /**
- * POST /api/escrows/batch-status
- * Body: { ids: string[] }  — up to 100 escrow IDs
- *
- * Returns per-item status results so callers can distinguish partial failures.
+ * GET /api/escrows/:id/audit
+ * Returns the immutable state-transition audit trail for a single escrow.
+ * Access is restricted to: admins, the client address, and the freelancer address.
  */
-const batchStatus = async (req, res) => {
-  const { ids } = req.body;
+const getEscrowAudit = async (req, res) => {
+  try {
+    const id = BigInt(req.params.id);
 
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return respond.error(res, 400, 'VALIDATION_ERROR', 'ids must be a non-empty array');
+    // Load the escrow to check party access
+    const escrow = await prisma.escrow.findUnique({
+      where: { id },
+      select: { clientAddress: true, freelancerAddress: true, tenantId: true },
+    });
+
+    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+
+    // Only admins and the escrow parties may access the audit log
+    const callerAddress = req.user?.address;
+    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
+    const isParty =
+      callerAddress === escrow.clientAddress ||
+      callerAddress === escrow.freelancerAddress;
+
+    if (!isAdmin && !isParty) {
+      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    }
+
+    const result = await getEscrowAuditLog(id, escrow.tenantId, req.query);
+    res.json(result);
+  } catch (err) {
+    if (err.message?.includes('Cannot convert')) {
+      return res.status(400).json({ error: 'Invalid escrow id' });
+    }
+    logControllerError('escrow.getEscrowAudit', err, req);
+    res.status(500).json({ error: err.message });
   }
-  if (ids.length > BATCH_STATUS_MAX) {
-    return respond.error(
-      res,
-      400,
-      'BATCH_TOO_LARGE',
-      `Maximum ${BATCH_STATUS_MAX} IDs per request`,
-    );
-  }
-
-  const results = await Promise.allSettled(
-    ids.map(async (rawId) => {
-      const id = BigInt(rawId);
-      const escrow = await prisma.escrow.findUnique({
-        where: { id },
-        select: ESCROW_SUMMARY_SELECT,
-      });
-      if (!escrow) return { id: rawId, status: null, error: 'Not found' };
-      return { id: rawId, status: escrow.status, data: escrow };
-    }),
-  );
-
-  const items = results.map((r, i) =>
-    r.status === 'fulfilled'
-      ? r.value
-      : { id: ids[i], status: null, error: r.reason?.message || 'Internal error' },
-  );
-
-  return respond.success(res, items);
-};
-
-/**
- * POST /api/escrows/batch-release
- * Body: { ids: string[] }  — up to 20 escrow IDs
- *
- * Role-gated: only Admin/Arbitrator may bulk-release.
- * Applies the same tenant scoping as individual release endpoints.
- * Returns per-item results to surface partial failures.
- */
-const batchRelease = async (req, res) => {
-  const { ids } = req.body;
-  const userRoles = req.user?.roles ?? (req.user?.role ? [req.user.role] : []);
-  const isAuthorized =
-    userRoles.includes('Admin') || userRoles.includes('admin') || userRoles.includes('Arbitrator');
-
-  if (!isAuthorized) {
-    return respond.error(res, 403, 'FORBIDDEN', 'Admin or Arbitrator role required');
-  }
-
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return respond.error(res, 400, 'VALIDATION_ERROR', 'ids must be a non-empty array');
-  }
-  if (ids.length > BATCH_RELEASE_MAX) {
-    return respond.error(
-      res,
-      400,
-      'BATCH_TOO_LARGE',
-      `Maximum ${BATCH_RELEASE_MAX} IDs per batch-release request`,
-    );
-  }
-
-  const results = await Promise.allSettled(
-    ids.map(async (rawId) => {
-      const id = BigInt(rawId);
-      const escrow = await prisma.escrow.findUnique({ where: { id } });
-      if (!escrow) return { id: rawId, success: false, error: 'Not found' };
-      if (escrow.status !== 'Active') {
-        return { id: rawId, success: false, error: `Escrow is ${escrow.status}, cannot release` };
-      }
-
-      await prisma.escrow.update({
-        where: { id },
-        data: { status: 'Completed' },
-      });
-      await onEscrowStatusChange(id);
-      return { id: rawId, success: true };
-    }),
-  );
-
-  const items = results.map((r, i) =>
-    r.status === 'fulfilled'
-      ? r.value
-      : { id: ids[i], success: false, error: r.reason?.message || 'Internal error' },
-  );
-
-  return respond.success(res, items);
 };
 
 export default {
@@ -527,8 +505,7 @@ export default {
   getActiveEscrows,
   getSuccessRate,
   invalidateStatsCaches,
-  batchStatus,
-  batchRelease,
+  getEscrowAudit,
 };
 
 // ── Validation rule sets (used by escrowRoutes) ───────────────────────────────

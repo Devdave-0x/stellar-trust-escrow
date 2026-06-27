@@ -109,6 +109,25 @@ export const verifySignatureAndLogin = async (req, res) => {
     expiresIn: JWT_EXPIRES_IN,
   });
 
+  // Check if user requires 2FA (admin/arbiter with MFA enabled)
+  const user = await prisma.user.findFirst({
+    where: { walletAddress: address },
+    select: { id: true, role: true, mfaEnabled: true, mfaEnforced: true, tenantId: true },
+  });
+
+  if (user) {
+    const mfaRequired = await mfaService.requiresMfa(user.id, user.tenantId);
+    if (mfaRequired) {
+      return res.json({
+        token,
+        address,
+        expiresIn: JWT_EXPIRES_IN,
+        mfaRequired: true,
+        message: 'MFA verification required. Use the token to authenticate at /api/mfa/totp/verify.',
+      });
+    }
+  }
+
   return res.json({ token, address, expiresIn: JWT_EXPIRES_IN });
 };
 

@@ -99,14 +99,20 @@ function matchesArchiveRow(row, filters) {
   );
 }
 
+// Allowlist pattern for archive table names — only exact format accepted
+const ARCHIVE_TABLE_RE = /^escrows_archive_\d{4}_\d{2}$/;
+
 async function searchArchiveFallback(filters = {}) {
   const prisma = (await import('../lib/prisma.js')).default;
   const tables = await listArchiveTables(prisma);
 
-  if (!tables.length) return { data: [], total: 0 };
+  // Validate each table name against the expected pattern before use in raw SQL
+  const safeTables = tables.filter((t) => ARCHIVE_TABLE_RE.test(t));
+
+  if (!safeTables.length) return { data: [], total: 0 };
 
   const rawRows = await prisma.$queryRawUnsafe(
-    tables
+    safeTables
       .map(
         (table) =>
           `SELECT id, client_address AS "clientAddress", freelancer_address AS "freelancerAddress", status, total_amount AS "totalAmount", created_at AS "createdAt" FROM ${table}`,

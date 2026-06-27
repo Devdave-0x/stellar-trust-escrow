@@ -22,6 +22,8 @@ pub enum EscrowStatus {
     Cancelled,
     /// Cancellation requested - pending dispute resolution or deadline.
     CancellationPending,
+    /// Escrow deadline passed without completion. Remaining funds refunded to depositor.
+    Expired,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -480,6 +482,26 @@ pub struct RecurringScheduleStatus {
     pub payment_amount: i128,
 }
 
+/// Dispute information for frontend display.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeInfo {
+    /// Escrow ID this dispute belongs to.
+    pub escrow_id: u64,
+    /// Whether the escrow is currently disputed.
+    pub is_disputed: bool,
+    /// Ledger timestamp when the dispute was raised.
+    pub disputed_at: Option<u64>,
+    /// Configured cooldown duration in seconds.
+    pub cooldown_secs: u64,
+    /// Ledger timestamp when the cooldown ends and a ruling can be submitted.
+    pub cooldown_ends_at: Option<u64>,
+    /// Whether the cooldown has elapsed.
+    pub cooldown_elapsed: bool,
+    /// Assigned arbiter address, if any.
+    pub arbiter: Option<Address>,
+}
+
 /// A cancellation request for an escrow.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -505,6 +527,26 @@ pub struct CancellationRequest {
     /// Whether the counterparty (non-requester) has explicitly approved the cancellation.
     /// When true, `execute_cancellation` skips the dispute window check.
     pub counterparty_approved: bool,
+}
+
+/// A pending mutual-consent deadline extension request.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EscrowExtensionRequest {
+    /// The escrow ID this request belongs to.
+    pub escrow_id: u64,
+
+    /// Address of the party that proposed the extension.
+    pub requested_by: Address,
+
+    /// The proposed new deadline (ledger timestamp).
+    pub proposed_deadline: u64,
+
+    /// When the request was created (ledger timestamp).
+    pub requested_at: u64,
+
+    /// When the request expires if not confirmed (ledger timestamp).
+    pub expires_at: u64,
 }
 
 /// Oracle-signed resolution payload for fallback dispute resolution.
@@ -555,6 +597,31 @@ pub struct SlashRecord {
 
     /// Whether this slash has been disputed.
     pub disputed: bool,
+}
+
+/// On-chain dispute record storing evidence hashes and metadata.
+///
+/// Created when `raise_dispute` is called. The `evidence_hashes` list is
+/// immutable after creation — no function may modify it. Each hash is the
+/// SHA-256 digest of an off-chain evidence file (e.g., stored on IPFS or S3).
+///
+/// ## Verifying evidence against its on-chain hash
+///
+/// 1. Retrieve the evidence file from off-chain storage (IPFS, S3, etc.).
+/// 2. Compute `SHA-256(file_bytes)` to get a 32-byte digest.
+/// 3. Call `get_evidence_hashes(escrow_id)` and check that the computed
+///    digest matches one of the returned `BytesN<32>` values.
+/// 4. If the digests match, the file is authentic and unmodified since
+///    the dispute was raised.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct DisputeRecord {
+    pub escrow_id: u64,
+    pub raised_by: Address,
+    pub raised_at: u64,
+    pub milestone_id: Option<u32>,
+    /// SHA-256 hashes of evidence files. Immutable after dispute creation.
+    pub evidence_hashes: soroban_sdk::Vec<BytesN<32>>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -696,6 +763,10 @@ pub enum DataKey {
     AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
+    /// Timestamp when the contract was paused — value: u64
+    PausedAt,
+    /// Reason the contract was paused — value: String
+    PauseReason,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
     CancellationRequest(u64),
     /// Slash record by escrow ID — key: u64, value: SlashRecord
@@ -740,6 +811,8 @@ pub enum DataKey {
     ReentrancyLock,
     /// Treasury address for platform fee settlement — value: Address
     PlatformTreasury,
+    /// Simple platform fee in basis points (0–10000) — value: u32
+    PlatformFeeBps,
     /// Configured dynamic platform fee tiers — value: Vec<FeeTier>
     PlatformFeeTiers,
     /// Applied fee snapshot for an escrow — key: u64, value: EscrowFeeSnapshot
@@ -766,4 +839,8 @@ pub enum DataKey {
     EvidenceHash(u64),
     /// Approved arbiter allowlist entry — key: Address, value: bool
     ApprovedArbiter(Address),
+    /// Semantic version string (e.g. "1.0.0") — value: String
+    ContractVersion,
+    /// Configurable dispute cooldown in seconds — value: u64
+    DisputeCooldownSecs,
 }

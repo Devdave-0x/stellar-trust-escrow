@@ -127,6 +127,40 @@ export const cacheSize = new client.Gauge({
   registers: [register],
 });
 
+/**
+ * Rolling cache hit-rate gauge.
+ * Updated on every cache operation via recordCacheHitRate().
+ * Set to -1 when no data is available yet.
+ */
+export const cacheHitRate = new client.Gauge({
+  name: 'cache_hit_rate',
+  help: 'Rolling cache hit rate (hits / (hits + misses)). Range 0–1; -1 = no data.',
+  registers: [register],
+});
+cacheHitRate.set(-1);
+
+/**
+ * Record a cache hit or miss and update the rolling hit-rate gauge.
+ *
+ * @param {boolean}  isHit
+ * @param {string}   [keyPrefix='unknown']
+ */
+export function recordCacheHitRate(isHit, keyPrefix = 'unknown') {
+  if (isHit) {
+    cacheHitsTotal.inc({ key_prefix: keyPrefix });
+  } else {
+    cacheMissesTotal.inc({ key_prefix: keyPrefix });
+  }
+
+  // Re-read running totals and update the gauge
+  const hitsVal = cacheHitsTotal.hashMap?.['key_prefix:']?.value ?? 0;
+  const missesVal = cacheMissesTotal.hashMap?.['key_prefix:']?.value ?? 0;
+  const total = hitsVal + missesVal;
+  if (total > 0) {
+    cacheHitRate.set(parseFloat((hitsVal / total).toFixed(4)));
+  }
+}
+
 // ── Business Metrics ──────────────────────────────────────────────────────────
 
 export const escrowsCreatedTotal = new client.Counter({

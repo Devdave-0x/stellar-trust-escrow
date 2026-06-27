@@ -17,8 +17,10 @@
  */
 
 import { createClient } from 'redis';
+import { REDIS_TIMEOUT_MS } from '../lib/timeout.js';
 import { createModuleLogger } from '../config/logger.js';
 import { scopeCacheKey, scopeCacheTag } from '../lib/tenantContext.js';
+import { cacheHitsTotal, cacheMissesTotal, cacheHitRate } from '../lib/metrics.js';
 
 const log = createModuleLogger('cacheService');
 
@@ -72,7 +74,7 @@ let redis = null;
 let redisReady = false;
 
 if (process.env.REDIS_URL) {
-  redis = createClient({ url: process.env.REDIS_URL });
+  redis = createClient({ url: process.env.REDIS_URL, commandTimeout: REDIS_TIMEOUT_MS });
   redis.on('ready', () => {
     redisReady = true;
     log.info({ message: 'redis_connected' });
@@ -108,22 +110,38 @@ async function redisTagDel(tag) {
 
 async function get(key) {
   const scopedKey = scopeCacheKey(key);
+  // Derive a prefix label for Prometheus (first path segment)
+  const keyPrefix = key.split(':')[0] || 'unknown';
 
   if (redisReady) {
     const raw = await redis.get(scopedKey).catch(() => null);
     if (raw !== null) {
       stats.hits++;
+      cacheHitsTotal.inc({ key_prefix: keyPrefix });
+      _updateHitRateGauge();
       return JSON.parse(raw);
     }
   } else {
     const val = mem.get(scopedKey);
     if (val !== null) {
       stats.hits++;
+      cacheHitsTotal.inc({ key_prefix: keyPrefix });
+      _updateHitRateGauge();
       return val;
     }
   }
   stats.misses++;
+  cacheMissesTotal.inc({ key_prefix: keyPrefix });
+  _updateHitRateGauge();
   return null;
+}
+
+/** Recompute and expose the rolling hit-rate gauge from running counters. */
+function _updateHitRateGauge() {
+  const total = stats.hits + stats.misses;
+  if (total > 0) {
+    cacheHitRate.set(parseFloat((stats.hits / total).toFixed(4)));
+  }
 }
 
 async function set(key, value, ttlSeconds = 60) {
@@ -265,6 +283,14 @@ function size() {
   return redisReady ? null : mem.size();
 }
 
+/** Gracefully close the Redis connection (called during server shutdown). */
+async function close() {
+  if (redis && redisReady) {
+    await redis.quit().catch((err) => log.warn({ message: 'redis_quit_error', error: err.message }));
+    redisReady = false;
+  }
+}
+
 export default {
   get,
   set,
@@ -277,4 +303,5 @@ export default {
   warm,
   analytics,
   size,
+  close,
 };

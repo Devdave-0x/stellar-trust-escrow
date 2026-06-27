@@ -200,7 +200,7 @@ mod gas_profiling {
         client.submit_milestone(&freelancer, &escrow_id, &milestone_id);
 
         env.budget().reset_default();
-        client.raise_dispute(&escrow_client, &escrow_id, &Some(milestone_id));
+        client.raise_dispute(&escrow_client, &escrow_id, &Some(milestone_id), &soroban_sdk::Vec::new(&env));
         print("raise_dispute", env.budget().cpu_instruction_cost(), env.budget().memory_bytes_cost());
     }
 
@@ -255,9 +255,10 @@ mod gas_profiling {
         let (env, admin, _contract_id, client) = setup();
 
         env.budget().reset_default();
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         print("pause", env.budget().cpu_instruction_cost(), env.budget().memory_bytes_cost());
 
+        env.ledger().with_mut(|l| l.timestamp += 3_601);
         env.budget().reset_default();
         client.unpause(&admin);
         print("unpause", env.budget().cpu_instruction_cost(), env.budget().memory_bytes_cost());
