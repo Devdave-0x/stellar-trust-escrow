@@ -16,9 +16,12 @@ mod fuzz_tests {
 
     use crate::{
         EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MAX_ESCROW_AMOUNT,
-        MAX_MILESTONES,
+        MAX_MILESTONES, UNPAUSE_MIN_DELAY_SECS,
     };
-    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger as _},
+        token, Address, BytesN, Env, String, Vec,
+    };
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -760,6 +763,8 @@ mod fuzz_tests {
                 &no_multisig(&t.env),
             );
 
+            // Add all milestones first so the escrow doesn't complete early
+            let mut mids: Vec<u32> = Vec::new(&t.env);
             for (i, &amt) in amounts.iter().enumerate() {
                 let mid = t.client.add_milestone(
                     &client_addr,
@@ -768,6 +773,10 @@ mod fuzz_tests {
                     &hash(&t.env, (i + 10) as u8),
                     &amt,
                 );
+                mids.push_back(mid);
+            }
+            for i in 0..mids.len() {
+                let mid = mids.get(i).unwrap();
                 t.client.submit_milestone(&freelancer, &escrow_id, &mid);
                 t.client.approve_milestone(&client_addr, &escrow_id, &mid);
             }
@@ -958,6 +967,9 @@ mod fuzz_tests {
         );
         assert!(result.is_err(), "Should block when both paused and frozen");
 
+        t.env
+            .ledger()
+            .with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
         t.client.unpause(&t.admin);
         let result2 = t.client.try_add_milestone(
             &client_addr,

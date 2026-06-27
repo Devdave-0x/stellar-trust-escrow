@@ -10,9 +10,12 @@ mod integration_lifecycle_tests {
 
     use crate::{
         EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MS_DISPUTED,
-        MS_PENDING, MS_REJECTED, MS_SUBMITTED,
+        MS_PENDING, MS_REJECTED, MS_SUBMITTED, UNPAUSE_MIN_DELAY_SECS,
     };
-    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger as _},
+        token, Address, BytesN, Env, String, Vec,
+    };
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -365,6 +368,9 @@ mod integration_lifecycle_tests {
         t.client.pause(&t.admin, &String::from_str(&t.env, ""));
         assert!(t.client.is_paused());
 
+        t.env
+            .ledger()
+            .with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
         let milestone_result = t.client.try_add_milestone(
             &client_addr,
             &escrow_id,
@@ -490,6 +496,9 @@ mod integration_lifecycle_tests {
 
         t.client.pause(&new_admin, &String::from_str(&t.env, ""));
         assert!(t.client.is_paused());
+        t.env
+            .ledger()
+            .with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
         t.client.unpause(&new_admin);
     }
 

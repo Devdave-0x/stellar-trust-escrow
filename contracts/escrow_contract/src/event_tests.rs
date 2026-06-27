@@ -693,9 +693,9 @@ mod event_tests {
         );
         client.request_cancellation(&client_addr, &escrow_id, &String::from_str(&env, "Done"));
 
-        // Advance ledger past the dispute period
+        // Advance ledger past the dispute period (CANCELLATION_DISPUTE_PERIOD = 259_200)
         let ts = env.ledger().timestamp();
-        env.ledger().set_timestamp(ts + 200_000);
+        env.ledger().set_timestamp(ts + 260_000);
 
         client.execute_cancellation(&escrow_id);
 

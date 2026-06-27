@@ -155,6 +155,8 @@ mod property_tests {
             &no_multisig(&t.env),
         );
 
+        // Add all milestones first so approving each one doesn't prematurely complete the escrow
+        let mut mids: Vec<u32> = Vec::new(&t.env);
         for (i, &amt) in milestone_amounts.iter().enumerate() {
             let mid = t.client.add_milestone(
                 &client_addr,
@@ -163,6 +165,10 @@ mod property_tests {
                 &hash(&t.env, (i + 10) as u8),
                 &amt,
             );
+            mids.push_back(mid);
+        }
+        for i in 0..mids.len() {
+            let mid = mids.get(i).unwrap();
             t.client.submit_milestone(&freelancer, &escrow_id, &mid);
             t.client.approve_milestone(&client_addr, &escrow_id, &mid);
         }
@@ -551,6 +557,8 @@ mod property_tests {
         let amounts: [i128; 3] = [1_000, 1_000, 1_000];
         let mut prev_remaining = total;
 
+        // Add all milestones first so approving each one doesn't prematurely complete the escrow
+        let mut mids: Vec<u32> = Vec::new(&t.env);
         for (i, &amt) in amounts.iter().enumerate() {
             let mid = t.client.add_milestone(
                 &client_addr,
@@ -559,6 +567,10 @@ mod property_tests {
                 &hash(&t.env, (i + 10) as u8),
                 &amt,
             );
+            mids.push_back(mid);
+        }
+        for i in 0..mids.len() {
+            let mid = mids.get(i).unwrap();
             t.client.submit_milestone(&freelancer, &escrow_id, &mid);
             t.client.approve_milestone(&client_addr, &escrow_id, &mid);
 

@@ -2954,6 +2954,9 @@ impl EscrowContract {
         if caller != meta.freelancer {
             return Err(EscrowError::E3);
         }
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
 
         // Auto-extend deadline if submitted near expiry
         if let Some(deadline) = meta.deadline {
@@ -4195,6 +4198,9 @@ impl EscrowContract {
             if meta.status != EscrowStatus::Disputed {
                 return Err(EscrowError::E10);
             }
+            if client_amount < 0 || freelancer_amount < 0 {
+                return Err(EscrowError::E20);
+            }
             if client_amount + freelancer_amount != meta.remaining_balance {
                 return Err(EscrowError::E20);
             }
@@ -4920,7 +4926,6 @@ impl EscrowContract {
         arbiter: Option<Address>,
         deadline: Option<u64>,
     ) -> Result<u64, EscrowError> {
-        caller.require_auth();
         ContractStorage::require_initialized(&env)?;
         ContractStorage::require_not_paused(&env)?;
 
@@ -6038,6 +6043,7 @@ impl EscrowContract {
             .unwrap_or_else(|| soroban_sdk::Vec::new(env));
         ids.push_back(escrow_id);
         env.storage().persistent().set(key, &ids);
+        ContractStorage::bump_persistent_ttl(env, key);
     }
 
     fn remove_from_vec_index(env: &Env, key: &DataKey, escrow_id: u64) {

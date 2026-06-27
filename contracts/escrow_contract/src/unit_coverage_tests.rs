@@ -3,9 +3,12 @@
 mod unit_coverage_tests {
     use crate::{
         EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MAX_ESCROW_AMOUNT,
-        MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_SUBMITTED,
+        MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_SUBMITTED, UNPAUSE_MIN_DELAY_SECS,
     };
-    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger as _},
+        token, Address, BytesN, Env, String, Vec,
+    };
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -857,6 +860,9 @@ mod unit_coverage_tests {
 
         t.client
             .pause(&t.admin, &soroban_sdk::String::from_str(&t.env, ""));
+        t.env
+            .ledger()
+            .with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
         t.client.unpause(&t.admin);
         assert!(!t.client.is_paused());
 
@@ -1156,7 +1162,10 @@ mod unit_coverage_tests {
         let t = setup();
         t.client.set_token_whitelist_enabled(&t.admin, &true);
 
-        let token = Address::generate(&t.env);
+        let token = t
+            .env
+            .register_stellar_asset_contract_v2(t.admin.clone())
+            .address();
         t.client.add_approved_token(&t.admin, &token);
 
         let client_addr = Address::generate(&t.env);
