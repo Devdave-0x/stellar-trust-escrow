@@ -604,6 +604,31 @@ impl ContractStorage {
             .remove(&DataKey::SlashRecord(escrow_id));
     }
 
+    // ── Dispute record ───────────────────────────────────────────────────────
+
+    fn load_dispute_record(env: &Env, escrow_id: u64) -> Result<DisputeRecord, EscrowError> {
+        let key = DataKey::DisputeRecord(escrow_id);
+        let record = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(EscrowError::EscrowNotDisputed)?;
+        Self::bump_persistent_ttl(env, &key);
+        Ok(record)
+    }
+
+    fn save_dispute_record(env: &Env, record: &DisputeRecord) {
+        let key = DataKey::DisputeRecord(record.escrow_id);
+        env.storage().persistent().set(&key, record);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    fn remove_dispute_record(env: &Env, escrow_id: u64) {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::DisputeRecord(escrow_id));
+    }
+
     // ── Meta-transaction nonce tracking ────────────────────────────────────────
 
     /// Validates and updates the nonce for a meta-transaction signer.
@@ -1920,10 +1945,6 @@ impl EscrowContract {
         }
 
         Self::validate_escrow_inputs(&env, total_amount, deadline, lock_time)?;
-
-        if brief_hash == BytesN::from_array(&env, &[0u8; 32]) {
-            // TODO: return Err(EscrowError::InvalidBriefHash);
-        }
 
         let now = env.ledger().timestamp();
 
@@ -4566,6 +4587,56 @@ impl EscrowContract {
             token.transfer(&contract_addr, &meta.freelancer, &freelancer_amount);
         }
 
+        if arbitration_fee > 0 {
+            let arbiter_pct: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::ArbiterFeeSplitPct)
+                .unwrap_or(70_u32);
+
+            let arbiter_amount = arbitration_fee * i128::from(arbiter_pct) / 100;
+            let treasury_amount = arbitration_fee - arbiter_amount;
+
+            if arbiter_amount > 0 {
+                if let Some(ref arbiter_addr) = meta.arbiter {
+                    token.transfer(&contract_addr, arbiter_addr, &arbiter_amount);
+                } else {
+                    let admin: Address = env
+                        .storage()
+                        .instance()
+                        .get(&DataKey::Admin)
+                        .ok_or(EscrowError::NotInitialized)?;
+                    token.transfer(&contract_addr, &admin, &arbiter_amount);
+                }
+            }
+
+            if treasury_amount > 0 {
+                let treasury: Address = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::PlatformTreasury)
+                    .ok_or(EscrowError::TreasuryNotConfigured)?;
+                token.transfer(&contract_addr, &treasury, &treasury_amount);
+            }
+
+            let arbiter_for_event = meta
+                .arbiter
+                .clone()
+                .unwrap_or_else(|| caller.clone());
+            let treasury_for_event: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::PlatformTreasury)
+                .unwrap_or_else(|| caller.clone());
+            events::emit_arbitration_fee_paid(
+                &env,
+                &arbiter_for_event,
+                arbiter_amount,
+                &treasury_for_event,
+                treasury_amount,
+            );
+        }
+
         meta.remaining_balance = 0;
         meta.status = EscrowStatus::Completed;
         ContractStorage::save_escrow_meta(&env, &meta);
@@ -5228,7 +5299,6 @@ impl EscrowContract {
         meta.client.require_auth();
         meta.freelancer.require_auth();
 
-        // Validate: arbiter must not be client or freelancer.
         if let Some(ref a) = new_arbiter {
             if a == &meta.client || a == &meta.freelancer {
                 return Err(EscrowError::E3);
@@ -7725,8 +7795,13 @@ mod tests {
     #[should_panic]
     fn test_raise_dispute_blocked_when_paused() {
         let (_env, admin, escrow_client, _, _, escrow_id, client) = setup_pause_escrow(100);
+<<<<<<< feat/dispute-evidence-arbiter-fees-validation
+        client.pause(&admin);
+        client.raise_dispute(&escrow_client, &escrow_id, &None, &soroban_sdk::Vec::new(&_env));
+=======
         client.pause(&admin, &String::from_str(&env, ""));
         client.raise_dispute(&escrow_client, &escrow_id, &None);
+>>>>>>> develop
     }
 
     #[test]

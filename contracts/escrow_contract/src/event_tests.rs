@@ -358,7 +358,7 @@ mod event_tests {
             &500_i128,
         );
         client.submit_milestone(&freelancer, &escrow_id, &mid);
-        client.raise_dispute(&client_addr, &escrow_id, &Some(mid));
+        client.raise_dispute(&client_addr, &escrow_id, &Some(mid), &soroban_sdk::Vec::new(&env));
 
         let events = contract_events(&env, &contract_id);
         let (_, topics, data) = events
@@ -401,7 +401,7 @@ mod event_tests {
             &500_i128,
         );
         client.submit_milestone(&freelancer, &escrow_id, &mid);
-        client.raise_dispute(&client_addr, &escrow_id, &Some(mid));
+        client.raise_dispute(&client_addr, &escrow_id, &Some(mid), &soroban_sdk::Vec::new(&env));
         client.resolve_dispute(&arbiter, &escrow_id, &200_i128, &300_i128);
 
         let events = contract_events(&env, &contract_id);
@@ -737,7 +737,7 @@ mod event_tests {
             &500_i128,
         );
         client.submit_milestone(&freelancer, &escrow_id, &mid);
-        client.raise_dispute(&client_addr, &escrow_id, &Some(mid));
+        client.raise_dispute(&client_addr, &escrow_id, &Some(mid), &soroban_sdk::Vec::new(&env));
 
         let events = contract_events(&env, &contract_id);
         let (_, topics, data) = events
