@@ -303,6 +303,90 @@ export async function buildRaiseDisputeTx({ sourceAddress, escrowId, milestoneId
 }
 
 /**
+ * Computes the SHA-256 hash of the canonical UTF-8 terms document text.
+ *
+ * Returns a lowercase 64-character hex string (32 bytes) suitable for
+ * passing as `terms_hash` to `create_escrow_with_terms_hash`.
+ *
+ * @param {string} termsText — full UTF-8 text of the terms document
+ * @returns {Promise<string>} 64-char hex SHA-256 digest
+ */
+export async function computeTermsHash(termsText) {
+  const buf = new TextEncoder().encode(termsText);
+  const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hashBuf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Builds an unsigned `create_escrow_with_terms_hash` Soroban transaction XDR.
+ *
+ * @param {object} params
+ * @param {string} params.sourceAddress
+ * @param {string} params.freelancerAddress
+ * @param {string} params.tokenAddress
+ * @param {string} params.amount            — total amount in stroops
+ * @param {string} params.briefHash         — 32-byte hex content hash
+ * @param {string|null} params.termsHash    — 32-byte hex SHA-256 of terms doc (optional)
+ * @param {string|null} params.arbiter
+ * @param {number|null} params.deadline
+ * @returns {Promise<string>} unsigned transaction XDR (base64)
+ */
+export async function buildCreateEscrowWithTermsHashTx({
+  sourceAddress,
+  freelancerAddress,
+  tokenAddress,
+  amount,
+  briefHash,
+  termsHash = null,
+  arbiter = null,
+  deadline = null,
+}) {
+  if (!_CONTRACT_ADDRESS) {
+    throw new Error('Contract address not configured. Set NEXT_PUBLIC_CONTRACT_ADDRESS.');
+  }
+
+  _validateInputs({ sourceAddress, freelancerAddress, tokenAddress, amount, briefHash });
+  if (termsHash !== null && !/^[a-f0-9]{64}$/i.test(termsHash)) {
+    throw new Error(`Terms hash must be a 32-byte hex string, got: ${termsHash}`);
+  }
+
+  const server = new SorobanRpc.Server(_SOROBAN_RPC_URL);
+  const account = await server.getAccount(sourceAddress);
+  const contract = new Contract(_CONTRACT_ADDRESS);
+
+  const txBuilder = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: _NETWORK_PASSPHRASE,
+  });
+
+  txBuilder.addOperation(
+    contract.call(
+      'create_escrow_with_terms_hash',
+      new Address(sourceAddress).toScVal(),
+      new Address(freelancerAddress).toScVal(),
+      new Address(tokenAddress).toScVal(),
+      nativeToScVal(BigInt(amount), { type: 'i128' }),
+      xdr.ScVal.scvBytes(Buffer.from(briefHash, 'hex')),
+      arbiter ? xdr.ScVal.scvVec([new Address(arbiter).toScVal()]) : xdr.ScVal.scvVoid(),
+      deadline ? nativeToScVal(BigInt(deadline), { type: 'u64' }) : xdr.ScVal.scvVoid(),
+      termsHash
+        ? xdr.ScVal.scvVec([xdr.ScVal.scvBytes(Buffer.from(termsHash, 'hex'))])
+        : xdr.ScVal.scvVoid(),
+    ),
+  );
+
+  txBuilder.setTimeout(300);
+  const tx = txBuilder.build();
+  const prepared = await server.simulateTransaction(tx);
+  if (SorobanRpc.isSimulationError(prepared)) {
+    throw new Error(`Simulation failed: ${prepared.error}`);
+  }
+  return SorobanRpc.assembleTransaction(tx, prepared).build().toXDR('base64');
+}
+
+/**
  * Broadcasts a signed transaction XDR to the Stellar network.
  *
  * @param {string} signedXdr — base64-encoded signed XDR

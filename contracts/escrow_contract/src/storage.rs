@@ -250,6 +250,7 @@ impl StorageManager {
                     rent_balance: 0,
                     last_rent_collection_at: v1_escrow.created_at,
                     dispute_start_ledger: None,
+                    terms_hash: crate::OptionalBytesN32::None,
                 };
 
                 // Store meta in v2 format using PackedDataKey
