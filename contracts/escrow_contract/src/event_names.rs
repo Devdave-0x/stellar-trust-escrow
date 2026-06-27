@@ -116,4 +116,7 @@ pub const ADMIN_PROPOSED: Symbol = symbol_short!("adm_prop");
 pub const ADMIN_CHANGED: Symbol = symbol_short!("adm_chg");
 pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
 pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
-pub const LIMITS_UPDATED: Symbol = symbol_short!("lim_upd");
+
+// ── Dispute cooldown ─────────────────────────────────────────────────────────
+
+pub const COOLDOWN_ELAPSED: Symbol = symbol_short!("cd_done");

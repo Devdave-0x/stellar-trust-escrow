@@ -498,3 +498,8 @@ pub fn emit_pending_release_executed(env: &Env, escrow_id: u64, milestone_id: u3
         (milestone_id, amount),
     );
 }
+
+pub fn emit_cooldown_elapsed(env: &Env, escrow_id: u64, cooldown_ended_at: u64) {
+    env.events()
+        .publish((ev::COOLDOWN_ELAPSED, escrow_id), cooldown_ended_at);
+}

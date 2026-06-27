@@ -480,6 +480,26 @@ pub struct RecurringScheduleStatus {
     pub payment_amount: i128,
 }
 
+/// Dispute information for frontend display.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeInfo {
+    /// Escrow ID this dispute belongs to.
+    pub escrow_id: u64,
+    /// Whether the escrow is currently disputed.
+    pub is_disputed: bool,
+    /// Ledger timestamp when the dispute was raised.
+    pub disputed_at: Option<u64>,
+    /// Configured cooldown duration in seconds.
+    pub cooldown_secs: u64,
+    /// Ledger timestamp when the cooldown ends and a ruling can be submitted.
+    pub cooldown_ends_at: Option<u64>,
+    /// Whether the cooldown has elapsed.
+    pub cooldown_elapsed: bool,
+    /// Assigned arbiter address, if any.
+    pub arbiter: Option<Address>,
+}
+
 /// A cancellation request for an escrow.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -766,8 +786,8 @@ pub enum DataKey {
     EvidenceHash(u64),
     /// Approved arbiter allowlist entry — key: Address, value: bool
     ApprovedArbiter(Address),
-    /// Admin-configurable minimum escrow amount — value: i128
-    MinEscrowAmount,
-    /// Admin-configurable maximum escrow amount — value: i128
-    MaxEscrowAmount,
+    /// Semantic version string (e.g. "1.0.0") — value: String
+    ContractVersion,
+    /// Configurable dispute cooldown in seconds — value: u64
+    DisputeCooldownSecs,
 }
