@@ -173,7 +173,7 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
 
       {/* File Upload */}
       <div>
-        <label className="block text-sm font-medium text-white mb-2">Evidence Files *</label>
+        <label htmlFor="evidence-files" className="block text-sm font-medium text-white mb-2">Evidence Files *</label>
 
         {/* Drag-and-drop zone */}
         <div
@@ -205,6 +205,7 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
 
         <input
           ref={fileInputRef}
+          id="evidence-files"
           type="file"
           multiple
           accept=".pdf,.png,.jpg,.jpeg,.mp4"
@@ -215,6 +216,11 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
 
         {errors.files && <p className="text-red-500 text-xs mt-1">{errors.files}</p>}
         {errors.max && <p className="text-red-500 text-xs mt-1">{errors.max}</p>}
+        {Object.entries(errors)
+          .filter(([k]) => k !== 'files' && k !== 'max' && k !== 'reason' && k !== 'description')
+          .map(([k, v]) => (
+            <p key={k} className="text-red-500 text-xs mt-1">{v}</p>
+          ))}
 
         {/* File list */}
         {files.length > 0 && (

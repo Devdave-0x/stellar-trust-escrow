@@ -100,7 +100,6 @@ describe('DisputeSubmissionForm', () => {
     );
 
     const browseBtn = screen.getByText('browse');
-    const fileInput = screen.getByDisplayValue('');
 
     // Note: Actual file picker opening can't be tested directly
     expect(browseBtn).toBeInTheDocument();

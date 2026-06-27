@@ -2,12 +2,12 @@
 #[allow(clippy::module_inception)]
 mod unit_coverage_tests {
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig,
-        MAX_ESCROW_AMOUNT, MAX_MILESTONES, MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED,
-        MS_RELEASED, MS_SUBMITTED,
+        EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MAX_ESCROW_AMOUNT,
+        MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_SUBMITTED, UNPAUSE_MIN_DELAY_SECS,
     };
     use soroban_sdk::{
-        testutils::Address as _, token, Address, BytesN, Env, IntoVal, String, Vec,
+        testutils::{Address as _, Ledger as _},
+        token, Address, BytesN, Env, String, Vec,
     };
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -515,7 +515,9 @@ mod unit_coverage_tests {
             &500,
         );
 
-        let result = t.client.try_approve_milestone(&client_addr, &escrow_id, &m0);
+        let result = t
+            .client
+            .try_approve_milestone(&client_addr, &escrow_id, &m0);
         assert!(result.is_err());
     }
 
@@ -696,7 +698,9 @@ mod unit_coverage_tests {
         );
 
         t.client.raise_dispute(&client_addr, &escrow_id, &None);
-        let result = t.client.try_resolve_dispute(&arbiter, &escrow_id, &400, &400);
+        let result = t
+            .client
+            .try_resolve_dispute(&arbiter, &escrow_id, &400, &400);
         assert!(result.is_err());
     }
 
@@ -721,7 +725,9 @@ mod unit_coverage_tests {
             &no_multisig(&t.env),
         );
 
-        let result = t.client.try_resolve_dispute(&arbiter, &escrow_id, &500, &500);
+        let result = t
+            .client
+            .try_resolve_dispute(&arbiter, &escrow_id, &500, &500);
         assert!(result.is_err());
     }
 
@@ -742,8 +748,7 @@ mod unit_coverage_tests {
         );
 
         t.client.submit_milestone(&freelancer, &escrow_id, &m0);
-        t.client
-            .raise_dispute(&client_addr, &escrow_id, &Some(m0));
+        t.client.raise_dispute(&client_addr, &escrow_id, &Some(m0));
 
         let ms = t.client.get_milestone(&escrow_id, &m0);
         assert_eq!(ms.status, MS_DISPUTED);
@@ -827,7 +832,8 @@ mod unit_coverage_tests {
         let freelancer = Address::generate(&t.env);
         mint_for_escrow(&t.env, &t.token_id, &client_addr, 500, 0);
 
-        t.client.pause(&t.admin);
+        t.client
+            .pause(&t.admin, &soroban_sdk::String::from_str(&t.env, ""));
         assert!(t.client.is_paused());
 
         let result = t.client.try_create_escrow(
@@ -852,7 +858,11 @@ mod unit_coverage_tests {
         let freelancer = Address::generate(&t.env);
         mint_for_escrow(&t.env, &t.token_id, &client_addr, 500, 0);
 
-        t.client.pause(&t.admin);
+        t.client
+            .pause(&t.admin, &soroban_sdk::String::from_str(&t.env, ""));
+        t.env
+            .ledger()
+            .with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
         t.client.unpause(&t.admin);
         assert!(!t.client.is_paused());
 
@@ -951,7 +961,11 @@ mod unit_coverage_tests {
         mint_for_escrow(&t.env, &t.token_id, &client_addr, 500, 1);
 
         let escrow_id = create_basic_escrow(&t, &client_addr, &freelancer, 500);
-        t.client.freeze_escrow(&t.admin, &escrow_id);
+        {
+            let mut __v = soroban_sdk::Vec::new(&t.env);
+            __v.push_back(t.admin.clone());
+            t.client.freeze_escrow(&escrow_id, &__v);
+        }
 
         let result = t.client.try_add_milestone(
             &client_addr,
@@ -971,8 +985,16 @@ mod unit_coverage_tests {
         mint_for_escrow(&t.env, &t.token_id, &client_addr, 500, 1);
 
         let escrow_id = create_basic_escrow(&t, &client_addr, &freelancer, 500);
-        t.client.freeze_escrow(&t.admin, &escrow_id);
-        t.client.unfreeze_escrow(&t.admin, &escrow_id);
+        {
+            let mut __v = soroban_sdk::Vec::new(&t.env);
+            __v.push_back(t.admin.clone());
+            t.client.freeze_escrow(&escrow_id, &__v);
+        }
+        {
+            let mut __v = soroban_sdk::Vec::new(&t.env);
+            __v.push_back(t.admin.clone());
+            t.client.unfreeze_escrow(&escrow_id, &__v);
+        }
 
         let m0 = t.client.add_milestone(
             &client_addr,
@@ -1045,7 +1067,7 @@ mod unit_coverage_tests {
             &hash(&t.env, 2),
             &600,
         );
-        let m1 = t.client.add_milestone(
+        let _m1 = t.client.add_milestone(
             &client_addr,
             &escrow_id,
             &String::from_str(&t.env, "Part2"),
@@ -1120,13 +1142,8 @@ mod unit_coverage_tests {
         amounts.push_back(300_i128);
         amounts.push_back(400_i128);
 
-        t.client.batch_add_milestones(
-            &client_addr,
-            &escrow_id,
-            &titles,
-            &hashes,
-            &amounts,
-        );
+        t.client
+            .batch_add_milestones(&client_addr, &escrow_id, &titles, &hashes, &amounts);
 
         let ms0 = t.client.get_milestone(&escrow_id, &0);
         let ms1 = t.client.get_milestone(&escrow_id, &1);
@@ -1145,7 +1162,10 @@ mod unit_coverage_tests {
         let t = setup();
         t.client.set_token_whitelist_enabled(&t.admin, &true);
 
-        let token = Address::generate(&t.env);
+        let token = t
+            .env
+            .register_stellar_asset_contract_v2(t.admin.clone())
+            .address();
         t.client.add_approved_token(&t.admin, &token);
 
         let client_addr = Address::generate(&t.env);

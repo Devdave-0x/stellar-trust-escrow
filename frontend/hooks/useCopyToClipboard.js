@@ -26,8 +26,11 @@ export function useCopyToClipboard(feedbackDuration = 2000) {
     async (text) => {
       try {
         await navigator.clipboard.writeText(text);
-      } catch {
-        if (!fallbackCopy(text)) return;
+      } catch (err) {
+        if (!fallbackCopy(text)) {
+          console.error('Failed to copy:', err);
+          return;
+        }
       }
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), feedbackDuration);

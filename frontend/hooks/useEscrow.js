@@ -47,7 +47,7 @@ export function useUserEscrows(address, role = 'all') {
     nextCursor: data?.next_cursor ?? null,
     hasMore: data?.has_more ?? false,
     isLoading,
-    error,
+    error: error ?? null,
   };
 }
 
@@ -107,10 +107,11 @@ export function useEscrowList({ limit = 20, status = '', sortBy = 'createdAt', s
   return {
     pages: pages ?? [],
     escrows: (pages ?? []).flatMap((p) => p?.data ?? []),
+    total: pages?.[0]?.total ?? 0,
     isLoading,
     isLoadingMore,
     hasMore,
-    error,
+    error: error ?? null,
     loadMore,
   };
 }

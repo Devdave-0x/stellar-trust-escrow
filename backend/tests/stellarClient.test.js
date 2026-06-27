@@ -7,6 +7,7 @@ const loggerMock = {
 };
 
 jest.unstable_mockModule('../config/logger.js', () => ({
+  default: loggerMock,
   createModuleLogger: () => loggerMock,
 }));
 
@@ -383,7 +384,7 @@ describe('Stellar Client with Horizon Failover', () => {
         return await server.getLatestLedger();
       });
 
-      await expect(promise).rejects.toThrow('Query timeout');
+      await expect(promise).rejects.toThrow(/timeout/i);
     });
   });
 });

@@ -63,10 +63,17 @@ pub enum EcErr {
     OracleStaleFeed = 67,
     OracleInvalidPrice = 68,
     OraclePriceConversionFailed = 69,
+    E70 = 70,
     E71 = 71,
     E72 = 72,
     E73 = 73,
     E74 = 74,
+    /// Dispute record not found for this escrow (escrow is not disputed)
+    EscrowNotDisputed = 75,
+    /// Contract has not been initialized
+    NotInitialized = 76,
+    /// Platform treasury address has not been configured
+    TreasuryNotConfigured = 77,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle

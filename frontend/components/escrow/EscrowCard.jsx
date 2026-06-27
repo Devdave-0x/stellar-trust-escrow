@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import Badge from '../ui/Badge';
+import CopyButton from '../ui/CopyButton';
 import CurrencyAmount from '../ui/CurrencyAmount';
 import EscrowCardSkeleton from '../ui/EscrowCardSkeleton';
 import { useI18n } from '../../i18n/index.jsx';

@@ -844,3 +844,16 @@ pub enum DataKey {
     /// Configurable dispute cooldown in seconds — value: u64
     DisputeCooldownSecs,
 }
+
+/// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.
+#[contracttype]
+pub enum FeatDataKey {
+    /// Dispute record by escrow ID — key: u64, value: DisputeRecord
+    DisputeRecord(u64),
+    /// Pending escrow extension request — key: u64, value: EscrowExtensionRequest
+    ExtensionRequest(u64),
+    /// Minimum escrow amount — value: i128
+    MinEscrowAmount,
+    /// Maximum escrow amount — value: i128
+    MaxEscrowAmount,
+}

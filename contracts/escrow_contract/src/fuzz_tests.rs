@@ -15,17 +15,19 @@ mod fuzz_tests {
     //! - Edge-case amount distributions
 
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig,
-        MAX_ESCROW_AMOUNT, MAX_MILESTONES, MS_PENDING, MS_SUBMITTED,
+        EscrowContract, EscrowContractClient, EscrowStatus, MultisigConfig, MAX_ESCROW_AMOUNT,
+        MAX_MILESTONES, UNPAUSE_MIN_DELAY_SECS,
     };
     use soroban_sdk::{
-        testutils::Address as _, token, Address, BytesN, Env, String, Vec,
+        testutils::{Address as _, Ledger as _},
+        token, Address, BytesN, Env, String, Vec,
     };
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     struct TestEnv {
         env: Env,
+        #[allow(dead_code)]
         contract_id: Address,
         client: EscrowContractClient<'static>,
         admin: Address,
@@ -95,8 +97,8 @@ mod fuzz_tests {
     #[test]
     fn fuzz_create_escrow_amount_boundaries() {
         let t = setup();
-        let client_addr = Address::generate(&t.env);
-        let freelancer = Address::generate(&t.env);
+        let _client_addr = Address::generate(&t.env);
+        let _freelancer = Address::generate(&t.env);
 
         let boundary_amounts: [i128; 8] = [
             i128::MIN,
@@ -114,7 +116,12 @@ mod fuzz_tests {
             let client_addr = Address::generate(&t.env);
             let freelancer = Address::generate(&t.env);
             if amount > 0 {
-                mint(&t.env, &t.token_id, &client_addr, amount.saturating_add(10_000));
+                mint(
+                    &t.env,
+                    &t.token_id,
+                    &client_addr,
+                    amount.saturating_add(10_000),
+                );
             }
 
             let result = t.client.try_create_escrow(
@@ -130,7 +137,7 @@ mod fuzz_tests {
                 &no_multisig(&t.env),
             );
 
-            if amount >= 1 && amount <= MAX_ESCROW_AMOUNT {
+            if (1..=MAX_ESCROW_AMOUNT).contains(&amount) {
                 assert!(result.is_ok(), "Should accept valid amount {amount}");
             } else {
                 assert!(result.is_err(), "Should reject invalid amount {amount}");
@@ -171,10 +178,7 @@ mod fuzz_tests {
                 &hash(&t.env, 2),
                 &amount,
             );
-            assert!(
-                result.is_err(),
-                "Should reject milestone amount {amount}"
-            );
+            assert!(result.is_err(), "Should reject milestone amount {amount}");
         }
 
         let valid_result = t.client.try_add_milestone(
@@ -341,12 +345,9 @@ mod fuzz_tests {
             );
 
             t.client.raise_dispute(&client_addr, &escrow_id, &None);
-            let result = t.client.try_resolve_dispute(
-                &arbiter,
-                &escrow_id,
-                &client_amt,
-                &freelancer_amt,
-            );
+            let result =
+                t.client
+                    .try_resolve_dispute(&arbiter, &escrow_id, &client_amt, &freelancer_amt);
             assert!(
                 result.is_err(),
                 "Should reject split ({client_amt}, {freelancer_amt})"
@@ -420,7 +421,9 @@ mod fuzz_tests {
         let t = setup();
         let attacker = Address::generate(&t.env);
 
-        let pause_result = t.client.try_pause(&attacker);
+        let pause_result = t
+            .client
+            .try_pause(&attacker, &soroban_sdk::String::from_str(&t.env, ""));
         assert!(pause_result.is_err(), "Non-admin should not pause");
 
         let unpause_result = t.client.try_unpause(&attacker);
@@ -514,7 +517,7 @@ mod fuzz_tests {
             &hash(&t.env, 2),
             &500,
         );
-        let m1 = t.client.add_milestone(
+        let _m1 = t.client.add_milestone(
             &client_addr,
             &escrow_id,
             &String::from_str(&t.env, "W2"),
@@ -525,7 +528,9 @@ mod fuzz_tests {
         t.client.submit_milestone(&freelancer, &escrow_id, &m0);
         t.client.approve_milestone(&client_addr, &escrow_id, &m0);
 
-        let result = t.client.try_approve_milestone(&client_addr, &escrow_id, &m0);
+        let result = t
+            .client
+            .try_approve_milestone(&client_addr, &escrow_id, &m0);
         assert!(result.is_err(), "Double-approve should be rejected");
     }
 
@@ -758,6 +763,8 @@ mod fuzz_tests {
                 &no_multisig(&t.env),
             );
 
+            // Add all milestones first so the escrow doesn't complete early
+            let mut mids: Vec<u32> = Vec::new(&t.env);
             for (i, &amt) in amounts.iter().enumerate() {
                 let mid = t.client.add_milestone(
                     &client_addr,
@@ -766,6 +773,10 @@ mod fuzz_tests {
                     &hash(&t.env, (i + 10) as u8),
                     &amt,
                 );
+                mids.push_back(mid);
+            }
+            for i in 0..mids.len() {
+                let mid = mids.get(i).unwrap();
                 t.client.submit_milestone(&freelancer, &escrow_id, &mid);
                 t.client.approve_milestone(&client_addr, &escrow_id, &mid);
             }
@@ -838,14 +849,8 @@ mod fuzz_tests {
         t.client.approve_milestone(&client_addr, &e1, &m1);
         t.client.approve_milestone(&client_addr, &e2, &m2);
 
-        assert_eq!(
-            t.client.get_escrow(&e1).status,
-            EscrowStatus::Completed
-        );
-        assert_eq!(
-            t.client.get_escrow(&e2).status,
-            EscrowStatus::Completed
-        );
+        assert_eq!(t.client.get_escrow(&e1).status, EscrowStatus::Completed);
+        assert_eq!(t.client.get_escrow(&e2).status, EscrowStatus::Completed);
         assert_eq!(balance(&t.env, &t.token_id, &freelancer), 5_000);
     }
 
@@ -945,8 +950,13 @@ mod fuzz_tests {
             &no_multisig(&t.env),
         );
 
-        t.client.freeze_escrow(&t.admin, &escrow_id);
-        t.client.pause(&t.admin);
+        {
+            let mut __v = soroban_sdk::Vec::new(&t.env);
+            __v.push_back(t.admin.clone());
+            t.client.freeze_escrow(&escrow_id, &__v);
+        }
+        t.client
+            .pause(&t.admin, &soroban_sdk::String::from_str(&t.env, ""));
 
         let result = t.client.try_add_milestone(
             &client_addr,
@@ -957,6 +967,9 @@ mod fuzz_tests {
         );
         assert!(result.is_err(), "Should block when both paused and frozen");
 
+        t.env
+            .ledger()
+            .with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
         t.client.unpause(&t.admin);
         let result2 = t.client.try_add_milestone(
             &client_addr,
@@ -967,7 +980,11 @@ mod fuzz_tests {
         );
         assert!(result2.is_err(), "Still frozen even after unpause");
 
-        t.client.unfreeze_escrow(&t.admin, &escrow_id);
+        {
+            let mut __v = soroban_sdk::Vec::new(&t.env);
+            __v.push_back(t.admin.clone());
+            t.client.unfreeze_escrow(&escrow_id, &__v);
+        }
         let m0 = t.client.add_milestone(
             &client_addr,
             &escrow_id,

@@ -2,7 +2,7 @@
 
 #[allow(clippy::module_inception)]
 mod reentrancy_tests {
-    use crate::{DataKey, EscrowContract, EscrowContractClient, EscrowError, MultisigConfig};
+    use crate::{DataKey, EscrowContract, EscrowContractClient, MultisigConfig};
     use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Vec};
 
     fn no_multisig(env: &Env) -> MultisigConfig {

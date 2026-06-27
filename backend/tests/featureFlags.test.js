@@ -6,6 +6,7 @@ const flagStore = new Map();
 const prismaMock = {
   featureFlag: {
     findUnique: jest.fn(({ where }) => Promise.resolve(flagStore.get(where.key) ?? null)),
+    findFirst: jest.fn(({ where }) => Promise.resolve(flagStore.get(where.key) ?? null)),
     findMany: jest.fn(() => Promise.resolve([...flagStore.values()])),
     create: jest.fn(({ data }) => {
       flagStore.set(data.key, { ...data });

@@ -3,10 +3,12 @@
 #[allow(clippy::module_inception)]
 mod dispute_cooldown_tests {
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowError, MultisigConfig,
-        DEFAULT_DISPUTE_COOLDOWN_SECS,
+        EscrowContract, EscrowContractClient, MultisigConfig, DEFAULT_DISPUTE_COOLDOWN_SECS,
     };
-    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Vec};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger as _},
+        Address, BytesN, Env, Vec,
+    };
 
     fn no_multisig(env: &Env) -> MultisigConfig {
         MultisigConfig {
@@ -34,10 +36,10 @@ mod dispute_cooldown_tests {
     }
 
     fn advance(env: &Env, secs: u64) {
-        let mut ledger = env.ledger().get();
-        ledger.timestamp += secs;
-        ledger.sequence_number += (secs / 5) as u32;
-        env.ledger().set(ledger);
+        env.ledger().with_mut(|l| {
+            l.timestamp += secs;
+            l.sequence_number += (secs / 5) as u32;
+        });
     }
 
     fn create_disputed_escrow(
