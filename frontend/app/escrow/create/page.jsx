@@ -23,6 +23,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Button from '../../../components/ui/Button';
+import FeeEstimator from '../../../components/ui/FeeEstimator';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 import XLMAmountInput from '../../../components/ui/XLMAmountInput';
@@ -529,6 +530,9 @@ function StepSign({ error }) {
         Clicking the button below will open your Freighter wallet to sign the transaction. Your
         funds will be locked on-chain once confirmed.
       </p>
+      <div className="mx-auto max-w-md">
+        <FeeEstimator className="mt-4" />
+      </div>
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
           {error}
