@@ -35,6 +35,7 @@ import CurrencyAmount from '../../../components/ui/CurrencyAmount';
 import TransactionHash from '../../../components/ui/TransactionHash';
 import TruncatedAddress from '../../../components/ui/TruncatedAddress';
 import Avatar from '../../../components/ui/Avatar';
+import EscrowReceipt, { openReceiptWindow } from '../../../components/escrow/EscrowReceipt';
 import {
   buildApproveMilestoneTx,
   buildSubmitMilestoneTx,
@@ -225,6 +226,38 @@ export default function EscrowDetailPage({ params }) {
           />
         </div>
         <div className="flex gap-2 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              openReceiptWindow({
+                escrow: {
+                  ...escrow,
+                  clientName: escrow.clientName,
+                  freelancerName: escrow.freelancerName,
+                },
+                network: process.env.NEXT_PUBLIC_STELLAR_NETWORK,
+              })
+            }
+          >
+            ⤓ Download PDF
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              openReceiptWindow({
+                escrow: {
+                  ...escrow,
+                  clientName: escrow.clientName,
+                  freelancerName: escrow.freelancerName,
+                },
+                network: process.env.NEXT_PUBLIC_STELLAR_NETWORK,
+              })
+            }
+          >
+            🖨 Print
+          </Button>
           {escrow.status === 'Active' && (
             <>
               <Button variant="danger" size="sm" onClick={() => setDisputeOpen(true)}>
