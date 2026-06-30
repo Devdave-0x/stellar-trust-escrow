@@ -119,7 +119,7 @@ impl StorageManager {
 
         if current_version > STORAGE_VERSION {
             // Downgrade not supported - this could corrupt data
-            return Err(crate::EscrowError::E42);
+            return Err(crate::EscrowError::StorageDowngradeNotAllowed);
         }
 
         // Run migrations in order from current to target version
@@ -229,7 +229,7 @@ impl StorageManager {
                         .milestones
                         .iter()
                         .try_fold(0i128, |acc, m| acc.checked_add(m.amount))
-                        .ok_or(crate::EscrowError::E28)?,
+                        .ok_or(crate::EscrowError::LockTimeNotExpired)?,
                     remaining_balance: v1_escrow.remaining_balance,
                     status: v1_escrow.status,
                     milestone_count: v1_escrow.milestones.len(),
@@ -374,7 +374,7 @@ mod tests {
             env.storage().instance().set(&DataKey::EscrowCounter, &1u64);
 
             let result = StorageManager::migrate_v1_to_v2(&env, 1, MAX_MIGRATION_BATCH);
-            assert_eq!(result, Err(crate::EscrowError::E28));
+            assert_eq!(result, Err(crate::EscrowError::LockTimeNotExpired));
 
             // The v1 entry must be left untouched so a retry is possible.
             assert!(env.storage().persistent().has(&DataKey::Escrow(1)));

@@ -50,30 +50,30 @@ pub fn is_participant(_env: &Env, addr: &Address, meta: &EscrowMeta) -> bool {
     *addr == meta.client || *addr == meta.freelancer
 }
 
-/// Returns `Err(EscrowError::E4)` if `addr` is not the contract admin.
+/// Returns `Err(EscrowError::NotAdmin)` if `addr` is not the contract admin.
 pub fn require_admin(env: &Env, addr: &Address) -> Result<(), EscrowError> {
     if !is_admin(env, addr) {
-        return Err(EscrowError::E4);
+        return Err(EscrowError::NotAdmin);
     }
     Ok(())
 }
 
-/// Returns `Err(EscrowError::E3)` if `addr` is not the assigned arbiter for this escrow.
+/// Returns `Err(EscrowError::Unauthorized)` if `addr` is not the assigned arbiter for this escrow.
 pub fn require_arbiter(env: &Env, addr: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
     if !is_arbiter(env, addr, meta) {
-        return Err(EscrowError::E3);
+        return Err(EscrowError::Unauthorized);
     }
     Ok(())
 }
 
-/// Returns `Err(EscrowError::E3)` if `addr` is not a participant (client or freelancer).
+/// Returns `Err(EscrowError::Unauthorized)` if `addr` is not a participant (client or freelancer).
 pub fn require_participant(
     env: &Env,
     addr: &Address,
     meta: &EscrowMeta,
 ) -> Result<(), EscrowError> {
     if !is_participant(env, addr, meta) {
-        return Err(EscrowError::E3);
+        return Err(EscrowError::Unauthorized);
     }
     Ok(())
 }

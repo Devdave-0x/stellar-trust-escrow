@@ -123,7 +123,7 @@ pub fn get_oracle(env: &Env) -> Result<Address, EscrowError> {
     env.storage()
         .instance()
         .get(&DataKey::OracleAddress)
-        .ok_or(EscrowError::E54)
+        .ok_or(EscrowError::BridgeTokenNotApproved)
 }
 
 pub fn set_fallback_oracle(env: &Env, oracle: &Address) {
@@ -141,7 +141,7 @@ pub fn get_fallback_oracle(env: &Env) -> Option<Address> {
 #[allow(dead_code)]
 pub fn set_oracle_stale_threshold(env: &Env, threshold_seconds: u64) -> Result<(), EscrowError> {
     if threshold_seconds == 0 || threshold_seconds > 86_400 {
-        return Err(EscrowError::E19);
+        return Err(EscrowError::InvalidInput);
     }
     env.storage()
         .instance()

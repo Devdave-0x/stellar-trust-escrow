@@ -54,3 +54,72 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  contract-smoke-test:
+    name: Contract Deploy & Smoke Test (testnet)
+    runs-on: ubuntu-latest
+    needs: contract
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: testnet
+    env:
+      STELLAR_NETWORK: testnet
+      STELLAR_RPC_URL: https://soroban-testnet.stellar.org
+      STELLAR_NETWORK_PASSPHRASE: 'Test SDF Network ; September 2015'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install stellar-cli --locked
+
+      - name: Fund CI testnet account via Friendbot
+        run: |
+          stellar keys generate --no-fund ci-deploy-key
+          ACCOUNT=$(stellar keys address ci-deploy-key)
+          echo "CI_ACCOUNT=$ACCOUNT" >> $GITHUB_ENV
+          curl -s "https://friendbot.stellar.org?addr=$ACCOUNT" > /dev/null
+          echo "Funded $ACCOUNT on testnet"
+
+      - name: Build WASM
+        run: |
+          cargo build --target wasm32-unknown-unknown --release \
+            -p escrow_contract
+          ls -lh target/wasm32-unknown-unknown/release/escrow_contract.wasm
+
+      - name: Deploy contract to testnet
+        id: deploy
+        run: |
+          CONTRACT_ID=$(stellar contract deploy \
+            --wasm target/wasm32-unknown-unknown/release/escrow_contract.wasm \
+            --source ci-deploy-key \
+            --network testnet)
+          echo "CONTRACT_ID=$CONTRACT_ID" >> $GITHUB_ENV
+          echo "Deployed contract: $CONTRACT_ID"
+
+      - name: Run smoke test (create → fund → release)
+        run: |
+          bash scripts/smoke_test.sh "$CONTRACT_ID" "$CI_ACCOUNT" ci-deploy-key
+
+      - name: Clean up deployed contract
+        if: always()
+        run: |
+          echo "Smoke test complete — testnet contracts expire automatically after TTL"
+          echo "Contract ID was: $CONTRACT_ID"
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number || 0,
+              body: `⚠️ **Testnet smoke test failed** on \`develop\` — contract may not deploy correctly.\nRun ID: ${context.runId}`
+            }).catch(() => {
+              console.log('No PR to comment on, logging failure only.');
+            });

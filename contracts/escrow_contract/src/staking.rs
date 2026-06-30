@@ -21,7 +21,7 @@ pub fn deposit_stake_and_activate(
 
     // Validate the freelancer
     if *freelancer != meta.freelancer {
-        return Err(EscrowError::E3);
+        return Err(EscrowError::Unauthorized);
     }
 
     // Check if stake is already deposited
@@ -33,7 +33,7 @@ pub fn deposit_stake_and_activate(
         .unwrap_or(false);
 
     if already_deposited {
-        return Err(EscrowError::E19); // Reuse existing error for "stake already deposited"
+        return Err(EscrowError::InvalidInput); // Reuse existing error for "stake already deposited"
     }
 
     // Load the required stake amount
@@ -94,15 +94,15 @@ pub fn slash_stake_to_client(
     }
 
     if slash_percentage > 100 {
-        return Err(EscrowError::E19);
+        return Err(EscrowError::InvalidInput);
     }
 
     let slash_amount_u128 = (meta.required_freelancer_stake as u128)
         .checked_mul(slash_percentage as u128)
         .and_then(|v| v.checked_div(100))
-        .ok_or(EscrowError::E28)?;
+        .ok_or(EscrowError::LockTimeNotExpired)?;
     let slash_amount =
-        i128::try_from(slash_amount_u128).map_err(|_| EscrowError::E28)?;
+        i128::try_from(slash_amount_u128).map_err(|_| EscrowError::LockTimeNotExpired)?;
 
     if slash_amount > 0 {
         token::Client::new(env, &meta.token).transfer(
