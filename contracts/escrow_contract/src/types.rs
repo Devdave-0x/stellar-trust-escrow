@@ -843,6 +843,10 @@ pub enum DataKey {
     ContractVersion,
     /// Configurable dispute cooldown in seconds — value: u64
     DisputeCooldownSecs,
+    /// DEX router contract address used for optional swap-on-release — value: Address
+    DexRouter,
+    /// Configurable slippage tolerance in basis points for DEX swaps (default 50 = 0.5 %) — value: u32
+    DexSlippageBps,
 }
 
 /// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.

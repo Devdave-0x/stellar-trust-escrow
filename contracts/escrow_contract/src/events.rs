@@ -586,3 +586,21 @@ pub fn emit_cooldown_elapsed(env: &Env, escrow_id: u64, cooldown_ended_at: u64) 
     env.events()
         .publish((ev::COOLDOWN_ELAPSED, escrow_id), cooldown_ended_at);
 }
+
+/// Emitted when a DEX swap is executed during an escrow release.
+///
+/// Schema: topic=(ASSET_SWAPPED, escrow_id),
+///         data=(from_asset, to_asset, amount_in, amount_out)
+pub fn emit_asset_swapped(
+    env: &Env,
+    escrow_id: u64,
+    from_asset: &Address,
+    to_asset: &Address,
+    amount_in: i128,
+    amount_out: i128,
+) {
+    env.events().publish(
+        (ev::ASSET_SWAPPED, escrow_id),
+        (from_asset.clone(), to_asset.clone(), amount_in, amount_out),
+    );
+}

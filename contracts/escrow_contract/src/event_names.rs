@@ -141,3 +141,7 @@ pub const LIMITS_UPDATED: Symbol = symbol_short!("lim_upd");
 // ── Dispute fees ─────────────────────────────────────────────────────────────
 
 pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");
+
+// ── DEX swap ─────────────────────────────────────────────────────────────────
+
+pub const ASSET_SWAPPED: Symbol = symbol_short!("swp_done");
