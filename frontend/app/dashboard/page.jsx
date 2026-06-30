@@ -117,19 +117,24 @@ export default function DashboardPage() {
 
           <section aria-label="Key performance metrics">
             <h2 className="sr-only">Dashboard Statistics</h2>
-            <Suspense fallback={<div className="h-40 card animate-pulse" />}>
-              <StatWidgets address={address} />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="h-40 card animate-pulse" />}>
+                <StatWidgets address={address} />
+              </Suspense>
+            </ErrorBoundary>
           </section>
 
           <section aria-label="Recent activity feed">
-            <Suspense fallback={<div className="h-40 card animate-pulse" />}>
-              <ActivityTimeline address={address} />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="h-40 card animate-pulse" />}>
+                <ActivityTimeline address={address} />
+              </Suspense>
+            </ErrorBoundary>
           </section>
 
           <section aria-label="Active escrow agreements" data-tour="disputes">
             <h2 className="text-lg font-semibold text-white mb-4">Your Active Escrows</h2>
+            <ErrorBoundary>
             {escrowsLoading ? (
               <div className="grid gap-4 md:grid-cols-2">
                 <CardSkeleton />
@@ -149,6 +154,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             )}
+            </ErrorBoundary>
           </section>
         </div>
       </ErrorBoundary>
