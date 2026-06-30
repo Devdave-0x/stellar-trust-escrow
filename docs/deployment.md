@@ -442,3 +442,36 @@ A deployable production architecture should look like this:
 - optional external IPFS gateway for evidence storage
 
 This structure keeps the app services isolated, reduces attack surface, and ensures that only TLS-terminated traffic reaches public endpoints.
+
+## 11. Scripted Contract Deployment
+
+Automated deployment scripts live in `scripts/deploy/`. They compile the WASM, upload it to the network, instantiate the contract, call `initialize()`, and run a post-deploy smoke test.
+
+### Testnet
+
+```bash
+export ADMIN_SECRET_KEY="S..."
+export ADMIN_ADDRESS="G..."
+bash scripts/deploy/testnet.sh
+```
+
+### Mainnet
+
+```bash
+export ADMIN_SECRET_KEY="S..."
+export ADMIN_ADDRESS="G..."
+bash scripts/deploy/mainnet.sh   # prompts for confirmation
+```
+
+Both scripts accept optional env vars:
+
+| Variable | Default | Description |
+|---|---|---|
+| `NETWORK_RPC_URL` | Stellar testnet/mainnet RPC | Soroban RPC endpoint |
+| `NETWORK_PASSPHRASE` | Per-network default | Stellar network passphrase |
+| `PLATFORM_FEE_BPS` | `50` | Platform fee in basis points |
+| `CONTRACT_WASM` | Built from source | Path to a pre-built WASM file |
+
+A timestamped deployment record is written to `deployments/<network>-<timestamp>.env` after every successful run. Commit these files to audit history.
+
+See `docs/contracts/UPGRADE.md` for the procedure to upgrade an already-deployed contract without redeployment.

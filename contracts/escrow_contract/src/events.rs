@@ -272,6 +272,13 @@ pub fn emit_lock_time_extended(
     );
 }
 
+pub fn emit_contract_upgraded(env: &Env, old_version: u32, new_version: u32, admin: &Address) {
+    env.events().publish(
+        (ev::CONTRACT_UPGRADED, new_version),
+        (old_version, admin.clone()),
+    );
+}
+
 pub fn emit_contract_paused(env: &Env, admin: &Address) {
     env.events().publish((ev::CONTRACT_PAUSED,), admin.clone());
 }

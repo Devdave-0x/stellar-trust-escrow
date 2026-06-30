@@ -1,4 +1,5 @@
 import './globals.css';
+import dynamic from 'next/dynamic';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import NavigationProgress from '../components/layout/NavigationProgress';
@@ -7,13 +8,18 @@ import { CurrencyProvider } from '../contexts/CurrencyContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import { I18nProvider } from '../i18n/index.jsx';
 import ErrorBoundary from '../components/error/ErrorBoundary';
-import PerformanceMonitor from '../components/ui/PerformanceMonitor';
-import BackToTop from '../components/ui/BackToTop';
-import OfflineBanner from '../components/ui/OfflineBanner';
-import ServiceWorkerRegistrar from '../components/ui/ServiceWorkerRegistrar';
 import { AppStoreProvider } from '../store/app-store';
 import { PreferencesProvider } from '../contexts/PreferencesContext';
 import TokenRefreshManager from '../components/auth/TokenRefreshManager';
+
+const PerformanceMonitor = dynamic(() => import('../components/ui/PerformanceMonitor'), {
+  ssr: false,
+});
+const BackToTop = dynamic(() => import('../components/ui/BackToTop'), { ssr: false });
+const OfflineBanner = dynamic(() => import('../components/ui/OfflineBanner'), { ssr: false });
+const ServiceWorkerRegistrar = dynamic(() => import('../components/ui/ServiceWorkerRegistrar'), {
+  ssr: false,
+});
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
