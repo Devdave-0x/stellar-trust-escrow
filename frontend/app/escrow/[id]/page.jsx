@@ -20,8 +20,9 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useEscrow } from '../../../hooks/useEscrow';
+import { useEscrowUpdates } from '../../../hooks/useEscrowUpdates';
 import { useRelativeTime } from '../../../hooks/useRelativeTime';
 import { useWallet } from '../../../hooks/useWallet';
 import { useToast } from '../../../contexts/ToastContext';
@@ -93,6 +94,19 @@ export default function EscrowDetailPage({ params }) {
   const { address, signTx } = useWallet();
   const relativeTime = useRelativeTime(lastRefreshed);
   const { showToast } = useToast();
+
+  // Real-time WebSocket subscription — refreshes SWR cache on every escrow event.
+  const handleLiveEvent = useCallback(() => {
+    mutate();
+    setLastRefreshed(new Date());
+  }, [mutate]);
+
+  const { status: wsStatus } = useEscrowUpdates(id, {
+    onEvent: handleLiveEvent,
+    enabled: Boolean(id),
+  });
+
+  const isLive = wsStatus === 'connected';
 
   // Use fetched data when available, fall back to placeholder during development.
   const escrow = fetchedEscrow ?? PLACEHOLDER_ESCROW;
@@ -271,11 +285,26 @@ export default function EscrowDetailPage({ params }) {
         </div>
       </div>
 
-      {/* Refresh bar — last updated timestamp + manual refresh button */}
+      {/* Refresh bar — last updated timestamp + live indicator + manual refresh button */}
       <div className="flex items-center justify-between text-sm text-gray-500">
-        <span data-testid="last-refreshed" className="text-gray-500 text-sm">
-          {relativeTime ? `Last updated: ${relativeTime}` : 'Loading…'}
-        </span>
+        <div className="flex items-center gap-3">
+          <span data-testid="last-refreshed" className="text-gray-500 text-sm">
+            {relativeTime ? `Last updated: ${relativeTime}` : 'Loading…'}
+          </span>
+          {isLive && (
+            <span
+              data-testid="live-indicator"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400"
+              aria-label="Real-time updates active"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              Live
+            </span>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="sm"
