@@ -47,7 +47,7 @@ mod arbiter_validation_tests {
             &None,
             &no_multisig(&env),
         );
-        assert!(matches!(result, Err(Ok(EscrowError::E3))));
+        assert!(matches!(result, Err(Ok(EscrowError::Unauthorized))));
     }
 
     #[test]
@@ -70,7 +70,7 @@ mod arbiter_validation_tests {
             &None,
             &no_multisig(&env),
         );
-        assert!(matches!(result, Err(Ok(EscrowError::E3))));
+        assert!(matches!(result, Err(Ok(EscrowError::Unauthorized))));
     }
 
     #[test]
@@ -116,6 +116,6 @@ mod arbiter_validation_tests {
             &None,
             &signers,
         );
-        assert!(matches!(result, Err(Ok(EscrowError::E3))));
+        assert!(matches!(result, Err(Ok(EscrowError::Unauthorized))));
     }
 }

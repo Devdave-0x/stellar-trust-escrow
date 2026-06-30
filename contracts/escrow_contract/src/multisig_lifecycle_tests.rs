@@ -177,8 +177,8 @@ mod multisig_lifecycle_tests {
 
         // Milestones are now MS_APPROVED (timelock still active → no transfer yet).
         // ── 6. Admin releases funds for both milestones ───────────────────────
-        client.release_funds(&admin, &escrow_id, &mid_a);
-        client.release_funds(&admin, &escrow_id, &mid_b);
+        client.release_funds(&admin, &escrow_id, &mid_a, &None::<soroban_sdk::Address>);
+        client.release_funds(&admin, &escrow_id, &mid_b, &None::<soroban_sdk::Address>);
 
         // ── 7. Final state assertions ─────────────────────────────────────────
         let final_state = client.get_escrow(&escrow_id);

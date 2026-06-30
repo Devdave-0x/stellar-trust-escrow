@@ -150,7 +150,7 @@ mod oracle_triggered_tests {
 
         assert_eq!(
             result.unwrap_err().unwrap(),
-            EscrowError::E14,
+            EscrowError::MilestoneNotApproved,
             "condition not met: should return InvalidMilestoneState"
         );
     }
@@ -196,7 +196,7 @@ mod oracle_triggered_tests {
             s.client
                 .try_trigger_oracle_release(&s.escrow_client, &s.escrow_id, &milestone_id);
 
-        assert_eq!(result.unwrap_err().unwrap(), EscrowError::E14);
+        assert_eq!(result.unwrap_err().unwrap(), EscrowError::MilestoneNotApproved);
     }
 
     #[test]
@@ -217,7 +217,7 @@ mod oracle_triggered_tests {
 
         assert_eq!(
             result.unwrap_err().unwrap(),
-            EscrowError::E14,
+            EscrowError::MilestoneNotApproved,
             "milestone with no price condition should return InvalidMilestoneState"
         );
     }

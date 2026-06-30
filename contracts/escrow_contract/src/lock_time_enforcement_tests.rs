@@ -91,9 +91,9 @@ mod lock_time_enforcement_tests {
 
         // Rewind to before lock_time — release_funds must fail.
         env.ledger().with_mut(|l| l.timestamp = lock_time - 1);
-        let result = client.try_release_funds(&admin, &escrow_id, &mid);
+        let result = client.try_release_funds(&admin, &escrow_id, &mid, &None::<soroban_sdk::Address>);
         assert!(
-            matches!(result, Err(Ok(EscrowError::E28))),
+            matches!(result, Err(Ok(EscrowError::LockTimeNotExpired))),
             "release_funds must return LockTimeNotExpired before lock_time expires"
         );
     }
@@ -147,7 +147,7 @@ mod lock_time_enforcement_tests {
         client.approve_milestone(&client_addr, &escrow_id, &mid);
 
         // Admin calls release_funds — bypasses timelock check, lock_time is expired.
-        client.release_funds(&admin, &escrow_id, &mid);
+        client.release_funds(&admin, &escrow_id, &mid, &None::<soroban_sdk::Address>);
 
         // Verify freelancer received the funds.
         let token_client = token::Client::new(&env, &token);

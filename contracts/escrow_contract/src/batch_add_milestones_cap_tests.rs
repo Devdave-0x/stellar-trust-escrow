@@ -130,7 +130,7 @@ mod batch_add_milestones_cap_tests {
             &amounts1,
         );
         assert!(
-            matches!(result, Err(Ok(EscrowError::E16))),
+            matches!(result, Err(Ok(EscrowError::MilestoneLimitExceeded))),
             "expected TooManyMilestones when batch exceeds cap"
         );
 

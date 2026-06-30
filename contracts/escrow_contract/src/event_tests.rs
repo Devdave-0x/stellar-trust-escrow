@@ -578,13 +578,13 @@ mod event_tests {
 
         // Client cannot release before expiry
         let release_err = client
-            .try_release_funds(&client_addr, &escrow_id, &mid)
+            .try_release_funds(&client_addr, &escrow_id, &mid, &None::<soroban_sdk::Address>)
             .unwrap_err();
-        assert!(matches!(release_err, Ok(EscrowError::E53)));
+        assert!(matches!(release_err, Ok(EscrowError::TimelockNotExpired)));
 
         env.ledger().set_timestamp(env.ledger().timestamp() + 20);
 
-        client.release_funds(&client_addr, &escrow_id, &mid);
+        client.release_funds(&client_addr, &escrow_id, &mid, &None::<soroban_sdk::Address>);
         let freelancer_balance_after = token::Client::new(&env, &token).balance(&freelancer);
         assert_eq!(freelancer_balance_after, 500);
 
@@ -628,7 +628,7 @@ mod event_tests {
         client.submit_milestone(&freelancer, &escrow_id, &mid);
         client.approve_milestone(&client_addr, &escrow_id, &mid);
 
-        client.release_funds(&admin, &escrow_id, &mid);
+        client.release_funds(&admin, &escrow_id, &mid, &None::<soroban_sdk::Address>);
         let freelancer_balance_after = token::Client::new(&env, &token).balance(&freelancer);
         assert_eq!(freelancer_balance_after, 500);
     }

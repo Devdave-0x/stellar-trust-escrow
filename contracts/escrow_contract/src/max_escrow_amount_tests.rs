@@ -89,7 +89,7 @@ mod max_escrow_amount_tests {
             &None,
             &no_multisig(&env),
         );
-        assert_eq!(result, Err(Ok(EscrowError::E19)));
+        assert_eq!(result, Err(Ok(EscrowError::InvalidInput)));
     }
 
     #[test]
@@ -109,7 +109,7 @@ mod max_escrow_amount_tests {
             &None,
             &no_multisig(&env),
         );
-        assert_eq!(result, Err(Ok(EscrowError::E19)));
+        assert_eq!(result, Err(Ok(EscrowError::InvalidInput)));
     }
 
     #[test]
@@ -152,7 +152,7 @@ mod max_escrow_amount_tests {
             &None,
             &no_multisig(&env),
         );
-        assert_eq!(result, Err(Ok(EscrowError::E19)));
+        assert_eq!(result, Err(Ok(EscrowError::InvalidInput)));
     }
 
     #[test]
@@ -176,7 +176,7 @@ mod max_escrow_amount_tests {
             &None,
             &no_multisig(&env),
         );
-        assert_eq!(result, Err(Ok(EscrowError::E19)));
+        assert_eq!(result, Err(Ok(EscrowError::InvalidInput)));
 
         // above new max
         let result = contract.try_create_escrow(
@@ -191,7 +191,7 @@ mod max_escrow_amount_tests {
             &None,
             &no_multisig(&env),
         );
-        assert_eq!(result, Err(Ok(EscrowError::E19)));
+        assert_eq!(result, Err(Ok(EscrowError::InvalidInput)));
 
         // at new max boundary
         let result = contract.try_create_escrow(
@@ -219,19 +219,19 @@ mod max_escrow_amount_tests {
         // min > max
         assert_eq!(
             contract.try_set_escrow_limits(&admin, &5_000, &1_000),
-            Err(Ok(EscrowError::E19))
+            Err(Ok(EscrowError::InvalidInput))
         );
 
         // zero min
         assert_eq!(
             contract.try_set_escrow_limits(&admin, &0, &1_000),
-            Err(Ok(EscrowError::E19))
+            Err(Ok(EscrowError::InvalidInput))
         );
 
         // negative min
         assert_eq!(
             contract.try_set_escrow_limits(&admin, &-1, &1_000),
-            Err(Ok(EscrowError::E19))
+            Err(Ok(EscrowError::InvalidInput))
         );
     }
 

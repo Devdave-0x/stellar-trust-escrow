@@ -172,7 +172,7 @@ mod gas_profiling {
         client.approve_milestone(&escrow_client, &escrow_id, &milestone_id);
 
         env.budget().reset_default();
-        client.release_funds(&admin, &escrow_id, &milestone_id);
+        client.release_funds(&admin, &escrow_id, &milestone_id, &None::<soroban_sdk::Address>);
         print("release_funds", env.budget().cpu_instruction_cost(), env.budget().memory_bytes_cost());
     }
 

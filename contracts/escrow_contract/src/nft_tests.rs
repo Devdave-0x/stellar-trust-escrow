@@ -111,7 +111,7 @@ mod nft_gated_tests {
 
         assert_eq!(
             result.unwrap_err().unwrap(),
-            EscrowError::E3,
+            EscrowError::Unauthorized,
             "Non-holder should get Unauthorized"
         );
     }

@@ -69,7 +69,7 @@ mod reentrancy_tests {
                 .set(&DataKey::ReentrancyLock, &true);
         });
 
-        let result = client.try_release_funds(&admin, &escrow_id, &0);
+        let result = client.try_release_funds(&admin, &escrow_id, &0, &None::<soroban_sdk::Address>);
         assert!(result.is_err());
     }
 

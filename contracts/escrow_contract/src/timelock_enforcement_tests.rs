@@ -88,9 +88,9 @@ mod timelock_enforcement_tests {
         // One second before expiry — non-admin caller.
         env.ledger()
             .with_mut(|l| l.timestamp = start_ts + duration - 1);
-        let result = client.try_release_funds(&Address::generate(&env), &escrow_id, &mid);
+        let result = client.try_release_funds(&Address::generate(&env), &escrow_id, &mid, &None::<soroban_sdk::Address>);
         assert!(
-            matches!(result, Err(Ok(EscrowError::E53))),
+            matches!(result, Err(Ok(EscrowError::TimelockNotExpired))),
             "release_funds must return TimelockNotExpired before timelock elapses"
         );
     }
@@ -108,7 +108,7 @@ mod timelock_enforcement_tests {
         env.ledger()
             .with_mut(|l| l.timestamp = start_ts + duration + 1);
 
-        client.release_funds(&Address::generate(&env), &escrow_id, &mid);
+        client.release_funds(&Address::generate(&env), &escrow_id, &mid, &None::<soroban_sdk::Address>);
 
         // Verify tl_rel event was emitted.
         let tl_rel_sym = soroban_sdk::symbol_short!("tl_rel");
@@ -175,7 +175,7 @@ mod timelock_enforcement_tests {
 
         let result = client.try_start_timelock(&client_addr, &escrow_id, &3_600_u64);
         assert!(
-            matches!(result, Err(Ok(EscrowError::E51))),
+            matches!(result, Err(Ok(EscrowError::TimelockArithmeticOverflow))),
             "second start_timelock must return TimelockActive"
         );
     }
