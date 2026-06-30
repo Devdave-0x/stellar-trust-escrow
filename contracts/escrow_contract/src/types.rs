@@ -843,6 +843,8 @@ pub enum DataKey {
     ContractVersion,
     /// Configurable dispute cooldown in seconds — value: u64
     DisputeCooldownSecs,
+    /// Monotonically increasing counter incremented on every upgrade — value: u32
+    MigrationVersion,
 }
 
 /// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.

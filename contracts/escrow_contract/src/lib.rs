@@ -4711,13 +4711,33 @@ impl EscrowContract {
         // This ensures data is in the correct format for the new version
         StorageManager::migrate(&env)?;
 
+        let old_migration_version: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MigrationVersion)
+            .unwrap_or(0u32);
+        let new_migration_version = old_migration_version.saturating_add(1);
+        env.storage()
+            .instance()
+            .set(&DataKey::MigrationVersion, &new_migration_version);
+
         env.storage().instance().set(
             &DataKey::ContractVersion,
             &String::from_str(&env, CONTRACT_VERSION),
         );
 
+        events::emit_contract_upgraded(&env, old_migration_version, new_migration_version, &caller);
+
         env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
+    }
+
+    /// Returns the number of times the contract has been upgraded.
+    pub fn get_migration_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MigrationVersion)
+            .unwrap_or(0u32)
     }
 
     // ── Emergency Pause ──────────────────────────────────────────────────────
