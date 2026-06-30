@@ -1,23 +1,3 @@
-/**
- * Escrow Details Page — /escrow/[id]
- *
- * Shows full escrow information, milestone timeline, and action buttons.
- *
- * Actions shown depend on the connected wallet's role:
- * - Client:     Approve / Reject milestone buttons
- * - Freelancer: Submit milestone button
- * - Both:       Raise Dispute button (if Active)
- *
- * Auto-refresh: data is polled every 30 seconds via SWR.
- * Polling pauses when the page tab is hidden and resumes on visibility.
- * A manual refresh button and last-updated timestamp are always shown.
- *
- * TODO (contributor — hard, Issue #34):
- * - Detect wallet role (client vs freelancer)
- * - Wire approve/reject/submit/dispute to contract interactions via Freighter
- * - Handle error states
- */
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -35,6 +15,8 @@ import CurrencyAmount from '../../../components/ui/CurrencyAmount';
 import TransactionHash from '../../../components/ui/TransactionHash';
 import TruncatedAddress from '../../../components/ui/TruncatedAddress';
 import Avatar from '../../../components/ui/Avatar';
+import Spinner from '../../../components/ui/Spinner';
+import ErrorBoundary from '../../../components/error/ErrorBoundary';
 import EscrowReceipt, { openReceiptWindow } from '../../../components/escrow/EscrowReceipt';
 import {
   buildApproveMilestoneTx,
@@ -43,12 +25,14 @@ import {
   broadcastTransaction,
 } from '../../../lib/stellar';
 
-// Fallback data used while the API integration (Issue #34) is pending.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const STELLAR_NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+
 const PLACEHOLDER_ESCROW = {
   id: 1,
   title: 'Smart Contract Audit',
   status: 'Active',
-  txHash: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2', // TODO: replace with real tx hash
+  txHash: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
   clientAddress: 'GABCD...1234',
   freelancerAddress: 'GXYZ...5678',
   totalAmount: '2,000 USDC',
@@ -56,6 +40,10 @@ const PLACEHOLDER_ESCROW = {
   createdAt: '2025-03-01',
   deadline: '2025-04-01',
   transactionHash: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2',
+  terms: '',
+  evidenceHashes: [],
+  arbiterAddress: null,
+  disputeDescription: null,
   milestones: [
     {
       id: 0,
@@ -81,6 +69,11 @@ const PLACEHOLDER_ESCROW = {
   ],
 };
 
+function stellarExpertUrl(hash, type = 'tx') {
+  const net = STELLAR_NETWORK === 'mainnet' ? 'public' : 'testnet';
+  return `https://stellar.expert/explorer/${net}/${type}/${hash}`;
+}
+
 export default function EscrowDetailPage({ params }) {
   const { id } = params;
   const [isDisputeOpen, setDisputeOpen] = useState(false);
@@ -88,25 +81,33 @@ export default function EscrowDetailPage({ params }) {
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
 
   const { escrow: fetchedEscrow, isLoading, mutate } = useEscrow(id);
   const { address, signTx } = useWallet();
   const relativeTime = useRelativeTime(lastRefreshed);
   const { showToast } = useToast();
 
-  // Use fetched data when available, fall back to placeholder during development.
   const escrow = fetchedEscrow ?? PLACEHOLDER_ESCROW;
 
-  // Update the last-refreshed timestamp whenever data arrives from SWR
-  // (initial load, scheduled poll, or manual refresh).
   useEffect(() => {
     setLastRefreshed(new Date());
   }, [fetchedEscrow]);
 
-  // Set an initial timestamp on mount so the UI is never empty.
   useEffect(() => {
     setLastRefreshed(new Date());
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    setEventsLoading(true);
+    fetch(`${API_BASE}/api/escrows/${id}/events`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setEvents(Array.isArray(data) ? data : data?.events ?? []))
+      .catch(() => setEvents([]))
+      .finally(() => setEventsLoading(false));
+  }, [id]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -118,29 +119,27 @@ export default function EscrowDetailPage({ params }) {
     }
   };
 
-  // Derive connected role from wallet address
   const connectedRole = address
     ? address === escrow.clientAddress
       ? 'client'
       : address === escrow.freelancerAddress
         ? 'freelancer'
-        : 'observer'
+        : address === escrow.arbiterAddress
+          ? 'arbiter'
+          : 'observer'
     : 'observer';
 
   const handleApproveMilestone = async (milestoneId) => {
     setIsActionLoading(true);
     try {
       if (!address) throw new Error('Please connect your wallet first');
-
       const unsignedXdr = await buildApproveMilestoneTx({
         sourceAddress: address,
         escrowId: BigInt(id).toString(),
         milestoneId: Number(milestoneId),
       });
-
       const signedXdr = await signTx(unsignedXdr);
       await broadcastTransaction(signedXdr);
-
       showToast('Milestone approved', 'success');
       await mutate();
     } catch (err) {
@@ -154,16 +153,13 @@ export default function EscrowDetailPage({ params }) {
     setIsActionLoading(true);
     try {
       if (!address) throw new Error('Please connect your wallet first');
-
       const unsignedXdr = await buildSubmitMilestoneTx({
         sourceAddress: address,
         escrowId: BigInt(id).toString(),
         milestoneId: Number(milestoneId),
       });
-
       const signedXdr = await signTx(unsignedXdr);
       await broadcastTransaction(signedXdr);
-
       showToast('Milestone submitted', 'success');
       await mutate();
     } catch (err) {
@@ -177,8 +173,6 @@ export default function EscrowDetailPage({ params }) {
     setIsActionLoading(true);
     try {
       if (!address) throw new Error('Please connect your wallet first');
-
-      // TODO: Implement reject_milestone if not already in contract
       showToast('Milestone rejection not yet implemented', 'warning');
     } catch (err) {
       showToast(err.message || 'Failed to reject milestone', 'error');
@@ -191,8 +185,6 @@ export default function EscrowDetailPage({ params }) {
     setIsActionLoading(true);
     try {
       if (!address) throw new Error('Please connect your wallet first');
-
-      // TODO: Implement cancel_escrow if not already in contract
       showToast('Escrow cancellation not yet implemented', 'warning');
       setCancelOpen(false);
     } catch (err) {
@@ -211,7 +203,7 @@ export default function EscrowDetailPage({ params }) {
   }
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
@@ -220,23 +212,18 @@ export default function EscrowDetailPage({ params }) {
             <Badge status={escrow.status} />
           </div>
           <p className="text-gray-400 text-sm">Escrow #{id}</p>
-          <StellarExpertLink
-            txHash={escrow.txHash}
-            network={process.env.NEXT_PUBLIC_STELLAR_NETWORK}
-          />
+          {escrow.txHash && (
+            <StellarExpertLink txHash={escrow.txHash} />
+          )}
         </div>
-        <div className="flex gap-2 flex-shrink-0">
+        <div className="flex gap-2 flex-shrink-0 flex-wrap">
           <Button
             variant="ghost"
             size="sm"
             onClick={() =>
               openReceiptWindow({
-                escrow: {
-                  ...escrow,
-                  clientName: escrow.clientName,
-                  freelancerName: escrow.freelancerName,
-                },
-                network: process.env.NEXT_PUBLIC_STELLAR_NETWORK,
+                escrow: { ...escrow, clientName: escrow.clientName, freelancerName: escrow.freelancerName },
+                network: STELLAR_NETWORK,
               })
             }
           >
@@ -247,12 +234,8 @@ export default function EscrowDetailPage({ params }) {
             size="sm"
             onClick={() =>
               openReceiptWindow({
-                escrow: {
-                  ...escrow,
-                  clientName: escrow.clientName,
-                  freelancerName: escrow.freelancerName,
-                },
-                network: process.env.NEXT_PUBLIC_STELLAR_NETWORK,
+                escrow: { ...escrow, clientName: escrow.clientName, freelancerName: escrow.freelancerName },
+                network: STELLAR_NETWORK,
               })
             }
           >
@@ -271,73 +254,152 @@ export default function EscrowDetailPage({ params }) {
         </div>
       </div>
 
-      {/* Refresh bar — last updated timestamp + manual refresh button */}
+      {/* Refresh bar */}
       <div className="flex items-center justify-between text-sm text-gray-500">
-        <span data-testid="last-refreshed" className="text-gray-500 text-sm">
+        <span data-testid="last-refreshed">
           {relativeTime ? `Last updated: ${relativeTime}` : 'Loading…'}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRefresh}
-          isLoading={isRefreshing}
-          aria-label="Refresh escrow data"
-        >
+        <Button variant="ghost" size="sm" onClick={handleRefresh} isLoading={isRefreshing} aria-label="Refresh escrow data">
           ↻ Refresh
         </Button>
       </div>
 
-      {/* Info Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <InfoCell label="Total" value={escrow.totalAmount} isAmount />
-        <InfoCell label="Remaining" value={escrow.remainingBalance} isAmount />
-        <InfoCell label="Created" value={escrow.createdAt} />
-        <InfoCell label="Deadline" value={escrow.deadline || 'None'} />
-      </div>
+      {/* Two-column layout: main info left, event timeline right */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left column (main info) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Info Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <InfoCell label="Total" value={escrow.totalAmount} isAmount />
+            <InfoCell label="Remaining" value={escrow.remainingBalance} isAmount />
+            <InfoCell label="Created" value={escrow.createdAt} />
+            <InfoCell label="Deadline" value={escrow.deadline || 'None'} />
+          </div>
 
-      {/* Transaction Hash */}
-      {escrow.transactionHash && (
-        <div className="card">
-          <TransactionHash
-            hash={escrow.transactionHash}
-            label="Transaction Hash"
-            explorerUrl={`https://stellar.expert/explorer/testnet/tx/${escrow.transactionHash}`}
-          />
+          {/* Transaction Hash */}
+          {escrow.transactionHash && (
+            <div className="card">
+              <TransactionHash
+                hash={escrow.transactionHash}
+                label="Transaction Hash"
+                explorerUrl={stellarExpertUrl(escrow.transactionHash)}
+              />
+            </div>
+          )}
+
+          {/* Parties */}
+          <div className="card grid grid-cols-1 md:grid-cols-2 gap-6">
+            <PartyCard role="Client" address={escrow.clientAddress} score={92} isYou={connectedRole === 'client'} />
+            <PartyCard role="Freelancer" address={escrow.freelancerAddress} score={78} isYou={connectedRole === 'freelancer'} />
+            {escrow.arbiterAddress && (
+              <PartyCard role="Arbiter" address={escrow.arbiterAddress} score={null} isYou={connectedRole === 'arbiter'} />
+            )}
+          </div>
+
+          {/* Terms */}
+          {escrow.terms && (
+            <ErrorBoundary>
+              <div className="card">
+                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Terms</h2>
+                <p className="text-gray-200 text-sm whitespace-pre-wrap">{escrow.terms}</p>
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* Evidence Hashes */}
+          {escrow.evidenceHashes && escrow.evidenceHashes.length > 0 && (
+            <ErrorBoundary>
+              <div className="card space-y-3">
+                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Evidence on Chain</h2>
+                {escrow.evidenceHashes.map((hash, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm">
+                    <code className="font-mono text-xs text-indigo-300 truncate flex-1">{hash}</code>
+                    <a
+                      href={stellarExpertUrl(hash, 'tx')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-indigo-400 hover:text-indigo-300 flex-shrink-0"
+                      title="Verify on Stellar Expert"
+                    >
+                      Verify ↗
+                    </a>
+                  </div>
+                ))}
+                <p className="text-xs text-gray-500">
+                  To verify: click "Verify" to view the transaction on Stellar Expert and confirm the evidence hash matches the on-chain data field.
+                </p>
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* Dispute section visible to arbiters */}
+          {connectedRole === 'arbiter' && escrow.status === 'Disputed' && (
+            <ErrorBoundary>
+              <div className="card border border-red-500/20 space-y-3">
+                <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider">Dispute Details</h2>
+                {escrow.disputeDescription && (
+                  <p className="text-gray-200 text-sm">{escrow.disputeDescription}</p>
+                )}
+                {escrow.evidenceHashes && escrow.evidenceHashes.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Submitted Evidence</p>
+                    {escrow.evidenceHashes.map((hash, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <code className="font-mono text-xs text-indigo-300 truncate flex-1">{hash}</code>
+                        <a
+                          href={stellarExpertUrl(hash, 'tx')}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-indigo-400 hover:text-indigo-300"
+                        >
+                          Verify ↗
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* Milestones */}
+          <ErrorBoundary>
+            <section>
+              <h2 className="text-lg font-semibold text-white mb-4">Milestones</h2>
+              <MilestoneList
+                milestones={escrow.milestones}
+                role={connectedRole}
+                onApprove={handleApproveMilestone}
+                onReject={handleRejectMilestone}
+                onSubmit={handleSubmitMilestone}
+              />
+            </section>
+          </ErrorBoundary>
         </div>
-      )}
 
-      {/* Parties */}
-      <div className="card grid grid-cols-1 md:grid-cols-2 gap-6">
-        <PartyCard
-          role="Client"
-          address={escrow.clientAddress}
-          score={92}
-          isYou={connectedRole === 'client'}
-        />
-        <PartyCard
-          role="Freelancer"
-          address={escrow.freelancerAddress}
-          score={78}
-          isYou={connectedRole === 'freelancer'}
-        />
+        {/* Right column: event timeline */}
+        <div className="lg:col-span-1">
+          <ErrorBoundary>
+            <div className="card sticky top-6">
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Event History</h2>
+              {eventsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Spinner size="sm" />
+                </div>
+              ) : events.length === 0 ? (
+                <p className="text-gray-500 text-sm">No events recorded yet.</p>
+              ) : (
+                <EventTimeline events={events} />
+              )}
+            </div>
+          </ErrorBoundary>
+        </div>
       </div>
-
-      {/* Milestones */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-4">Milestones</h2>
-        <MilestoneList
-          milestones={escrow.milestones}
-          role={connectedRole}
-          onApprove={handleApproveMilestone}
-          onReject={handleRejectMilestone}
-          onSubmit={handleSubmitMilestone}
-        />
-      </section>
 
       {/* Dispute Modal */}
-      <DisputeModal 
-        isOpen={isDisputeOpen} 
-        onClose={() => setDisputeOpen(false)} 
+      <DisputeModal
+        isOpen={isDisputeOpen}
+        onClose={() => setDisputeOpen(false)}
         escrowId={id}
         onSuccess={async () => await mutate()}
       />
@@ -350,6 +412,50 @@ export default function EscrowDetailPage({ params }) {
         onConfirm={handleCancelEscrow}
       />
     </div>
+  );
+}
+
+function EventTimeline({ events }) {
+  return (
+    <ol className="relative border-l border-gray-700 ml-2 space-y-6">
+      {events.map((event, i) => (
+        <li key={i} className="ml-4">
+          <span className="absolute -left-1.5 mt-1.5 w-3 h-3 rounded-full bg-indigo-500 border-2 border-gray-900" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-white">
+              {event.type || event.state || event.event || 'State change'}
+            </p>
+            {event.timestamp && (
+              <time className="text-xs text-gray-500 block">
+                {new Date(event.timestamp).toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </time>
+            )}
+            {event.actor && (
+              <p className="text-xs text-gray-500">
+                by <span className="font-mono text-gray-400">{event.actor}</span>
+              </p>
+            )}
+            {event.txHash && (
+              <a
+                href={stellarExpertUrl(event.txHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300"
+              >
+                <span className="font-mono">{event.txHash.slice(0, 8)}…{event.txHash.slice(-4)}</span>
+                <span>↗</span>
+              </a>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -380,42 +486,23 @@ function PartyCard({ role, address, score, isYou }) {
             </span>
           )}
         </div>
-        <ReputationBadge score={score} size="sm" />
+        {score !== null && <ReputationBadge score={score} size="sm" />}
       </div>
     </div>
   );
 }
 
-function StellarExpertLink({ txHash, network }) {
-  if (!txHash) return null;
-
-  const isMainnet = network === 'mainnet';
-  const baseUrl = isMainnet
-    ? 'https://stellar.expert/explorer/public/tx'
-    : 'https://stellar.expert/explorer/testnet/tx';
-
+function StellarExpertLink({ txHash }) {
   return (
     <a
-      href={`${baseUrl}/${txHash}`}
+      href={stellarExpertUrl(txHash)}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors mt-1"
     >
       View on Stellar Expert
-      {/* External link icon */}
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        className="w-3.5 h-3.5"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={2}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-        />
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
       </svg>
     </a>
   );
