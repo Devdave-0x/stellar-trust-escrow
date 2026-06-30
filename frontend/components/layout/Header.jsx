@@ -93,6 +93,17 @@ export default function Header() {
             {/* Theme Toggle */}
             <ThemeToggle />
 
+            {/* Profile avatar — links to /profile when wallet connected */}
+            {wallet.isConnected && wallet.address && (
+              <Link
+                href="/profile"
+                aria-label="My profile"
+                className="w-8 h-8 rounded-full bg-indigo-600/30 flex items-center justify-center text-indigo-300 font-bold text-sm hover:bg-indigo-600/50 transition-colors flex-shrink-0"
+              >
+                {wallet.address.slice(1, 3)}
+              </Link>
+            )}
+
             {/* Notification Bell */}
             <div className="relative">
               <button
