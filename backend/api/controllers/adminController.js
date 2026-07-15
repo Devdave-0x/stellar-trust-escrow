@@ -67,6 +67,18 @@ const getUserRateLimitUsage = (req, res) => {
 import cache from '../../lib/cache.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 
+/** Deterministic JSON serialiser — sorts object keys recursively. */
+function stableStringify(val) {
+  if (Array.isArray(val)) return `[${val.map(stableStringify).join(',')}]`;
+  if (val !== null && typeof val === 'object') {
+    const pairs = Object.keys(val)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(val[k])}`);
+    return `{${pairs.join(',')}}`;
+  }
+  return JSON.stringify(val);
+}
+
 // ── Users ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -80,7 +92,7 @@ const listUsers = async (req, res) => {
 
     const where = search ? { address: { contains: search, mode: 'insensitive' } } : {};
 
-    const cacheKey = `admin:users:${stableStringify({ where, page, limit })}`;
+    const cacheKey = `admin:users:${stableStringify({ limit, page, where })}`;
     const cached = await cache.get(cacheKey);
     if (cached) return res.json(cached);
 
@@ -251,7 +263,7 @@ const listDisputes = async (req, res) => {
           ? { resolvedAt: null }
           : {};
 
-    const cacheKey = `admin:disputes:${stableStringify({ where, page, limit })}`;
+    const cacheKey = `admin:disputes:${stableStringify({ limit, page, where })}`;
     const cached = await cache.get(cacheKey);
     if (cached) return res.json(cached);
 

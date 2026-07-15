@@ -16,23 +16,52 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT Bearer token on every request.
-api.interceptors.request.use((config) => {
-  const token = storage.getString(STORAGE_KEYS.AUTH_TOKEN);
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
+// Attach JWT as Bearer token on every request
+api.interceptors.request.use(async (config) => {
+  const jwt = await (async () => {
+    try {
+      const { secureStorage } = await import('./storage');
+      return await secureStorage.get('auth_jwt');
+    } catch {
+      return null;
+    }
+  })();
+
+  if (jwt) {
+    config.headers.Authorization = `Bearer ${jwt}`;
   }
   return config;
 });
 
-// Clear stale credentials on 401 so the user is prompted to re-authenticate
-// rather than silently retrying with an expired token on every subsequent call.
+// Handle 401: attempt silent re-auth
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      storage.delete(STORAGE_KEYS.AUTH_TOKEN);
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const { useWalletStore } = await import('../store/useWalletStore');
+        const { jwtAuth } = await import('../services/jwtAuth');
+
+        const address = useWalletStore.getState().address;
+        if (!address) throw new Error('No wallet connected');
+
+        const newToken = await jwtAuth.silentRefresh(address);
+        if (!newToken) throw new Error('Silent refresh failed');
+
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch {
+        // Re-auth failed; caller should redirect to connect screen
+        const { useWalletStore } = await import('../store/useWalletStore');
+        useWalletStore.getState().disconnect();
+        return Promise.reject(error);
+      }
     }
+
     return Promise.reject(error);
   },
 );

@@ -41,10 +41,15 @@ export default function RootLayout() {
     const cleanup = setupNotificationListeners(
       () => {}, // foreground — banner handles it
       (response) => {
-        const data = response.notification.request.content.data as Record<string, unknown>;
-        const escrowId = resolveDeepLinkEscrowId(data?.escrowId);
-        if (escrowId) {
-          void router.push(`/escrow/${escrowId}`);
+        const data = response.notification.request.content.data as Record<string, string>;
+        if (data?.escrowId) {
+          // Validate escrowId: only numeric chars, reject path traversal
+          const VALID_ESCROW_ID = /^[0-9]+$/;
+          if (VALID_ESCROW_ID.test(data.escrowId)) {
+            void router.push(`/escrow/${data.escrowId}`);
+          } else {
+            console.error(`[Security] Invalid escrowId in notification: ${data.escrowId}`);
+          }
         }
       },
     );
