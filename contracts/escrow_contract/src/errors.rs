@@ -63,6 +63,8 @@ pub enum EcErr {
     OracleStaleFeed = 67,
     OracleInvalidPrice = 68,
     OraclePriceConversionFailed = 69,
+    FeeTooHigh = 70,
+    TreasuryNotConfigured = 71,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle

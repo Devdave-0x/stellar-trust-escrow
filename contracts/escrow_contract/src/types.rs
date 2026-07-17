@@ -752,4 +752,6 @@ pub enum DataKey {
     OracleResolution(u64),
     /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
     TrustedOracleKey,
+    /// Platform fee in basis points (max 1000) — value: u32
+    PlatformFeeBps,
 }
