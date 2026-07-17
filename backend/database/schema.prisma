@@ -279,6 +279,10 @@ model ReputationRecord {
   totalVolume      String   @default("0") @map("total_volume") // BigInt as string
   lastUpdated      DateTime @map("last_updated")
   updatedAt        DateTime @updatedAt @map("updated_at")
+  isArbiter        Boolean  @default(false) @map("is_arbiter")
+  activeDisputes   Int      @default(0) @map("active_disputes")
+  totalResolved    Int      @default(0) @map("total_resolved")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   events ReputationEvent[]
@@ -286,6 +290,7 @@ model ReputationRecord {
   @@index([tenantId, address])
   @@index([tenantId, totalScore(sort: Desc)])
   @@index([totalScore(sort: Desc)])
+  @@index([isArbiter])
   @@map("reputation_records")
 }
 
@@ -337,6 +342,12 @@ model Dispute {
   resolutionType   String?   @map("resolution_type")
   /// Whether this dispute was auto-resolved
   autoResolved     Boolean   @default(false) @map("auto_resolved")
+  /// Number of times this dispute has been escalated
+  escalationCount  Int       @default(0) @map("escalation_count")
+  /// Timestamp when this dispute will auto-escalate to governance
+  autoEscalateAt   DateTime? @map("auto_escalate_at")
+  /// Current arbiter assigned to this dispute
+  currentArbiter   String?   @map("current_arbiter")
 
   tenant   Tenant            @relation(fields: [tenantId], references: [id])
   escrow   Escrow            @relation(fields: [escrowId], references: [id])
@@ -355,6 +366,8 @@ model Dispute {
   @@index([tenantId, resolvedAt, raisedAt(sort: Desc)])
   // Covers raisedBy filter + date sort within a tenant (dispute history per freelancer)
   @@index([tenantId, raisedByAddress, raisedAt(sort: Desc)])
+  @@index([currentArbiter])
+  @@index([autoEscalateAt])
   @@map("disputes")
 }
 
