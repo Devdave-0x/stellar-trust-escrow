@@ -1,4 +1,6 @@
 import './globals.css';
+import { Suspense } from 'react';
+import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import NavigationProgress from '../components/layout/NavigationProgress';
@@ -51,7 +53,9 @@ export default function RootLayout({ children }) {
                       id="main-content"
                       className="flex-1 container mx-auto px-4 py-8 max-w-7xl"
                     >
-                      {children}
+                      <Suspense>
+                        <NuqsAdapter>{children}</NuqsAdapter>
+                      </Suspense>
                     </main>
                   </ErrorBoundary>
                   <Footer />
