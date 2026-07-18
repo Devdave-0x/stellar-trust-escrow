@@ -1,6 +1,6 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{Env, Address, String, testutils::Events};
+use soroban_sdk::{testutils::Events, Address, Env, String};
 
 #[test]
 fn test_create_escrow_emits_event() {
@@ -19,18 +19,27 @@ fn test_create_escrow_emits_event() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Verify event was emitted
     let events = env.events().all();
     assert_eq!(events.len(), 1);
-    
+
     let event = &events[0];
     assert_eq!(event.0, ("EscrowCreated", "v1"));
-    
+
     // Verify event contains correct data
     match event.2 {
-        EscrowEvent::EscrowCreated { id: e_id, sender: e_sender, beneficiary: e_beneficiary, arbitrator: e_arbitrator, asset_contract: e_asset, amount: e_amount, timelock: e_timelock } => {
+        EscrowEvent::EscrowCreated {
+            id: e_id,
+            sender: e_sender,
+            beneficiary: e_beneficiary,
+            arbitrator: e_arbitrator,
+            asset_contract: e_asset,
+            amount: e_amount,
+            timelock: e_timelock,
+        } => {
             assert_eq!(e_id, id);
             assert_eq!(e_sender, sender);
             assert_eq!(e_beneficiary, beneficiary);
@@ -60,25 +69,26 @@ fn test_fund_escrow_emits_event() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
-    MultiAssetEscrowContract::fund_escrow(
-        env.clone(),
-        id.clone(),
-        sender.clone(),
-    ).unwrap();
+    MultiAssetEscrowContract::fund_escrow(env.clone(), id.clone(), sender.clone()).unwrap();
 
     // Verify event was emitted (2 events now: create + fund)
     let events = env.events().all();
     assert_eq!(events.len(), 2);
-    
+
     let event = &events[1];
     assert_eq!(event.0, ("EscrowFunded", "v1"));
-    
+
     match &event.2 {
-        EscrowEvent::EscrowFunded { id: e_id, sender: e_sender, amount: e_amount } => {
+        EscrowEvent::EscrowFunded {
+            id: e_id,
+            sender: e_sender,
+            amount: e_amount,
+        } => {
             assert_eq!(e_id, &id);
             assert_eq!(e_sender, &sender);
             assert_eq!(e_amount, &1000);
@@ -104,7 +114,8 @@ fn test_release_escrow_emits_event() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
@@ -114,12 +125,16 @@ fn test_release_escrow_emits_event() {
     // Verify event was emitted (3 events: create + fund + release)
     let events = env.events().all();
     assert_eq!(events.len(), 3);
-    
+
     let event = &events[2];
     assert_eq!(event.0, ("EscrowReleased", "v1"));
-    
+
     match &event.2 {
-        EscrowEvent::EscrowReleased { id: e_id, beneficiary: e_beneficiary, amount: e_amount } => {
+        EscrowEvent::EscrowReleased {
+            id: e_id,
+            beneficiary: e_beneficiary,
+            amount: e_amount,
+        } => {
             assert_eq!(e_id, &id);
             assert_eq!(e_beneficiary, &beneficiary);
             assert_eq!(e_amount, &1000);
@@ -145,7 +160,8 @@ fn test_refund_escrow_emits_event() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
@@ -155,12 +171,16 @@ fn test_refund_escrow_emits_event() {
     // Verify event was emitted (3 events: create + fund + refund)
     let events = env.events().all();
     assert_eq!(events.len(), 3);
-    
+
     let event = &events[2];
     assert_eq!(event.0, ("EscrowRefunded", "v1"));
-    
+
     match &event.2 {
-        EscrowEvent::EscrowRefunded { id: e_id, sender: e_sender, amount: e_amount } => {
+        EscrowEvent::EscrowRefunded {
+            id: e_id,
+            sender: e_sender,
+            amount: e_amount,
+        } => {
             assert_eq!(e_id, &id);
             assert_eq!(e_sender, &sender);
             assert_eq!(e_amount, &1000);
@@ -186,7 +206,8 @@ fn test_dispute_escrow_emits_event() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
@@ -196,12 +217,15 @@ fn test_dispute_escrow_emits_event() {
     // Verify event was emitted (3 events: create + fund + dispute)
     let events = env.events().all();
     assert_eq!(events.len(), 3);
-    
+
     let event = &events[2];
     assert_eq!(event.0, ("EscrowDisputed", "v1"));
-    
+
     match &event.2 {
-        EscrowEvent::EscrowDisputed { id: e_id, caller: e_caller } => {
+        EscrowEvent::EscrowDisputed {
+            id: e_id,
+            caller: e_caller,
+        } => {
             assert_eq!(e_id, &id);
             assert_eq!(e_caller, &beneficiary);
         }
@@ -226,28 +250,29 @@ fn test_resolve_dispute_emits_event() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
     MultiAssetEscrowContract::fund_escrow(env.clone(), id.clone(), sender.clone()).unwrap();
     MultiAssetEscrowContract::dispute_escrow(env.clone(), id.clone(), beneficiary.clone()).unwrap();
-    MultiAssetEscrowContract::resolve_dispute(
-        env.clone(),
-        id.clone(),
-        arbitrator.clone(),
-        true,
-    ).unwrap();
+    MultiAssetEscrowContract::resolve_dispute(env.clone(), id.clone(), arbitrator.clone(), true)
+        .unwrap();
 
     // Verify event was emitted (4 events: create + fund + dispute + resolve)
     let events = env.events().all();
     assert_eq!(events.len(), 4);
-    
+
     let event = &events[3];
     assert_eq!(event.0, ("EscrowResolved", "v1"));
-    
+
     match &event.2 {
-        EscrowEvent::EscrowResolved { id: e_id, arbitrator: e_arbitrator, release_to_beneficiary } => {
+        EscrowEvent::EscrowResolved {
+            id: e_id,
+            arbitrator: e_arbitrator,
+            release_to_beneficiary,
+        } => {
             assert_eq!(e_id, &id);
             assert_eq!(e_arbitrator, &arbitrator);
             assert_eq!(release_to_beneficiary, &true);
@@ -274,14 +299,11 @@ fn test_events_are_not_emitted_on_failure() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Try to fund with attacker (should fail)
-    let _ = MultiAssetEscrowContract::fund_escrow(
-        env.clone(),
-        id.clone(),
-        attacker,
-    );
+    let _ = MultiAssetEscrowContract::fund_escrow(env.clone(), id.clone(), attacker);
 
     // No new events should be emitted (still just 1 event from creation)
     let events = env.events().all();

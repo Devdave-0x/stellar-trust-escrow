@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contracttype, Address, Env, String, vec, Vec};
+use soroban_sdk::{contract, contracttype, vec, Address, Env, String, Vec};
 
 // ===== Event Types =====
 #[contracttype]
@@ -136,18 +136,26 @@ impl MultiAssetEscrowContract {
         if timelock == 0 {
             return Err(ContractError::InvalidDuration);
         }
-        
+
         // Validate asset contract
-        if asset_contract == Address::from_string(&String::from_str(&env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")) {
+        if asset_contract
+            == Address::from_string(&String::from_str(
+                &env,
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            ))
+        {
             return Err(ContractError::InvalidAsset);
         }
 
         // Generate unique ID
-        let id = String::from_str(&env, &format!(
-            "escrow_{}_{}",
-            env.ledger().timestamp(),
-            sender.to_string().as_slice()
-        ));
+        let id = String::from_str(
+            &env,
+            &format!(
+                "escrow_{}_{}",
+                env.ledger().timestamp(),
+                sender.to_string().as_slice()
+            ),
+        );
 
         if Self::escrow_exists(&env, id.clone()) {
             return Err(ContractError::EscrowAlreadyExists);
@@ -172,7 +180,7 @@ impl MultiAssetEscrowContract {
         };
 
         env.storage().set(&EscrowKey { id: id.clone() }, &escrow);
-        
+
         // Emit event
         env.events().publish(
             ("EscrowCreated", "v1"),
@@ -191,17 +199,13 @@ impl MultiAssetEscrowContract {
     }
 
     // ===== Fund Escrow =====
-    pub fn fund_escrow(
-        env: Env,
-        id: String,
-        sender: Address,
-    ) -> Result<(), ContractError> {
+    pub fn fund_escrow(env: Env, id: String, sender: Address) -> Result<(), ContractError> {
         let mut escrow = Self::get_escrow(&env, id.clone())?;
-        
+
         if escrow.sender != sender {
             return Err(ContractError::OnlySender);
         }
-        
+
         if escrow.state != EscrowState::Pending {
             return Err(ContractError::InvalidStateTransition);
         }
@@ -217,9 +221,9 @@ impl MultiAssetEscrowContract {
 
         escrow.state = EscrowState::Funded;
         escrow.funded_at = Some(env.ledger().timestamp());
-        
+
         env.storage().set(&EscrowKey { id: id.clone() }, &escrow);
-        
+
         // Emit event
         env.events().publish(
             ("EscrowFunded", "v1"),
@@ -234,17 +238,13 @@ impl MultiAssetEscrowContract {
     }
 
     // ===== Release Escrow =====
-    pub fn release_escrow(
-        env: Env,
-        id: String,
-        beneficiary: Address,
-    ) -> Result<(), ContractError> {
+    pub fn release_escrow(env: Env, id: String, beneficiary: Address) -> Result<(), ContractError> {
         let mut escrow = Self::get_escrow(&env, id.clone())?;
-        
+
         if escrow.beneficiary != beneficiary {
             return Err(ContractError::OnlyBeneficiary);
         }
-        
+
         if escrow.state != EscrowState::Funded && escrow.state != EscrowState::Resolved {
             return Err(ContractError::InvalidStateTransition);
         }
@@ -259,9 +259,9 @@ impl MultiAssetEscrowContract {
 
         escrow.state = EscrowState::Released;
         escrow.released_at = Some(env.ledger().timestamp());
-        
+
         env.storage().set(&EscrowKey { id: id.clone() }, &escrow);
-        
+
         // Emit event
         env.events().publish(
             ("EscrowReleased", "v1"),
@@ -276,17 +276,13 @@ impl MultiAssetEscrowContract {
     }
 
     // ===== Refund Escrow =====
-    pub fn refund_escrow(
-        env: Env,
-        id: String,
-        sender: Address,
-    ) -> Result<(), ContractError> {
+    pub fn refund_escrow(env: Env, id: String, sender: Address) -> Result<(), ContractError> {
         let mut escrow = Self::get_escrow(&env, id.clone())?;
-        
+
         if escrow.sender != sender {
             return Err(ContractError::OnlySender);
         }
-        
+
         if escrow.state != EscrowState::Funded {
             return Err(ContractError::InvalidStateTransition);
         }
@@ -307,9 +303,9 @@ impl MultiAssetEscrowContract {
 
         escrow.state = EscrowState::Refunded;
         escrow.refunded_at = Some(env.ledger().timestamp());
-        
+
         env.storage().set(&EscrowKey { id: id.clone() }, &escrow);
-        
+
         // Emit event
         env.events().publish(
             ("EscrowRefunded", "v1"),
@@ -324,26 +320,22 @@ impl MultiAssetEscrowContract {
     }
 
     // ===== Dispute Escrow =====
-    pub fn dispute_escrow(
-        env: Env,
-        id: String,
-        caller: Address,
-    ) -> Result<(), ContractError> {
+    pub fn dispute_escrow(env: Env, id: String, caller: Address) -> Result<(), ContractError> {
         let mut escrow = Self::get_escrow(&env, id.clone())?;
-        
+
         if escrow.sender != caller && escrow.beneficiary != caller {
             return Err(ContractError::Unauthorized);
         }
-        
+
         if escrow.state != EscrowState::Funded {
             return Err(ContractError::InvalidStateTransition);
         }
 
         escrow.state = EscrowState::Disputed;
         escrow.disputed_at = Some(env.ledger().timestamp());
-        
+
         env.storage().set(&EscrowKey { id: id.clone() }, &escrow);
-        
+
         // Emit event
         env.events().publish(
             ("EscrowDisputed", "v1"),
@@ -364,11 +356,11 @@ impl MultiAssetEscrowContract {
         release_to_beneficiary: bool,
     ) -> Result<(), ContractError> {
         let mut escrow = Self::get_escrow(&env, id.clone())?;
-        
+
         if escrow.arbitrator != arbitrator {
             return Err(ContractError::OnlyArbitrator);
         }
-        
+
         if escrow.state != EscrowState::Disputed {
             return Err(ContractError::InvalidStateTransition);
         }
@@ -392,11 +384,11 @@ impl MultiAssetEscrowContract {
             )?;
             escrow.state = EscrowState::Refunded;
         }
-        
+
         escrow.resolved_at = Some(env.ledger().timestamp());
-        
+
         env.storage().set(&EscrowKey { id: id.clone() }, &escrow);
-        
+
         // Emit event
         env.events().publish(
             ("EscrowResolved", "v1"),
@@ -411,17 +403,13 @@ impl MultiAssetEscrowContract {
     }
 
     // ===== Emergency Withdraw =====
-    pub fn emergency_withdraw(
-        env: Env,
-        id: String,
-        caller: Address,
-    ) -> Result<(), ContractError> {
+    pub fn emergency_withdraw(env: Env, id: String, caller: Address) -> Result<(), ContractError> {
         let escrow = Self::get_escrow(&env, id.clone())?;
-        
+
         if escrow.sender != caller && escrow.beneficiary != caller {
             return Err(ContractError::Unauthorized);
         }
-        
+
         let current_time = env.ledger().timestamp();
         let emergency_time = escrow.created_at + escrow.timelock * 2;
         if current_time < emergency_time {
@@ -435,12 +423,13 @@ impl MultiAssetEscrowContract {
             &caller,
             escrow.amount,
         )?;
-        
+
         let mut updated_escrow = escrow.clone();
         updated_escrow.state = EscrowState::Refunded;
         updated_escrow.refunded_at = Some(env.ledger().timestamp());
-        env.storage().set(&EscrowKey { id: id.clone() }, &updated_escrow);
-        
+        env.storage()
+            .set(&EscrowKey { id: id.clone() }, &updated_escrow);
+
         // Emit event
         env.events().publish(
             ("EscrowEmergencyWithdrawn", "v1"),
@@ -455,20 +444,14 @@ impl MultiAssetEscrowContract {
     }
 
     // ===== Helper: Get Escrow =====
-    pub fn get_escrow(
-        env: &Env,
-        id: String,
-    ) -> Result<Escrow, ContractError> {
+    pub fn get_escrow(env: &Env, id: String) -> Result<Escrow, ContractError> {
         env.storage()
             .get(&EscrowKey { id: id.clone() })
             .ok_or(ContractError::EscrowNotFound)
     }
 
     // ===== Helper: Check Escrow Exists =====
-    fn escrow_exists(
-        env: &Env,
-        id: String,
-    ) -> bool {
+    fn escrow_exists(env: &Env, id: String) -> bool {
         env.storage().has(&EscrowKey { id })
     }
 
@@ -480,11 +463,9 @@ impl MultiAssetEscrowContract {
         to: &Address,
         amount: i128,
     ) -> Result<(), ContractError> {
-        let result: Result<(), soroban_sdk::Error> = env.invoke_contract(
-            asset_contract,
-            &("transfer", from, to, &amount),
-        );
-        
+        let result: Result<(), soroban_sdk::Error> =
+            env.invoke_contract(asset_contract, &("transfer", from, to, &amount));
+
         match result {
             Ok(_) => Ok(()),
             Err(_) => Err(ContractError::TransferFailed),
@@ -492,15 +473,9 @@ impl MultiAssetEscrowContract {
     }
 
     // ===== Helper: Get Balance =====
-    pub fn get_balance(
-        env: &Env,
-        asset_contract: &Address,
-        account: &Address,
-    ) -> i128 {
-        let result: Result<i128, soroban_sdk::Error> = env.invoke_contract(
-            asset_contract,
-            &("balance_of", account),
-        );
+    pub fn get_balance(env: &Env, asset_contract: &Address, account: &Address) -> i128 {
+        let result: Result<i128, soroban_sdk::Error> =
+            env.invoke_contract(asset_contract, &("balance_of", account));
         result.unwrap_or(0)
     }
 }
