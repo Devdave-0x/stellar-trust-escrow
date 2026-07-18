@@ -33,7 +33,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
       - name: Install root dependencies
         run: npm ci --ignore-scripts
 
@@ -450,7 +449,6 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-
       - name: Install dependencies
         if: steps.changes.outputs.changed == 'true'
         run: npm ci
@@ -538,7 +536,7 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies
         if: steps.changes.outputs.changed == 'true'
