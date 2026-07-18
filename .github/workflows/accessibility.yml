@@ -2,13 +2,15 @@ name: Accessibility
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [main, develop]
     types: [opened, synchronize, reopened]
   push:
-    branches: [develop]
+    branches: [main, develop]
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 env:
   HUSKY: 0
@@ -52,22 +54,45 @@ jobs:
           NEXT_PUBLIC_CONTRACT_ADDRESS: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
       - name: Wait for frontend to be ready
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:3000 > /dev/null && break
-            sleep 2
-          done
+        run: npx wait-on http://localhost:3000 --timeout 60000
 
-      - name: Run accessibility scanner
+      - name: Run axe accessibility scan
+        run: node scripts/a11y-check.js
+        env:
+          BASE_URL: http://localhost:3000
+
+      - name: Run WCAG scanner
         run: node scripts/accessibility-actions.js --base-url http://localhost:3000
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
           PLAYWRIGHT_DISABLE_WEBSERVER: '1'
 
-      - name: Upload accessibility report
+      - name: Upload accessibility reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: accessibility-report
-          path: accessibility-reports/
+          name: accessibility-reports-${{ github.sha }}
+          path: |
+            a11y-report.json
+            a11y-report.md
+            accessibility-reports/
           retention-days: 30
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('a11y-report.md')) {
+              core.info('Accessibility scan did not produce a report; skipping PR comment.');
+              return;
+            }
+            const body = fs.readFileSync('a11y-report.md', 'utf8');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
