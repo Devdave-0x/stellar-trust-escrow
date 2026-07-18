@@ -5,6 +5,7 @@
  * Renders as a Next.js <Link> when `href` is provided (and not disabled).
  * Supports `asChild` to wrap an arbitrary child element with button styles.
  */
+'use client';
 
 import Link from 'next/link';
 import { useState } from 'react';
