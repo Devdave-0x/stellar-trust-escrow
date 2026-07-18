@@ -41,6 +41,7 @@ import complianceRoutes from './api/routes/complianceRoutes.js';
 import incidentRoutes from './api/routes/incidentRoutes.js';
 import batchRoutes from './api/routes/batchRoutes.js';
 import webhookRoutes from './api/routes/webhookRoutes.js';
+import wellKnownRoutes from './api/routes/wellKnownRoutes.js';
 import tenantMiddleware from './api/middleware/tenant.js';
 import auditMiddleware from './api/middleware/audit.js';
 import { createWebSocketServer, pool } from './api/websocket/handlers.js';
@@ -62,6 +63,7 @@ import complianceService from './services/complianceService.js';
 import { startIndexer } from './services/eventIndexer.js';
 import { startRpcMonitor } from './monitoring/rpcMonitor.js';
 import { createEventWorker, createDeadLetterWorker } from './services/eventWorker.js';
+import { createKeyRotationWorker, scheduleKeyRotationJobs } from './queues/keyRotationQueue.js';
 import { setupSwagger } from './api/docs/swagger.js';
 import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
@@ -213,6 +215,7 @@ app.use('/api/batch', batchRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/admin/queues', queueDashboardRoutes);
+app.use('/.well-known', wellKnownRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
 app.use('/api-docs', docsRouter);
@@ -305,12 +308,17 @@ async function startServer() {
         try {
           const eventWorker = createEventWorker();
           const deadLetterWorker = createDeadLetterWorker();
+          const keyRotationWorker = createKeyRotationWorker();
           logger.info('[BullMQ] Event processing workers started');
+
+          // Schedule Key Rotation Jobs
+          await scheduleKeyRotationJobs();
 
           const closeWorkers = async () => {
             logger.info('[BullMQ] Shutting down workers...');
             await eventWorker.close();
             await deadLetterWorker.close();
+            await keyRotationWorker.close();
           };
 
           process.once('SIGTERM', closeWorkers);

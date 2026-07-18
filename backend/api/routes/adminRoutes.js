@@ -104,6 +104,20 @@ router.get('/settings', adminController.getSettings);
  */
 router.patch('/settings', requireMfa, adminController.updateSettings);
 
+// ── Key Management ─────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/keys/rotate
+ * @desc   Trigger a manual JWT signing key rotation
+ * @security Requires MFA verification
+ */
+router.post('/keys/rotate', requireMfa, adminController.rotateKeys);
+
+/**
+ * @route  GET /api/admin/keys
+ * @desc   List active key versions with metadata (no private keys)
+ */
+router.get('/keys', adminController.listKeys);
+
 // ── Audit Logs ─────────────────────────────────────────────────────────────────
 /**
  * @route  GET /api/admin/audit-logs
