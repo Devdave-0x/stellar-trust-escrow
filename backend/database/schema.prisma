@@ -54,6 +54,7 @@ model Tenant {
   kycVerifications     KycVerification[]
   adminAuditLogs       AdminAuditLog[]
   auditLogs            AuditLog[]
+  failedEvents         FailedEvent[]
   chatRoomKeys         ChatRoomKey[]
   chatMessages         ChatMessage[]
 
