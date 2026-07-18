@@ -60,6 +60,9 @@ pub const DISPUTE_TIMEOUT_CLAIMED: Symbol = symbol_short!("dis_to");
 pub const CANCELLATION_REQUESTED: Symbol = symbol_short!("can_req");
 pub const CANCELLATION_APPROVED: Symbol = symbol_short!("can_apr");
 pub const CANCELLATION_EXECUTED: Symbol = symbol_short!("can_exe");
+pub const CANCELLATION_PROPOSED: Symbol = symbol_short!("can_pro");
+pub const CANCELLATION_REJECTED: Symbol = symbol_short!("can_rej");
+pub const MUTUAL_CANCEL_DONE: Symbol = symbol_short!("mcan_dne");
 
 // ── Slashing ──────────────────────────────────────────────────────────────────
 

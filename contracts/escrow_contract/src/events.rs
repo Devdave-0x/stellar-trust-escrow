@@ -506,3 +506,37 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
         (referrer.clone(), amount),
     );
 }
+
+/// Emitted when a mutual-consent cancellation proposal is created.
+pub fn emit_cancellation_proposed(
+    env: &Env,
+    escrow_id: u64,
+    proposer: &Address,
+    client_refund_bps: u32,
+    terms_hash: &soroban_sdk::BytesN<32>,
+) {
+    env.events().publish(
+        (ev::CANCELLATION_PROPOSED, escrow_id),
+        (proposer.clone(), client_refund_bps, terms_hash.clone()),
+    );
+}
+
+/// Emitted when a mutual-consent cancellation proposal is rejected by either party.
+pub fn emit_cancellation_rejected(env: &Env, escrow_id: u64, rejector: &Address) {
+    env.events()
+        .publish((ev::CANCELLATION_REJECTED, escrow_id), rejector.clone());
+}
+
+/// Emitted when a mutual-consent cancellation is completed via acceptance.
+pub fn emit_mutual_cancellation_completed(
+    env: &Env,
+    escrow_id: u64,
+    client_received: i128,
+    contractor_received: i128,
+    terms_hash: &soroban_sdk::BytesN<32>,
+) {
+    env.events().publish(
+        (ev::MUTUAL_CANCEL_DONE, escrow_id),
+        (client_received, contractor_received, terms_hash.clone()),
+    );
+}

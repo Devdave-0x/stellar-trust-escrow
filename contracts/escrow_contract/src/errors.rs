@@ -65,6 +65,10 @@ pub enum EcErr {
     OraclePriceConversionFailed = 69,
     ContractPaused = 70,
     UnpauseTooEarly = 71,
+    CannotAcceptOwnProposal = 72,
+    ProposalExpired = 73,
+    InvalidEscrowState = 74,
+    NoCancellationProposal = 75,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
