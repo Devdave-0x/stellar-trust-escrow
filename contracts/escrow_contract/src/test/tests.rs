@@ -1,6 +1,9 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{Env, Address, String, testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation}};
+use soroban_sdk::{
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
+    Address, Env, String,
+};
 
 #[test]
 fn test_create_escrow_success() {
@@ -19,7 +22,8 @@ fn test_create_escrow_success() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     let escrow = MultiAssetEscrowContract::get_escrow(&env, id).unwrap();
     assert_eq!(escrow.sender, sender);
@@ -88,16 +92,13 @@ fn test_fund_escrow_success() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Mock token transfer
     env.mock_all_auths();
 
-    MultiAssetEscrowContract::fund_escrow(
-        env.clone(),
-        id.clone(),
-        sender.clone(),
-    ).unwrap();
+    MultiAssetEscrowContract::fund_escrow(env.clone(), id.clone(), sender.clone()).unwrap();
 
     let escrow = MultiAssetEscrowContract::get_escrow(&env, id).unwrap();
     assert_eq!(escrow.state, EscrowState::Funded);
@@ -122,14 +123,11 @@ fn test_fund_escrow_unauthorized() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Try to fund as attacker (should fail)
-    let result = MultiAssetEscrowContract::fund_escrow(
-        env.clone(),
-        id,
-        attacker,
-    );
+    let result = MultiAssetEscrowContract::fund_escrow(env.clone(), id, attacker);
     assert_eq!(result.unwrap_err(), ContractError::OnlySender);
 }
 
@@ -150,7 +148,8 @@ fn test_release_escrow_success() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
@@ -183,7 +182,8 @@ fn test_release_escrow_unauthorized() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
@@ -191,11 +191,7 @@ fn test_release_escrow_unauthorized() {
     MultiAssetEscrowContract::fund_escrow(env.clone(), id.clone(), sender).unwrap();
 
     // Try to release as attacker (should fail)
-    let result = MultiAssetEscrowContract::release_escrow(
-        env.clone(),
-        id,
-        attacker,
-    );
+    let result = MultiAssetEscrowContract::release_escrow(env.clone(), id, attacker);
     assert_eq!(result.unwrap_err(), ContractError::OnlyBeneficiary);
 }
 
@@ -216,7 +212,8 @@ fn test_refund_escrow_success() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
@@ -251,7 +248,8 @@ fn test_dispute_escrow_success() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
@@ -266,12 +264,8 @@ fn test_dispute_escrow_success() {
     assert!(escrow.disputed_at.is_some());
 
     // Resolve (arbitrator - release to beneficiary)
-    MultiAssetEscrowContract::resolve_dispute(
-        env.clone(),
-        id.clone(),
-        arbitrator.clone(),
-        true,
-    ).unwrap();
+    MultiAssetEscrowContract::resolve_dispute(env.clone(), id.clone(), arbitrator.clone(), true)
+        .unwrap();
 
     let escrow = MultiAssetEscrowContract::get_escrow(&env, id).unwrap();
     assert_eq!(escrow.state, EscrowState::Resolved);
@@ -303,15 +297,13 @@ fn test_invalid_state_transition() {
         1000,
         3600,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     env.mock_all_auths();
 
     // Try to release without funding (should fail)
-    let result = MultiAssetEscrowContract::release_escrow(
-        env.clone(),
-        id.clone(),
-        beneficiary.clone(),
-    );
+    let result =
+        MultiAssetEscrowContract::release_escrow(env.clone(), id.clone(), beneficiary.clone());
     assert_eq!(result.unwrap_err(), ContractError::InvalidStateTransition);
 }
