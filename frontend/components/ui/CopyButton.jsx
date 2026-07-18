@@ -1,19 +1,24 @@
 'use client';
 import { useState } from 'react';
 
-export function CopyButton({ value, label }) {
+export default function CopyButton({ text, label }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
   };
 
   return (
     <button
       onClick={handleCopy}
-      aria-label={`Copy ${label ?? value}`}
+      aria-label={`Copy ${label ?? text}`}
+      title={`Copy ${label ?? text}`}
       className="ml-1 rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
     >
       {copied ? (
