@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Admin Dashboard — Main Overview Page
  *
@@ -24,21 +26,21 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 // SWR fetcher for metrics
 const fetcher = async (url) => {
-  const apiKey = localStorage.getItem('ste-app-store') 
-    ? JSON.parse(localStorage.getItem('ste-app-store'))?.admin?.apiKey 
+  const apiKey = localStorage.getItem('ste-app-store')
+    ? JSON.parse(localStorage.getItem('ste-app-store'))?.admin?.apiKey
     : null;
-  
+
   if (!apiKey) throw new Error('Not authenticated');
-  
+
   const res = await fetch(`${API_BASE}${url}`, {
     headers: buildAdminHeaders(apiKey, {}),
   });
-  
+
   if (!res.ok) {
     const data = await res.json();
     throw new Error(data.error || 'Failed to fetch data');
   }
-  
+
   return res.json();
 };
 
@@ -59,22 +61,22 @@ function AdminDashboardContent() {
     {
       refreshInterval: 30000,
       revalidateOnFocus: false,
-    }
+    },
   );
 
   const fetchArbiters = useCallback(async () => {
     if (!apiKey) return;
-    
+
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/arbiters`, {
         headers: buildAdminHeaders(apiKey, {}),
       });
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to fetch arbiters');
       }
-      
+
       const data = await res.json();
       setArbiters(data.arbiters || []);
     } catch (err) {
