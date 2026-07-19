@@ -2,7 +2,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import TwoFactorSetup from '../../app/settings/security/page.jsx';
-import TwoFactorChallenge from '../../app/auth/2fa/page.jsx';
+import { TwoFactorChallenge } from '../../app/auth/2fa/page.jsx';
 
 // Mock fetch globally
 global.fetch = jest.fn();
@@ -60,10 +60,8 @@ describe('TwoFactorChallenge component', () => {
     );
   });
 
-  test('download button generates correct .txt content', () => {
-    // Not testing actual file creation; ensure button exists
+  test('shows use backup code toggle button', () => {
     render(<TwoFactorChallenge mfaPendingToken="t" />);
-    const btn = screen.getByText(/Download as .txt/i);
-    expect(btn).toBeInTheDocument();
+    expect(screen.getByText(/Use backup code/i)).toBeInTheDocument();
   });
 });

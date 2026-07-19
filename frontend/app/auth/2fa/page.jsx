@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import styles from './twofa.module.css'; // assume CSS module for styling
 
-function TwoFactorChallenge({ mfaPendingToken }) {
+export function TwoFactorChallenge({ mfaPendingToken }) {
   const [code, setCode] = useState('');
   const [usingBackup, setUsingBackup] = useState(false);
   const [submitting, setSubmitting] = useState(false);
