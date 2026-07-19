@@ -1,5 +1,5 @@
 [workspace]
-members = ["contracts/escrow_contract", "contracts/shared"]
+members = ["contracts/escrow_contract", "contracts/governance", "contracts/escrow_extensions", "contracts/shared"]
 resolver = "2"
 
 [profile.release]
