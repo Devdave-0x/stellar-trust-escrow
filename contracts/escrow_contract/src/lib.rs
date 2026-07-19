@@ -1592,6 +1592,51 @@ impl EscrowContract {
         Ok((gross_amount, collected_fee))
     }
 
+    /// Helper function to calculate platform fee for a milestone, transfer to treasury,
+    /// return the remaining amount for the freelancer, and emit the FeeCollected event.
+    fn calculate_and_transfer_fee(
+        env: &Env,
+        escrow_id: u64,
+        milestone_id: u32,
+        token: &Address,
+        amount: i128,
+    ) -> Result<i128, EscrowError> {
+        let fee_bps: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0);
+
+        if fee_bps == 0 {
+            return Ok(amount);
+        }
+
+        let treasury: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformTreasury)
+            .ok_or(EscrowError::TreasuryNotConfigured)?;
+
+        // Calculate fee: amount * fee_bps / 10000 (integer division, truncating towards zero)
+        let fee = amount
+            .checked_mul(i128::from(fee_bps))
+            .ok_or(EscrowError::E20)?
+            .checked_div(10000)
+            .ok_or(EscrowError::E20)?;
+
+        if fee > 0 {
+            token::Client::new(env, token).transfer(
+                &env.current_contract_address(),
+                &treasury,
+                &fee,
+            );
+            events::emit_fee_collected(env, escrow_id, milestone_id, fee, &treasury);
+        }
+
+        let remaining = amount.checked_sub(fee).ok_or(EscrowError::E20)?;
+        Ok(remaining)
+    }
+
     fn settle_completion_fee_from_split_payout(
         env: &Env,
         escrow_id: u64,
@@ -1620,6 +1665,26 @@ impl EscrowContract {
 
     pub fn get_platform_treasury(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::PlatformTreasury)
+    }
+
+    pub fn set_platform_fee(env: Env, caller: Address, fee_bps: u32) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+        if fee_bps > 1000 {
+            return Err(EscrowError::FeeTooHigh);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformFeeBps, &fee_bps);
+        ContractStorage::bump_instance_ttl(&env);
+        Ok(())
+    }
+
+    pub fn get_platform_fee(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0)
     }
 
     pub fn set_platform_fee_tiers(
@@ -2435,18 +2500,34 @@ impl EscrowContract {
             events::emit_milestone_approved(&env, escrow_id, mid, m.amount);
         }
 
-        // Single token transfer for the entire batch.
+        // Process fee and transfers for the entire batch.
         if timelock_expired && total_amount > 0 {
             meta.remaining_balance = meta
                 .remaining_balance
                 .checked_sub(total_amount)
                 .ok_or(EscrowError::E20)?;
-            token::Client::new(&env, &meta.token).transfer(
-                &env.current_contract_address(),
-                &meta.freelancer,
-                &total_amount,
-            );
-            events::emit_funds_released(&env, escrow_id, &meta.freelancer, total_amount);
+
+            let mut total_payout = 0i128;
+
+            // Process each milestone's fee and accumulate total payout
+            for i in 0..milestone_ids.len() {
+                let mid = milestone_ids.get(i).ok_or(EscrowError::E13)?;
+                let m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+                let payout =
+                    Self::calculate_and_transfer_fee(&env, escrow_id, mid, &meta.token, m.amount)?;
+                total_payout = total_payout.checked_add(payout).ok_or(EscrowError::E20)?;
+            }
+
+            // Transfer total payout to freelancer
+            if total_payout > 0 {
+                token::Client::new(&env, &meta.token).transfer(
+                    &env.current_contract_address(),
+                    &meta.freelancer,
+                    &total_payout,
+                );
+            }
+
+            events::emit_funds_released(&env, escrow_id, &meta.freelancer, total_payout);
         }
 
         // Completion check — O(1) via counters.
@@ -2510,21 +2591,20 @@ impl EscrowContract {
 
             let completes_escrow =
                 meta.released_count == meta.milestone_count && meta.milestone_count > 0;
-            let (payout_amount, _) = if completes_escrow {
-                Self::settle_completion_fee_from_single_payout(
-                    &env,
-                    escrow_id,
-                    &meta.token,
-                    total_amount,
-                )?
-            } else {
-                (total_amount, 0)
-            };
+
+            let mut total_payout = 0i128;
+            for i in 0..milestone_ids.len() {
+                let mid = milestone_ids.get(i).ok_or(EscrowError::E13)?;
+                let m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+                let payout =
+                    Self::calculate_and_transfer_fee(&env, escrow_id, mid, &meta.token, m.amount)?;
+                total_payout = total_payout.checked_add(payout).ok_or(EscrowError::E20)?;
+            }
 
             token::Client::new(&env, &meta.token).transfer(
                 &env.current_contract_address(),
                 &meta.freelancer,
-                &payout_amount,
+                &total_payout,
             );
 
             if completes_escrow {
@@ -2543,7 +2623,7 @@ impl EscrowContract {
             }
 
             ContractStorage::save_escrow_meta(&env, &meta);
-            Ok(payout_amount)
+            Ok(total_payout)
         })
     }
 
@@ -2770,10 +2850,18 @@ impl EscrowContract {
 
         if timelock_expired {
             // Release funds immediately — timelock not active
+            let payout_amount = Self::calculate_and_transfer_fee(
+                &env,
+                escrow_id,
+                milestone_id,
+                &meta.token,
+                amount,
+            )?;
+
             token::Client::new(&env, &meta.token).transfer(
                 &env.current_contract_address(),
                 &meta.freelancer,
-                &amount,
+                &payout_amount,
             );
             meta.remaining_balance = meta
                 .remaining_balance
@@ -2781,7 +2869,7 @@ impl EscrowContract {
                 .ok_or(EscrowError::E20)?;
             meta.released_count = meta.released_count.checked_add(1).ok_or(EscrowError::E20)?;
             milestone.status = MS_RELEASED;
-            events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
+            events::emit_funds_released(&env, escrow_id, &meta.freelancer, payout_amount);
         }
 
         ContractStorage::save_milestone(&env, escrow_id, &milestone);
@@ -2996,16 +3084,13 @@ impl EscrowContract {
             let amount = milestone.amount;
             let completes_escrow =
                 meta.released_count + 1 == meta.milestone_count && meta.milestone_count > 0;
-            let (payout_amount, _) = if completes_escrow {
-                Self::settle_completion_fee_from_single_payout(
-                    &env,
-                    escrow_id,
-                    &meta.token,
-                    amount,
-                )?
-            } else {
-                (amount, 0)
-            };
+            let payout_amount = Self::calculate_and_transfer_fee(
+                &env,
+                escrow_id,
+                milestone_id,
+                &meta.token,
+                amount,
+            )?;
 
             token::Client::new(&env, &meta.token).transfer(
                 &env.current_contract_address(),
