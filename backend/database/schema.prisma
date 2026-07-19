@@ -72,13 +72,15 @@ model User {
   role          String   @default("user") // user | admin | superadmin
   mfaEnabled    Boolean  @default(false) @map("mfa_enabled")
   mfaEnforced   Boolean  @default(false) @map("mfa_enforced") // Force MFA for high-value operations
+  notificationPreferences Json? @map("notification_preferences")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  refreshTokens RefreshToken[]
-  mfaMethods    MfaMethod[]
-  mfaAttempts   MfaAttempt[]
+  tenant               Tenant                 @relation(fields: [tenantId], references: [id])
+  refreshTokens        RefreshToken[]
+  mfaMethods           MfaMethod[]
+  mfaAttempts          MfaAttempt[]
+  notificationDeliveries NotificationDelivery[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
@@ -643,6 +645,28 @@ model AdminAuditLog {
   @@index([targetAddress])
   @@index([performedAt(sort: Desc)])
   @@map("admin_audit_logs")
+}
+
+// ── Notification Delivery ──────────────────────────────────────────────────────
+
+model NotificationDelivery {
+  id           String    @id @default(cuid())
+  userId       Int       @map("user_id")
+  channel      String    // email | sms
+  template     String
+  status       String    // queued | delivered | failed
+  messageId    String?   @map("message_id")
+  error        String?
+  attemptCount Int       @default(0) @map("attempt_count")
+  queuedAt     DateTime  @default(now()) @map("queued_at")
+  deliveredAt  DateTime? @map("delivered_at")
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([channel])
+  @@map("notification_deliveries")
 }
 
 // ── Audit Log ─────────────────────────────────────────────────────────────────
