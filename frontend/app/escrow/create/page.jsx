@@ -24,11 +24,15 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Button from '../../../components/ui/Button';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
+import TemplatePickerModal from '../../../components/templates/TemplatePickerModal';
+import SaveTemplateModal from '../../../components/templates/SaveTemplateModal';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 import XLMAmountInput from '../../../components/ui/XLMAmountInput';
 import templatesData from '../../../data/templates.json';
 import { useToast } from '../../../contexts/ToastContext';
 import { useWallet } from '../../../hooks/useWallet';
+import { getTemplate } from '../../../hooks/useEscrowTemplates';
+import { applyBackendTemplateToForm } from '../../../lib/templates';
 import {
   buildCreateEscrowTx,
   broadcastTransaction,
@@ -91,6 +95,9 @@ export default function CreateEscrowPage() {
   const [error, setError] = useState(null);
   const [templateNotice, setTemplateNotice] = useState('');
   const [appliedQueryTemplateId, setAppliedQueryTemplateId] = useState(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [showSave, setShowSave] = useState(false);
+  const [appliedBackendTemplateId, setAppliedBackendTemplateId] = useState(null);
 
   // Touched state tracks which fields the user has interacted with
   const [touched, setTouched] = useState({ totalAmount: false, briefDescription: false });
@@ -118,6 +125,39 @@ export default function CreateEscrowPage() {
     setFormData((previous) => applyTemplateToForm(previous, template));
     setCurrentStep(1);
     setTemplateNotice(`Applied template: ${template.name}`);
+  };
+
+  // Shared/template URL (?templateId=...) loads a saved template from the API.
+  useEffect(() => {
+    const templateId = searchParams.get('templateId');
+    if (!templateId || templateId === appliedBackendTemplateId) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const template = await getTemplate(templateId);
+        if (cancelled || !template) return;
+        setFormData((previous) => applyBackendTemplateToForm(previous, template));
+        setCurrentStep(1);
+        setTemplateNotice(`Loaded from template: ${template.name}`);
+        setAppliedBackendTemplateId(templateId);
+      } catch {
+        // Template may be private or unavailable — ignore silently.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, appliedBackendTemplateId]);
+
+  const handleLoadFromBackend = (template) => {
+    setFormData((previous) => applyBackendTemplateToForm(previous, template));
+    setCurrentStep(1);
+    setTemplateNotice(`Loaded from template: ${template.name}`);
+    setShowPicker(false);
   };
 
   // TODO (contributor — Issue #33): implement form submission
@@ -180,6 +220,16 @@ export default function CreateEscrowPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Create New Escrow</h1>
         <p className="text-gray-400 mt-1">Lock funds and define milestones for your project.</p>
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          onClick={() => setShowPicker(true)}
+          className="min-h-touch"
+        >
+          Load template
+        </Button>
       </div>
 
       <TemplateSelector
@@ -269,6 +319,17 @@ export default function CreateEscrowPage() {
           />
         )}
         {currentStep === 3 && <StepReview formData={formData} />}
+        {currentStep === 3 && (
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => setShowSave(true)}
+              className="min-h-touch"
+            >
+              Save as template
+            </Button>
+          </div>
+        )}
         {currentStep === 4 && (
           <StepSign onSubmit={handleSubmit} isSubmitting={isSubmitting} error={error} />
         )}
@@ -293,6 +354,13 @@ export default function CreateEscrowPage() {
           </Button>
         )}
       </div>
+
+      <TemplatePickerModal
+        isOpen={showPicker}
+        onClose={() => setShowPicker(false)}
+        onSelect={handleLoadFromBackend}
+      />
+      <SaveTemplateModal isOpen={showSave} onClose={() => setShowSave(false)} formData={formData} />
     </div>
   );
 }
