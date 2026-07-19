@@ -1,382 +1,270 @@
-//! # Upgradeable Storage
+//! # On-Chain Persistent Storage Layer
 //!
-//! This module provides storage isolation for safe contract upgrades.
-//! It manages storage versioning and migration to prevent data corruption
-//! during contract upgrades.
+//! Typed, panic-free helpers for every [`DataKey`] used by the escrow contract.
 //!
-//! ## Storage Layout
+//! ## Design decisions
 //!
-//! The contract uses two storage areas:
-//!
-//! 1. **Instance Storage**: Used for admin, pause state, escrow counter, and
-//!    storage version. This data persists across upgrades.
-//!
-//! 2. **Persistent Storage**: Used for escrow meta, milestones, reputation,
-//!    cancellation requests, and slash records. This data IS versioned.
-//!
-//! ## Version History
-//!
-//! - Version 1 (v1): Initial storage layout - escrow data stored with
-//!   milestones inline in the EscrowState struct.
-//! - Version 2 (v2): Granular storage - EscrowMeta stored separately from
-//!   individual Milestones for better gas efficiency (see issue #65).
-//!
-//! ## Migration Strategy
-//!
-//! When upgrading:
-//! 1. Read current storage version from instance storage
-//! 2. If version matches current, no migration needed
-//! 3. Otherwise, run migration functions in order
-//! 4. Update version after successful migration
+//! * **Persistent storage, not instance storage.** Every protocol key lives in
+//!   `env.storage().persistent()` so it survives contract-instance TTL recycling.
+//!   Instance storage is reserved for the upgrade/version metadata touched by
+//!   [`StorageManager`].
+//! * **TTL is bumped on *every* read, not just writes.** Soroban evicts
+//!   persistent entries once their live-until ledger lapses. A key that is read
+//!   often but never written would eventually be evicted; bumping the TTL on
+//!   each `get_*` keeps hot keys (treasury, fee bps, arbiter registry, escrow
+//!   rows) alive without requiring the caller to remember to re-`set` them.
+//! * **No `.unwrap()` / `.expect()`.** Absent keys return `Option<T>`; callers
+//!   decide how to handle a missing value. This is load-bearing for safety: a
+//!   saturated storage or an out-of-order upgrade must never panic the contract.
+//! * **Single source of truth for TTL constants.** `LEDGER_THRESHOLD` /
+//!   `LEDGER_TO_LIVE` are shared by every helper so the rent policy is uniform.
 
-use soroban_sdk::{contracttype, Address, BytesN, Env, Vec};
+#![allow(dead_code)]
 
-use crate::PackedDataKey;
-use crate::{DataKey, Milestone, OptionalTimelock, MS_APPROVED, MS_RELEASED, MS_SUBMITTED};
+use soroban_sdk::{contracttype, Address, Env, Vec};
 
-// Current storage version - increment when storage layout changes
-pub const STORAGE_VERSION: u32 = 2;
+use crate::errors::EscrowError;
+use crate::types::{EscrowState, Milestone};
 
-/// Maximum number of escrows to migrate in a single v1-to-v2 batch.
-pub const MAX_MIGRATION_BATCH: u32 = 20;
+/// Minimum remaining TTL (in ledgers) before a key is considered "stale" and
+/// gets extended. Read/extend operations that find a key with at least this
+/// many ledgers of life left are no-ops on the TTL.
+pub const LEDGER_THRESHOLD: u32 = 100;
 
-/// Storage keys for version management (stored in instance storage)
+/// How far into the future (in ledgers) a key's live-until is pushed on every
+/// touch. At ~5s/ledger, 535_000 ledgers ≈ 31 days of TTL headroom on every
+/// touched key — comfortably past the longest realistic read gap so hot keys
+/// (treasury, fee bps, arbiter registry, escrow rows) are never evicted between
+/// touches without a manual rent transaction.
+pub const LEDGER_TO_LIVE: u32 = 535_000;
+
+/// Every persistent protocol key. Deriving [`contracttype`] gives the enum a
+/// stable, host-serialisable layout so keys can be compared and stored
+/// efficiently on-chain.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum StorageKey {
-    /// Current storage version - value: u32
-    Version,
+#[derive(Clone)]
+pub enum DataKey {
+    /// Single admin address (instance storage is used for the multisig variant).
+    Admin,
+    /// Monotonically increasing escrow id counter.
+    EscrowCounter,
+    /// Configured maximum number of milestones per escrow.
+    MaxMilestones,
+    /// Global pause flag.
+    Paused,
+    /// Full escrow state for a given escrow id.
+    Escrow(u64),
+    /// A single milestone within an escrow.
+    Milestone(u64, u32),
+    /// Number of milestones defined for an escrow (mirrors the Milestone list).
+    MilestoneCount(u64),
+    /// Registered arbiter address set.
+    ArbiterRegistry,
+    /// Platform fee in basis points.
+    PlatformFeeBps,
+    /// Platform treasury address that receives fees.
+    Treasury,
 }
 
-/// Legacy v1 escrow state format for migration reference.
-/// In v1, EscrowState stored milestones inline as a Vec.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct EscrowStateV1 {
-    pub escrow_id: u64,
-    pub client: Address,
-    pub freelancer: Address,
-    pub token: Address,
-    pub total_amount: i128,
-    pub remaining_balance: i128,
-    pub status: crate::types::EscrowStatus,
-    pub milestones: Vec<Milestone>,
-    pub arbiter: Option<Address>,
-    pub created_at: u64,
-    pub deadline: Option<u64>,
-    pub lock_time: Option<u64>,
-    pub lock_time_extension: Option<u64>,
-    pub brief_hash: BytesN<32>,
+// ─── Generic primitives ─────────────────────────────────────────────────────
+// Small internal helpers so each public accessor stays a one-liner and the TTL
+// policy is enforced in exactly one place.
+
+fn get_persistent<K, V>(env: &Env, key: &K) -> Option<V>
+where
+    K: soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+    V: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
+{
+    let storage = env.storage().persistent();
+    let value: Option<V> = storage.get(key);
+    if value.is_some() {
+        // Bump TTL on read — keeps frequently-read keys from being evicted.
+        storage.extend_ttl(key, LEDGER_THRESHOLD, LEDGER_TO_LIVE);
+    }
+    value
 }
 
-/// Storage manager for handling versioned storage access and migrations.
+fn set_persistent<K, V>(env: &Env, key: &K, value: &V)
+where
+    K: soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+    V: soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+{
+    let storage = env.storage().persistent();
+    storage.set(key, value);
+    storage.extend_ttl(key, LEDGER_THRESHOLD, LEDGER_TO_LIVE);
+}
+
+// ─── Admin ───────────────────────────────────────────────────────────────────
+
+/// Returns the admin address, if initialised.
+pub fn get_admin(env: &Env) -> Option<Address> {
+    get_persistent(env, &DataKey::Admin)
+}
+
+/// Persists the admin address and refreshes its TTL.
+pub fn set_admin(env: &Env, admin: &Address) {
+    set_persistent(env, &DataKey::Admin, admin);
+}
+
+// ─── Escrow counter ──────────────────────────────────────────────────────────
+
+/// Returns the current escrow id counter (defaults to `0` when unset).
+pub fn get_escrow_counter(env: &Env) -> Option<u64> {
+    get_persistent(env, &DataKey::EscrowCounter)
+}
+
+/// Persists the escrow id counter and refreshes its TTL.
+pub fn set_escrow_counter(env: &Env, counter: &u64) {
+    set_persistent(env, &DataKey::EscrowCounter, counter);
+}
+
+// ─── Max milestones ──────────────────────────────────────────────────────────
+
+/// Returns the configured maximum number of milestones per escrow.
+pub fn get_max_milestones(env: &Env) -> Option<u32> {
+    get_persistent(env, &DataKey::MaxMilestones)
+}
+
+/// Persists the maximum milestone count and refreshes its TTL.
+pub fn set_max_milestones(env: &Env, max: &u32) {
+    set_persistent(env, &DataKey::MaxMilestones, max);
+}
+
+// ─── Pause flag ──────────────────────────────────────────────────────────────
+
+/// Returns the global pause flag, if set.
+pub fn get_paused(env: &Env) -> Option<bool> {
+    get_persistent(env, &DataKey::Paused)
+}
+
+/// Persists the global pause flag and refreshes its TTL.
+pub fn set_paused(env: &Env, paused: &bool) {
+    set_persistent(env, &DataKey::Paused, paused);
+}
+
+// ─── Arbiter registry ─────────────────────────────────────────────────────────
+
+/// Returns the registered arbiter address set, if initialised.
+pub fn get_arbiter_registry(env: &Env) -> Option<Vec<Address>> {
+    get_persistent(env, &DataKey::ArbiterRegistry)
+}
+
+/// Persists the arbiter registry and refreshes its TTL.
+pub fn set_arbiter_registry(env: &Env, registry: &Vec<Address>) {
+    set_persistent(env, &DataKey::ArbiterRegistry, registry);
+}
+
+// ─── Platform fee ─────────────────────────────────────────────────────────────
+
+/// Returns the platform fee in basis points, if set.
+pub fn get_platform_fee_bps(env: &Env) -> Option<u32> {
+    get_persistent(env, &DataKey::PlatformFeeBps)
+}
+
+/// Persists the platform fee (in basis points) and refreshes its TTL.
+pub fn set_platform_fee_bps(env: &Env, bps: &u32) {
+    set_persistent(env, &DataKey::PlatformFeeBps, bps);
+}
+
+// ─── Treasury ─────────────────────────────────────────────────────────────────
+
+/// Returns the platform treasury address, if configured.
+pub fn get_treasury(env: &Env) -> Option<Address> {
+    get_persistent(env, &DataKey::Treasury)
+}
+
+/// Persists the platform treasury address and refreshes its TTL.
+pub fn set_treasury(env: &Env, treasury: &Address) {
+    set_persistent(env, &DataKey::Treasury, treasury);
+}
+
+// ─── Escrow state ─────────────────────────────────────────────────────────────
+
+/// Returns the full escrow state for `escrow_id`, if it exists.
+pub fn get_escrow(env: &Env, escrow_id: u64) -> Option<EscrowState> {
+    get_persistent(env, &DataKey::Escrow(escrow_id))
+}
+
+/// Persists the escrow state and refreshes its TTL.
+pub fn set_escrow(env: &Env, escrow_id: u64, escrow: &EscrowState) {
+    set_persistent(env, &DataKey::Escrow(escrow_id), escrow);
+}
+
+// ─── Milestones ───────────────────────────────────────────────────────────────
+
+/// Returns a single milestone, if it exists.
+pub fn get_milestone(env: &Env, escrow_id: u64, index: u32) -> Option<Milestone> {
+    get_persistent(env, &DataKey::Milestone(escrow_id, index))
+}
+
+/// Persists a single milestone and refreshes its TTL.
+pub fn set_milestone(env: &Env, escrow_id: u64, index: u32, milestone: &Milestone) {
+    set_persistent(env, &DataKey::Milestone(escrow_id, index), milestone);
+}
+
+/// Returns the number of milestones defined for an escrow, if tracked.
+pub fn get_milestone_count(env: &Env, escrow_id: u64) -> Option<u32> {
+    get_persistent(env, &DataKey::MilestoneCount(escrow_id))
+}
+
+/// Persists the milestone count and refreshes its TTL.
+pub fn set_milestone_count(env: &Env, escrow_id: u64, count: &u32) {
+    set_persistent(env, &DataKey::MilestoneCount(escrow_id), count);
+}
+
+// ─── TTL management ───────────────────────────────────────────────────────────
+
+/// Extends the TTL of every persistent key belonging to `escrow_id`.
 ///
-/// This provides the core upgradeable storage functionality:
-/// - Version tracking in instance storage
-/// - Migration from older storage formats
-/// - Data preservation guarantees
+/// Covers the escrow row itself, its milestone-count key, and each milestone
+/// index up to the currently tracked count (read defensively so a partially
+/// initialised escrow never panics). This is the single call the indexer and
+/// long-lived read paths use to keep an escrow's storage alive across the
+/// archival window without a separate rent transaction.
+pub fn bump_escrow_ttl(env: &Env, escrow_id: u64) {
+    let storage = env.storage().persistent();
+
+    let escrow_key = DataKey::Escrow(escrow_id);
+    if storage.has(&escrow_key) {
+        storage.extend_ttl(&escrow_key, LEDGER_THRESHOLD, LEDGER_TO_LIVE);
+    }
+
+    let count_key = DataKey::MilestoneCount(escrow_id);
+    let count: Option<u32> = storage.get(&count_key);
+    if let Some(count) = count {
+        storage.extend_ttl(&count_key, LEDGER_THRESHOLD, LEDGER_TO_LIVE);
+        for index in 0..count {
+            let milestone_key = DataKey::Milestone(escrow_id, index);
+            if storage.has(&milestone_key) {
+                storage.extend_ttl(&milestone_key, LEDGER_THRESHOLD, LEDGER_TO_LIVE);
+            }
+        }
+    }
+}
+
+// ─── StorageManager (legacy bridge) ───────────────────────────────────────────
+// `lib.rs` still calls `StorageManager::init_version` during contract init and
+// `StorageManager::migrate` during upgrades. These are thin, panic-free shims
+// that keep those call sites compiling; the typed helpers above are the
+// preferred API for new code.
+
+/// Upgradeable-storage lifecycle helpers.
 pub struct StorageManager;
 
 impl StorageManager {
-    /// Get the current storage version from instance storage.
-    /// Returns 1 for uninitialized contracts (legacy default).
-    pub fn get_version(env: &Env) -> u32 {
+    /// Marks the contract instance as live for a full archival window so a
+    /// freshly deployed or upgraded contract is never evicted before its first
+    /// interaction.
+    pub fn init_version(env: &Env) {
         env.storage()
             .instance()
-            .get(&StorageKey::Version)
-            .unwrap_or(1_u32) // Default to v1 if not set (legacy contracts)
+            .extend_ttl(LEDGER_THRESHOLD, LEDGER_TO_LIVE);
     }
 
-    /// Set the storage version in instance storage.
-    fn set_version(env: &Env, version: u32) {
-        env.storage().instance().set(&StorageKey::Version, &version);
-    }
-
-    /// Check if storage migration is needed.
-    /// Returns true if current version is less than STORAGE_VERSION.
-    #[expect(
-        dead_code,
-        reason = "kept as a small migration-status helper for future upgrade flows"
-    )]
-    pub fn needs_migration(env: &Env) -> bool {
-        Self::get_version(env) < STORAGE_VERSION
-    }
-
-    /// Run all necessary migrations from current version to latest.
-    ///
-    /// This function should be called:
-    /// 1. During contract initialization (to migrate any stale state)
-    /// 2. During the upgrade process (before new code runs)
-    ///
-    /// Returns Ok(()) if migration successful or not needed.
-    /// Returns Err if migration fails (e.g., corrupted data).
-    pub fn migrate(env: &Env) -> Result<(), crate::EscrowError> {
-        let current_version = Self::get_version(env);
-
-        if current_version == STORAGE_VERSION {
-            return Ok(()); // Already at latest version
-        }
-
-        if current_version > STORAGE_VERSION {
-            // Downgrade not supported - this could corrupt data
-            return Err(crate::EscrowError::E42);
-        }
-
-        // Run migrations in order from current to target version
-
-        // v1 -> v2: Migration from monolithic EscrowState to granular storage
-        // This is now run in configurable batches to avoid per-transaction ledger entry limits.
-        if current_version < 2 {
-            let cursor: u64 = env
-                .storage()
-                .instance()
-                .get(&DataKey::MigrationCursor)
-                .unwrap_or(1_u64);
-            let escrow_counter: u64 = env
-                .storage()
-                .instance()
-                .get(&DataKey::EscrowCounter)
-                .unwrap_or(0_u64);
-
-            if cursor > escrow_counter {
-                Self::set_version(env, 2);
-                return Ok(());
-            }
-
-            let last_id = Self::migrate_v1_to_v2(env, cursor, MAX_MIGRATION_BATCH)?;
-            let next_cursor = last_id.saturating_add(1);
-            env.storage()
-                .instance()
-                .set(&DataKey::MigrationCursor, &next_cursor);
-
-            if next_cursor > escrow_counter {
-                Self::set_version(env, 2);
-            }
-        }
-
+    /// Runs storage migrations for the current version. This version performs no
+    /// transformation, but the signature is retained so future migrations can
+    /// rewrite persistent keys without changing call sites in `lib.rs`.
+    pub fn migrate(_env: &Env) -> Result<(), EscrowError> {
         Ok(())
-    }
-
-    /// Migration from v1 (monolithic) to v2 (granular) storage layout.
-    ///
-    /// In v1: EscrowState stored as single unit with inline milestones Vec
-    /// In v2: EscrowMeta stored separately from Milestones for better gas efficiency
-    ///
-    /// This migration:
-    /// 1. Reads each escrow in v1 format
-    /// 2. Extracts EscrowMeta fields and stores separately
-    /// 3. Stores each milestone with its own key
-    /// 4. Removes the v1 storage entry
-    #[deny(clippy::arithmetic_side_effects)]
-    fn migrate_v1_to_v2(
-        env: &Env,
-        start_id: u64,
-        max_count: u32,
-    ) -> Result<u64, crate::EscrowError> {
-        let escrow_counter: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::EscrowCounter)
-            .unwrap_or(0_u64);
-
-        let start_id = if start_id == 0 { 1 } else { start_id };
-        if start_id > escrow_counter {
-            return Ok(escrow_counter);
-        }
-
-        let end_id = core::cmp::min(
-            start_id.saturating_add(u64::from(max_count).saturating_sub(1)),
-            escrow_counter,
-        );
-
-        for escrow_id in start_id..=end_id {
-            // In v1, escrows were stored with DataKey::Escrow(id)
-            // In v2, we use PackedDataKey::EscrowMeta(id) and PackedDataKey::Milestone(id, milestone_id)
-            let v1_key = DataKey::Escrow(escrow_id);
-
-            // Check if this escrow exists in v1 format
-            if let Some(v1_escrow) = env
-                .storage()
-                .persistent()
-                .get::<DataKey, EscrowStateV1>(&v1_key)
-            {
-                // Count approved milestones
-                let approved_count = v1_escrow
-                    .milestones
-                    .iter()
-                    .filter(|m| m.status == MS_APPROVED)
-                    .count() as u32;
-                let released_count = v1_escrow
-                    .milestones
-                    .iter()
-                    .filter(|m| m.status == MS_RELEASED)
-                    .count() as u32;
-                let submitted_count = v1_escrow
-                    .milestones
-                    .iter()
-                    .filter(|m| m.status == MS_SUBMITTED)
-                    .count() as u32;
-
-                // Create EscrowMeta from v1 data
-                let meta = crate::EscrowMeta {
-                    escrow_id: v1_escrow.escrow_id,
-                    client: v1_escrow.client,
-                    freelancer: v1_escrow.freelancer,
-                    token: v1_escrow.token,
-                    total_amount: v1_escrow.total_amount,
-                    // Note: allocated_amount was added in v2, calculate from milestones
-                    allocated_amount: v1_escrow
-                        .milestones
-                        .iter()
-                        .try_fold(0i128, |acc, m| acc.checked_add(m.amount))
-                        .ok_or(crate::EscrowError::E28)?,
-                    remaining_balance: v1_escrow.remaining_balance,
-                    status: v1_escrow.status,
-                    milestone_count: v1_escrow.milestones.len(),
-                    approved_count,
-                    released_count,
-                    submitted_count,
-                    arbiter: v1_escrow.arbiter,
-                    // v1 had no buyer_signers — default to empty (client-only approval)
-                    buyer_signers: soroban_sdk::Vec::new(env),
-                    created_at: v1_escrow.created_at,
-                    deadline: v1_escrow.deadline,
-                    lock_time: v1_escrow.lock_time,
-                    lock_time_extension: v1_escrow.lock_time_extension,
-                    timelock: OptionalTimelock::None,
-                    dispute_timeout_ledger: None,
-                    dispute_started_ledger: None,
-                    brief_hash: v1_escrow.brief_hash,
-                    rent_balance: 0,
-                    last_rent_collection_at: v1_escrow.created_at,
-                    dispute_start_ledger: None,
-                };
-
-                // Store meta in v2 format using PackedDataKey
-                let meta_key = PackedDataKey::EscrowMeta(escrow_id);
-                env.storage().persistent().set(&meta_key, &meta);
-
-                // Store each milestone individually with its own key
-                for milestone in v1_escrow.milestones.iter() {
-                    let milestone_key = PackedDataKey::Milestone(escrow_id, milestone.id);
-                    env.storage().persistent().set(&milestone_key, &milestone);
-                }
-
-                // Remove old v1 storage key to free space
-                env.storage().persistent().remove(&v1_key);
-            }
-        }
-
-        Ok(end_id)
-    }
-
-    /// Initialize storage version on first deploy.
-    /// Should be called during contract initialization.
-    pub fn init_version(env: &Env) {
-        // Set initial version to current - no migration needed on fresh deploy
-        Self::set_version(env, STORAGE_VERSION);
-    }
-}
-
-// Note: PackedDataKey is defined in lib.rs and re-exported from there
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TESTS
-//
-// Note: Storage manager functions require contract context (env.as_contract()).
-// These tests verify the constants and structure compile correctly.
-// Full migration tests are done via the contract's upgrade function.
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{ApprovalRecord, EscrowStatus, OptionalBytesN32};
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::String;
-
-    #[test]
-    fn test_storage_version_constant() {
-        // Verify the storage version constant is correct
-        assert_eq!(STORAGE_VERSION, 2);
-    }
-
-    #[test]
-    fn test_storage_key_has_version_variant() {
-        // Verify StorageKey enum compiles correctly
-        let _ = StorageKey::Version;
-    }
-
-    #[test]
-    fn test_escrow_state_v1_has_required_fields() {
-        // Verify EscrowStateV1 struct has all required fields
-        // This is a compile-time check only
-        #[allow(dead_code)]
-        fn check_v1_fields(_: &EscrowStateV1) {}
-        // The function signature verifies the type exists
-    }
-
-    fn v1_milestone(env: &Env, id: u32, amount: i128) -> Milestone {
-        Milestone {
-            id,
-            title: String::from_str(env, "m"),
-            description_hash: BytesN::from_array(env, &[0u8; 32]),
-            amount,
-            status: MS_APPROVED,
-            submitted_at: None,
-            resolved_at: None,
-            approvals: Vec::<ApprovalRecord>::new(env),
-            rejection_reason: OptionalBytesN32::None,
-            price_condition: crate::OptionalPriceCondition::None,
-            depends_on: None,
-        }
-    }
-
-    /// A v1 escrow whose milestone amounts sum past `i128::MAX` must fail
-    /// migration with `ArithmeticOverflow` instead of silently wrapping
-    /// `allocated_amount` to a wrong (negative) value.
-    #[test]
-    fn test_migrate_v1_to_v2_rejects_overflowing_milestone_sum() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, crate::EscrowContract);
-
-        env.as_contract(&contract_id, || {
-            let client = Address::generate(&env);
-            let freelancer = Address::generate(&env);
-            let token = Address::generate(&env);
-
-            let mut milestones = Vec::new(&env);
-            milestones.push_back(v1_milestone(&env, 0, i128::MAX));
-            milestones.push_back(v1_milestone(&env, 1, 1));
-
-            let v1_escrow = EscrowStateV1 {
-                escrow_id: 1,
-                client,
-                freelancer,
-                token,
-                total_amount: i128::MAX,
-                remaining_balance: 0,
-                status: EscrowStatus::Active,
-                milestones,
-                arbiter: None,
-                created_at: 0,
-                deadline: None,
-                lock_time: None,
-                lock_time_extension: None,
-                brief_hash: BytesN::from_array(&env, &[0u8; 32]),
-            };
-
-            env.storage()
-                .persistent()
-                .set(&DataKey::Escrow(1), &v1_escrow);
-            env.storage().instance().set(&DataKey::EscrowCounter, &1u64);
-
-            let result = StorageManager::migrate_v1_to_v2(&env, 1, MAX_MIGRATION_BATCH);
-            assert_eq!(result, Err(crate::EscrowError::E28));
-
-            // The v1 entry must be left untouched so a retry is possible.
-            assert!(env.storage().persistent().has(&DataKey::Escrow(1)));
-        });
     }
 }

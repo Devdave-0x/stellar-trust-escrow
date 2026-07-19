@@ -279,7 +279,39 @@ impl ContractStorage {
             .get(&DataKey::Admin)
             .ok_or(EscrowError::E2)?;
         if *caller != admin {
-            return Err(EscrowError::E4);
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
+        }
+        Ok(())
+    }
+
+    fn require_arbiter(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if let Some(arbiter) = &meta.arbiter {
+            if arbiter != caller {
+                return Err(EscrowError::E70); // RbacUnauthorizedRole
+            }
+            Ok(())
+        } else {
+            Err(EscrowError::E70) // RbacUnauthorizedRole
+        }
+    }
+
+    fn require_client(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if &meta.client != caller {
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
+        }
+        Ok(())
+    }
+
+    fn require_freelancer(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if &meta.freelancer != caller {
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
+        }
+        Ok(())
+    }
+
+    fn require_participant(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if &meta.client != caller && &meta.freelancer != caller {
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
         }
         Ok(())
     }
@@ -1220,9 +1252,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2138,9 +2168,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2211,9 +2239,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(env, escrow_id)?;
 
-        if *caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2284,9 +2310,7 @@ impl EscrowContract {
         }
 
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let mut milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
         if milestone.status != MS_PENDING {
@@ -2331,9 +2355,7 @@ impl EscrowContract {
         }
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2436,9 +2458,9 @@ impl EscrowContract {
             return Err(EscrowError::E9);
         }
         ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
-        if caller != meta.client && !meta.buyer_signers.contains(&caller) {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_client(&caller, &meta).or_else(|_| {
+            if meta.buyer_signers.contains(&caller) { Ok(()) } else { Err(EscrowError::E70) }
+        })?;
 
         let now = env.ledger().timestamp();
         let timelock_expired =
@@ -2534,14 +2556,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         ContractStorage::with_reentrancy_guard(&env, || {
-            let admin: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::Admin)
-                .ok_or(EscrowError::E2)?;
-            if caller != admin {
-                return Err(EscrowError::E4);
-            }
+            ContractStorage::require_admin(&env, &caller)?;
 
             if milestone_ids.is_empty() {
                 return Err(EscrowError::E17);
@@ -2749,9 +2764,7 @@ impl EscrowContract {
 
         // Load meta only to verify freelancer identity and track submitted_count.
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_freelancer(&caller, &meta)?;
 
         // Auto-extend deadline if submitted near expiry
         if let Some(deadline) = meta.deadline {
@@ -2814,9 +2827,9 @@ impl EscrowContract {
         ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
         // Caller must be the client or one of the buyer signers
-        if caller != meta.client && !meta.buyer_signers.contains(&caller) {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_client(&caller, &meta).or_else(|_| {
+            if meta.buyer_signers.contains(&caller) { Ok(()) } else { Err(EscrowError::E70) }
+        })?;
 
         let mut milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
         if milestone.status != MS_SUBMITTED {
@@ -2900,9 +2913,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2962,9 +2973,7 @@ impl EscrowContract {
         }
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -3004,9 +3013,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let entries = ContractStorage::active_storage_entries(&env, &meta);
         let min_reserve = ContractStorage::reserve_for_entries(entries);
@@ -3170,9 +3177,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-            if caller != meta.client {
-                return Err(EscrowError::E5);
-            }
+            ContractStorage::require_client(&caller, &meta)?;
             if meta.status != EscrowStatus::Active {
                 return Err(EscrowError::E9);
             }
@@ -3342,9 +3347,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-            if caller != meta.client {
-                return Err(EscrowError::E5);
-            }
+            ContractStorage::require_client(&caller, &meta)?;
             if meta.status != EscrowStatus::Active {
                 return Err(EscrowError::E9);
             }
@@ -3392,9 +3395,7 @@ impl EscrowContract {
         }
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -3430,9 +3431,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -3689,9 +3688,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
         if meta.status == EscrowStatus::Disputed {
             return Err(EscrowError::E9);
         }
@@ -3747,9 +3744,7 @@ impl EscrowContract {
 
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-            if caller != meta.client && caller != meta.freelancer {
-                return Err(EscrowError::E3);
-            }
+            ContractStorage::require_participant(&caller, &meta)?;
             if meta.status != EscrowStatus::Disputed {
                 return Err(EscrowError::E10);
             }
@@ -3829,8 +3824,7 @@ impl EscrowContract {
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-            let is_arbiter = meta.arbiter.as_ref().is_some_and(|a| *a == caller);
-            if !is_arbiter {
+            if ContractStorage::require_arbiter(&caller, &meta).is_err() {
                 ContractStorage::require_admin(&env, &caller)?;
             }
 
@@ -3912,9 +3906,7 @@ impl EscrowContract {
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
         // Only client or freelancer can escalate
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
 
         // Escrow must be in disputed status
         if meta.status != EscrowStatus::Disputed {
@@ -4360,9 +4352,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let mut recurring = ContractStorage::load_recurring_config(&env, escrow_id)?;
         if recurring.cancelled {
@@ -4386,9 +4376,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let mut recurring = ContractStorage::load_recurring_config(&env, escrow_id)?;
         if recurring.cancelled {
@@ -4423,9 +4411,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -4489,9 +4475,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if additional_periods == 0 {
             return Ok(0);
         }
@@ -4674,7 +4658,7 @@ impl EscrowContract {
         // Validate: arbiter must not be client or freelancer.
         if let Some(ref a) = new_arbiter {
             if a == &meta.client || a == &meta.freelancer {
-                return Err(EscrowError::E3);
+                return Err(EscrowError::E72); // RbacInvalidRoleAssignment
             }
         }
 
@@ -4702,9 +4686,7 @@ impl EscrowContract {
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
         // Only client or freelancer can request cancellation
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
 
         if reason.len() > MAX_STRING_LEN {
             return Err(EscrowError::E19);
