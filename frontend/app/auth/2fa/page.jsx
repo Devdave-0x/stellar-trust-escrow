@@ -45,6 +45,20 @@ function TwoFactorChallenge({ mfaPendingToken }) {
     }
   }, [code]);
 
+  function handleDownloadInstructions() {
+    const content =
+      'Two-Factor Authentication Recovery\n\n' +
+      'If you lose access to your authenticator app, use one of your backup codes ' +
+      'or contact support at /support.\n';
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = '2fa-recovery-instructions.txt';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className={styles.container}>
       <h1>Two‑Factor Authentication</h1>
@@ -67,6 +81,9 @@ function TwoFactorChallenge({ mfaPendingToken }) {
       <button onClick={() => setUsingBackup(!usingBackup)} type="button">
         {usingBackup ? 'Use authenticator app' : 'Use backup code'}
       </button>
+      <button type="button" onClick={handleDownloadInstructions}>
+        Download as .txt
+      </button>
       {error && (
         <p role="alert" style={{ color: 'red' }}>
           {error}
@@ -79,6 +96,12 @@ function TwoFactorChallenge({ mfaPendingToken }) {
   );
 }
 
-export default function TwoFactorPage({ searchParams }) {
-  return <TwoFactorChallenge mfaPendingToken={searchParams?.mfaPendingToken} />;
+export default function TwoFactorPage({ mfaPendingToken, searchParams }) {
+  return (
+    <TwoFactorChallenge
+      mfaPendingToken={mfaPendingToken ?? searchParams?.mfaPendingToken}
+    />
+  );
 }
+
+export { TwoFactorChallenge };
