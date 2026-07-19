@@ -243,8 +243,8 @@ pub struct ApprovalRecord {
 // STRUCTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Multisig policy for milestone approve/reject. Empty `approvers` disables multisig
-/// (only `client` may approve/reject, legacy behaviour).
+/// Weighted multisig policy for milestone approval. Empty `approvers`, empty
+/// `weights`, and a zero `threshold` disable multisig for low-value escrows.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct MultisigConfig {
@@ -507,6 +507,26 @@ pub struct CancellationRequest {
     pub counterparty_approved: bool,
 }
 
+/// A mutual-consent cancellation proposal requiring approval from the other party.
+///
+/// Either the client or freelancer can propose; the counterparty must accept
+/// within 24 hours. On acceptance the escrow is split per `client_refund_bps`
+/// and the agreed terms hash is anchored on-chain.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CancellationProposal {
+    /// The escrow ID this proposal belongs to.
+    pub escrow_id: u64,
+    /// Address of the party who proposed cancellation.
+    pub proposer: Address,
+    /// Client refund share in basis points (0–10000). Contractor receives the remainder.
+    pub client_refund_bps: u32,
+    /// SHA-256 hash of the cancellation terms agreed by the proposer.
+    pub terms_hash: BytesN<32>,
+    /// Ledger timestamp when the proposal was created.
+    pub proposed_at: u64,
+}
+
 /// Oracle-signed resolution payload for fallback dispute resolution.
 ///
 /// Submitted by any caller once the grace period has elapsed.
@@ -555,6 +575,38 @@ pub struct SlashRecord {
 
     /// Whether this slash has been disputed.
     pub disputed: bool,
+}
+
+/// A deadline extension request requiring mutual participant consent.
+///
+/// Either the client or freelancer can propose an extension.
+/// Both parties must approve for the extension to take effect.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct DeadlineExtensionRequest {
+    /// The escrow ID this extension request belongs to.
+    pub escrow_id: u64,
+
+    /// Address of the party requesting the extension.
+    pub requester: Address,
+
+    /// Proposed new deadline (ledger timestamp).
+    pub new_deadline: u64,
+
+    /// Reason for the extension request.
+    pub reason: String,
+
+    /// When the extension was requested (ledger timestamp).
+    pub requested_at: u64,
+
+    /// Whether the counterparty has approved this extension.
+    pub counterparty_approved: bool,
+
+    /// Ledger timestamp when the counterparty approved (if they did).
+    pub approved_at: Option<u64>,
+
+    /// True if the request has been rejected or cancelled.
+    pub cancelled: bool,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -696,6 +748,8 @@ pub enum DataKey {
     AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
+    /// Timestamp when pause was initiated — value: u64
+    PauseInitiatedAt,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
     CancellationRequest(u64),
     /// Slash record by escrow ID — key: u64, value: SlashRecord
@@ -752,4 +806,10 @@ pub enum DataKey {
     OracleResolution(u64),
     /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
     TrustedOracleKey,
+    /// Deadline extension request by escrow ID — key: u64, value: DeadlineExtensionRequest
+    DeadlineExtensionRequest(u64),
+    /// Escrow IDs with active deadline extension requests indexed by requester — key: Address, value: Vec<u64>
+    DeadlineExtensionsByRequester(Address),
+    /// Mutual-consent cancellation proposal by escrow ID — key: u64, value: CancellationProposal
+    CancellationProposal(u64),
 }

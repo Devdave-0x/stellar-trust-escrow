@@ -26,6 +26,8 @@ import {
   handleValidationErrors,
 } from '../../middleware/validation.js';
 
+const VALID_ESCROW_STATUSES = new Set(['Active', 'Completed', 'Disputed', 'Cancelled']);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Invalidate all cache entries for a specific escrow and the list collection. */
@@ -85,6 +87,14 @@ const listEscrows = async (req, res) => {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      const invalid = statuses.filter((s) => !VALID_ESCROW_STATUSES.has(s));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid status value(s)',
+          invalid,
+          allowed: [...VALID_ESCROW_STATUSES],
+        });
+      }
       where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
     if (client) where.clientAddress = client;

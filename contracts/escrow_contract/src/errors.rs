@@ -57,11 +57,32 @@ pub enum EcErr {
     E61 = 61,
     E62 = 62,
     E63 = 63,
-    /// A checked arithmetic operation (add/mul/cast) overflowed.
-    ArithmeticOverflow = 64,
+    E64 = 64,
+    E65 = 65,
+    E66 = 66,
     OracleStaleFeed = 67,
     OracleInvalidPrice = 68,
     OraclePriceConversionFailed = 69,
+    E70 = 70, // RbacUnauthorizedRole
+    E71 = 71, // RbacRoleAlreadySet
+    E72 = 72, // RbacInvalidRoleAssignment
+    FeeTooHigh = 73,
+    TreasuryNotConfigured = 74,
+    InvalidMultisigConfig = 75,
+    HighValueMultisigRequired = 76,
+    DuplicateMultisigApproval = 77,
+    MultisigBatchApprovalUnsupported = 78,
+    OracleStalePriceFeed = 130,
+    OracleDriftExceeded = 131,
+    OracleNotConfigured = 132,
+    ContractPaused = 133,
+    UnpauseTooEarly = 134,
+    CannotAcceptOwnProposal = 135,
+    ProposalExpired = 136,
+    InvalidEscrowState = 137,
+    NoCancellationProposal = 138,
 }
 
-pub use self::EcErr as EscrowError;
+/// Backward-compatible alias — existing code imports `EscrowError`; the oracle
+/// refactor renamed the enum to `EcErr` without updating call sites.
+pub type EscrowError = EcErr;

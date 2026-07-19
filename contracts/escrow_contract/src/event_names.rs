@@ -60,6 +60,9 @@ pub const DISPUTE_TIMEOUT_CLAIMED: Symbol = symbol_short!("dis_to");
 pub const CANCELLATION_REQUESTED: Symbol = symbol_short!("can_req");
 pub const CANCELLATION_APPROVED: Symbol = symbol_short!("can_apr");
 pub const CANCELLATION_EXECUTED: Symbol = symbol_short!("can_exe");
+pub const CANCELLATION_PROPOSED: Symbol = symbol_short!("can_pro");
+pub const CANCELLATION_REJECTED: Symbol = symbol_short!("can_rej");
+pub const MUTUAL_CANCEL_DONE: Symbol = symbol_short!("mcan_dne");
 
 // ── Slashing ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +82,9 @@ pub const LOCK_TIME_EXTENDED: Symbol = symbol_short!("lock_ext");
 pub const CLIENT_ROLE_TRANSFERRED: Symbol = symbol_short!("cl_role");
 pub const ARBITER_UPDATED: Symbol = symbol_short!("arb_upd");
 pub const DEADLINE_EXTENDED: Symbol = symbol_short!("dl_ext");
+pub const DEADLINE_EXTENSION_REQUESTED: Symbol = symbol_short!("dl_req");
+pub const DEADLINE_EXTENSION_APPROVED: Symbol = symbol_short!("dl_apr");
+pub const DEADLINE_EXTENSION_CANCELLED: Symbol = symbol_short!("dl_can");
 
 // ── Reputation ────────────────────────────────────────────────────────────────
 
@@ -100,3 +106,7 @@ pub const ADMIN_PROPOSED: Symbol = symbol_short!("adm_prop");
 pub const ADMIN_CHANGED: Symbol = symbol_short!("adm_chg");
 pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
 pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
+pub const EMERGENCY_WITHDRAWAL: Symbol = symbol_short!("emg_wth");
+
+// ── Platform fees ─────────────────────────────────────────────────────────────
+pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");
