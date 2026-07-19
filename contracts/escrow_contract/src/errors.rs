@@ -72,6 +72,9 @@ pub enum EcErr {
     HighValueMultisigRequired = 76,
     DuplicateMultisigApproval = 77,
     MultisigBatchApprovalUnsupported = 78,
+    OracleStalePriceFeed = 130,
+    OracleDriftExceeded = 131,
+    OracleNotConfigured = 132,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
