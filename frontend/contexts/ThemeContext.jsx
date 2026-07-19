@@ -14,7 +14,9 @@ const ThemeContext = createContext(null);
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(getInitialTheme);
   // Track whether the user has explicitly chosen a theme (vs system-derived)
-  const hasManualPreference = useRef(!!localStorage.getItem(THEME_KEY));
+  const hasManualPreference = useRef(
+    typeof window !== 'undefined' && !!localStorage.getItem(THEME_KEY),
+  );
 
   useEffect(() => {
     // Apply CSS — write to localStorage only if user had a stored preference
