@@ -243,8 +243,8 @@ pub struct ApprovalRecord {
 // STRUCTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Multisig policy for milestone approve/reject. Empty `approvers` disables multisig
-/// (only `client` may approve/reject, legacy behaviour).
+/// Weighted multisig policy for milestone approval. Empty `approvers`, empty
+/// `weights`, and a zero `threshold` disable multisig for low-value escrows.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct MultisigConfig {
