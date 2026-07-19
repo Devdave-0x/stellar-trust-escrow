@@ -1,9 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
+import { withNuqsTestingAdapter } from 'nuqs/adapters/testing';
 import ExplorerPage from '../../app/explorer/page';
 
+// hasMemory: true so URL state persists across nuqs setter calls inside the same render tree.
+// Without it the adapter discards each update and the second fetch reverts to the initial URL.
+const NuqsWrapper = withNuqsTestingAdapter({ hasMemory: true });
 function renderWithNuqs(ui) {
-  return render(ui, { wrapper: NuqsTestingAdapter });
+  return render(ui, { wrapper: NuqsWrapper });
 }
 
 // SearchFilters uses useToast which requires ToastProvider — stub it for tests.
@@ -93,8 +96,11 @@ describe('ExplorerPage', () => {
     const completedBtn = await screen.findByRole('button', { name: 'Completed' });
     fireEvent.click(completedBtn);
 
-    expect(await screen.findByText('Escrow #3')).toBeInTheDocument();
-    expect(screen.queryByText('Escrow #1')).not.toBeInTheDocument();
+    // Wait for filter to settle: Escrow #1 gone, Escrow #3 visible
+    await waitFor(() => {
+      expect(screen.queryByText('Escrow #1')).not.toBeInTheDocument();
+      expect(screen.getByText('Escrow #3')).toBeInTheDocument();
+    });
   });
 
   it('filters escrows by search query', async () => {
