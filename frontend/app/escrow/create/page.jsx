@@ -247,7 +247,33 @@ export default function CreateEscrowPage() {
 
       {/* Step Indicator */}
       <nav aria-label="Progress">
-        <ol className="flex items-center gap-2">
+        {/* Mobile: collapse the step indicator into a single progress bar */}
+        <div className="sm:hidden mb-2">
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+            <span className="font-medium text-white">
+              Step {currentStep}: {STEPS[currentStep - 1]?.label}
+            </span>
+            <span>
+              {currentStep} / {STEPS.length}
+            </span>
+          </div>
+          <div
+            className="w-full h-2 bg-gray-800 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuemin={1}
+            aria-valuemax={STEPS.length}
+            aria-valuenow={currentStep}
+            aria-label={`Step ${currentStep} of ${STEPS.length}: ${STEPS[currentStep - 1]?.label}`}
+          >
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+              style={{ width: `${(currentStep / STEPS.length) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Desktop: full step indicator */}
+        <ol className="hidden sm:flex items-center gap-2">
           {STEPS.map((step, i) => (
             <li key={step.id} className="flex items-center gap-2">
               <div
