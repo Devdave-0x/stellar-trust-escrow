@@ -103,3 +103,6 @@ pub const ADMIN_PROPOSED: Symbol = symbol_short!("adm_prop");
 pub const ADMIN_CHANGED: Symbol = symbol_short!("adm_chg");
 pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
 pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
+
+// ── Platform fees ─────────────────────────────────────────────────────────────
+pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");

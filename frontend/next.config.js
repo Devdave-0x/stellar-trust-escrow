@@ -1,6 +1,13 @@
 /** @type {import('next').NextConfig} */
 
-import { withSentryConfig } from '@sentry/nextjs';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+let withSentryConfig;
+try {
+  withSentryConfig = require('@sentry/nextjs').withSentryConfig;
+} catch (e) {
+  withSentryConfig = (config) => config;
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
