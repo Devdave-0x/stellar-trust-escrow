@@ -268,5 +268,4 @@ function AdminDashboardContent() {
   );
 }
 
-// Wrap with requireRole HOC for admin protection
-export default requireRole('admin')(AdminDashboardContent);
+export default AdminDashboardContent;
