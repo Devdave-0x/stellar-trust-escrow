@@ -873,3 +873,15 @@ model SystemConfig {
   @@index([key])
   @@map("system_config")
 }
+
+model AnalyticsSnapshot {
+  id         String   @id @default(cuid())
+  snapshotAt DateTime @map("snapshot_at")
+  period     String   // '5min' | 'hourly' | 'daily'
+  metric     String
+  value      Float
+  labels     Json?
+
+  @@index([metric, period, snapshotAt])
+  @@map("analytics_snapshots")
+}
