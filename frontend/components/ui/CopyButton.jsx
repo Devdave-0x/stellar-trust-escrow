@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 
-export default function CopyButton({ text, label = 'Copy', feedbackDuration = 2000 }) {
+export function CopyButton({ text, label = 'Copy', feedbackDuration = 2000 }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -39,3 +39,5 @@ export default function CopyButton({ text, label = 'Copy', feedbackDuration = 20
     </button>
   );
 }
+
+export default CopyButton;
