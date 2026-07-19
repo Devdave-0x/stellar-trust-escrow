@@ -21,6 +21,10 @@ const localStorageMock = (() => {
 })();
 Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
+// Mock sub-components that make their own fetch calls to avoid interference
+jest.mock('../../../components/admin/DisputeQueue', () => () => <div>DisputeQueue</div>);
+jest.mock('../../../components/admin/ArbiterTable', () => () => <div>ArbiterTable</div>);
+
 // Mock fetch
 global.fetch = jest.fn();
 
