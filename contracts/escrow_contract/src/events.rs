@@ -500,6 +500,19 @@ pub fn emit_dispute_escalated_to_governance(
 /// * `escrow_id` - The escrow ID
 /// * `referrer` - The address of the referrer
 /// * `amount` - The referral payout amount
+pub fn emit_fee_collected(
+    env: &Env,
+    escrow_id: u64,
+    milestone_id: u32,
+    fee: i128,
+    treasury: &Address,
+) {
+    env.events().publish(
+        (ev::FEE_COLLECTED, escrow_id),
+        (milestone_id, fee, treasury.clone()),
+    );
+}
+
 pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amount: i128) {
     env.events().publish(
         (symbol_short!("ref_pay"), escrow_id),
