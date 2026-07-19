@@ -44,7 +44,6 @@ const meta: Meta<typeof Button> = {
     },
   },
   args: {
-    children: 'Button',
     variant: 'primary',
     size: 'md',
     disabled: false,
