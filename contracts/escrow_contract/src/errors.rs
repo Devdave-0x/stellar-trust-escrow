@@ -75,6 +75,12 @@ pub enum EcErr {
     OracleStalePriceFeed = 130,
     OracleDriftExceeded = 131,
     OracleNotConfigured = 132,
+    ContractPaused = 133,
+    UnpauseTooEarly = 134,
+    CannotAcceptOwnProposal = 135,
+    ProposalExpired = 136,
+    InvalidEscrowState = 137,
+    NoCancellationProposal = 138,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
