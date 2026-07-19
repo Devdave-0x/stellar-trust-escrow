@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import { cn } from '../../lib/utils';
 
 export type EvidenceType = 'pdf' | 'image';
@@ -87,11 +88,16 @@ export default function EvidenceViewer({
       {state === 'loaded' && (
         <div className="p-3">
           {type === 'image' ? (
-            <img
-              src={url}
-              alt={`Preview of ${fileName}`}
-              className="max-h-72 w-full rounded-lg object-contain"
-            />
+            <div className="relative h-72 w-full">
+              <Image
+                src={url as string}
+                alt={`Preview of ${fileName}`}
+                fill
+                unoptimized
+                sizes="100vw"
+                className="rounded-lg object-contain"
+              />
+            </div>
           ) : (
             <div className="flex h-56 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-700 bg-gray-800/40 text-center">
               <span className="text-3xl" aria-hidden="true">
