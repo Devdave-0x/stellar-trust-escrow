@@ -26,6 +26,7 @@
  * - Show time remaining if deadline is set
  * - Add "disputed" warning banner if status === Disputed
  */
+'use client';
 
 import Link from 'next/link';
 import Badge from '../ui/Badge';
