@@ -79,4 +79,6 @@ function TwoFactorChallenge({ mfaPendingToken }) {
   );
 }
 
-export default TwoFactorChallenge;
+export default function TwoFactorPage({ searchParams }) {
+  return <TwoFactorChallenge mfaPendingToken={searchParams?.mfaPendingToken} />;
+}

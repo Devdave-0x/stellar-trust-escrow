@@ -15,6 +15,7 @@ export default {
     '<rootDir>/tests/unit/keyRotationService.test.js',
     '<rootDir>/tests/unit/analyticsController.test.js',
     '<rootDir>/tests/exportGdpr.test.js',
+    '<rootDir>/tests/stellarClient.test.js',
   ],
   collectCoverageFrom: [
     'api/controllers/**/*.js',

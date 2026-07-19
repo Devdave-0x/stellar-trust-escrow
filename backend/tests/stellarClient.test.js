@@ -6,7 +6,7 @@ const loggerMock = {
   error: jest.fn(),
 };
 
-jest.unstable_mockModule('../lib/logger.js', () => ({
+jest.unstable_mockModule('../config/logger.js', () => ({
   createModuleLogger: () => loggerMock,
 }));
 
