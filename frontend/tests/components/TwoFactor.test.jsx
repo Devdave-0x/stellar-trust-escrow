@@ -1,8 +1,8 @@
 // frontend/tests/components/TwoFactor.test.jsx
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import TwoFactorSetup from '../../../app/settings/security/page.jsx';
-import TwoFactorChallenge from '../../../app/auth/2fa/page.jsx';
+import TwoFactorSetup from '../../app/settings/security/page.jsx';
+import TwoFactorChallenge from '../../app/auth/2fa/page.jsx';
 
 // Mock fetch globally
 global.fetch = jest.fn();

@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getInitialTheme, applyTheme, toggleTheme as toggleThemeUtil, THEMES, THEME_KEY } from '../lib/theme';
+import { getInitialTheme, applyTheme, persistTheme, toggleTheme as toggleThemeUtil, THEMES, THEME_KEY } from '../lib/theme';
 
 const ThemeContext = createContext(null);
 
@@ -32,7 +32,7 @@ export function ThemeProvider({ children }) {
     };
   }, []);
 
-  // Whenever theme changes, apply it
+  // Whenever theme changes, apply it to the DOM (does not persist)
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
@@ -40,6 +40,7 @@ export function ThemeProvider({ children }) {
   const toggleTheme = useCallback(() => {
     const newTheme = toggleThemeUtil(theme);
     setTheme(newTheme);
+    persistTheme(newTheme); // manual user choice — persist as override
   }, [theme]);
 
   return (
