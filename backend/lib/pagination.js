@@ -107,14 +107,17 @@ function decodeCursor(cursor) {
 
     if (
       typeof decoded?.id !== 'string' ||
-      decoded.id.length === 0 ||
+      !/^\d+$/.test(decoded.id) ||
       typeof decoded?.createdAt !== 'string' ||
       Number.isNaN(createdAt.getTime())
     ) {
       throw new Error('Cursor payload is invalid');
     }
 
-    return decoded;
+    return {
+      ...decoded,
+      id: BigInt(decoded.id),
+    };
   } catch {
     throw new PaginationError('Invalid pagination cursor', 'INVALID_CURSOR');
   }

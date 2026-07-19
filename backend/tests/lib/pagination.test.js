@@ -2,14 +2,14 @@ import { jest } from '@jest/globals';
 import { paginate, PaginationError } from '../../lib/pagination.js';
 
 function escrow(id, createdAt) {
-  return { id: String(id), createdAt: new Date(createdAt) };
+  return { id: BigInt(id), createdAt: new Date(createdAt) };
 }
 
 function createModel(initialRecords) {
   let records = [...initialRecords];
   const findMany = jest.fn(async ({ take, cursor, skip }) => {
     const sorted = [...records].sort(
-      (a, b) => b.createdAt - a.createdAt || String(b.id).localeCompare(String(a.id)),
+      (a, b) => b.createdAt - a.createdAt || (b.id > a.id ? 1 : b.id < a.id ? -1 : 0),
     );
     const cursorIndex = cursor ? sorted.findIndex((record) => record.id === cursor.id) : -1;
     const start = cursorIndex >= 0 ? cursorIndex + skip : 0;
@@ -47,7 +47,7 @@ describe('paginate', () => {
     const store = createModel(records);
 
     const first = await paginate(store.model, {}, undefined, undefined, 10);
-    store.insert(escrow('new', '2026-02-01T00:00:00.000Z'));
+    store.insert(escrow(999, '2026-02-01T00:00:00.000Z'));
     const second = await paginate(
       store.model,
       {},
@@ -86,7 +86,7 @@ describe('paginate', () => {
     } while (cursor);
 
     expect(ids).toHaveLength(50);
-    expect(new Set(ids)).toHaveLength(50);
+    expect(new Set(ids).size).toBe(50);
   });
 
   it('always requests one extra row with stable ordering', async () => {
@@ -101,5 +101,23 @@ describe('paginate', () => {
       cursor: undefined,
       skip: 0,
     });
+  });
+
+  it('decodes the cursor id as BigInt for Prisma', async () => {
+    const records = [
+      escrow(2, '2026-01-02T00:00:00.000Z'),
+      escrow(1, '2026-01-01T00:00:00.000Z'),
+    ];
+    const { model } = createModel(records);
+    const first = await paginate(model, {}, undefined, undefined, 1);
+
+    await paginate(model, {}, undefined, first.pagination.next_cursor, 1);
+
+    expect(model.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: { id: 2n },
+        skip: 1,
+      }),
+    );
   });
 });
