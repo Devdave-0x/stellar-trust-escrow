@@ -89,7 +89,7 @@ pub use types::{
     PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord, Timelock,
     MS_APPROVED, MS_DISPUTED, MS_PENDING, MS_REJECTED, MS_RELEASED, MS_SUBMITTED,
 };
-use types::{CancellationRequest, RecurringPaymentConfig, SlashRecord};
+use types::{CancellationRequest, DeadlineExtensionRequest, RecurringPaymentConfig, SlashRecord};
 use types::{FundPayload, ProposalPayload, ProposalType};
 
 use soroban_sdk::{
@@ -279,7 +279,39 @@ impl ContractStorage {
             .get(&DataKey::Admin)
             .ok_or(EscrowError::E2)?;
         if *caller != admin {
-            return Err(EscrowError::E4);
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
+        }
+        Ok(())
+    }
+
+    fn require_arbiter(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if let Some(arbiter) = &meta.arbiter {
+            if arbiter != caller {
+                return Err(EscrowError::E70); // RbacUnauthorizedRole
+            }
+            Ok(())
+        } else {
+            Err(EscrowError::E70) // RbacUnauthorizedRole
+        }
+    }
+
+    fn require_client(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if &meta.client != caller {
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
+        }
+        Ok(())
+    }
+
+    fn require_freelancer(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if &meta.freelancer != caller {
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
+        }
+        Ok(())
+    }
+
+    fn require_participant(caller: &Address, meta: &EscrowMeta) -> Result<(), EscrowError> {
+        if &meta.client != caller && &meta.freelancer != caller {
+            return Err(EscrowError::E70); // RbacUnauthorizedRole
         }
         Ok(())
     }
@@ -567,6 +599,26 @@ impl ContractStorage {
         env.storage()
             .persistent()
             .remove(&DataKey::SlashRecord(escrow_id));
+    }
+
+    fn load_deadline_extension_request(
+        env: &Env,
+        escrow_id: u64,
+    ) -> Result<DeadlineExtensionRequest, EscrowError> {
+        let key = DataKey::DeadlineExtensionRequest(escrow_id);
+        let req = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(EscrowError::E32)?;
+        Self::bump_persistent_ttl(env, &key);
+        Ok(req)
+    }
+
+    fn save_deadline_extension_request(env: &Env, request: &DeadlineExtensionRequest) {
+        let key = DataKey::DeadlineExtensionRequest(request.escrow_id);
+        env.storage().persistent().set(&key, request);
+        Self::bump_persistent_ttl(env, &key);
     }
 
     // ── Meta-transaction nonce tracking ────────────────────────────────────────
@@ -1200,9 +1252,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2053,9 +2103,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2126,9 +2174,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(env, escrow_id)?;
 
-        if *caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2199,9 +2245,7 @@ impl EscrowContract {
         }
 
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let mut milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
         if milestone.status != MS_PENDING {
@@ -2246,9 +2290,7 @@ impl EscrowContract {
         }
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2351,9 +2393,9 @@ impl EscrowContract {
             return Err(EscrowError::E9);
         }
         ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
-        if caller != meta.client && !meta.buyer_signers.contains(&caller) {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_client(&caller, &meta).or_else(|_| {
+            if meta.buyer_signers.contains(&caller) { Ok(()) } else { Err(EscrowError::E70) }
+        })?;
 
         let now = env.ledger().timestamp();
         let timelock_expired =
@@ -2433,14 +2475,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         ContractStorage::with_reentrancy_guard(&env, || {
-            let admin: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::Admin)
-                .ok_or(EscrowError::E2)?;
-            if caller != admin {
-                return Err(EscrowError::E4);
-            }
+            ContractStorage::require_admin(&env, &caller)?;
 
             if milestone_ids.is_empty() {
                 return Err(EscrowError::E17);
@@ -2649,9 +2684,7 @@ impl EscrowContract {
 
         // Load meta only to verify freelancer identity and track submitted_count.
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_freelancer(&caller, &meta)?;
 
         // Auto-extend deadline if submitted near expiry
         if let Some(deadline) = meta.deadline {
@@ -2714,9 +2747,9 @@ impl EscrowContract {
         ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
         // Caller must be the client or one of the buyer signers
-        if caller != meta.client && !meta.buyer_signers.contains(&caller) {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_client(&caller, &meta).or_else(|_| {
+            if meta.buyer_signers.contains(&caller) { Ok(()) } else { Err(EscrowError::E70) }
+        })?;
 
         let mut milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
         if milestone.status != MS_SUBMITTED {
@@ -2792,9 +2825,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2854,9 +2885,7 @@ impl EscrowContract {
         }
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -2896,9 +2925,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let entries = ContractStorage::active_storage_entries(&env, &meta);
         let min_reserve = ContractStorage::reserve_for_entries(entries);
@@ -3065,9 +3092,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-            if caller != meta.client {
-                return Err(EscrowError::E5);
-            }
+            ContractStorage::require_client(&caller, &meta)?;
             if meta.status != EscrowStatus::Active {
                 return Err(EscrowError::E9);
             }
@@ -3237,9 +3262,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-            if caller != meta.client {
-                return Err(EscrowError::E5);
-            }
+            ContractStorage::require_client(&caller, &meta)?;
             if meta.status != EscrowStatus::Active {
                 return Err(EscrowError::E9);
             }
@@ -3287,9 +3310,7 @@ impl EscrowContract {
         }
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -3325,9 +3346,7 @@ impl EscrowContract {
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -3353,6 +3372,223 @@ impl EscrowContract {
         Ok(())
     }
 
+    // ── Deadline Extension by Mutual Consent ────────────────────────────────
+
+    /// Requests a deadline extension, requiring approval from the counterparty.
+    ///
+    /// Either the client or freelancer can initiate a request for a deadline extension.
+    /// The counterparty must explicitly approve for the extension to take effect.
+    /// Only one active extension request can exist at a time for an escrow.
+    ///
+    /// # Arguments
+    /// * `escrow_id` - The escrow to extend the deadline for
+    /// * `new_deadline` - The proposed new deadline (ledger timestamp)
+    /// * `reason` - Reason for requesting the extension
+    pub fn request_deadline_extension(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        new_deadline: u64,
+        reason: String,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+
+        // Load the escrow
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+        // Caller must be one of the two participants
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        // Escrow must be active
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+
+        let now = env.ledger().timestamp();
+
+        // New deadline must be in the future
+        if new_deadline <= now {
+            return Err(EscrowError::E30);
+        }
+
+        // New deadline must be after the current deadline (if one exists)
+        if let Some(current_deadline) = meta.deadline {
+            if new_deadline <= current_deadline {
+                return Err(EscrowError::E30);
+            }
+        }
+
+        // Check if there's already an active extension request
+        if let Ok(existing) = ContractStorage::load_deadline_extension_request(&env, escrow_id) {
+            if !existing.cancelled {
+                // There's already an active request
+                return Err(EscrowError::E31);
+            }
+        }
+
+        // Create and store the new extension request
+        let extension_request = DeadlineExtensionRequest {
+            escrow_id,
+            requester: caller.clone(),
+            new_deadline,
+            reason: reason.clone(),
+            requested_at: now,
+            counterparty_approved: false,
+            approved_at: None,
+            cancelled: false,
+        };
+
+        ContractStorage::save_deadline_extension_request(&env, &extension_request);
+
+        // Index the request by requester
+        Self::append_to_vec_index(
+            &env,
+            &DataKey::DeadlineExtensionsByRequester(caller.clone()),
+            escrow_id,
+        );
+
+        // Emit the event
+        events::emit_deadline_extension_requested(&env, escrow_id, &caller, new_deadline, &reason);
+
+        Ok(())
+    }
+
+    /// Approves a pending deadline extension request.
+    ///
+    /// The counterparty (not the requester) must call this to approve the extension.
+    /// Once approved, the escrow's deadline is updated immediately.
+    ///
+    /// # Arguments
+    /// * `escrow_id` - The escrow to approve the extension for
+    pub fn approve_deadline_extension(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+
+        // Load the escrow
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+        // Caller must be one of the two participants
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E3);
+        }
+
+        // Escrow must be active
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+
+        // Retrieve the extension request
+        let mut extension_request =
+            ContractStorage::load_deadline_extension_request(&env, escrow_id)?;
+
+        // Check that the request is not already approved or cancelled
+        if extension_request.counterparty_approved {
+            return Err(EscrowError::E33);
+        }
+        if extension_request.cancelled {
+            return Err(EscrowError::E32);
+        }
+
+        // Caller must be the counterparty (not the requester)
+        if caller == extension_request.requester {
+            return Err(EscrowError::E34);
+        }
+
+        let now = env.ledger().timestamp();
+
+        // Mark as approved and update the deadline
+        extension_request.counterparty_approved = true;
+        extension_request.approved_at = Some(now);
+        meta.deadline = Some(extension_request.new_deadline);
+
+        // Save updated state
+        ContractStorage::save_deadline_extension_request(&env, &extension_request);
+        ContractStorage::save_escrow_meta(&env, &meta);
+
+        // Emit the approval event
+        events::emit_deadline_extension_approved(
+            &env,
+            escrow_id,
+            &caller,
+            extension_request.new_deadline,
+        );
+
+        // Also emit the deadline extended event for consistency
+        events::emit_deadline_extended(&env, escrow_id, now, extension_request.new_deadline);
+
+        Ok(())
+    }
+
+    /// Cancels a pending deadline extension request.
+    ///
+    /// The requester can cancel their own request at any time before the counterparty approves.
+    ///
+    /// # Arguments
+    /// * `escrow_id` - The escrow to cancel the extension request for
+    pub fn cancel_extension_request(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+
+        // Load the escrow
+        let _meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+        // Retrieve the extension request
+        let mut extension_request =
+            ContractStorage::load_deadline_extension_request(&env, escrow_id)?;
+
+        // Check that the request is not already cancelled
+        if extension_request.cancelled {
+            return Err(EscrowError::E32);
+        }
+
+        // Check that the request is not already approved
+        if extension_request.counterparty_approved {
+            return Err(EscrowError::E33);
+        }
+
+        // Caller must be the requester
+        if caller != extension_request.requester {
+            return Err(EscrowError::E35);
+        }
+
+        // Mark as cancelled
+        extension_request.cancelled = true;
+
+        // Save the updated request
+        ContractStorage::save_deadline_extension_request(&env, &extension_request);
+
+        // Remove from the requester's index
+        Self::remove_from_vec_index(
+            &env,
+            &DataKey::DeadlineExtensionsByRequester(caller.clone()),
+            escrow_id,
+        );
+
+        // Emit the cancellation event
+        events::emit_deadline_extension_cancelled(&env, escrow_id, &caller);
+
+        Ok(())
+    }
+
+    /// Gets the active deadline extension request for an escrow (if any).
+    pub fn get_deadline_extension_request(
+        env: Env,
+        escrow_id: u64,
+    ) -> Option<DeadlineExtensionRequest> {
+        ContractStorage::load_deadline_extension_request(&env, escrow_id).ok()
+    }
+
     // ── Dispute Resolution ────────────────────────────────────────────────────
 
     /// Raises a dispute, freezing further fund releases.
@@ -3367,9 +3603,7 @@ impl EscrowContract {
         ContractStorage::require_not_frozen(&env, escrow_id)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
         if meta.status == EscrowStatus::Disputed {
             return Err(EscrowError::E9);
         }
@@ -3425,9 +3659,7 @@ impl EscrowContract {
 
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-            if caller != meta.client && caller != meta.freelancer {
-                return Err(EscrowError::E3);
-            }
+            ContractStorage::require_participant(&caller, &meta)?;
             if meta.status != EscrowStatus::Disputed {
                 return Err(EscrowError::E10);
             }
@@ -3507,8 +3739,7 @@ impl EscrowContract {
         ContractStorage::with_reentrancy_guard(&env, || {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
-            let is_arbiter = meta.arbiter.as_ref().is_some_and(|a| *a == caller);
-            if !is_arbiter {
+            if ContractStorage::require_arbiter(&caller, &meta).is_err() {
                 ContractStorage::require_admin(&env, &caller)?;
             }
 
@@ -3590,9 +3821,7 @@ impl EscrowContract {
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
         // Only client or freelancer can escalate
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
 
         // Escrow must be in disputed status
         if meta.status != EscrowStatus::Disputed {
@@ -4038,9 +4267,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let mut recurring = ContractStorage::load_recurring_config(&env, escrow_id)?;
         if recurring.cancelled {
@@ -4064,9 +4291,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
 
         let mut recurring = ContractStorage::load_recurring_config(&env, escrow_id)?;
         if recurring.cancelled {
@@ -4101,9 +4326,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
@@ -4167,9 +4390,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
 
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-        if caller != meta.client {
-            return Err(EscrowError::E5);
-        }
+        ContractStorage::require_client(&caller, &meta)?;
         if additional_periods == 0 {
             return Ok(0);
         }
@@ -4352,7 +4573,7 @@ impl EscrowContract {
         // Validate: arbiter must not be client or freelancer.
         if let Some(ref a) = new_arbiter {
             if a == &meta.client || a == &meta.freelancer {
-                return Err(EscrowError::E3);
+                return Err(EscrowError::E72); // RbacInvalidRoleAssignment
             }
         }
 
@@ -4380,9 +4601,7 @@ impl EscrowContract {
         let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
 
         // Only client or freelancer can request cancellation
-        if caller != meta.client && caller != meta.freelancer {
-            return Err(EscrowError::E3);
-        }
+        ContractStorage::require_participant(&caller, &meta)?;
 
         if reason.len() > MAX_STRING_LEN {
             return Err(EscrowError::E19);
@@ -7575,5 +7794,547 @@ mod tests {
 
         let result = client.try_oracle_resolve_dispute(&escrow_id, &payload, &grace);
         assert!(matches!(result, Err(Ok(EscrowError::E57))));
+    }
+
+    // ── Deadline Extension Tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_request_deadline_extension_happy_path() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        let result = client.try_request_deadline_extension(
+            &escrow_client,
+            &escrow_id,
+            &new_deadline,
+            &reason,
+        );
+        assert!(result.is_ok());
+
+        // Check the request was created
+        let request = client.get_deadline_extension_request(&escrow_id);
+        assert!(request.is_some());
+        let req = request.unwrap();
+        assert_eq!(req.requester, escrow_client);
+        assert_eq!(req.new_deadline, new_deadline);
+        assert!(!req.counterparty_approved);
+        assert!(!req.cancelled);
+    }
+
+    #[test]
+    fn test_request_deadline_extension_unauthorized() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        let result = client.try_request_deadline_extension(
+            &unauthorized,
+            &escrow_id,
+            &new_deadline,
+            &reason,
+        );
+        assert!(matches!(result, Err(Ok(EscrowError::E3))));
+    }
+
+    #[test]
+    fn test_request_deadline_extension_not_active_escrow() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        // Cancel the escrow
+        client.cancel_escrow(&escrow_client, &escrow_id);
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        let result = client.try_request_deadline_extension(
+            &escrow_client,
+            &escrow_id,
+            &new_deadline,
+            &reason,
+        );
+        assert!(matches!(result, Err(Ok(EscrowError::E9))));
+    }
+
+    #[test]
+    fn test_request_deadline_extension_new_deadline_not_future() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let now = env.ledger().timestamp();
+        let reason = String::from_str(&env, "Need more time");
+
+        let result =
+            client.try_request_deadline_extension(&escrow_client, &escrow_id, &now, &reason);
+        assert!(matches!(result, Err(Ok(EscrowError::E30))));
+    }
+
+    #[test]
+    fn test_request_deadline_extension_not_after_current_deadline() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        // Try to set a new deadline before the current one
+        let new_deadline = deadline - 100;
+        let reason = String::from_str(&env, "Need more time");
+
+        let result = client.try_request_deadline_extension(
+            &escrow_client,
+            &escrow_id,
+            &new_deadline,
+            &reason,
+        );
+        assert!(matches!(result, Err(Ok(EscrowError::E30))));
+    }
+
+    #[test]
+    fn test_request_deadline_extension_duplicate_request() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // First request succeeds
+        client.request_deadline_extension(&escrow_client, &escrow_id, &new_deadline, &reason);
+
+        // Second request fails
+        let result = client.try_request_deadline_extension(
+            &escrow_client,
+            &escrow_id,
+            &(new_deadline + 100),
+            &reason,
+        );
+        assert!(matches!(result, Err(Ok(EscrowError::E31))));
+    }
+
+    #[test]
+    fn test_approve_deadline_extension_happy_path() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // Request extension
+        client.request_deadline_extension(&escrow_client, &escrow_id, &new_deadline, &reason);
+
+        // Approve extension
+        let result = client.try_approve_deadline_extension(&freelancer, &escrow_id);
+        assert!(result.is_ok());
+
+        // Check the escrow's deadline is updated
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.deadline, Some(new_deadline));
+
+        // Check the request is marked as approved
+        let request = client.get_deadline_extension_request(&escrow_id);
+        assert!(request.is_some());
+        let req = request.unwrap();
+        assert!(req.counterparty_approved);
+    }
+
+    #[test]
+    fn test_approve_deadline_extension_unauthorized() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // Request extension
+        client.request_deadline_extension(&escrow_client, &escrow_id, &new_deadline, &reason);
+
+        // Try to approve as unauthorized
+        let result = client.try_approve_deadline_extension(&unauthorized, &escrow_id);
+        assert!(matches!(result, Err(Ok(EscrowError::E3))));
+    }
+
+    #[test]
+    fn test_approve_deadline_extension_requester_cannot_approve() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // Request extension
+        client.request_deadline_extension(&escrow_client, &escrow_id, &new_deadline, &reason);
+
+        // Try to approve as requester (should fail)
+        let result = client.try_approve_deadline_extension(&escrow_client, &escrow_id);
+        assert!(matches!(result, Err(Ok(EscrowError::E34))));
+    }
+
+    #[test]
+    fn test_cancel_extension_request_happy_path() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // Request extension
+        client.request_deadline_extension(&escrow_client, &escrow_id, &new_deadline, &reason);
+
+        // Cancel extension
+        let result = client.try_cancel_extension_request(&escrow_client, &escrow_id);
+        assert!(result.is_ok());
+
+        // Check the request is marked as cancelled
+        let request = client.get_deadline_extension_request(&escrow_id);
+        assert!(request.is_some());
+        let req = request.unwrap();
+        assert!(req.cancelled);
+    }
+
+    #[test]
+    fn test_cancel_extension_request_unauthorized() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // Request extension
+        client.request_deadline_extension(&escrow_client, &escrow_id, &new_deadline, &reason);
+
+        // Try to cancel as unauthorized
+        let result = client.try_cancel_extension_request(&unauthorized, &escrow_id);
+        assert!(matches!(result, Err(Ok(EscrowError::E35))));
+    }
+
+    #[test]
+    fn test_freelancer_can_request_extension() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // Freelancer requests extension
+        let result =
+            client.try_request_deadline_extension(&freelancer, &escrow_id, &new_deadline, &reason);
+        assert!(result.is_ok());
+
+        // Check the request was created with freelancer as requester
+        let request = client.get_deadline_extension_request(&escrow_id);
+        assert!(request.is_some());
+        let req = request.unwrap();
+        assert_eq!(req.requester, freelancer);
+    }
+
+    #[test]
+    fn test_client_can_approve_freelancer_request() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin);
+
+        let escrow_client = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let reserve = ContractStorage::reserve_for_entries(1);
+        token::StellarAssetClient::new(&env, &token_id).mint(&escrow_client, &(100_i128 + reserve));
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let escrow_id = client.create_escrow(
+            &escrow_client,
+            &freelancer,
+            &token_id,
+            &100_i128,
+            &BytesN::from_array(&env, &[4u8; 32]),
+            &None,
+            &Some(deadline),
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let new_deadline = deadline + 500;
+        let reason = String::from_str(&env, "Need more time");
+
+        // Freelancer requests extension
+        client.request_deadline_extension(&freelancer, &escrow_id, &new_deadline, &reason);
+
+        // Client approves
+        let result = client.try_approve_deadline_extension(&escrow_client, &escrow_id);
+        assert!(result.is_ok());
+
+        // Check the escrow's deadline is updated
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.deadline, Some(new_deadline));
     }
 }
