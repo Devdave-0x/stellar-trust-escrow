@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import Spinner from '../../components/ui/Spinner';
 import EscrowCard from '../../components/escrow/EscrowCard';
+import EscrowListItem from '../../components/escrow/EscrowListItem';
+import DisputeModal from '../../components/escrow/DisputeModal';
 import SearchFilters from '../../components/explorer/SearchFilters';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';
@@ -84,6 +86,7 @@ function ExplorerContent() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [disputeEscrowId, setDisputeEscrowId] = useState(null);
 
   const debounceTimer = useRef(null);
   useEffect(() => {
@@ -216,7 +219,12 @@ function ExplorerContent() {
               className={`grid gap-4 ${showFilters ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'}`}
             >
               {escrows.map((escrow) => (
-                <EscrowCard key={escrow.id} escrow={escrow} />
+                <EscrowListItem
+                  key={escrow.id}
+                  escrow={escrow}
+                  canReleaseAll={escrow.status === 'Active'}
+                  onDispute={(e) => setDisputeEscrowId(Number(e.id))}
+                />
               ))}
             </div>
           )}
@@ -247,6 +255,14 @@ function ExplorerContent() {
             <ChevronRight size={14} />
           </Button>
         </div>
+      )}
+
+      {disputeEscrowId !== null && (
+        <DisputeModal
+          isOpen
+          onClose={() => setDisputeEscrowId(null)}
+          escrowId={disputeEscrowId}
+        />
       )}
     </div>
   );
