@@ -2,10 +2,6 @@
 
 import TwoFactorChallenge from './TwoFactorChallenge.jsx';
 
-export default function TwoFactorPage({ mfaPendingToken, searchParams }) {
-  return (
-    <TwoFactorChallenge
-      mfaPendingToken={mfaPendingToken ?? searchParams?.mfaPendingToken}
-    />
-  );
+export default function TwoFactorPage({ searchParams }) {
+  return <TwoFactorChallenge mfaPendingToken={searchParams?.mfaPendingToken} />;
 }
