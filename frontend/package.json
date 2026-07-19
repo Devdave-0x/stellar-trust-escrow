@@ -38,6 +38,7 @@
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.383.0",
     "next": "^15.2.4",
+    "nuqs": "^2.9.0",
     "react": "^18",
     "react-day-picker": "^10.0.1",
     "react-dom": "^18",
