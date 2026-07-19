@@ -35,8 +35,8 @@ type EscrowFilterValues = {
   amount_max: number;
   date_from: string;
   date_to: string;
-  sort: SortKey;
-  order: SortOrder;
+  sort: (typeof SORT_KEYS)[number];
+  order: (typeof SORT_ORDERS)[number];
   page: number;
 };
 
@@ -47,10 +47,7 @@ type UseEscrowFilterParamsReturn = {
     value: EscrowFilterParamsMap[K],
     options?: Options,
   ) => Promise<URLSearchParams>;
-  setFilters: (
-    values: Partial<EscrowFilterValues>,
-    options?: Options,
-  ) => Promise<URLSearchParams>;
+  setFilters: (values: Partial<EscrowFilterValues>, options?: Options) => Promise<URLSearchParams>;
   resetFilters: () => Promise<URLSearchParams>;
   copyFilterUrl: () => Promise<void>;
   activeFilterCount: number;
@@ -95,17 +92,20 @@ export function useEscrowFilterParams(): UseEscrowFilterParamsReturn {
   );
 
   const resetFilters = useCallback(() => {
-    return setFiltersState({
-      q: null,
-      status: null,
-      amount_min: null,
-      amount_max: null,
-      date_from: null,
-      date_to: null,
-      sort: 'createdAt',
-      order: 'desc',
-      page: null,
-    }, pushOptions);
+    return setFiltersState(
+      {
+        q: null,
+        status: null,
+        amount_min: null,
+        amount_max: null,
+        date_from: null,
+        date_to: null,
+        sort: 'createdAt',
+        order: 'desc',
+        page: null,
+      },
+      pushOptions,
+    );
   }, [setFiltersState]);
 
   const copyFilterUrl = useCallback(async () => {
