@@ -59,7 +59,7 @@ import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
 import tracingMiddleware from './middleware/tracingMiddleware.js';
 import logger, { getLogger } from './config/logger.js';
-import emailService from './services/emailService.js';
+import './workers/emailWorker.js';
 import complianceService from './services/complianceService.js';
 import { startIndexer } from './services/eventIndexer.js';
 import { startRpcMonitor } from './monitoring/rpcMonitor.js';
@@ -302,8 +302,7 @@ async function startServer() {
           'Secrets backend loaded',
         );
         logger.info({ port: PORT, network: process.env.STELLAR_NETWORK }, 'API server started');
-        await emailService.start();
-        logger.info('[EmailService] Queue processor started');
+        logger.info('[EmailWorker] Queue processor started');
         complianceService.startScheduler();
         logger.info('[ComplianceService] Scheduler started');
         logger.info('[WebSocket] Server attached');
