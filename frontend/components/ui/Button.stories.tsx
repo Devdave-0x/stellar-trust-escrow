@@ -55,10 +55,8 @@ const meta: Meta<ButtonStoryProps> = {
       control: 'boolean',
       description: 'Wraps a single child element with button styles',
     },
-    onClick: { action: 'clicked', description: 'Click handler' },
   },
   args: {
-    children: 'Button',
     variant: 'primary',
     size: 'md',
     disabled: false,
