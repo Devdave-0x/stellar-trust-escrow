@@ -1,4 +1,5 @@
 import './globals.css';
+import '../styles/theme.css';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import NavigationProgress from '../components/layout/NavigationProgress';
@@ -26,17 +27,35 @@ export const metadata = {
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#030712',
+  themeColor: { light: '#ffffff', dark: '#0f172a' },
 };
+
+// Anti-FOUC script to set theme before React hydration
+const AntiFoucScript = () => (
+  <script
+    dangerouslySetInnerHTML={{
+      __html: `
+        (function() {
+          const stored = localStorage.getItem('theme');
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const theme = stored || (prefersDark ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.classList.add('no-transitions');
+        })();
+      `,
+    }}
+  />
+);
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <AntiFoucScript />
         <link rel="dns-prefetch" href={API_ORIGIN} />
         <link rel="preconnect" href={API_ORIGIN} crossOrigin="anonymous" />
       </head>
-      <body className="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans">
+      <body className="min-h-screen flex flex-col font-sans">
         <AppStoreProvider>
           <I18nProvider>
             <ThemeProvider>
