@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import Spinner from '../../components/ui/Spinner';
-import EscrowCard from '../../components/escrow/EscrowCard';
+// import EscrowCard from '../../components/escrow/EscrowCard';
 import EscrowListItem from '../../components/escrow/EscrowListItem';
 import DisputeModal from '../../components/escrow/DisputeModal';
 import SearchFilters from '../../components/explorer/SearchFilters';
@@ -29,7 +29,6 @@ function normaliseEscrow(e) {
 }
 
 function ExplorerContent() {
-  const router = useRouter();
   const {
     filters,
     setFilter,
