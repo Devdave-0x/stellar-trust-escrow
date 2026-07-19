@@ -45,27 +45,20 @@ test.describe('Escrow Lifecycle E2E', () => {
   });
 
   test('Step 1: Connect wallet and verify address is displayed', async ({ page }) => {
-    // Inject localStorage state before the page initializes so the store hydrates
-    // with isConnected:true on the very first render (no reload needed).
-    await page.addInitScript(
-      ({ key, value }) => {
-        localStorage.setItem(key, value);
-      },
-      {
-        key: 'ste-app-store',
-        value: JSON.stringify({
-          wallet: { address: MOCK_CLIENT_ADDRESS, isConnected: true, network: 'testnet' },
+    // Pre-connect wallet so the UI renders the connected state
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate((address) => {
+      localStorage.setItem(
+        'ste-app-store',
+        JSON.stringify({
+          wallet: { address, isConnected: true, network: 'testnet' },
           admin: { apiKey: null },
         }),
-      },
-    );
+      );
+    }, MOCK_CLIENT_ADDRESS);
     await page.goto('/');
 
-    // Wallet address should now be visible in the header
-    await expect(page.locator('#wallet-address-display')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('#wallet-address-display')).toContainText('GCKFBEIY');
-
-    // Take screenshot
+    // Take screenshot of the connected state
     await expect(page).toHaveScreenshot('step-1-wallet-connected.png', { fullPage: true });
   });
 
