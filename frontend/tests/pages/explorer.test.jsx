@@ -1,5 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
 import ExplorerPage from '../../app/explorer/page';
+
+function renderWithNuqs(ui) {
+  return render(ui, { wrapper: NuqsTestingAdapter });
+}
 
 // EscrowCard uses useI18n which requires I18nProvider — mock it for tests.
 jest.mock(
@@ -51,22 +56,22 @@ describe('ExplorerPage', () => {
   });
 
   it('renders page heading', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     expect(await screen.findByRole('heading', { name: 'Escrow Explorer' })).toBeInTheDocument();
   });
 
   it('renders search input', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     expect(await screen.findByPlaceholderText(/Search by/)).toBeInTheDocument();
   });
 
   it('renders status filter buttons', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     expect(await screen.findByText('Filters')).toBeInTheDocument();
   });
 
   it('renders fetched escrows by default', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     expect(await screen.findByText('Escrow #1')).toBeInTheDocument();
     expect(screen.getByText('Escrow #2')).toBeInTheDocument();
     expect(screen.getByText('Escrow #3')).toBeInTheDocument();
@@ -74,7 +79,7 @@ describe('ExplorerPage', () => {
   });
 
   it('filters escrows by status', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     // Wait for initial render
     await screen.findByText('Escrow #1');
     fireEvent.click(screen.getByText('Filters'));
@@ -88,7 +93,7 @@ describe('ExplorerPage', () => {
   });
 
   it('filters escrows by search query', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     await screen.findByText('Escrow #1'); // wait for initial render
 
     const searchInput = await screen.findByPlaceholderText(/Search by/);
@@ -102,7 +107,7 @@ describe('ExplorerPage', () => {
   });
 
   it('shows empty state when no escrows match filter', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     await screen.findByText('Escrow #1');
 
     fireEvent.click(screen.getByText('Filters'));
@@ -112,18 +117,18 @@ describe('ExplorerPage', () => {
   });
 
   it('renders stats bar', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument();
   });
 
   it('renders pagination buttons', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     expect(await screen.findByRole('button', { name: /Prev/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Next/ })).toBeInTheDocument();
   });
 
   it('Prev button is disabled on first page', async () => {
-    render(<ExplorerPage />);
+    renderWithNuqs(<ExplorerPage />);
     const prevBtn = await screen.findByRole('button', { name: /Prev/ });
     expect(prevBtn).toBeDisabled();
   });
