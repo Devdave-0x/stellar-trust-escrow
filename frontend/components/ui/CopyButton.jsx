@@ -15,6 +15,8 @@ export function CopyButton({ text, value, label = 'Copy', feedbackDuration = 200
     }
   };
 
+  const accessibleName = copied ? 'Copied!' : `Copy ${label}`;
+
   return (
     <button
       type="button"
