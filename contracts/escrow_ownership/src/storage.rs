@@ -48,13 +48,9 @@ pub fn clear_pending(env: &soroban_sdk::Env, escrow_id: u64) {
 }
 
 pub fn get_escrow_contract(env: &soroban_sdk::Env) -> Option<Address> {
-    env.storage()
-        .instance()
-        .get(&DataKey::EscrowContract)
+    env.storage().instance().get(&DataKey::EscrowContract)
 }
 
 pub fn set_escrow_contract(env: &soroban_sdk::Env, addr: &Address) {
-    env.storage()
-        .instance()
-        .set(&DataKey::EscrowContract, addr);
+    env.storage().instance().set(&DataKey::EscrowContract, addr);
 }

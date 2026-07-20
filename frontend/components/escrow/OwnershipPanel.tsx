@@ -89,7 +89,7 @@ export function OwnershipPanel({
             >
               {truncate(data.currentOwner)}
             </span>
-            <CopyButton value={data.currentOwner} label="address" />
+            <CopyButton text={data.currentOwner} value={data.currentOwner} label="address" />
           </>
         ) : (
           <span className="text-gray-400 italic">Not registered</span>
