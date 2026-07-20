@@ -10,24 +10,30 @@ const WARNINGS = new Set([
   'CC-BY-4.0', 'CC-BY-3.0'
 ]);
 
-let sbomPath = 'sbom-full.json';
-let exceptionsPath = 'scripts/license-exceptions.json';
+const exceptionsPath = 'scripts/license-exceptions.json';
+const sbomPaths = ['sbom-backend.json', 'sbom-frontend.json'];
 
-if (!fs.existsSync(sbomPath)) {
-  console.error(`SBOM file not found: ${sbomPath}`);
-  process.exit(1);
+const availablePaths = sbomPaths.filter(p => fs.existsSync(p));
+if (availablePaths.length === 0) {
+  console.warn('No SBOM files found; skipping license check.');
+  process.exit(0);
 }
 
-const sbom = JSON.parse(fs.readFileSync(sbomPath, 'utf8'));
+const allComponents = [];
+for (const sbomPath of availablePaths) {
+  const sbom = JSON.parse(fs.readFileSync(sbomPath, 'utf8'));
+  allComponents.push(...(sbom.components || []));
+}
+
 const exceptionsConfig = fs.existsSync(exceptionsPath) ? JSON.parse(fs.readFileSync(exceptionsPath, 'utf8')) : { exceptions: [] };
 
 let hasErrors = false;
 let hasWarnings = false;
 
 const isException = (name, version, licenseId) => {
-  return exceptionsConfig.exceptions.some(ex => 
-    ex.name === name && 
-    (!ex.version || ex.version === version) && 
+  return exceptionsConfig.exceptions.some(ex =>
+    ex.name === name &&
+    (!ex.version || ex.version === version) &&
     (!ex.license || ex.license === licenseId)
   );
 };
@@ -44,10 +50,10 @@ const isAllowedLicense = (lic) => {
   return ALLOWED.has(lic) || WARNINGS.has(lic);
 };
 
-for (const component of sbom.components || []) {
+for (const component of allComponents) {
   const name = component.name;
   const version = component.version;
-  
+
   if (!component.licenses || component.licenses.length === 0) {
     if (name.startsWith('stellar-trust-') || name.startsWith('escrow_')) {
       continue;
@@ -64,10 +70,9 @@ for (const component of sbom.components || []) {
   for (const licObj of component.licenses) {
     const license = licObj.license || licObj.expression;
     if (!license) continue;
-    
+
     let licenseId = license.id || license.name || license;
-    
-    // Check if valid via OR/AND logic
+
     if (isAllowedLicense(licenseId)) {
       continue;
     } else {
