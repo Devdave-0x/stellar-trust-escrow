@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
+    testutils::Address as _,
     Address, Env,
 };
 
@@ -18,7 +18,7 @@ fn setup() -> (Env, Address, Address) {
 
 #[test]
 fn register_and_get_owner() {
-    let (env, contract_id, escrow_contract) = setup();
+    let (env, contract_id, _escrow_contract) = setup();
     let client = EscrowOwnershipContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
