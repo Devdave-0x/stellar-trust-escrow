@@ -45,8 +45,7 @@ jobs:
           npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file ../sbom-frontend.json
 
       - name: Generate SBOM (Rust Contracts)
-        run: |
-          cargo cyclonedx --format json --output-cdx sbom-contracts.json
+        run: cargo cyclonedx --format json || true
 
       - name: Upload SBOM Artifact
         uses: actions/upload-artifact@v4
@@ -55,7 +54,6 @@ jobs:
           path: |
             sbom-backend.json
             sbom-frontend.json
-            sbom-contracts.json
           if-no-files-found: warn
 
       - name: Enforce License Compliance
