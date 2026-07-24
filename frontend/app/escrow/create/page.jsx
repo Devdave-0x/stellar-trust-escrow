@@ -21,13 +21,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Button from '../../../components/ui/Button';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
+import TemplatePickerModal from '../../../components/templates/TemplatePickerModal';
+import SaveTemplateModal from '../../../components/templates/SaveTemplateModal';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 import XLMAmountInput from '../../../components/ui/XLMAmountInput';
 import templatesData from '../../../data/templates.json';
 import { useToast } from '../../../contexts/ToastContext';
+import { useWallet } from '../../../hooks/useWallet';
+import { getTemplate } from '../../../hooks/useEscrowTemplates';
+import { applyBackendTemplateToForm } from '../../../lib/templates';
+import {
+  buildCreateEscrowTx,
+  broadcastTransaction,
+  isValidStellarAddress,
+} from '../../../lib/stellar';
 
 const STEPS = [
   { id: 1, label: 'Counterparty' },
@@ -67,9 +77,11 @@ function isPositiveAmount(value) {
 }
 
 export default function CreateEscrowPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const templateLibrary = templatesData.templates || [];
 
+  const { address, isConnected, signTx } = useWallet();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     freelancerAddress: '',
@@ -83,6 +95,9 @@ export default function CreateEscrowPage() {
   const [error, setError] = useState(null);
   const [templateNotice, setTemplateNotice] = useState('');
   const [appliedQueryTemplateId, setAppliedQueryTemplateId] = useState(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [showSave, setShowSave] = useState(false);
+  const [appliedBackendTemplateId, setAppliedBackendTemplateId] = useState(null);
 
   // Touched state tracks which fields the user has interacted with
   const [touched, setTouched] = useState({ totalAmount: false, briefDescription: false });
@@ -112,19 +127,48 @@ export default function CreateEscrowPage() {
     setTemplateNotice(`Applied template: ${template.name}`);
   };
 
+  // Shared/template URL (?templateId=...) loads a saved template from the API.
+  useEffect(() => {
+    const templateId = searchParams.get('templateId');
+    if (!templateId || templateId === appliedBackendTemplateId) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const template = await getTemplate(templateId);
+        if (cancelled || !template) return;
+        setFormData((previous) => applyBackendTemplateToForm(previous, template));
+        setCurrentStep(1);
+        setTemplateNotice(`Loaded from template: ${template.name}`);
+        setAppliedBackendTemplateId(templateId);
+      } catch {
+        // Template may be private or unavailable — ignore silently.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, appliedBackendTemplateId]);
+
+  const handleLoadFromBackend = (template) => {
+    setFormData((previous) => applyBackendTemplateToForm(previous, template));
+    setCurrentStep(1);
+    setTemplateNotice(`Loaded from template: ${template.name}`);
+    setShowPicker(false);
+  };
+
   // TODO (contributor — Issue #33): implement form submission
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
     try {
-      // 1. Build Soroban transaction
-      // 2. Sign with Freighter
-      // 3. Broadcast
-      // 4. Redirect
       throw new Error('Not implemented — see Issue #33');
     } catch (err) {
-      setError(err.message);
-      showToast('Failed to create escrow', 'error');
+      const message = err.message || 'Failed to create escrow';
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -178,6 +222,16 @@ export default function CreateEscrowPage() {
         <p className="text-gray-400 mt-1">Lock funds and define milestones for your project.</p>
       </div>
 
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          onClick={() => setShowPicker(true)}
+          className="min-h-touch"
+        >
+          Load template
+        </Button>
+      </div>
+
       <TemplateSelector
         baseTemplates={templateLibrary}
         formData={formData}
@@ -192,27 +246,58 @@ export default function CreateEscrowPage() {
       )}
 
       {/* Step Indicator */}
-      <div className="flex items-center gap-2">
-        {STEPS.map((step, i) => (
-          <div key={step.id} className="flex items-center gap-2">
+      <nav aria-label="Progress">
+        {/* Mobile: collapse the step indicator into a single progress bar */}
+        <div className="sm:hidden mb-2">
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+            <span className="font-medium text-white">
+              Step {currentStep}: {STEPS[currentStep - 1]?.label}
+            </span>
+            <span>
+              {currentStep} / {STEPS.length}
+            </span>
+          </div>
+          <div
+            className="w-full h-2 bg-gray-800 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuemin={1}
+            aria-valuemax={STEPS.length}
+            aria-valuenow={currentStep}
+            aria-label={`Step ${currentStep} of ${STEPS.length}: ${STEPS[currentStep - 1]?.label}`}
+          >
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
+              className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+              style={{ width: `${(currentStep / STEPS.length) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Desktop: full step indicator */}
+        <ol className="hidden sm:flex items-center gap-2">
+          {STEPS.map((step, i) => (
+            <li key={step.id} className="flex items-center gap-2">
+              <div
+                aria-current={currentStep === step.id ? 'step' : undefined}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
                 ${
                   currentStep >= step.id ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-500'
                 }`}
-            >
-              {step.id}
-            </div>
-            <span
-              className={`text-sm hidden sm:inline
+              >
+                <span aria-label={`Step ${step.id}: ${step.label}`}>{step.id}</span>
+              </div>
+              <span
+                className={`text-sm hidden sm:inline
                 ${currentStep >= step.id ? 'text-white' : 'text-gray-500'}`}
-            >
-              {step.label}
-            </span>
-            {i < STEPS.length - 1 && <div className="w-8 h-px bg-gray-700 mx-1" />}
-          </div>
-        ))}
-      </div>
+              >
+                {step.label}
+              </span>
+              {i < STEPS.length - 1 && (
+                <div className="w-8 h-px bg-gray-700 mx-1" aria-hidden="true" />
+              )}
+            </li>
+          ))}
+        </ol>
+      </nav>
 
       {/* Step Content */}
       <div className="card space-y-6">
@@ -234,6 +319,17 @@ export default function CreateEscrowPage() {
           />
         )}
         {currentStep === 3 && <StepReview formData={formData} />}
+        {currentStep === 3 && (
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => setShowSave(true)}
+              className="min-h-touch"
+            >
+              Save as template
+            </Button>
+          </div>
+        )}
         {currentStep === 4 && (
           <StepSign onSubmit={handleSubmit} isSubmitting={isSubmitting} error={error} />
         )}
@@ -258,6 +354,13 @@ export default function CreateEscrowPage() {
           </Button>
         )}
       </div>
+
+      <TemplatePickerModal
+        isOpen={showPicker}
+        onClose={() => setShowPicker(false)}
+        onSelect={handleLoadFromBackend}
+      />
+      <SaveTemplateModal isOpen={showSave} onClose={() => setShowSave(false)} formData={formData} />
     </div>
   );
 }
@@ -380,6 +483,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
           <input
             type="text"
             placeholder="Title (e.g. Initial Design Mockups)"
+            aria-label={`Milestone ${index + 1} title`}
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                        text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500"
             value={milestone.title}
@@ -388,6 +492,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
           <textarea
             rows={2}
             placeholder="Milestone description"
+            aria-label={`Milestone ${index + 1} description`}
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                        text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 resize-none"
             value={milestone.description}
@@ -397,6 +502,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
             <XLMAmountInput
               value={milestone.amount}
               placeholder="Amount"
+              aria-label={`Milestone ${index + 1} amount`}
               onChange={(event) => onUpdate(index, 'amount', event.target.value)}
               inputClassName="w-32"
               className="w-32"

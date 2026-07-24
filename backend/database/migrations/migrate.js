@@ -128,7 +128,7 @@ async function status() {
   // Also show Prisma migrate status
   console.log('\nPrisma Migrate Status\n' + '─'.repeat(60));
   try {
-    execSync('npx prisma migrate status', { stdio: 'inherit' });
+    execSync('npx prisma migrate status --schema=database/schema.prisma', { stdio: 'inherit' });
   } catch {
     // non-zero exit is fine — prisma prints the status itself
   }

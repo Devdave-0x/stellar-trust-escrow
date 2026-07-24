@@ -82,6 +82,11 @@ export function stopConnectionMonitoring() {
  * @param {import('@prisma/client').PrismaClient} prisma
  */
 export function attachConnectionMonitoring(prisma) {
+  if (typeof prisma.$use !== 'function') {
+    log.debug({ message: 'db_monitor_middleware_unavailable' });
+    return;
+  }
+
   // Track connection pool exhaustion (when queries have to wait)
   let pendingQueries = 0;
 

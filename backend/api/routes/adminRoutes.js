@@ -8,16 +8,43 @@
 
 import express from 'express';
 const router = express.Router();
-import adminAuth from '../middleware/adminAuth.js';
+import adminAuth, { issueAdminToken, ADMIN_TOKEN_TTL } from '../middleware/adminAuth.js';
 import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
 import { getAuditLog, rotateSecrets } from '../../lib/secrets.js';
 import cache from '../../lib/cache.js';
+import auditRoutes from './auditRoutes.js';
 
 // Apply admin authentication to all routes in this file
 router.use(adminAuth);
+
+router.use('/audit', auditRoutes);
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/auth/login
+ * @desc   Exchange a valid admin API key (validated by adminAuth) for a
+ *         short-lived HMAC-signed admin session token. Subsequent requests
+ *         should send `Authorization: Bearer <token>` instead of the raw key.
+ */
+router.post('/auth/login', (req, res) => {
+  const token = issueAdminToken(req.admin.adminId);
+  res.json({
+    token,
+    tokenType: 'Bearer',
+    expiresIn: ADMIN_TOKEN_TTL,
+    adminId: req.admin.adminId,
+  });
+});
+
+// ── Metrics ───────────────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/metrics
+ * @desc   Platform-wide metrics with deltas
+ */
+router.get('/metrics', adminController.getMetrics);
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
 /**
@@ -25,6 +52,28 @@ router.use(adminAuth);
  * @desc   Platform-wide statistics (total escrows, users, disputes)
  */
 router.get('/stats', adminController.getStats);
+
+// ── Arbiters ──────────────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/arbiters
+ * @desc   List all registered arbiters
+ */
+router.get('/arbiters', adminController.listArbiters);
+
+/**
+ * @route  POST /api/admin/arbiters
+ * @desc   Register a new arbiter
+ * @body   { address: string }
+ * @security Requires MFA verification
+ */
+router.post('/arbiters', requireMfa, adminController.registerArbiter);
+
+/**
+ * @route  DELETE /api/admin/arbiters/:address
+ * @desc   Remove an arbiter
+ * @security Requires MFA verification
+ */
+router.delete('/arbiters/:address', requireMfa, adminController.removeArbiter);
 
 // ── Users ──────────────────────────────────────────────────────────────────────
 /**
@@ -59,10 +108,15 @@ router.post('/users/:address/ban', requireMfa, adminController.banUser);
 // ── Disputes ───────────────────────────────────────────────────────────────────
 /**
  * @route  GET /api/admin/disputes
- * @desc   List all disputes with pagination
- * @query  page, limit, resolved (true|false)
+ * @desc   List all disputes with pagination or open disputes sorted by escalation risk
+ * @query  page, limit, resolved (true|false), status, orderBy
  */
-router.get('/disputes', adminController.listDisputes);
+router.get('/disputes', (req, res, next) => {
+  if (req.query.status === 'open' && req.query.orderBy === 'escalationRisk') {
+    return adminController.getDisputeQueue(req, res, next);
+  }
+  return adminController.listDisputes(req, res, next);
+});
 
 /**
  * @route  POST /api/admin/disputes/:id/resolve
@@ -86,6 +140,20 @@ router.get('/settings', adminController.getSettings);
  * @security Requires MFA verification
  */
 router.patch('/settings', requireMfa, adminController.updateSettings);
+
+// ── Key Management ─────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/keys/rotate
+ * @desc   Trigger a manual JWT signing key rotation
+ * @security Requires MFA verification
+ */
+router.post('/keys/rotate', requireMfa, adminController.rotateKeys);
+
+/**
+ * @route  GET /api/admin/keys
+ * @desc   List active key versions with metadata (no private keys)
+ */
+router.get('/keys', adminController.listKeys);
 
 // ── Audit Logs ─────────────────────────────────────────────────────────────────
 /**

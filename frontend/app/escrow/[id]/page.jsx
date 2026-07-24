@@ -23,6 +23,8 @@
 import { useState, useEffect } from 'react';
 import { useEscrow } from '../../../hooks/useEscrow';
 import { useRelativeTime } from '../../../hooks/useRelativeTime';
+import { useWallet } from '../../../hooks/useWallet';
+import { useToast } from '../../../contexts/ToastContext';
 import MilestoneList from '../../../components/escrow/MilestoneList';
 import DisputeModal from '../../../components/escrow/DisputeModal';
 import CancelEscrowModal from '../../../components/escrow/CancelEscrowModal';
@@ -32,6 +34,13 @@ import ReputationBadge from '../../../components/ui/ReputationBadge';
 import CurrencyAmount from '../../../components/ui/CurrencyAmount';
 import TransactionHash from '../../../components/ui/TransactionHash';
 import Avatar from '../../../components/ui/Avatar';
+import { shareContent } from '../../../lib/share';
+import {
+  buildApproveMilestoneTx,
+  buildSubmitMilestoneTx,
+  buildRaiseDisputeTx,
+  broadcastTransaction,
+} from '../../../lib/stellar';
 
 // Fallback data used while the API integration (Issue #34) is pending.
 const PLACEHOLDER_ESCROW = {
@@ -77,9 +86,12 @@ export default function EscrowDetailPage({ params }) {
   const [isCancelOpen, setCancelOpen] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isActionLoading, setIsActionLoading] = useState(false);
 
   const { escrow: fetchedEscrow, isLoading, mutate } = useEscrow(id);
+  const { address, signTx } = useWallet();
   const relativeTime = useRelativeTime(lastRefreshed);
+  const { showToast } = useToast();
 
   // Use fetched data when available, fall back to placeholder during development.
   const escrow = fetchedEscrow ?? PLACEHOLDER_ESCROW;
@@ -105,35 +117,105 @@ export default function EscrowDetailPage({ params }) {
     }
   };
 
-  // TODO (contributor): derive from connected wallet address
-  const connectedRole = 'client'; // "client" | "freelancer" | "observer"
+  // Derive connected role from wallet address
+  const connectedRole = address
+    ? address === escrow.clientAddress
+      ? 'client'
+      : address === escrow.freelancerAddress
+        ? 'freelancer'
+        : 'observer'
+    : 'observer';
 
   const handleApproveMilestone = async (milestoneId) => {
-    // TODO (contributor — Issue #34):
-    // 1. Build approve_milestone Soroban tx
-    // 2. Sign with Freighter
-    // 3. Broadcast
-    // 4. Mutate SWR cache
-    console.log('TODO: approve milestone', milestoneId);
+    setIsActionLoading(true);
+    try {
+      if (!address) throw new Error('Please connect your wallet first');
+
+      const unsignedXdr = await buildApproveMilestoneTx({
+        sourceAddress: address,
+        escrowId: BigInt(id).toString(),
+        milestoneId: Number(milestoneId),
+      });
+
+      const signedXdr = await signTx(unsignedXdr);
+      await broadcastTransaction(signedXdr);
+
+      showToast('Milestone approved', 'success');
+      await mutate();
+    } catch (err) {
+      showToast(err.message || 'Failed to approve milestone', 'error');
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleSubmitMilestone = async (milestoneId) => {
-    // TODO (contributor — Issue #34)
-    console.log('TODO: submit milestone', milestoneId);
+    setIsActionLoading(true);
+    try {
+      if (!address) throw new Error('Please connect your wallet first');
+
+      const unsignedXdr = await buildSubmitMilestoneTx({
+        sourceAddress: address,
+        escrowId: BigInt(id).toString(),
+        milestoneId: Number(milestoneId),
+      });
+
+      const signedXdr = await signTx(unsignedXdr);
+      await broadcastTransaction(signedXdr);
+
+      showToast('Milestone submitted', 'success');
+      await mutate();
+    } catch (err) {
+      showToast(err.message || 'Failed to submit milestone', 'error');
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleRejectMilestone = async (milestoneId) => {
-    // TODO (contributor — Issue #34)
-    console.log('TODO: reject milestone', milestoneId);
+    setIsActionLoading(true);
+    try {
+      if (!address) throw new Error('Please connect your wallet first');
+
+      // TODO: Implement reject_milestone if not already in contract
+      showToast('Milestone rejection not yet implemented', 'warning');
+    } catch (err) {
+      showToast(err.message || 'Failed to reject milestone', 'error');
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleCancelEscrow = async () => {
-    // TODO (contributor — Issue #34):
-    // 1. Build cancel_escrow Soroban tx
-    // 2. Sign with Freighter
-    // 3. Broadcast
-    // 4. Redirect to dashboard
-    console.log('TODO: cancel escrow', id);
+    setIsActionLoading(true);
+    try {
+      if (!address) throw new Error('Please connect your wallet first');
+
+      // TODO: Implement cancel_escrow if not already in contract
+      showToast('Escrow cancellation not yet implemented', 'warning');
+      setCancelOpen(false);
+    } catch (err) {
+      showToast(err.message || 'Failed to cancel escrow', 'error');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  // Share / copy-link via the Web Share API (Issue #1444). On mobile this opens
+  // the native share sheet when available, otherwise copies the URL to clipboard.
+  const handleShare = async () => {
+    const url =
+      typeof window !== 'undefined' ? window.location.href : '';
+    const result = await shareContent({
+      title: `StellarTrust Escrow — ${escrow.title}`,
+      text: `Check out escrow #${id}: ${escrow.title}`,
+      url,
+    });
+    if (result.method === 'clipboard') {
+      showToast('Link copied to clipboard', 'success');
+    } else if (!result.shared) {
+      // User dismissed the native sheet — no-op.
+    }
   };
 
   if (isLoading && !fetchedEscrow) {
@@ -145,7 +227,7 @@ export default function EscrowDetailPage({ params }) {
   }
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-4xl mx-auto pb-24 sm:pb-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
@@ -159,7 +241,7 @@ export default function EscrowDetailPage({ params }) {
             network={process.env.NEXT_PUBLIC_STELLAR_NETWORK}
           />
         </div>
-        <div className="flex gap-2 flex-shrink-0">
+        <div className="hidden sm:flex gap-2 flex-shrink-0">
           {escrow.status === 'Active' && (
             <>
               <Button variant="danger" size="sm" onClick={() => setDisputeOpen(true)}>
@@ -170,6 +252,9 @@ export default function EscrowDetailPage({ params }) {
               </Button>
             </>
           )}
+          <Button variant="ghost" size="sm" onClick={handleShare} aria-label="Share escrow">
+            ↗ Share
+          </Button>
         </div>
       </div>
 
@@ -237,7 +322,12 @@ export default function EscrowDetailPage({ params }) {
       </section>
 
       {/* Dispute Modal */}
-      <DisputeModal isOpen={isDisputeOpen} onClose={() => setDisputeOpen(false)} escrowId={id} />
+      <DisputeModal 
+        isOpen={isDisputeOpen} 
+        onClose={() => setDisputeOpen(false)} 
+        escrowId={id}
+        onSuccess={async () => await mutate()}
+      />
 
       {/* Cancel Escrow Modal */}
       <CancelEscrowModal
@@ -246,6 +336,38 @@ export default function EscrowDetailPage({ params }) {
         escrowId={id}
         onConfirm={handleCancelEscrow}
       />
+
+      {/* Mobile action bar — fixed to the bottom on small screens */}
+      <div
+        className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-gray-950/95 backdrop-blur border-t border-gray-800 p-3 flex gap-2 safe-area-bottom"
+      >
+        {escrow.status === 'Active' && (
+          <>
+            <Button
+              variant="danger"
+              className="flex-1 min-h-touch"
+              onClick={() => setDisputeOpen(true)}
+            >
+              ⚠ Dispute
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1 min-h-touch"
+              onClick={() => setCancelOpen(true)}
+            >
+              Cancel
+            </Button>
+          </>
+        )}
+        <Button
+          variant="ghost"
+          className="min-h-touch px-4"
+          onClick={handleShare}
+          aria-label="Share escrow"
+        >
+          ↗ Share
+        </Button>
+      </div>
     </div>
   );
 }

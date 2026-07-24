@@ -1,6 +1,10 @@
 import express from 'express';
 import authController from '../controllers/authController.js';
 import authMiddleware from '../middleware/auth.js';
+import {
+  verifyEmailToken,
+  sendVerificationEmail,
+} from '../../services/emailVerificationService.js';
 
 const router = express.Router();
 
@@ -20,5 +24,42 @@ router.post('/logout', authController.logout);
 router.get('/sessions', authMiddleware, authController.listSessions);
 router.delete('/sessions/:id', authMiddleware, authController.revokeSession);
 router.delete('/sessions', authMiddleware, authController.revokeAllSessions);
+
+/**
+ * @route  POST /api/auth/verify-email
+ * @desc   Verify email address using a token from the verification email
+ * @body   { token: string }
+ */
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'token is required' });
+    const result = await verifyEmailToken(token);
+    res.json({ message: 'Email verified successfully', ...result });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+/**
+ * @route  POST /api/auth/resend-verification
+ * @desc   Resend verification email for the authenticated user
+ */
+router.post('/resend-verification', authMiddleware, async (req, res) => {
+  try {
+    const { address } = req.user;
+    const { prisma } = await import('../../lib/prisma.js');
+    const user = await prisma.user.findFirst({
+      where: { walletAddress: address },
+      select: { id: true, email: true, emailVerified: true },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.emailVerified) return res.status(409).json({ error: 'Email is already verified' });
+    await sendVerificationEmail(user.id, user.email);
+    res.json({ message: 'Verification email resent' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 export default router;
