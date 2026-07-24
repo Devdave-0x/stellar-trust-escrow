@@ -8,6 +8,9 @@
  */
 
 import prisma from '../../lib/prisma.js';
+import cache from '../../lib/cache.js';
+import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import keyRotationService from '../../services/keyRotationService.js';
 import { TIER_LIMITS } from '../../config/rateLimits.js';
 import { logControllerError, getLogger } from '../../config/logger.js';
 import { getUserUsage } from '../middleware/rateLimiter.js';
@@ -16,13 +19,16 @@ const adminLog = getLogger();
 
 // JSON.stringify does not guarantee key order, so two objects with the same
 // contents but different insertion order produce different cache keys.
-// This sorted replacer ensures deterministic serialisation for cache keys.
-function stableStringify(obj) {
-  return JSON.stringify(obj, (_, v) =>
-    v && typeof v === 'object' && !Array.isArray(v)
-      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
-      : v,
-  );
+// This sorted stringifier ensures deterministic serialisation for cache keys.
+function stableStringify(val) {
+  if (Array.isArray(val)) return `[${val.map(stableStringify).join(',')}]`;
+  if (val !== null && typeof val === 'object') {
+    const pairs = Object.keys(val)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(val[k])}`);
+    return `{${pairs.join(',')}}`;
+  }
+  return JSON.stringify(val);
 }
 
 // Mutable runtime overrides (resets on server restart)
@@ -63,21 +69,6 @@ const getUserRateLimitUsage = (req, res) => {
   const usage = getUserUsage(userId);
   res.json({ userId, ...usage });
 };
-
-import cache from '../../lib/cache.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
-
-/** Deterministic JSON serialiser — sorts object keys recursively. */
-function stableStringify(val) {
-  if (Array.isArray(val)) return `[${val.map(stableStringify).join(',')}]`;
-  if (val !== null && typeof val === 'object') {
-    const pairs = Object.keys(val)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${stableStringify(val[k])}`);
-    return `{${pairs.join(',')}}`;
-  }
-  return JSON.stringify(val);
-}
 
 // ── Users ──────────────────────────────────────────────────────────────────────
 
@@ -163,42 +154,104 @@ const getUserDetail = async (req, res) => {
 
 /**
  * POST /api/admin/users/:address/suspend
- * Suspends a user (sets a suspension flag in the audit log — placeholder).
+ * Suspends a user — sets status='suspended' on the User row and logs the action.
  */
 const suspendUser = async (req, res) => {
   try {
     const { address } = req.params;
     const { reason = 'No reason provided' } = req.body;
 
-    // Use a transaction to atomically verify user existence and log the action
     const result = await prisma.$transaction(async (tx) => {
-      const user = await tx.reputationRecord.findUnique({
-        where: { address },
-        select: { address: true },
+      const user = await tx.user.findFirst({
+        where: { walletAddress: address },
+        select: { id: true, status: true },
       });
       if (!user) return null;
+
+      if (user.status === 'banned') {
+        return { alreadyBanned: true };
+      }
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: { status: 'suspended', suspendedAt: new Date(), suspendReason: reason },
+      });
 
       const auditEntry = await tx.adminAuditLog.create({
         data: {
           action: 'SUSPEND_USER',
           targetAddress: address,
           reason,
-          performedBy: 'admin',
+          performedBy: req.admin?.adminId ?? 'admin',
           performedAt: new Date(),
         },
       });
 
-      return auditEntry;
+      return { auditEntry };
     });
 
-    if (!result) {
-      return res.status(404).json({ error: 'User not found.' });
+    if (!result) return res.status(404).json({ error: 'User not found.' });
+    if (result.alreadyBanned) {
+      return res.status(409).json({ error: 'User is permanently banned and cannot be suspended.' });
     }
 
     await cache.invalidatePrefix(`admin:user:${address}`);
-    res.json({ message: `User ${address} suspended.`, auditEntry: result });
+    res.json({ message: `User ${address} suspended.`, auditEntry: result.auditEntry });
   } catch (err) {
     logControllerError('admin.suspendUser', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * POST /api/admin/users/:address/unsuspend
+ * Lifts a suspension — restores status='active' on the User row and logs the action.
+ */
+const unsuspendUser = async (req, res) => {
+  try {
+    const { address } = req.params;
+    const { reason = 'Suspension lifted by admin' } = req.body;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: { walletAddress: address },
+        select: { id: true, status: true },
+      });
+      if (!user) return null;
+
+      if (user.status !== 'suspended') {
+        return { notSuspended: true, currentStatus: user.status };
+      }
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: { status: 'active', suspendedAt: null, suspendReason: null },
+      });
+
+      const auditEntry = await tx.adminAuditLog.create({
+        data: {
+          action: 'UNSUSPEND_USER',
+          targetAddress: address,
+          reason,
+          performedBy: req.admin?.adminId ?? 'admin',
+          performedAt: new Date(),
+        },
+      });
+
+      return { auditEntry };
+    });
+
+    if (!result) return res.status(404).json({ error: 'User not found.' });
+    if (result.notSuspended) {
+      return res.status(409).json({
+        error: `User is not suspended (current status: ${result.currentStatus}).`,
+      });
+    }
+
+    await cache.invalidatePrefix(`admin:user:${address}`);
+    res.json({ message: `User ${address} unsuspended.`, auditEntry: result.auditEntry });
+  } catch (err) {
+    logControllerError('admin.unsuspendUser', err, req);
     res.status(500).json({ error: err.message });
   }
 };
@@ -212,20 +265,24 @@ const banUser = async (req, res) => {
     const { address } = req.params;
     const { reason = 'No reason provided' } = req.body;
 
-    // Use a transaction to atomically verify user existence and log the action
     const result = await prisma.$transaction(async (tx) => {
-      const user = await tx.reputationRecord.findUnique({
-        where: { address },
-        select: { address: true },
+      const user = await tx.user.findFirst({
+        where: { walletAddress: address },
+        select: { id: true },
       });
       if (!user) return null;
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: { status: 'banned', suspendedAt: new Date(), suspendReason: reason },
+      });
 
       const auditEntry = await tx.adminAuditLog.create({
         data: {
           action: 'BAN_USER',
           targetAddress: address,
           reason,
-          performedBy: 'admin',
+          performedBy: req.admin?.adminId ?? 'admin',
           performedAt: new Date(),
         },
       });
@@ -500,10 +557,341 @@ const updateSettings = async (req, res) => {
   }
 };
 
+// ── Key Management ─────────────────────────────────────────────────────────────
+
+const rotateKeys = async (req, res) => {
+  try {
+    const newKey = await keyRotationService.rotateKey();
+
+    // Log action
+    await prisma.adminAuditLog.create({
+      data: {
+        action: 'KEY_ROTATED',
+        targetAddress: 'system',
+        reason: 'Manual rotation triggered',
+        performedBy: req.user?.address || 'admin',
+        performedAt: new Date(),
+      },
+    });
+
+    res.json({ message: 'Key rotated successfully', kid: newKey.kid });
+  } catch (err) {
+    logControllerError('admin.rotateKeys', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const listKeys = async (req, res) => {
+  try {
+    const validKeys = await keyRotationService.getValidPublicKeys();
+
+    // Omit any private keys if accidentally passed by service (though service shouldn't return them here)
+    const sanitizedKeys = validKeys.map((k) => ({
+      kid: k.kid,
+      algorithm: k.algorithm,
+      publicKey: k.publicKey,
+    }));
+
+    res.json({ keys: sanitizedKeys });
+  } catch (err) {
+    logControllerError('admin.listKeys', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── Metrics ───────────────────────────────────────────────────────────────────
+const getMetrics = async (req, res) => {
+  try {
+    const cacheKey = 'admin:metrics';
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    // Fetch current period metrics
+    const [
+      currentActiveEscrows,
+      currentTotalLockedXLM,
+      currentDisputesThisWeek,
+      currentPlatformFeesThisMonth,
+      // Previous period metrics for deltas
+      prevActiveEscrows,
+      prevTotalLockedXLM,
+      prevDisputesThisWeek,
+      prevPlatformFeesThisMonth,
+      // For average resolution time
+      resolvedDisputesThisWeek,
+    ] = await Promise.all([
+      prisma.escrow.count({ where: { status: 'Active' } }),
+      prisma.escrow.aggregate({
+        where: { status: 'Active' },
+        _sum: { totalAmount: true },
+      }),
+      prisma.dispute.count({ where: { raisedAt: { gte: oneWeekAgo } } }),
+      prisma.payment.aggregate({
+        where: { createdAt: { gte: oneMonthAgo }, type: 'PLATFORM_FEE' },
+        _sum: { amount: true },
+      }),
+      prisma.escrow.count({ where: { status: 'Active', createdAt: { lte: twoWeeksAgo } } }),
+      prisma.escrow.aggregate({
+        where: { status: 'Active', createdAt: { lte: twoWeeksAgo } },
+        _sum: { totalAmount: true },
+      }),
+      prisma.dispute.count({ where: { raisedAt: { gte: twoWeeksAgo, lt: oneWeekAgo } } }),
+      prisma.payment.aggregate({
+        where: { createdAt: { gte: twoMonthsAgo, lt: oneMonthAgo }, type: 'PLATFORM_FEE' },
+        _sum: { amount: true },
+      }),
+      prisma.dispute.findMany({
+        where: { resolvedAt: { gte: oneWeekAgo } },
+        select: { raisedAt: true, resolvedAt: true },
+      }),
+    ]);
+
+    // Calculate average resolution time
+    let avgResolutionTime = 0;
+    if (resolvedDisputesThisWeek.length > 0) {
+      const totalResolutionMs = resolvedDisputesThisWeek.reduce((sum, d) => {
+        return sum + (new Date(d.resolvedAt) - new Date(d.raisedAt));
+      }, 0);
+      avgResolutionTime = Math.round(
+        totalResolutionMs / resolvedDisputesThisWeek.length / (1000 * 60 * 60),
+      ); // in hours
+    }
+
+    // Calculate deltas
+    const calculateDelta = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    const currentLocked = currentTotalLockedXLM._sum.totalAmount
+      ? parseFloat(currentTotalLockedXLM._sum.totalAmount)
+      : 0;
+    const prevLocked = prevTotalLockedXLM._sum.totalAmount
+      ? parseFloat(prevTotalLockedXLM._sum.totalAmount)
+      : 0;
+    const currentFees = currentPlatformFeesThisMonth._sum.amount
+      ? parseFloat(currentPlatformFeesThisMonth._sum.amount)
+      : 0;
+    const prevFees = prevPlatformFeesThisMonth._sum.amount
+      ? parseFloat(prevPlatformFeesThisMonth._sum.amount)
+      : 0;
+
+    const result = {
+      activeEscrows: currentActiveEscrows,
+      activeEscrowsDelta: calculateDelta(currentActiveEscrows, prevActiveEscrows),
+      totalLockedXLM: currentLocked.toFixed(2),
+      totalLockedXLMDelta: calculateDelta(currentLocked, prevLocked),
+      disputesThisWeek: currentDisputesThisWeek,
+      disputesThisWeekDelta: calculateDelta(currentDisputesThisWeek, prevDisputesThisWeek),
+      avgResolutionTime: avgResolutionTime,
+      avgResolutionTimeDelta: 0, // Placeholder - need historical data
+      platformFeesMonth: currentFees.toFixed(2),
+      platformFeesMonthDelta: calculateDelta(currentFees, prevFees),
+    };
+
+    await cache.set(cacheKey, result, 30);
+    res.json(result);
+  } catch (err) {
+    logControllerError('admin.getMetrics', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── Arbiters ──────────────────────────────────────────────────────────────────
+const listArbiters = async (req, res) => {
+  try {
+    const cacheKey = 'admin:arbiters';
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const arbiters = await prisma.reputationRecord.findMany({
+      where: { isArbiter: true },
+      select: {
+        address: true,
+        activeDisputes: true,
+        totalResolved: true,
+        disputesWon: true,
+        createdAt: true,
+      },
+    });
+
+    const formattedArbiters = arbiters.map((arb) => ({
+      address: arb.address,
+      activeDisputes: arb.activeDisputes,
+      totalResolved: arb.totalResolved,
+      winRate: arb.totalResolved > 0 ? Math.round((arb.disputesWon / arb.totalResolved) * 100) : 0,
+      registeredAt: arb.createdAt,
+    }));
+
+    const result = { arbiters: formattedArbiters };
+    await cache.set(cacheKey, result, 30);
+    res.json(result);
+  } catch (err) {
+    logControllerError('admin.listArbiters', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const registerArbiter = async (req, res) => {
+  try {
+    const { address } = req.body;
+    if (!address) {
+      return res.status(400).json({ error: 'Address is required.' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.reputationRecord.findUnique({
+        where: { address },
+      });
+
+      if (existing && existing.isArbiter) {
+        return { error: 'Arbiter already registered.', status: 409 };
+      }
+
+      const arbiter = await tx.reputationRecord.upsert({
+        where: { address },
+        create: {
+          address,
+          isArbiter: true,
+          totalScore: 0,
+          completedEscrows: 0,
+          disputedEscrows: 0,
+          disputesWon: 0,
+          totalResolved: 0,
+          activeDisputes: 0,
+        },
+        update: {
+          isArbiter: true,
+        },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          action: 'REGISTER_ARBITER',
+          targetAddress: address,
+          performedBy: 'admin',
+          performedAt: new Date(),
+        },
+      });
+
+      return { arbiter };
+    });
+
+    if (result.error) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    await cache.invalidatePrefix('admin:arbiters');
+    res.json({ message: 'Arbiter registered.', arbiter: result.arbiter });
+  } catch (err) {
+    logControllerError('admin.registerArbiter', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const removeArbiter = async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const arbiter = await tx.reputationRecord.findUnique({
+        where: { address },
+      });
+
+      if (!arbiter || !arbiter.isArbiter) {
+        return { error: 'Arbiter not found.', status: 404 };
+      }
+
+      await tx.reputationRecord.update({
+        where: { address },
+        data: { isArbiter: false },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          action: 'REMOVE_ARBITER',
+          targetAddress: address,
+          performedBy: 'admin',
+          performedAt: new Date(),
+        },
+      });
+
+      return {};
+    });
+
+    if (result.error) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    await cache.invalidatePrefix('admin:arbiters');
+    res.json({ message: 'Arbiter removed.' });
+  } catch (err) {
+    logControllerError('admin.removeArbiter', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── Dispute Queue ─────────────────────────────────────────────────────────────
+const getDisputeQueue = async (req, res) => {
+  try {
+    const { status, orderBy } = req.query;
+
+    const where = status === 'open' ? { resolvedAt: null } : {};
+
+    let orderByConfig = { raisedAt: 'desc' };
+    if (orderBy === 'escalationRisk') {
+      // For now, we'll handle the complex sorting in the controller
+      // since Prisma doesn't support complex expressions in orderBy easily
+      orderByConfig = {};
+    }
+
+    const disputes = await prisma.dispute.findMany({
+      where,
+    });
+
+    // Format disputes with escalation risk data
+    const formattedDisputes = disputes.map((d) => ({
+      escrowId: d.escrowId,
+      raisedAt: d.raisedAt,
+      currentArbiter: d.currentArbiter,
+      escalationCount: d.escalationCount || 0,
+      autoEscalateAt: d.autoEscalateAt,
+      escalationRisk: d.escalationCount || 0, // For sorting
+    }));
+
+    // Apply custom sorting if needed
+    let sortedDisputes = formattedDisputes;
+    if (orderBy === 'escalationRisk') {
+      sortedDisputes = [...formattedDisputes].sort((a, b) => {
+        // Sort by escalation count (higher first), then by time until escalation (sooner first)
+        const countCompare = (b.escalationCount || 0) - (a.escalationCount || 0);
+        if (countCompare !== 0) return countCompare;
+
+        const aTime = a.autoEscalateAt ? new Date(a.autoEscalateAt).getTime() : Infinity;
+        const bTime = b.autoEscalateAt ? new Date(b.autoEscalateAt).getTime() : Infinity;
+        return aTime - bTime;
+      });
+    }
+
+    const result = { disputes: sortedDisputes };
+    res.json(result);
+  } catch (err) {
+    logControllerError('admin.getDisputeQueue', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listUsers,
   getUserDetail,
   suspendUser,
+  unsuspendUser,
   banUser,
   listDisputes,
   resolveDispute,
