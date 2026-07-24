@@ -220,9 +220,10 @@ model Escrow {
   /// Stellar ledger sequence when this escrow was created
   createdLedger     BigInt       @map("created_ledger")
 
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  tenant     Tenant       @relation(fields: [tenantId], references: [id])
   milestones Milestone[]
   dispute    Dispute?
+  notes      EscrowNote[]
 
   @@index([tenantId])
   @@index([tenantId, clientAddress])
@@ -247,6 +248,27 @@ model Escrow {
   @@index([freelancerAddress, status, createdAt(sort: Desc)])
   @@index([createdAt])
   @@map("escrows")
+}
+
+// ── Escrow Notes / Comments ───────────────────────────────────────────────────
+
+model EscrowNote {
+  id            String    @id @default(cuid())
+  escrowId      BigInt    @map("escrow_id")
+  tenantId      String    @map("tenant_id")
+  authorAddress String    @map("author_address")
+  body          String    @db.Text
+  editedAt      DateTime? @map("edited_at")
+  deletedAt     DateTime? @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  escrow Escrow @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+
+  @@index([escrowId, createdAt(sort: Desc)])
+  @@index([tenantId, escrowId])
+  @@index([authorAddress])
+  @@map("escrow_notes")
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────
