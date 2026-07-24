@@ -12,6 +12,7 @@ import adminAuth, { optionalAdminAuth } from '../middleware/adminAuth.js';
 import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
 import { conditionalGet } from '../middleware/conditionalGet.js';
 import { validatePasswordStrength } from '../middleware/passwordStrength.js';
+import { listBookmarks } from '../controllers/bookmarkController.js';
 
 const router = express.Router();
 router.use(optionalAdminAuth, authMiddleware);
@@ -35,6 +36,7 @@ router.get(
 );
 router.get('/:address/escrows', validateAddress, validatePagination, userController.getUserEscrows);
 router.get('/:address/stats', validateAddress, userController.getUserStats);
+router.get('/:address/bookmarks', validateAddress, validatePagination, listBookmarks);
 
 /**
  * @route  PUT /api/users/:address/password
