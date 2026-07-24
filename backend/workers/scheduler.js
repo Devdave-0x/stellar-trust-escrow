@@ -5,6 +5,8 @@ import { archiveCompletedEscrows } from '../services/escrowArchiveService.js';
 import { syncFromPrisma } from '../services/reputationSearchService.js';
 import { runGarbageCollector } from '../services/ipfsGarbageCollector.js';
 import { runDisputeEscalationJob } from '../services/disputeEscalationService.js';
+import { purgeScheduledDeletions } from '../services/accountDeletionService.js';
+import { purgeExpiredActivity } from '../services/userActivityService.js';
 
 // Daily cleanup at 2AM UTC
 cron.schedule(
@@ -77,5 +79,29 @@ cron.schedule('*/30 * * * *', async () => {
     console.warn('[DisputeEscalation] Job failed:', err?.message || err);
   }
 });
+
+// Daily activity log retention purge at 5AM UTC (90-day window)
+cron.schedule(
+  '0 5 * * *',
+  async () => {
+    console.log('[Scheduler] Purging activity log entries older than 90 days');
+    await purgeExpiredActivity().catch((err) =>
+      console.warn('[ActivityLog] Retention purge failed:', err.message),
+    );
+  },
+  { timezone: 'UTC' },
+);
+
+// Daily account deletion purge at 05:30 UTC
+cron.schedule(
+  '30 5 * * *',
+  async () => {
+    console.log('[Scheduler] Running account deletion purge');
+    await purgeScheduledDeletions().catch((err) =>
+      console.warn('[AccountDeletion] Purge failed:', err.message),
+    );
+  },
+  { timezone: 'UTC' },
+);
 
 console.log('[Scheduler] Started - queues ready for cron jobs');

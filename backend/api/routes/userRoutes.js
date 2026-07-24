@@ -26,6 +26,12 @@ const exportRateLimit = createSlidingWindowRateLimiter({
 });
 
 router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
+router.get(
+  '/:address/activity',
+  validateAddress,
+  validatePagination,
+  userController.getUserActivityLog,
+);
 router.get('/:address/escrows', validateAddress, validatePagination, userController.getUserEscrows);
 router.get('/:address/stats', validateAddress, userController.getUserStats);
 
