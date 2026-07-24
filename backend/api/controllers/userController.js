@@ -2,6 +2,7 @@ import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
 import { logControllerError } from '../../config/logger.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import { getUserActivity } from '../../services/userActivityService.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
@@ -250,4 +251,34 @@ const uploadAvatar = async (req, res) => {
   }
 };
 
-export default { getUserProfile, getUserEscrows, getUserStats, updateUserProfile, uploadAvatar };
+const getUserActivityLog = async (req, res) => {
+  try {
+    const { address } = req.params;
+    if (!validateAddress(address, res)) return;
+
+    const { page = 1, limit = 20, category } = req.query;
+    const tenantId = req.tenant?.id ?? '_global';
+
+    const result = await getUserActivity({
+      address,
+      page: parseInt(page, 10),
+      limit: Math.min(parseInt(limit, 10), 100),
+      category: category || undefined,
+      tenantId,
+    });
+
+    res.json(result);
+  } catch (err) {
+    logControllerError('user.getUserActivityLog', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export default {
+  getUserProfile,
+  getUserEscrows,
+  getUserStats,
+  updateUserProfile,
+  uploadAvatar,
+  getUserActivityLog,
+};
