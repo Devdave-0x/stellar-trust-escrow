@@ -10,6 +10,7 @@ import authMiddleware from '../middleware/auth.js';
 import { authorizeParamAddress } from '../middleware/authorization.js';
 import adminAuth, { optionalAdminAuth } from '../middleware/adminAuth.js';
 import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
+import { conditionalGet } from '../middleware/conditionalGet.js';
 
 const router = express.Router();
 router.use(optionalAdminAuth, authMiddleware);
@@ -24,7 +25,7 @@ const exportRateLimit = createSlidingWindowRateLimiter({
   keyGenerator: (req) => `data-export:address:${req.params?.address || 'unknown'}`,
 });
 
-router.get('/:address', validateAddress, userController.getUserProfile);
+router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
 router.get('/:address/escrows', validateAddress, validatePagination, userController.getUserEscrows);
 router.get('/:address/stats', validateAddress, userController.getUserStats);
 
