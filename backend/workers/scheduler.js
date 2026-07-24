@@ -4,6 +4,7 @@ import { scheduledQueue } from '../queues/index.js';
 import { archiveCompletedEscrows } from '../services/escrowArchiveService.js';
 import { syncFromPrisma } from '../services/reputationSearchService.js';
 import { runGarbageCollector } from '../services/ipfsGarbageCollector.js';
+import { purgeScheduledDeletions } from '../services/accountDeletionService.js';
 
 // Daily cleanup at 2AM UTC
 cron.schedule(
@@ -60,6 +61,18 @@ cron.schedule(
     } catch (err) {
       console.warn('[IPFSGC] Daily run failed:', err?.message || err);
     }
+  },
+  { timezone: 'UTC' },
+);
+
+// Daily account deletion purge at 05:30 UTC
+cron.schedule(
+  '30 5 * * *',
+  async () => {
+    console.log('[Scheduler] Running account deletion purge');
+    await purgeScheduledDeletions().catch((err) =>
+      console.warn('[AccountDeletion] Purge failed:', err.message),
+    );
   },
   { timezone: 'UTC' },
 );
