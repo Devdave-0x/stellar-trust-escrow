@@ -1032,3 +1032,20 @@ model EscrowBookmark {
   @@index([escrowId])
   @@map("escrow_bookmarks")
 }
+
+// ── Escrow Share Links ────────────────────────────────────────────────────────
+
+model EscrowShareLink {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  escrowId  BigInt    @map("escrow_id")
+  createdBy String    @map("created_by")
+  expiresAt DateTime? @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([token])
+  @@index([escrowId])
+  @@index([createdBy])
+  @@map("escrow_share_links")
+}

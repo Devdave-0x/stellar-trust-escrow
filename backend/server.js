@@ -22,6 +22,7 @@ import {
   REQUEST_SIZE_LIMIT,
 } from './middleware/validation.js';
 
+import { idempotencyMiddleware } from './api/middleware/idempotency.js';
 import docsRouter from './docs/index.js';
 import disputeRoutes from './api/routes/disputeRoutes.js';
 import searchRoutes from './api/routes/searchRoutes.js';
@@ -193,6 +194,10 @@ app.use('/api', tenantMiddleware);
 app.use('/api/auth', authRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/escrows', escrowRoutes);
+
+// Public share link resolver — no auth required
+import { resolveShareLink } from './api/controllers/shareLinkController.js';
+app.get('/api/share/:token', resolveShareLink);
 
 // ── API Documentation ─────────────────────────────────────────────────────────
 setupSwagger(app);
