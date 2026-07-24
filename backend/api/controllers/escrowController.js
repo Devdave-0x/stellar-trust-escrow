@@ -10,6 +10,7 @@
 
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
+import { recordEscrowStateTransition } from '../../lib/metrics.js';
 import {
   buildPaginatedResponse,
   parsePagination,
@@ -261,11 +262,14 @@ const broadcastCreateEscrow = async (req, res) => {
         },
         update: {}, // indexer will fill in the details on next tick
       });
+
+      recordEscrowStateTransition('null', 'Active');
     }
 
-    return res
-      .status(200)
-      .json({ hash: result.hash, escrowId: escrowId ? String(escrowId) : null });
+    return res.status(200).json({
+      hash: result.hash,
+      escrowId: escrowId ? String(escrowId) : null,
+    });
   } catch (err) {
     logControllerError('escrow.broadcastCreateEscrow', err, req);
     res.status(500).json({ error: err.message });
