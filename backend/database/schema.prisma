@@ -233,8 +233,29 @@ model Escrow {
   // Composite index for user escrows with status filter + sort (covers getUserEscrows role+status queries)
   @@index([clientAddress, status, createdAt(sort: Desc)])
   @@index([freelancerAddress, status, createdAt(sort: Desc)])
-  @@index([createdAt])
-  @@map("escrows")
+   @@index([createdAt])
+   @@map("escrows")
+  frozenAt     DateTime?    @map("frozen_at")
+  freezeReason String?      @map("freeze_reason")
+  adminNotes   EscrowNote[]
+}
+
+// ── Escrow Notes ───────────────────────────────────────────────────────────────
+
+model EscrowNote {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @map("tenant_id")
+  escrowId  BigInt   @map("escrow_id")
+  note      String   @db.Text
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  escrow Escrow  @relation(fields: [escrowId], references: [id])
+
+  @@index([tenantId, escrowId])
+  @@index([escrowId])
+  @@map("escrow_notes")
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────
