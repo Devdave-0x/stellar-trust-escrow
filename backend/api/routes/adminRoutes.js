@@ -66,6 +66,14 @@ router.get('/users/:address', adminController.getUserDetail);
 router.post('/users/:address/suspend', requireMfa, adminController.suspendUser);
 
 /**
+ * @route  POST /api/admin/users/:address/unsuspend
+ * @desc   Lift a user suspension; restores status to active
+ * @body   { reason?: string }
+ * @security Requires MFA verification
+ */
+router.post('/users/:address/unsuspend', requireMfa, adminController.unsuspendUser);
+
+/**
  * @route  POST /api/admin/users/:address/ban
  * @desc   Permanently ban a user; logs action to admin audit log
  * @body   { reason: string }
