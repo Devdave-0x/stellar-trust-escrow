@@ -5,6 +5,7 @@ import escrowController, {
   validatePagination,
 } from '../controllers/escrowController.js';
 import { cacheResponse, invalidateOn, TTL } from '../middleware/cache.js';
+import { conditionalGet } from '../middleware/conditionalGet.js';
 import authMiddleware from '../middleware/auth.js';
 import { auditTransitionMiddleware } from '../../services/escrowAuditService.js';
 
@@ -57,6 +58,7 @@ router.get(
     ttl: TTL.LIST,
     tags: (req) => ['escrows', `escrow:list:${req.query.cursor || 'first'}`],
   }),
+  conditionalGet(),
   escrowController.listEscrows,
 );
 
