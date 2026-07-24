@@ -7,6 +7,7 @@
 
 import { withTransaction } from '../lib/transaction.js';
 import prisma from '../lib/prisma.js';
+import { recordEscrowStateTransition } from '../lib/metrics.js';
 
 export async function fundEscrow(data) {
   return withTransaction(
@@ -37,6 +38,8 @@ export async function fundEscrow(data) {
           performedAt: new Date(),
         },
       });
+
+      recordEscrowStateTransition('null', 'Active');
 
       return escrow;
     },
@@ -83,6 +86,10 @@ export async function releaseMilestone({ escrowId, milestoneIndex, amount, calle
       }),
     ]);
 
+    if (newBalance === 0n) {
+      recordEscrowStateTransition('Active', 'Completed');
+    }
+
     return { milestone, escrow: updatedEscrow };
   });
 }
@@ -127,6 +134,9 @@ export async function raiseDispute({ escrowId, raisedByAddress, milestoneIndex }
       }
 
       const [updatedEscrow, dispute] = await Promise.all(ops);
+
+      recordEscrowStateTransition('Active', 'Disputed');
+
       return { dispute, escrow: updatedEscrow };
     },
     { isolationLevel: 'Serializable' },
@@ -183,6 +193,8 @@ export async function resolveDispute({
           },
         }),
       ]);
+
+      recordEscrowStateTransition('Disputed', 'Completed');
 
       return { dispute, escrow: updatedEscrow };
     },

@@ -219,6 +219,33 @@ export const chaosInjectedTotal = new client.Counter({
   registers: [register],
 });
 
+// ── Redis Metrics ──────────────────────────────────────────────────────────────
+
+export const redisMemoryUsageBytes = new client.Gauge({
+  name: 'redis_memory_usage_bytes',
+  help: 'Current Redis memory usage in bytes (from INFO memory)',
+  registers: [register],
+});
+
+// ── Escrow State Transition Metrics ───────────────────────────────────────────
+
+export const escrowStateTransitionsTotal = new client.Counter({
+  name: 'escrow_state_transitions_total',
+  help: 'Total number of escrow state transitions by from_state and to_state',
+  labelNames: ['from_state', 'to_state'],
+  registers: [register],
+});
+
+/**
+ * Record an escrow state transition.
+ *
+ * @param {string} fromState - previous state (use 'null' for creation)
+ * @param {string} toState   - new state
+ */
+export function recordEscrowStateTransition(fromState, toState) {
+  escrowStateTransitionsTotal.inc({ from_state: fromState ?? 'null', to_state: toState });
+}
+
 // ── Error Metrics ─────────────────────────────────────────────────────────────
 
 export const errorsTotal = new client.Counter({
