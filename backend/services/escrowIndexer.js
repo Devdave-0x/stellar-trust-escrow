@@ -1,298 +1,455 @@
 /**
- * Escrow Event Indexer
+ * Exactly-Once Escrow Event Indexer
  *
- * Background service that polls the Stellar network for Soroban contract
- * events emitted by the escrow contract and writes them to PostgreSQL.
+ * Polls Soroban contract events for the escrow contract and projects them into
+ * the CQRS write model (`services/escrowService`). The indexer is the *only*
+ * writer of `contract_events` rows; everything else reads them.
  *
- * This keeps the database in sync so the REST API can serve data quickly
- * without querying the blockchain on every request.
+ * ## Exactly-once guarantees
  *
- * ## Event → DB Mapping
+ *  * **Idempotent upsert.** Every event is recorded with
+ *    `prisma.contractEvent.upsert({ where: { eventId }, ... })`. Replaying an
+ *    already-indexed event resolves to the `update` branch, so a crash-and-restart
+ *    (or a duplicate RPC batch) can never create a second row.
+ *  * **Crash-safe cursor.** The ledger cursor (`IndexerState`, id=1) is persisted
+ *    *after* a batch fully processes and *before* the loop advances. We never
+ *    move the cursor ahead of what we have durably stored, so a restart resumes
+ *    from the first un-indexed ledger and re-fetches — which is safe because of
+ *    the upsert above.
+ *  * **Dead-letter queue.** Events that cannot be parsed, or whose handler keeps
+ *    failing after 3 retries, are pushed to the Redis list `indexer:dlq` with the
+ *    original payload + error. The batch continues; one poison event can never
+ *    stall the pipeline.
  *
- * | Contract Event      | DB Action                              |
- * |---------------------|----------------------------------------|
- * | EscrowCreated       | INSERT into escrows table              |
- * | MilestoneAdded      | INSERT into milestones table           |
- * | MilestoneSubmitted  | UPDATE milestone status = Submitted    |
- * | MilestoneApproved   | UPDATE milestone status = Approved     |
- * | FundsReleased       | UPDATE escrow remaining_balance        |
- * | EscrowCancelled     | UPDATE escrow status = Cancelled       |
- * | DisputeRaised       | UPDATE escrow status = Disputed        |
- * | DisputeResolved     | UPDATE escrow status = Completed       |
- * | ReputationUpdated   | UPSERT reputation_records table        |
+ * ## Graceful shutdown
+ *  `startIndexer()` registers SIGTERM/SIGINT handlers that set a flag and let the
+ *  *current* batch finish, persist the cursor, then exit. We never abort a batch
+ *  mid-flight.
  *
- * @module escrowIndexer
+ * @module services/escrowIndexer
  */
 
-import { stellarEventsQueue } from '../lib/queueConfig.js';
-import { setupQueueEventListeners } from '../lib/queueConfig.js';
-import { startMonitoring } from './alertService.js';
+import { createClient } from 'redis';
+import { scValToNative } from '@stellar/stellar-sdk';
+import prisma from '../lib/prisma.js';
+import { createModuleLogger } from '../config/logger.js';
+import { getLatestLedger, getContractEvents } from './stellarService.js';
+import {
+  fundEscrow,
+  releaseMilestone,
+  raiseDispute,
+  resolveDispute,
+  cancelEscrow,
+  expireEscrow,
+} from './escrowService.js';
 
-// TODO (contributor): uncomment when dependencies are installed
-// const { PrismaClient } = require('@prisma/client');
+const log = createModuleLogger('service.escrowIndexer');
 
-// const prisma = new PrismaClient();
+const DEFAULT_TENANT = 'default';
 
-/**
- * The last ledger sequence successfully processed.
- * Persisted to DB so the indexer can resume after restarts.
- *
- * @type {number}
- */
-let lastProcessedLedger = parseInt(process.env.INDEXER_START_LEDGER || '0');
+// ─── Configuration ─────────────────────────────────────────────────────────────
+const CONTRACT_ID = process.env.ESCROW_CONTRACT_ID || '';
+const POLL_INTERVAL_MS = parseInt(process.env.INDEXER_POLL_INTERVAL_MS || '5000', 10);
+const START_LEDGER = parseInt(process.env.INDEXER_START_LEDGER || '0', 10);
 
-/**
- * Starts the indexer polling loop.
- *
- * Polls at the interval defined by INDEXER_POLL_INTERVAL_MS.
- * Each tick fetches new events since `lastProcessedLedger` and
- * queues them for processing via BullMQ.
- *
- * TODO (contributor — hard, Issue #27):
- * 1. Initialize Soroban RPC client
- * 2. Load lastProcessedLedger from DB (table: indexer_state)
- * 3. Start polling loop with setInterval
- * 4. On each tick, call fetchAndProcessEvents()
- * 5. Handle errors gracefully (log + continue, don't crash)
- */
-const startIndexer = async () => {
-  console.log(`[Indexer] Starting from ledger ${lastProcessedLedger}`);
+/** Redis list used as the dead-letter queue for poison events. */
+export const DLQ_KEY = 'indexer:dlq';
 
-  // Setup queue event listeners and monitoring
-  setupQueueEventListeners();
-  startMonitoring();
+// ─── Handler retry / backoff ────────────────────────────────────────────────────
+const HANDLER_MAX_RETRIES = 3; // up to 3 re-attempts after the first failure
+const HANDLER_BASE_DELAY_MS = 500; // exponential base: 500, 1000, 2000, …
 
-  // TODO: implement polling loop
-  // const server = new SorobanRpc.Server(process.env.SOROBAN_RPC_URL);
-  // setInterval(async () => {
-  //   try {
-  //     await fetchAndProcessEvents(server);
-  //   } catch (err) {
-  //     console.error('[Indexer] Error in polling tick:', err.message);
-  //   }
-  // }, parseInt(process.env.INDEXER_POLL_INTERVAL_MS || '5000'));
+// ─── Injected sleep (so tests can assert backoff without real waiting) ──────────
+let _sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Test hook: override the delay primitive. */
+export function __setSleep(fn) {
+  _sleep = fn;
+}
 
-  console.log('[Indexer] TODO: implement — see Issue #27');
-};
+/** Test hook: reset the in-memory cursor so batches start from a known ledger. */
+export function __resetCursor(n = START_LEDGER) {
+  cursor = n;
+}
 
-/**
- * Fetches contract events from Stellar since `lastProcessedLedger`
- * and queues each event for processing via BullMQ.
- *
- * @param {SorobanRpc.Server} server — initialized Soroban RPC client
- *
- * TODO (contributor — hard, Issue #27):
- * 1. Call server.getEvents({ startLedger, filters: [{ contractIds: [CONTRACT_ADDRESS] }] })
- * 2. For each event, queue it via BullMQ instead of direct processing
- * 3. Update lastProcessedLedger = latestLedger
- * 4. Persist lastProcessedLedger to DB
- */
-const fetchAndProcessEvents = async (_server) => {
-  // TODO: implement
-  throw new Error('fetchAndProcessEvents not implemented — see Issue #27');
+// ─── Runtime state ──────────────────────────────────────────────────────────────
+let running = false;
+let shuttingDown = false;
+let cursor = 0; // last processed ledger (number)
+let timer = null;
 
-  // Example implementation when ready:
-  // const events = await server.getEvents({
-  //   startLedger: lastProcessedLedger,
-  //   filters: [{ contractIds: [process.env.ESCORROW_CONTRACT_ADDRESS] }]
-  // });
-  //
-  // for (const event of events.events) {
-  //   await stellarEventsQueue.add('process-stellar-event', {
-  //     event,
-  //     ledger: event.ledger
-  //   }, {
-  //     // Optional: customize job options per event type
-  //     priority: getEventPriority(event),
-  //     delay: getEventDelay(event)
-  //   });
-  // }
-};
-
-/**
- * Get processing priority for an event
- * @param {Object} event - Stellar event
- * @returns {number} Priority (higher = more important)
- */
-const getEventPriority = (event) => {
-  // High priority for critical events
-  const highPriorityEvents = ['DisputeRaised', 'DisputeResolved'];
-  const eventName = parseEventName(event);
-
-  if (highPriorityEvents.includes(eventName)) {
-    return 10;
+// ─── Redis DLQ client (lazy) ─────────────────────────────────────────────────────
+let _redisClient = null;
+function getRedisClient() {
+  if (!_redisClient) {
+    _redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
+    _redisClient.on('error', (err) => log.error({ message: 'redis_dql_error', error: err.message }));
   }
-  return 1;
-};
+  return _redisClient;
+}
 
-/**
- * Get processing delay for an event (if any)
- * @param {Object} event - Stellar event
- * @returns {number} Delay in milliseconds
- */
-const getEventDelay = (event) => {
-  // No delay by default, but could be used for throttling
-  return 0;
-};
-
-/**
- * Parse event name from Stellar event topic
- * @param {Object} event - Stellar event
- * @returns {string} Event name
- */
-const parseEventName = (event) => {
-  if (!event.topic || !event.topic[0]) {
-    return 'Unknown';
-  }
-
-  const topicHex = event.topic[0];
-  const eventMap = {
-    '6573635f637274': 'EscrowCreated',
-    '6d696c5f616464': 'MilestoneAdded',
-    '6d696c5f737562': 'MilestoneSubmitted',
-    '6d696c5f617070': 'MilestoneApproved',
-    '66756e645f726c': 'FundsReleased',
-    '6573635f63616e': 'EscrowCancelled',
-    '6469735f726169': 'DisputeRaised',
-    '6469735f726573': 'DisputeResolved',
-    '7265705f757064': 'ReputationUpdated',
+/** Push a poison event to the dead-letter queue. Never throws. */
+async function pushToDlq(event, error, kind, attempts = 0) {
+  const entry = {
+    event,
+    error: error?.message ?? String(error),
+    kind,
+    attempts,
+    at: new Date().toISOString(),
   };
+  try {
+    await getRedisClient().rpush(DLQ_KEY, JSON.stringify(entry));
+  } catch (dlqErr) {
+    log.error({ message: 'indexer_dlq_write_failed', error: dlqErr?.message });
+  }
+}
 
-  return eventMap[topicHex] || 'Unknown';
-};
+// ─── ScVal / value helpers ───────────────────────────────────────────────────────
 
-/**
- * Routes a contract event to the correct handler based on its topic.
- * NOTE: This function is now called by the event worker, not directly.
- *
- * @param {object} event — raw Soroban event object from RPC
- *
- * TODO (contributor — medium, Issue #27):
- * Parse event.topic[0] to determine event type, then call the
- * appropriate handler (handleEscrowCreated, handleMilestoneAdded, etc.)
- */
-const dispatchEvent = async (_event) => {
-  // TODO: implement event routing
-  // const eventName = parseEventName(event.topic);
-  // switch (eventName) {
-  //   case 'esc_crt': return handleEscrowCreated(event);
-  //   case 'mil_add': return handleMilestoneAdded(event);
-  //   ...
-  // }
-  console.log('[Indexer] dispatchEvent not implemented — see Issue #27');
-};
+/** Convert a Soroban ScVal (or plain value) to a native JS value. */
+function toNative(value) {
+  if (value == null) return null;
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'bigint' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+  try {
+    return scValToNative(value);
+  } catch {
+    return value;
+  }
+}
 
-/**
- * Handles an EscrowCreated event — inserts a new escrow row.
- *
- * @param {object} event — parsed EscrowCreated event
- *
- * Expected event data: (client, freelancer, amount)
- * Expected event topic: (symbol_short!("esc_crt"), escrow_id)
- *
- * TODO (contributor — medium, Issue #27):
- * 1. Parse escrow_id from topic[1]
- * 2. Parse client, freelancer, amount from data
- * 3. prisma.escrow.create({ data: { ... } })
- */
-const handleEscrowCreated = async (_event) => {
-  // TODO: implement
-  console.log('[Indexer] handleEscrowCreated not implemented');
-};
-
-/**
- * Handles a MilestoneAdded event — inserts a new milestone row.
- *
- * TODO (contributor — medium, Issue #27)
- */
-const handleMilestoneAdded = async (_event) => {
-  // TODO: implement
-};
+/** Extract the short event-type symbol from topic[0]. */
+function parseEventType(topic0) {
+  if (topic0 == null) return null;
+  if (typeof topic0 === 'string') return topic0;
+  if (typeof topic0 === 'object' && 'value' in topic0 && typeof topic0.value === 'function') {
+    try {
+      return String(topic0.value());
+    } catch {
+      /* fallthrough */
+    }
+  }
+  try {
+    return String(scValToNative(topic0));
+  } catch {
+    return String(topic0);
+  }
+}
 
 /**
- * Handles a MilestoneSubmitted event — updates milestone status in DB.
- *
- * TODO (contributor — medium, Issue #27)
+ * Parse a raw Soroban event into `{ type, escrowId, value, handlerArgs }`.
+ * Throws on a malformed event (missing topic, unparsable escrow id, …) so the
+ * caller can route it to the DLQ.
  */
-const handleMilestoneSubmitted = async (_event) => {
-  // TODO: implement
+function parseEvent(event) {
+  if (!event || !Array.isArray(event.topic) || event.topic.length === 0) {
+    throw new Error('Malformed event: missing topic');
+  }
+
+  const type = parseEventType(event.topic[0]);
+  if (!type) throw new Error('Malformed event: missing event type in topic[0]');
+
+  const escrowIdRaw = event.topic[1] != null ? toNative(event.topic[1]) : null;
+  const escrowId = escrowIdRaw != null ? BigInt(escrowIdRaw) : null;
+
+  const value = Array.isArray(event.value)
+    ? event.value.map(toNative)
+    : event.value != null
+      ? [toNative(event.value)]
+      : [];
+
+  return { type, escrowId, value, handlerArgs: buildHandlerArgs(type, escrowId, value, event) };
+}
+
+/** Map a parsed event to the argument shape its escrowService handler expects. */
+function buildHandlerArgs(type, escrowId, value, event) {
+  switch (type) {
+    case 'EscrowCreated':
+      return {
+        id: escrowId,
+        clientAddress: value[0],
+        freelancerAddress: value[1],
+        tokenAddress: value[2],
+        totalAmount: value[3],
+        briefHash: value[4] ?? '',
+        arbiterAddress: value[5] ?? null,
+        createdLedger: event.ledger,
+      };
+    case 'MilestoneApproved':
+      return {
+        escrowId,
+        milestoneIndex: value[0] != null ? Number(value[0]) : undefined,
+        amount: value[1],
+        callerAddress: value[2],
+      };
+    case 'DisputeRaised':
+      return {
+        escrowId,
+        raisedByAddress: value[0],
+        milestoneIndex: value[1] != null ? Number(value[1]) : undefined,
+      };
+    case 'DisputeResolved':
+      return {
+        escrowId,
+        clientAmount: value[0],
+        freelancerAmount: value[1],
+        resolvedBy: value[2],
+        resolution: value[3],
+      };
+    case 'EscrowCancelled':
+      return {
+        escrowId,
+        cancelledBy: value[0],
+        reason: value[1],
+      };
+    case 'LockTimeExpired':
+      return {
+        escrowId,
+        expiredLedger: event.ledger,
+      };
+    default:
+      return { escrowId };
+  }
+}
+
+// ─── Event → handler dispatch ─────────────────────────────────────────────────────
+const HANDLERS = {
+  EscrowCreated: fundEscrow,
+  MilestoneApproved: releaseMilestone,
+  DisputeRaised: raiseDispute,
+  DisputeResolved: resolveDispute,
+  EscrowCancelled: cancelEscrow,
+  LockTimeExpired: expireEscrow,
 };
+
+// ─── Idempotent event storage ─────────────────────────────────────────────────────
 
 /**
- * Handles a MilestoneApproved event — updates milestone status in DB.
- *
- * TODO (contributor — medium, Issue #27)
+ * Record an event exactly once. The upsert key is the globally-unique Soroban
+ * `event.id`; a replay resolves to the `update` branch and leaves the existing
+ * row untouched.
  */
-const handleMilestoneApproved = async (_event) => {
-  // TODO: implement
-};
+async function upsertContractEvent(event, parsed) {
+  let eventIndex = 0;
+  const idStr = String(event.id ?? '');
+  const tail = idStr.split('-').pop();
+  if (tail && /^\d+$/.test(tail)) eventIndex = parseInt(tail, 10);
+
+  await prisma.contractEvent.upsert({
+    where: { eventId: idStr },
+    create: {
+      tenantId: DEFAULT_TENANT,
+      eventId: idStr,
+      ledger: BigInt(event.ledger),
+      ledgerAt: event.ledgerClosedAt ? new Date(event.ledgerClosedAt) : new Date(),
+      contractId: event.contractId ?? CONTRACT_ID,
+      eventType: parsed.type,
+      escrowId: parsed.escrowId,
+      topics: JSON.parse(JSON.stringify(event.topic ?? [])),
+      data: JSON.parse(JSON.stringify(parsed.value ?? [])),
+      txHash: event.txHash ?? '',
+      eventIndex,
+    },
+    update: {},
+  });
+}
+
+// ─── Handler invocation with bounded retry ─────────────────────────────────────────
 
 /**
- * Handles a FundsReleased event — updates escrow remaining_balance.
- *
- * TODO (contributor — medium, Issue #27)
+ * Invoke `fn` with up to `maxRetries` retries using an exponential backoff
+ * (500ms base). Re-throws the last error if every attempt fails so the caller
+ * can dead-letter the event.
  */
-const handleFundsReleased = async (_event) => {
-  // TODO: implement
-  // After updating DB, invalidate cache for this escrow:
-  // const escrowId = parseEscrowId(_event);
-  // await escrowController.onEscrowStatusChange(escrowId);
-};
+async function invokeWithRetry(fn, maxRetries = HANDLER_MAX_RETRIES) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await _sleep(HANDLER_BASE_DELAY_MS * 2 ** attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
+// ─── Per-event processing ───────────────────────────────────────────────────────────
 
 /**
- * Handles a DisputeRaised event — updates escrow status to Disputed.
+ * Process a single raw Soroban event:
+ *   1. Parse (parse failure → DLQ, continue).
+ *   2. Upsert the contract event (idempotent).
+ *   3. Dispatch to the matching escrowService handler, retrying on failure.
+ *      Final failure → DLQ.
  *
- * TODO (contributor — medium, Issue #27)
+ * @param {object} event - raw event from SorobanRpc.Server.getEvents()
+ * @returns {Promise<void>}
  */
-const handleDisputeRaised = async (_event) => {
-  // TODO: implement
-  // After updating DB, invalidate cache for this escrow:
-  // const escrowId = parseEscrowId(_event);
-  // await escrowController.onEscrowStatusChange(escrowId);
-};
+export async function processEvent(event) {
+  let parsed;
+  try {
+    parsed = parseEvent(event);
+  } catch (err) {
+    log.warn({ message: 'indexer_parse_failed', error: err.message });
+    await pushToDlq(event, err, 'parse');
+    return;
+  }
+
+  await upsertContractEvent(event, parsed);
+
+  const handler = HANDLERS[parsed.type];
+  if (!handler) {
+    log.warn({ message: 'indexer_unknown_event_type', type: parsed.type });
+    return;
+  }
+
+  try {
+    await invokeWithRetry(() => handler(parsed.handlerArgs));
+  } catch (err) {
+    log.error({
+      message: 'indexer_handler_failed',
+      type: parsed.type,
+      escrowId: String(parsed.escrowId),
+      error: err.message,
+    });
+    await pushToDlq(event, err, 'handler', HANDLER_MAX_RETRIES);
+  }
+}
+
+/** Process an array of events in order. */
+export async function processBatch(events) {
+  for (const event of events) {
+    await processEvent(event);
+  }
+}
+
+// ─── Cursor management ─────────────────────────────────────────────────────────────
+
+/** Load the resume cursor: IndexerState row (id=1) or INDEXER_START_LEDGER. */
+export async function loadCursor() {
+  const state = await prisma.indexerState.upsert({
+    where: { id: 1 },
+    create: { id: 1, lastProcessedLedger: BigInt(START_LEDGER) },
+    update: {},
+  });
+  return Number(state.lastProcessedLedger);
+}
+
+/** Persist the cursor. Called only after a batch has been fully processed. */
+export async function persistCursor(ledger) {
+  await prisma.indexerState.update({
+    where: { id: 1 },
+    data: { lastProcessedLedger: BigInt(ledger) },
+  });
+}
+
+// ─── Batch loop ─────────────────────────────────────────────────────────────────────
 
 /**
- * Handles a DisputeResolved event — sets status to Completed.
- *
- * TODO (contributor — medium, Issue #27)
+ * Fetch everything newer than `cursor` and process it, then advance + persist the
+ * cursor. Returns the new cursor.
  */
-const handleDisputeResolved = async (_event) => {
-  // TODO: implement
-  // After updating DB, invalidate cache for this escrow:
-  // const escrowId = parseEscrowId(_event);
-  // await escrowController.onEscrowStatusChange(escrowId);
-};
+export async function runBatch() {
+  if (!CONTRACT_ID) {
+    log.warn({ message: 'indexer_contract_id_unset' });
+    return cursor;
+  }
+
+  const latest = await getLatestLedger();
+  if (latest > cursor) {
+    const events = await getContractEvents(cursor + 1, CONTRACT_ID);
+    for (const event of events) {
+      await processEvent(event);
+    }
+    cursor = latest;
+    await persistCursor(cursor);
+    log.info({ message: 'indexer_batch_processed', count: events.length, cursor });
+  }
+  return cursor;
+}
+
+/** Run a single batch (one iteration). Convenience for tests and one-shot runs. */
+export async function runOnce() {
+  return runBatch();
+}
+
+async function tick() {
+  if (!running) return;
+  try {
+    await runBatch();
+  } catch (err) {
+    log.error({ message: 'indexer_batch_error', error: err?.message, stack: err?.stack });
+  }
+
+  if (running && !shuttingDown) {
+    timer = setTimeout(tick, POLL_INTERVAL_MS);
+  } else if (shuttingDown) {
+    try {
+      await persistCursor(cursor);
+    } catch (err) {
+      log.error({ message: 'indexer_shutdown_persist_failed', error: err?.message });
+    }
+    log.info({ message: 'indexer_shutdown_complete', cursor });
+    // Never exit mid-batch; only leave once the in-flight batch has committed.
+    if (!process.env.JEST_WORKER_ID) process.exit(0);
+  }
+}
+
+function registerSignals() {
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log.info({ message: 'indexer_shutdown_signal_received' });
+    // The in-flight batch finishes, then `tick` persists + exits.
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
+
+// ─── Public lifecycle ───────────────────────────────────────────────────────────────
 
 /**
- * Handles a ReputationUpdated event — upserts reputation record.
- *
- * TODO (contributor — medium, Issue #27)
+ * Start the polling loop. Loads the cursor, registers shutdown handlers, and runs
+ * the first batch immediately, then schedules subsequent batches.
  */
-const handleReputationUpdated = async (_event) => {
-  // TODO: implement
-};
+export async function startIndexer() {
+  if (running) return;
+  running = true;
+  shuttingDown = false;
+  cursor = await loadCursor();
+  log.info({ message: 'indexer_started', cursor });
+  if (!process.env.JEST_WORKER_ID) registerSignals();
+  await tick();
+}
 
-/**
- * Handles an EscrowCancelled event.
- *
- * TODO (contributor — easy, Issue #27)
- */
-const handleEscrowCancelled = async (_event) => {
-  // TODO: implement
-};
+/** Stop scheduling new batches. The in-flight batch is allowed to complete. */
+export function stopIndexer() {
+  running = false;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  log.info({ message: 'indexer_stopped' });
+}
 
-export {
+export default {
   startIndexer,
-  fetchAndProcessEvents,
-  dispatchEvent,
-  // Export handlers for unit testing
-  handleEscrowCreated,
-  handleMilestoneAdded,
-  handleMilestoneSubmitted,
-  handleMilestoneApproved,
-  handleFundsReleased,
-  handleDisputeRaised,
-  handleDisputeResolved,
-  handleReputationUpdated,
-  handleEscrowCancelled,
+  stopIndexer,
+  runOnce,
+  runBatch,
+  processEvent,
+  processBatch,
+  loadCursor,
+  persistCursor,
+  DLQ_KEY,
+  __setSleep,
+  __resetCursor,
 };

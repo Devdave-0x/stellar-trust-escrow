@@ -10,8 +10,15 @@
 
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import {
+  buildPaginatedResponse,
+  paginate,
+  PaginationError,
+  parsePagination,
+} from '../../lib/pagination.js';
 import { logControllerError } from '../../config/logger.js';
+import { submitTransaction } from '../../services/stellarService.js';
+import { xdr, scValToNative } from '@stellar/stellar-sdk';
 import {
   escrowIdParam,
   signedXdrBody,
@@ -19,19 +26,7 @@ import {
   handleValidationErrors,
 } from '../../middleware/validation.js';
 
-const ESCROW_SUMMARY_SELECT = {
-  id: true,
-  clientAddress: true,
-  freelancerAddress: true,
-  status: true,
-  totalAmount: true,
-  remainingBalance: true,
-  deadline: true,
-  createdAt: true,
-};
-
-const VALID_SORT_FIELDS = ['createdAt', 'totalAmount', 'status'];
-const VALID_SORT_ORDERS = ['asc', 'desc'];
+const VALID_ESCROW_STATUSES = new Set(['Active', 'Completed', 'Disputed', 'Cancelled']);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -64,7 +59,14 @@ async function onEscrowStatusChange(id) {
 
 const listEscrows = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
+    const limit = Number(req.query.limit ?? 20);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return res.status(400).json({
+        error: 'limit must be an integer between 1 and 100',
+        code: 'INVALID_LIMIT',
+      });
+    }
+
     const {
       status,
       client,
@@ -74,8 +76,8 @@ const listEscrows = async (req, res) => {
       maxAmount,
       dateFrom,
       dateTo,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      cursor,
+      include_total: includeTotal,
     } = req.query;
 
     const where = {};
@@ -85,6 +87,14 @@ const listEscrows = async (req, res) => {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      const invalid = statuses.filter((s) => !VALID_ESCROW_STATUSES.has(s));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid status value(s)',
+          invalid,
+          allowed: [...VALID_ESCROW_STATUSES],
+        });
+      }
       where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
     if (client) where.clientAddress = client;
@@ -113,17 +123,23 @@ const listEscrows = async (req, res) => {
       }
     }
 
-    const resolvedSortBy = VALID_SORT_FIELDS.includes(sortBy) ? sortBy : 'createdAt';
-    const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortOrder) ? sortOrder : 'desc';
-    const orderBy = { [resolvedSortBy]: resolvedSortOrder };
+    const result = await paginate(
+      prisma.escrow,
+      where,
+      [{ createdAt: 'desc' }, { id: 'desc' }],
+      cursor,
+      limit,
+    );
 
-    const [data, total] = await prisma.$transaction([
-      prisma.escrow.findMany({ where, select: ESCROW_SUMMARY_SELECT, skip, take: limit, orderBy }),
-      prisma.escrow.count({ where }),
-    ]);
+    if (includeTotal === 'true' || includeTotal === true) {
+      result.pagination.total = await prisma.escrow.count({ where });
+    }
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    res.json(result);
   } catch (err) {
+    if (err instanceof PaginationError) {
+      return res.status(err.statusCode).json({ error: err.message, code: err.code });
+    }
     logControllerError('escrow.listEscrows', err, req);
     res.status(500).json({ error: err.message });
   }
@@ -181,7 +197,50 @@ const broadcastCreateEscrow = async (req, res) => {
     if (!signedXdr || typeof signedXdr !== 'string') {
       return res.status(400).json({ error: 'signedXdr is required' });
     }
-    res.status(501).json({ error: 'Not implemented - see Issue #20' });
+
+    const result = await submitTransaction(signedXdr);
+
+    if (result.status !== 'SUCCESS') {
+      return res.status(422).json({
+        error: 'Transaction failed',
+        sorobanStatus: result.status,
+        errorResultXdr: result.errorResultXdr ?? null,
+      });
+    }
+
+    // Extract escrow ID from the transaction return value (ScVal u64/i128)
+    let escrowId = null;
+    if (result.returnValue) {
+      try {
+        const native = scValToNative(xdr.ScVal.fromXDR(result.returnValue, 'base64'));
+        escrowId = typeof native === 'bigint' ? native : BigInt(String(native));
+      } catch {
+        // returnValue absent or not a numeric type — escrowId stays null
+      }
+    }
+
+    // Upsert the escrow row so the DB reflects the on-chain state immediately,
+    // even before the indexer's next polling tick.
+    if (escrowId !== null) {
+      await prisma.escrow.upsert({
+        where: { id: escrowId },
+        create: {
+          id: escrowId,
+          clientAddress: '',
+          freelancerAddress: '',
+          tokenAddress: '',
+          totalAmount: '0',
+          remainingBalance: '0',
+          status: 'Active',
+          briefHash: '',
+          createdAt: new Date(),
+          createdLedger: BigInt(0),
+        },
+        update: {}, // indexer will fill in the details on next tick
+      });
+    }
+
+    return res.status(200).json({ hash: result.hash, escrowId: escrowId ? String(escrowId) : null });
   } catch (err) {
     logControllerError('escrow.broadcastCreateEscrow', err, req);
     res.status(500).json({ error: err.message });

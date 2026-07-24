@@ -1,48 +1,41 @@
 /**
  * Migration: Add IPFS evidence fields
  *
- * This migration adds fields to the DisputeEvidence table to support
+ * This migration adds fields to the dispute_evidence table to support
  * IPFS file storage, virus scanning, and thumbnail generation.
  */
 
-exports.up = async function (knex) {
-  await knex.schema.alterTable('dispute_evidence', (table) => {
-    // Update evidence_type to include new types
-    table.text('evidence_type').alter();
+export async function up(prisma) {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE dispute_evidence
+      ALTER COLUMN evidence_type TYPE TEXT,
+      ADD COLUMN IF NOT EXISTS filename TEXT,
+      ADD COLUMN IF NOT EXISTS mime_type TEXT,
+      ADD COLUMN IF NOT EXISTS file_size INTEGER,
+      ADD COLUMN IF NOT EXISTS ipfs_cid TEXT,
+      ADD COLUMN IF NOT EXISTS thumbnail_cid TEXT,
+      ADD COLUMN IF NOT EXISTS scan_status TEXT DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS scan_result TEXT
+  `);
 
-    // Add file metadata fields
-    table.text('filename').nullable();
-    table.text('mime_type').nullable();
-    table.integer('file_size').nullable();
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS dispute_evidence_ipfs_cid_idx ON dispute_evidence(ipfs_cid)
+  `);
+}
 
-    // Add IPFS fields
-    table.text('ipfs_cid').nullable();
-    table.text('thumbnail_cid').nullable();
+export async function down(prisma) {
+  await prisma.$executeRawUnsafe(`
+    DROP INDEX IF EXISTS dispute_evidence_ipfs_cid_idx
+  `);
 
-    // Add virus scanning fields
-    table.text('scan_status').defaultTo('pending').nullable();
-    table.text('scan_result').nullable();
-
-    // Add index for IPFS CID lookups
-    table.index('ipfs_cid');
-  });
-};
-
-exports.down = async function (knex) {
-  await knex.schema.alterTable('dispute_evidence', (table) => {
-    // Drop indexes
-    table.dropIndex('ipfs_cid');
-
-    // Drop columns
-    table.dropColumn('filename');
-    table.dropColumn('mime_type');
-    table.dropColumn('file_size');
-    table.dropColumn('ipfs_cid');
-    table.dropColumn('thumbnail_cid');
-    table.dropColumn('scan_status');
-    table.dropColumn('scan_result');
-
-    // Revert evidence_type (assuming original was enum-like)
-    // Note: This might need adjustment based on original constraints
-  });
-};
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE dispute_evidence
+      DROP COLUMN IF EXISTS filename,
+      DROP COLUMN IF EXISTS mime_type,
+      DROP COLUMN IF EXISTS file_size,
+      DROP COLUMN IF EXISTS ipfs_cid,
+      DROP COLUMN IF EXISTS thumbnail_cid,
+      DROP COLUMN IF EXISTS scan_status,
+      DROP COLUMN IF EXISTS scan_result
+  `);
+}

@@ -65,4 +65,16 @@ pub enum InsuranceError {
     InvalidSlashBps = 26,
     /// Nothing to yield-claim
     NoYieldAvailable = 27,
+
+    // ── Arithmetic ────────────────────────────────────────────────────────────
+    /// A checked arithmetic operation (add/mul) overflowed.
+    ArithmeticOverflow = 28,
+
+    // ── Opt-in ────────────────────────────────────────────────────────────────
+    /// Escrow has already opted into insurance.
+    AlreadyOptedIn = 29,
+    /// Escrow has not opted into insurance.
+    NotOptedIn = 30,
+    /// Coverage amount exceeds pool capacity.
+    InsufficientPoolCapacity = 31,
 }

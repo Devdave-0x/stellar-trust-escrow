@@ -30,8 +30,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
+          node-version: '24'
       - name: Install root dependencies
         run: npm ci --ignore-scripts
 
@@ -112,8 +111,7 @@ jobs:
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
+          node-version: '24'
       - name: Install dependencies
         run: npm ci
 
@@ -143,8 +141,7 @@ jobs:
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
+          node-version: '24'
       - name: Install dependencies
         run: npm ci
 
@@ -182,7 +179,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install dependencies
         run: npm ci
