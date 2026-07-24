@@ -8,6 +8,15 @@ import { cacheResponse, invalidateOn, TTL } from '../middleware/cache.js';
 import { conditionalGet } from '../middleware/conditionalGet.js';
 import authMiddleware from '../middleware/auth.js';
 import { auditTransitionMiddleware } from '../../services/escrowAuditService.js';
+import {
+  createNote,
+  listNotes,
+  updateNote,
+  deleteNote,
+} from '../controllers/escrowNoteController.js';
+import { exportBundle } from '../controllers/auditController.js';
+import { addBookmark, removeBookmark } from '../controllers/bookmarkController.js';
+import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -81,11 +90,7 @@ router.post(
  * @desc   Immutable audit trail of state transitions for a specific escrow.
  *         Accessible by the escrow parties (client/freelancer) and admins.
  */
-router.get(
-  '/:id/audit',
-  validateEscrowId,
-  escrowController.getEscrowAudit,
-);
+router.get('/:id/audit', validateEscrowId, escrowController.getEscrowAudit);
 
 /**
  * @route  GET /api/escrows/:id/milestones
@@ -168,5 +173,12 @@ router.get(
   }),
   escrowController.getSuccessRate,
 );
+
+/**
+ * @route  POST   /api/escrows/:id/bookmark
+ * @route  DELETE /api/escrows/:id/bookmark
+ */
+router.post('/:id/bookmark', validateEscrowId, addBookmark);
+router.delete('/:id/bookmark', validateEscrowId, removeBookmark);
 
 export default router;
