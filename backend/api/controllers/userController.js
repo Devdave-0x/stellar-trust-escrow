@@ -5,6 +5,7 @@ import { logControllerError } from '../../config/logger.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 import { getUserActivity } from '../../services/userActivityService.js';
 import { isValidTimezone, toLocalISOString } from '../../lib/timezone.js';
+import { processAndStoreAvatar } from '../../services/avatarService.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
@@ -252,20 +253,22 @@ const uploadAvatar = async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const avatarUrl = `/uploads/${req.file.filename}`;
+    if (!req.file.mimetype?.startsWith('image/')) {
+      return res.status(415).json({ error: 'Only image files are accepted for avatars' });
+    }
+
+    const avatarUrl = await processAndStoreAvatar(req.file.buffer, address);
 
     const updatedProfile = await prisma.userProfile.upsert({
       where: { address },
       update: { avatarUrl },
-      create: {
-        address,
-        avatarUrl,
-      },
+      create: { address, avatarUrl },
     });
 
     cache.del(`users:profile:${address}`);
     res.json(updatedProfile);
   } catch (err) {
+    logControllerError('users.uploadAvatar', err, req);
     res.status(500).json({ error: err.message });
   }
 };
