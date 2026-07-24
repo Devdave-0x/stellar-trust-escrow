@@ -69,13 +69,16 @@ model User {
   email         String   @unique
   password      String
   walletAddress String?  @unique @map("wallet_address")
-  role          String   @default("user") // user | admin | superadmin
-  mfaEnabled    Boolean  @default(false) @map("mfa_enabled")
-  mfaEnforced   Boolean  @default(false) @map("mfa_enforced") // Force MFA for high-value operations
-  notificationPreferences Json? @map("notification_preferences")
-  emailVerified Boolean  @default(false) @map("email_verified")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  role                    String    @default("user") // user | admin | superadmin
+  mfaEnabled              Boolean   @default(false) @map("mfa_enabled")
+  mfaEnforced             Boolean   @default(false) @map("mfa_enforced")
+  notificationPreferences Json?     @map("notification_preferences")
+  emailVerified           Boolean   @default(false) @map("email_verified")
+  deletionRequestedAt     DateTime? @map("deletion_requested_at")
+  deletedAt               DateTime? @map("deleted_at")
+  anonymisedAt            DateTime? @map("anonymised_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
 
   tenant               Tenant                 @relation(fields: [tenantId], references: [id])
   refreshTokens        RefreshToken[]

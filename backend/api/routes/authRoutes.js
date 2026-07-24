@@ -5,6 +5,12 @@ import {
   verifyEmailToken,
   sendVerificationEmail,
 } from '../../services/emailVerificationService.js';
+import { requestPasswordReset, resetPassword } from '../../services/passwordResetService.js';
+import { validatePasswordStrength } from '../middleware/passwordStrength.js';
+import {
+  requestAccountDeletion,
+  cancelAccountDeletion,
+} from '../../services/accountDeletionService.js';
 
 const router = express.Router();
 
@@ -59,6 +65,86 @@ router.post('/resend-verification', authMiddleware, async (req, res) => {
     res.json({ message: 'Verification email resent' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @route  POST /api/auth/forgot-password
+ * @desc   Request a password reset email
+ * @body   { email: string }
+ */
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    await requestPasswordReset(email);
+    res.json({ message: 'If that email is registered, a reset link has been sent.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @route  POST /api/auth/reset-password
+ * @desc   Consume a reset token and set a new password
+ * @body   { token: string, password: string }
+ */
+router.post(
+  '/reset-password',
+  validatePasswordStrength({ field: 'password' }),
+  async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token) return res.status(400).json({ error: 'token is required' });
+      const result = await resetPassword(token, password);
+      res.json({ message: 'Password reset successfully', ...result });
+    } catch (err) {
+      res.status(err.statusCode || 500).json({ error: err.message });
+    }
+  },
+);
+
+/**
+ * @route  DELETE /api/auth/account
+ * @desc   Request self-service account deletion (30-day grace period)
+ */
+router.delete('/account', authMiddleware, async (req, res) => {
+  try {
+    const { prisma } = await import('../../lib/prisma.js');
+    const user = await prisma.user.findFirst({
+      where: { walletAddress: req.user.address },
+      select: { id: true, deletedAt: true },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.deletedAt) return res.status(410).json({ error: 'Account has already been deleted' });
+
+    const { scheduledFor } = await requestAccountDeletion(user.id);
+    res.json({
+      message: `Account deletion scheduled. Your data will be anonymised on ${scheduledFor.toISOString()} unless you cancel.`,
+      scheduledFor,
+    });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+/**
+ * @route  POST /api/auth/account/cancel-deletion
+ * @desc   Cancel a pending account deletion request
+ */
+router.post('/account/cancel-deletion', authMiddleware, async (req, res) => {
+  try {
+    const { prisma } = await import('../../lib/prisma.js');
+    const user = await prisma.user.findFirst({
+      where: { walletAddress: req.user.address },
+      select: { id: true },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await cancelAccountDeletion(user.id);
+    res.json({ message: 'Account deletion cancelled successfully' });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
