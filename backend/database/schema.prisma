@@ -472,6 +472,7 @@ model UserProfile {
   displayName String?  @map("display_name")
   bio         String?
   avatarUrl   String?  @map("avatar_url")
+  timezone    String?  // IANA timezone identifier, e.g. "America/New_York"
   preferences Json?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

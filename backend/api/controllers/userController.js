@@ -4,6 +4,7 @@ import cache from '../../lib/cache.js';
 import { logControllerError } from '../../config/logger.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 import { getUserActivity } from '../../services/userActivityService.js';
+import { isValidTimezone, toLocalISOString } from '../../lib/timezone.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
@@ -54,6 +55,9 @@ const getUserProfile = async (req, res) => {
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 5);
 
+    const tz = userProfile?.timezone || null;
+    const localise = (date) => (tz && date ? toLocalISOString(date, tz) : date);
+
     const profile = {
       address,
       ...userProfile,
@@ -65,7 +69,15 @@ const getUserProfile = async (req, res) => {
         disputesWon: 0,
         totalVolume: '0',
       },
-      recentEscrows,
+      recentEscrows: recentEscrows.map((e) => ({
+        ...e,
+        createdAt: localise(e.createdAt),
+        deadline: localise(e.deadline),
+      })),
+      ...(tz && {
+        createdAt: localise(userProfile?.createdAt),
+        updatedAt: localise(userProfile?.updatedAt),
+      }),
     };
 
     await cache.set(cacheKey, profile, 60);
@@ -201,7 +213,11 @@ const updateUserProfile = async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { displayName, bio, preferences } = req.body;
+    const { displayName, bio, preferences, timezone } = req.body;
+
+    if (timezone !== undefined && !isValidTimezone(timezone)) {
+      return res.status(400).json({ error: `Invalid IANA timezone: "${timezone}"` });
+    }
 
     const updatedProfile = await prisma.userProfile.upsert({
       where: { address },
@@ -209,12 +225,14 @@ const updateUserProfile = async (req, res) => {
         ...(displayName !== undefined && { displayName }),
         ...(bio !== undefined && { bio }),
         ...(preferences !== undefined && { preferences }),
+        ...(timezone !== undefined && { timezone }),
       },
       create: {
         address,
         displayName,
         bio,
         preferences: preferences || {},
+        timezone: timezone || null,
       },
     });
 
