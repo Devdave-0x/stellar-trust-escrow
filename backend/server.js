@@ -54,6 +54,7 @@ import prisma, { startConnectionMonitoring } from './lib/prisma.js';
 import { errorsTotal } from './lib/metrics.js';
 import { TimeoutError } from './lib/timeout.js';
 import { leaderboardRateLimit } from './middleware/rateLimit.js';
+import metricsRoutes from './api/routes/metricsRoutes.js';
 import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
 import tracingMiddleware from './middleware/tracingMiddleware.js';
@@ -121,6 +122,8 @@ app.use('/api', ...createGateway());
 
 // Leaderboard gets a tighter dedicated limit on top of the gateway limit
 app.use('/api/reputation/leaderboard', leaderboardRateLimit);
+
+app.use('/metrics', metricsRoutes);
 
 app.get('/health', async (_req, res) => {
   let dbStatus = 'ok';

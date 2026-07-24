@@ -20,7 +20,7 @@ import { createClient } from 'redis';
 import { REDIS_TIMEOUT_MS } from '../lib/timeout.js';
 import { createModuleLogger } from '../config/logger.js';
 import { scopeCacheKey, scopeCacheTag } from '../lib/tenantContext.js';
-import { cacheHitsTotal, cacheMissesTotal, cacheHitRate } from '../lib/metrics.js';
+import { cacheHitsTotal, cacheMissesTotal, cacheHitRate, redisMemoryUsageBytes } from '../lib/metrics.js';
 
 const log = createModuleLogger('cacheService');
 
@@ -84,6 +84,22 @@ if (process.env.REDIS_URL) {
     log.warn({ message: 'redis_error_fallback_memory', error: err.message });
   });
   redis.connect().catch((err) => log.warn({ message: 'redis_connect_failed', error: err.message }));
+
+  if (process.env.REDIS_MEMORY_METRICS_ENABLED !== 'false') {
+    const MEMORY_POLL_INTERVAL_MS = 30_000;
+    const memTimer = setInterval(async () => {
+      try {
+        const info = await redis.info('memory').catch(() => null);
+        if (info) {
+          const match = info.match(/used_memory:(\d+)/);
+          if (match) redisMemoryUsageBytes.set(parseInt(match[1], 10));
+        }
+      } catch (_err) {
+        // ignore memory polling errors
+      }
+    }, MEMORY_POLL_INTERVAL_MS);
+    if (typeof memTimer.unref === 'function') memTimer.unref();
+  }
 }
 
 // ── Redis tag helpers ─────────────────────────────────────────────────────────

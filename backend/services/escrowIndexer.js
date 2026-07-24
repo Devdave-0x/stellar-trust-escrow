@@ -19,6 +19,7 @@ import prisma from '../lib/prisma.js';
 import { createModuleLogger } from '../config/logger.js';
 import { getContractEvents, getLatestLedger } from './stellarService.js';
 import * as reputationService from './reputationService.js';
+import { recordEscrowStateTransition } from '../lib/metrics.js';
 
 const log = createModuleLogger('service.escrowIndexer');
 
@@ -102,6 +103,8 @@ export async function handleDisputeRaised(event) {
       update: {},
     }),
   ]);
+
+  recordEscrowStateTransition('Active', 'Disputed');
 }
 
 export async function handleFundsReleased(event) {
@@ -230,6 +233,7 @@ export async function handleDisputeResolved(event) {
   await reputationService.recordDisputeOutcome(loserAddress, false, escrowId, escrow.tenantId);
 
   await prisma.escrow.updateMany({ where: { id: escrowId }, data: { status: 'Completed' } });
+  recordEscrowStateTransition('Disputed', 'Completed');
 }
 
 export async function handleReputationUpdated(event) {

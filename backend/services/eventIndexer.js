@@ -32,6 +32,7 @@ import { broadcastEscrowEvent } from '../api/websocket/handlers.js';
 import { broadcastEscrowUpdate } from './escrowRealtime.js';
 import { indexRecord } from './reputationSearchService.js';
 import webhookService from './webhookService.js';
+import { recordEscrowStateTransition } from '../lib/metrics.js';
 
 const log = createModuleLogger('eventIndexer');
 
@@ -118,6 +119,8 @@ const handleEscrowCreated = async (event, meta) => {
     }),
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  recordEscrowStateTransition('null', 'Active');
 
   try {
     broadcastEscrowEvent(escrowId, 'escrow:funded', 'Active');
@@ -271,6 +274,8 @@ const handleEscrowCancelled = async (event, meta) => {
     }),
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  recordEscrowStateTransition('Active', 'Cancelled');
 };
 
 /**
@@ -298,6 +303,8 @@ const handleDisputeRaised = async (event, meta) => {
     }),
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  recordEscrowStateTransition('Active', 'Disputed');
 
   try {
     broadcastEscrowEvent(escrowId, 'escrow:disputed', 'Disputed');
@@ -330,6 +337,8 @@ const handleDisputeResolved = async (event, meta) => {
     }),
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  recordEscrowStateTransition('Disputed', 'Completed');
 
   try {
     broadcastEscrowEvent(escrowId, 'escrow:released', 'Completed');
