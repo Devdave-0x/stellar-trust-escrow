@@ -11,6 +11,7 @@ import { authorizeParamAddress } from '../middleware/authorization.js';
 import adminAuth, { optionalAdminAuth } from '../middleware/adminAuth.js';
 import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
 import { conditionalGet } from '../middleware/conditionalGet.js';
+import { validatePasswordStrength } from '../middleware/passwordStrength.js';
 
 const router = express.Router();
 router.use(optionalAdminAuth, authMiddleware);
@@ -34,6 +35,19 @@ router.get(
 );
 router.get('/:address/escrows', validateAddress, validatePagination, userController.getUserEscrows);
 router.get('/:address/stats', validateAddress, userController.getUserStats);
+
+/**
+ * @route  PUT /api/users/:address/password
+ * @desc   Change user password with strength validation
+ * @body   { currentPassword?: string, password: string }
+ */
+router.put(
+  '/:address/password',
+  validateAddress,
+  authorizeParamAddress('address'),
+  validatePasswordStrength(),
+  userController.changePassword,
+);
 
 /**
  * @route  GET /api/users/:address/export

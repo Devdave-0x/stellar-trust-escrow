@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
 import { logControllerError } from '../../config/logger.js';
@@ -274,6 +275,42 @@ const getUserActivityLog = async (req, res) => {
   }
 };
 
+const changePassword = async (req, res) => {
+  try {
+    const { address } = req.params;
+    if (!validateAddress(address, res)) return;
+
+    if (req.user?.address !== address) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { currentPassword, password } = req.body;
+
+    const user = await prisma.user.findFirst({
+      where: { walletAddress: address },
+      select: { id: true, password: true },
+    });
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.password) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Current password is required' });
+      }
+      const match = await bcrypt.compare(currentPassword, user.password);
+      if (!match) return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const hashed = await bcrypt.hash(password, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    logControllerError('user.changePassword', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   getUserProfile,
   getUserEscrows,
@@ -281,4 +318,5 @@ export default {
   updateUserProfile,
   uploadAvatar,
   getUserActivityLog,
+  changePassword,
 };
