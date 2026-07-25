@@ -162,6 +162,30 @@ All collection endpoints return a standard envelope:
           },
           submittedAt: { type: 'string', format: 'date-time', nullable: true },
           resolvedAt: { type: 'string', format: 'date-time', nullable: true },
+          last_status_change: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              fromStatus: { type: 'string', nullable: true, example: 'Submitted' },
+              toStatus: { type: 'string', example: 'Approved' },
+              changedBy: { type: 'string', example: 'GABC...XYZ' },
+              reason: { type: 'string', nullable: true, example: 'Milestone released' },
+              createdAt: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+      },
+      MilestoneStatusHistoryEntry: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '1' },
+          milestoneId: { type: 'integer', example: 5 },
+          escrowId: { type: 'string', example: '1' },
+          fromStatus: { type: 'string', nullable: true, example: 'Submitted' },
+          toStatus: { type: 'string', example: 'Approved' },
+          changedBy: { type: 'string', example: 'GABC...XYZ' },
+          reason: { type: 'string', nullable: true, example: 'Milestone released' },
+          createdAt: { type: 'string', format: 'date-time' },
         },
       },
       Escrow: {

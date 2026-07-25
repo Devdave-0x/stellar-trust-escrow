@@ -269,4 +269,58 @@
  *         $ref: '#/components/responses/NotFound'
  *       500:
  *         $ref: '#/components/responses/InternalError'
+ *
+ * /api/escrows/{id}/milestones/{milestoneId}/history:
+ *   get:
+ *     tags: [Escrows]
+ *     summary: Get the status-change history for a milestone (paginated, oldest first)
+ *     description: >
+ *       Accessible only to escrow participants (client, freelancer, arbiter) and admins.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: Escrow ID
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - name: milestoneId
+ *         in: path
+ *         required: true
+ *         description: Milestone index within the escrow
+ *         schema:
+ *           type: integer
+ *           example: 0
+ *       - $ref: '#/components/parameters/Limit'
+ *       - name: cursor
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Cursor-paginated status-change history, oldest entry first
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MilestoneStatusHistoryEntry'
+ *                 next_cursor:
+ *                   type: string
+ *                   nullable: true
+ *                 has_more:
+ *                   type: boolean
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Caller is not a participant in this escrow
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
  */
