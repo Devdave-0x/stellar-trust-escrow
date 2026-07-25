@@ -31,6 +31,7 @@ const ESCROW_ADMIN_SELECT = {
   createdLedger: true,
   frozenAt: true,
   freezeReason: true,
+  deletedAt: true,
 };
 
 const TENANT_SELECT = {
@@ -76,11 +77,15 @@ const listAdminEscrows = async (req, res) => {
       maxAmount,
       dateFrom,
       dateTo,
+      include_deleted: includeDeleted,
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = req.query;
 
     const where = {};
+    if (String(includeDeleted).toLowerCase() !== 'true') {
+      where.deletedAt = null;
+    }
 
     if (status) {
       const statuses = String(status).split(',').map((s) => s.trim());
@@ -219,6 +224,67 @@ const freezeEscrow = async (req, res) => {
 };
 
 /**
+ * POST /api/admin/escrows/:id/restore
+ * Clears deletedAt on a soft-deleted escrow.
+ */
+const restoreEscrow = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const actor = getAdminActor(req);
+    const ip = getIpAddress(req);
+    const escrowId = BigInt(id);
+
+    const result = await withTenantScopeBypassed(async () => {
+      const escrow = await prisma.escrow.findFirst({
+        where: { id: escrowId },
+        select: { id: true, status: true, deletedAt: true, tenantId: true },
+      });
+
+      if (!escrow) return { error: 'Escrow not found.', status: 404 };
+      if (!escrow.deletedAt) return { error: 'Escrow is not deleted.', status: 409 };
+
+      await Promise.all([
+        prisma.escrow.updateMany({
+          where: { id: escrowId },
+          data: { deletedAt: null },
+        }),
+        prisma.adminAuditLog.create({
+          data: {
+            action: 'RESTORE_ESCROW',
+            targetAddress: escrow.id.toString(),
+            reason: '',
+            performedBy: actor,
+            performedAt: new Date(),
+          },
+        }),
+        auditService.log({
+          category: AuditCategory.ADMIN,
+          action: AuditAction.RESTORE_ESCROW,
+          actor,
+          resourceId: escrow.id.toString(),
+          metadata: { escrowId: escrow.id.toString(), tenantId: escrow.tenantId },
+          statusCode: 200,
+          ipAddress: ip,
+        }),
+      ]);
+
+      return null;
+    });
+
+    if (result?.error) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    await invalidateEscrowCache(escrowId.toString());
+    await cache.invalidatePrefix('admin:escrows');
+    res.json({ message: 'Escrow restored.', escrowId: escrowId.toString() });
+  } catch (err) {
+    logControllerError('adminEscrow.restoreEscrow', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
  * POST /api/admin/escrows/:id/force-transition
  * Manually move escrow to a specified state with reason.
  */
@@ -233,7 +299,7 @@ const forceTransition = async (req, res) => {
       return res.status(400).json({ error: 'status is required.' });
     }
 
-    const validStatuses = ['Active', 'Completed', 'Disputed', 'Cancelled'];
+    const validStatuses = ['Draft', 'Active', 'Completed', 'Disputed', 'Cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: `Invalid status. Allowed: ${validStatuses.join(', ')}` });
     }
@@ -366,6 +432,7 @@ const addNote = async (req, res) => {
 export default {
   listAdminEscrows,
   freezeEscrow,
+  restoreEscrow,
   forceTransition,
   addNote,
 };

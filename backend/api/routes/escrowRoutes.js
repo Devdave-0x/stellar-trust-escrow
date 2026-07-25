@@ -95,6 +95,19 @@ router.post(
 );
 
 /**
+ * @route  POST /api/escrows/:id/clone
+ * @desc   Duplicate an escrow's title/description/milestones/participant addresses
+ *         into a new Draft escrow owned by the requesting user.
+ * @body   { title?, amount?, deadline? } optional overrides
+ */
+router.post(
+  '/:id/clone',
+  validateEscrowId,
+  invalidateOn({ tags: ['escrows'] }),
+  escrowController.cloneEscrow,
+);
+
+/**
  * @route  PATCH /api/escrows/:id/metadata
  * @desc   Merge-update the escrow's custom metadata object (client/freelancer/admin only).
  */
@@ -165,6 +178,18 @@ router.get(
     tags: (req) => ['escrows', `escrow:${req.params.id}`],
   }),
   escrowController.getEscrow,
+);
+
+/**
+ * @route  DELETE /api/escrows/:id
+ * @desc   Soft-delete an escrow (sets deletedAt). Only allowed while the
+ *         escrow is in Draft or Cancelled status.
+ */
+router.delete(
+  '/:id',
+  validateEscrowId,
+  invalidateOn({ tags: (req) => ['escrows', `escrow:${req.params.id}`] }),
+  escrowController.deleteEscrow,
 );
 
 /**

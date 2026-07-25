@@ -33,7 +33,7 @@ router.use(adminSlidingLimiter);
  * @route  GET /api/admin/escrows
  * @desc   List all escrows across tenants with full filter support
  * @query  status, client, freelancer, search, minAmount, maxAmount,
- *         dateFrom, dateTo, page, limit, sortBy, sortOrder
+ *         dateFrom, dateTo, include_deleted, page, limit, sortBy, sortOrder
  */
 router.get('/', adminEscrowController.listAdminEscrows);
 
@@ -45,6 +45,12 @@ router.get('/', adminEscrowController.listAdminEscrows);
  * @body   { reason: string }
  */
 router.post('/:id/freeze', adminEscrowController.freezeEscrow);
+
+/**
+ * @route  POST /api/admin/escrows/:id/restore
+ * @desc   Clear deletedAt on a soft-deleted escrow
+ */
+router.post('/:id/restore', adminEscrowController.restoreEscrow);
 
 /**
  * @route  POST /api/admin/escrows/:id/force-transition
