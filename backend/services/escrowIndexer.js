@@ -20,6 +20,7 @@ import { createModuleLogger } from '../config/logger.js';
 import { getContractEvents, getLatestLedger } from './stellarService.js';
 import * as reputationService from './reputationService.js';
 import { recordEscrowStateTransition } from '../lib/metrics.js';
+import { recordStatusChange } from './milestoneHistoryService.js';
 
 const log = createModuleLogger('service.escrowIndexer');
 
@@ -194,10 +195,28 @@ export async function handleMilestoneSubmitted(event) {
   const escrowId = parseBigInt(event.topic?.[1]);
   const [milestoneId] = event.value ?? [];
   if (!escrowId || milestoneId === undefined) return;
+  const milestoneIndex = Number(parseBigInt(milestoneId));
+
+  const existing = await prisma.milestone.findUnique({
+    where: { escrowId_milestoneIndex: { escrowId, milestoneIndex } },
+    select: { id: true, status: true },
+  });
+
   await prisma.milestone.updateMany({
-    where: { escrowId, milestoneIndex: Number(parseBigInt(milestoneId)) },
+    where: { escrowId, milestoneIndex },
     data: { status: 'Submitted', submittedAt: new Date(event.ledgerClosedAt) },
   });
+
+  if (existing) {
+    await recordStatusChange({
+      milestoneId: existing.id,
+      escrowId,
+      fromStatus: existing.status,
+      toStatus: 'Submitted',
+      changedBy: 'system:indexer',
+      reason: 'On-chain milestone submission event',
+    });
+  }
 }
 
 export async function handleDisputeResolved(event) {

@@ -124,6 +124,18 @@ router.get(
 );
 
 /**
+ * @route  GET /api/escrows/:id/milestones/:milestoneId/history
+ * @desc   Paginated (oldest-first) status-change history for a milestone.
+ *         Accessible by escrow participants (client/freelancer/arbiter) and admins.
+ */
+router.get(
+  '/:id/milestones/:milestoneId/history',
+  validateEscrowId,
+  validatePagination,
+  escrowController.getMilestoneHistory,
+);
+
+/**
  * @route  GET /api/escrows/:id
  */
 router.get(
