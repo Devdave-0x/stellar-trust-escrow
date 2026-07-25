@@ -1,5 +1,6 @@
 import express from 'express';
 import userController from '../controllers/userController.js';
+import referralController from '../controllers/referralController.js';
 import {
   stellarAddressParam,
   paginationQuery,
