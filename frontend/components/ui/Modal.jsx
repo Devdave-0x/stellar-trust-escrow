@@ -1,29 +1,30 @@
 /**
  * Modal Component
  *
- * Accessible overlay modal with backdrop dismiss and keyboard (Escape) support.
+ * Accessible overlay modal with focus trapping, backdrop dismiss,
+ * and keyboard (Escape) support.
  *
- * @param {object}         props
- * @param {boolean}        props.isOpen     — controls visibility
- * @param {Function}       props.onClose    — called when backdrop/Escape pressed
- * @param {string}         [props.title]    — modal heading
- * @param {React.ReactNode} props.children
- * @param {'sm'|'md'|'lg'} [props.size='md']
- * @param {boolean}        [props.isConfirmation] — shows confirm/cancel buttons
- * @param {Function}       [props.onConfirm] — called when confirm button clicked
- * @param {string}         [props.confirmLabel='Confirm'] — confirm button text
- * @param {string}         [props.cancelLabel='Cancel'] — cancel button text
- * @param {string}         [props.confirmVariant='primary'] — confirm button variant
- *
- * TODO (contributor — easy, Issue #42):
- * - Add focus-trap so keyboard users can't tab outside the modal
- * - Add enter/exit animation (scale + fade)
+ * @param {object}          props
+ * @param {boolean}         props.isOpen      — controls visibility
+ * @param {Function}        props.onClose     — called when backdrop/Escape pressed
+ * @param {string}          [props.title]     — modal heading
+ * @param {React.ReactNode}  props.children
+ * @param {'sm'|'md'|'lg'}  [props.size='md']
+ * @param {boolean}         [props.isConfirmation] — shows confirm/cancel buttons
+ * @param {Function}        [props.onConfirm] — called when confirm button clicked
+ * @param {string}          [props.confirmLabel='Confirm'] — confirm button text
+ * @param {string}          [props.cancelLabel='Cancel'] — cancel button text
+ * @param {string}          [props.confirmVariant='primary'] — confirm button variant
  */
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import Button from './Button';
+
+// Selectors for all focusable elements within a modal
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const SIZE_CLASSES = {
   sm: 'max-w-sm',
@@ -43,17 +44,88 @@ export default function Modal({
   cancelLabel = 'Cancel',
   confirmVariant = 'primary',
 }) {
-  // Close on Escape key
+  const panelRef = useRef(null);
+  const previousFocusRef = useRef(null);
+
+  // ── Focus trap: keep Tab / Shift+Tab cycling within the modal panel ─────
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const focusable = panel.querySelectorAll(FOCUSABLE);
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey) {
+        // Shift+Tab: if focus is on first element, wrap to last
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        // Tab: if focus is on last element, wrap to first
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    },
+    [onClose],
+  );
+
+  // ── On open: save current focus, move focus into modal ───────────────────
   useEffect(() => {
     if (!isOpen) return;
-    const handler = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, onClose]);
 
-  // Prevent body scroll while open
+    // Save the element that triggered the modal
+    previousFocusRef.current = document.activeElement;
+
+    // Small delay so the panel has rendered
+    const raf = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = panel.querySelectorAll(FOCUSABLE);
+      if (focusable.length > 0) {
+        /** @type {HTMLElement} */ (focusable[0]).focus();
+      } else {
+        // Fallback: focus the panel itself
+        panel.focus();
+      }
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen]);
+
+  // ── On close: return focus to the triggering element ─────────────────────
+  useEffect(() => {
+    if (isOpen) return;
+    // Return focus on next tick after unmount
+    const prev = previousFocusRef.current;
+    if (prev && typeof prev.focus === 'function') {
+      setTimeout(() => prev.focus(), 0);
+    }
+  }, [isOpen]);
+
+  // ── Keyboard listeners ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen) return;
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleKeyDown]);
+
+  // ── Prevent body scroll while open ───────────────────────────────────────
   useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : '';
     return () => {
@@ -75,6 +147,7 @@ export default function Modal({
 
       {/* Panel */}
       <div
+        ref={panelRef}
         className={`relative w-full ${SIZE_CLASSES[size]} bg-gray-900 border border-gray-800
                     rounded-2xl shadow-2xl p-6 space-y-4`}
       >
