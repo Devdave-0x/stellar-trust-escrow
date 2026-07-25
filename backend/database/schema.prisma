@@ -36,6 +36,13 @@ model Tenant {
   branding      Json?
   configuration Json?
   metadata      Json?
+  /// Subscription plan, e.g. "free" | "pro" | "enterprise". No enforced enum —
+  /// plans are configured operationally, not hardcoded into the schema.
+  plan                String    @default("free")
+  maxUsers            Int?      @map("max_users")
+  maxEscrowsPerMonth  Int?      @map("max_escrows_per_month")
+  suspendedAt         DateTime? @map("suspended_at")
+  suspendReason       String?   @map("suspend_reason")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -56,6 +63,7 @@ model Tenant {
   auditLogs            AuditLog[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
+  apiKeys                 ApiKey[]
 
   @@map("tenants")
 }
@@ -207,6 +215,34 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+// ── API Keys ─────────────────────────────────────────────────────────────────
+
+/// Programmatic API keys. Ownership mirrors UserSession/UserProfile — `userId`
+/// holds the Stellar wallet address (the authenticated principal), not a hard
+/// FK into `users`, since most authenticated callers never get a `users` row.
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  userId     String    @map("user_id")
+  name       String
+  /// First chars of the raw key, shown in UI so users can tell keys apart. Never the full secret.
+  keyPrefix  String    @map("key_prefix")
+  /// SHA-256 hash of the raw key. The raw key itself is never stored.
+  keyHash    String    @unique @map("key_hash")
+  /// CIDR strings (e.g. "203.0.113.0/24") or bare IPs the key may be used from. Empty = allow all.
+  allowedIps String[]  @default([]) @map("allowed_ips")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, userId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
 // ── Escrows ───────────────────────────────────────────────────────────────────
 
 model Escrow {
@@ -223,6 +259,17 @@ model Escrow {
   remainingBalance  String       @map("remaining_balance")
   status            EscrowStatus
   briefHash         String       @map("brief_hash") // IPFS / content hash
+  /// App-level title/description, distinct from the on-chain briefHash. Used by
+  /// Draft escrows (clones) that haven't been broadcast on-chain yet.
+  title             String?
+  description       String?
+  /// Stellar wallet address of the user who owns this escrow record (e.g. via
+  /// clone), mirroring UserSession.userId — not a hard FK into `users`, since
+  /// most authenticated callers never get a `users` row.
+  ownerId           String?      @map("owner_id")
+  /// Soft-delete marker. Excluded from default list/detail queries; visible to
+  /// admins via ?include_deleted=true and restorable via the admin restore endpoint.
+  deletedAt         DateTime?    @map("deleted_at")
   deadline          DateTime?
   createdAt         DateTime     @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
@@ -258,6 +305,9 @@ model Escrow {
   @@index([clientAddress, status, createdAt(sort: Desc)])
   @@index([freelancerAddress, status, createdAt(sort: Desc)])
    @@index([createdAt])
+   @@index([ownerId])
+   @@index([deletedAt])
+   @@index([tenantId, deletedAt])
    @@map("escrows")
   frozenAt     DateTime?    @map("frozen_at")
   freezeReason String?      @map("freeze_reason")
@@ -760,6 +810,7 @@ enum NotificationEvent {
 }
 
 enum EscrowStatus {
+  Draft
   Active
   Completed
   Disputed

@@ -75,7 +75,8 @@ export default async function tenantMiddleware(req, res, next) {
     }
 
     if (tenant.status !== 'active') {
-      return res.status(403).json({ error: 'Tenant is not active' });
+      const message = tenant.status === 'suspended' ? 'Tenant suspended' : 'Tenant is not active';
+      return res.status(403).json({ error: message });
     }
 
     req.tenant = tenant;
