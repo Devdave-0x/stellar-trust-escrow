@@ -194,6 +194,7 @@ app.use('/api', tenantMiddleware);
 app.use('/api/auth', authRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/escrows', escrowRoutes);
+app.use('/api/v1/escrows', escrowRoutes);
 
 // Public share link resolver — no auth required
 import { resolveShareLink } from './api/controllers/shareLinkController.js';
