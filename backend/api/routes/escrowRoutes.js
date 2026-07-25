@@ -4,6 +4,9 @@ import escrowController, {
   validateEscrowId,
   validatePagination,
 } from '../controllers/escrowController.js';
+import escrowMessageController, {
+  validateSendMessage,
+} from '../controllers/escrowMessageController.js';
 import { cacheResponse, invalidateOn, TTL } from '../middleware/cache.js';
 import { conditionalGet } from '../middleware/conditionalGet.js';
 import authMiddleware from '../middleware/auth.js';
@@ -166,6 +169,31 @@ router.get(
   validatePagination,
   escrowController.getMilestoneHistory,
 );
+
+/**
+ * @route  POST /api/escrows/:id/messages
+ */
+router.post(
+  '/:id/messages',
+  validateEscrowId,
+  validateSendMessage,
+  escrowMessageController.sendMessage,
+);
+
+/**
+ * @route  GET /api/escrows/:id/messages
+ */
+router.get(
+  '/:id/messages',
+  validateEscrowId,
+  validatePagination,
+  escrowMessageController.listMessages,
+);
+
+/**
+ * @route  POST /api/escrows/:id/messages/read
+ */
+router.post('/:id/messages/read', validateEscrowId, escrowMessageController.markRead);
 
 /**
  * @route  GET /api/escrows/:id
