@@ -13,6 +13,7 @@ import prisma from '../../lib/prisma.js';
 import mfaService from '../../services/mfaService.js';
 import { deviceNameFromUserAgent } from '../../lib/deviceName.js';
 import { JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
+import emailService from '../../services/emailService.js';
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 const NONCE_TTL_MS = 5 * 60 * 1000;
@@ -25,6 +26,82 @@ function isValidStellarAddress(address) {
   } catch {
     return false;
   }
+}
+
+const FAILED_LOGIN_LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_MINUTES = 15;
+
+// ── Login history / lockout helpers ───────────────────────────────────────────
+// Keyed by wallet address rather than a `users` row — most authenticated
+// principals never get one (see LoginHistory / LoginLockout schema comments).
+
+async function recordLoginAttempt({ tenantId, address, req, success, failureReason }) {
+  try {
+    await prisma.loginHistory.create({
+      data: {
+        tenantId,
+        address: address || null,
+        ipAddress: req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? null,
+        userAgent: req.headers['user-agent'] || null,
+        success,
+        failureReason: failureReason || null,
+      },
+    });
+  } catch (err) {
+    console.error('[LoginHistory] Failed to record attempt:', err.message);
+  }
+}
+
+async function getActiveLockout(tenantId, address) {
+  const lockout = await prisma.loginLockout.findUnique({
+    where: { tenantId_address: { tenantId, address } },
+  });
+  return lockout && lockout.lockedUntil > new Date() ? lockout : null;
+}
+
+async function sendLockoutAlertEmail(address, lockedUntil) {
+  try {
+    const user = await prisma.user.findFirst({
+      where: { walletAddress: address },
+      select: { email: true },
+    });
+    if (!user?.email) return;
+    await emailService.notifyLoginLockout({
+      unlockMinutes: LOCKOUT_MINUTES,
+      lockedUntil: lockedUntil.toISOString(),
+      recipients: [{ email: user.email, address }],
+    });
+  } catch (err) {
+    console.error('[LoginHistory] Failed to send lockout alert email:', err.message);
+  }
+}
+
+/** Records a failed attempt and locks the address for LOCKOUT_MINUTES after 5 in a row. */
+async function recordFailedLoginAttempt(tenantId, address, req, failureReason) {
+  if (!tenantId) return;
+  await recordLoginAttempt({ tenantId, address, req, success: false, failureReason });
+
+  const recent = await prisma.loginHistory.findMany({
+    where: { tenantId, address },
+    orderBy: { createdAt: 'desc' },
+    take: FAILED_LOGIN_LOCKOUT_THRESHOLD,
+  });
+
+  const consecutiveFailures = [];
+  for (const attempt of recent) {
+    if (attempt.success) break;
+    consecutiveFailures.push(attempt);
+  }
+
+  if (consecutiveFailures.length < FAILED_LOGIN_LOCKOUT_THRESHOLD) return;
+
+  const lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
+  await prisma.loginLockout.upsert({
+    where: { tenantId_address: { tenantId, address } },
+    create: { tenantId, address, lockedUntil },
+    update: { lockedUntil },
+  });
+  await sendLockoutAlertEmail(address, lockedUntil);
 }
 
 function generateNonce() {
@@ -84,20 +161,35 @@ export const getNonce = (req, res) => {
 
 export const verifySignatureAndLogin = async (req, res) => {
   const { address, signature } = req.body;
+  const tenantId = req.tenant?.id;
 
   if (!address || !isValidStellarAddress(address)) {
     return res.status(400).json({ error: 'Valid Stellar address required' });
   }
+
+  if (tenantId) {
+    const lockout = await getActiveLockout(tenantId, address);
+    if (lockout) {
+      await recordLoginAttempt({ tenantId, address, req, success: false, failureReason: 'account_locked' });
+      return res
+        .status(423)
+        .json({ error: 'Account locked due to too many failed attempts. Try again later.' });
+    }
+  }
+
   if (!signature || typeof signature !== 'string') {
+    await recordFailedLoginAttempt(tenantId, address, req, 'missing_signature');
     return res.status(400).json({ error: 'Signature required' });
   }
 
   const stored = nonceStore.get(address);
   if (!stored) {
+    await recordFailedLoginAttempt(tenantId, address, req, 'no_pending_nonce');
     return res.status(401).json({ error: 'No pending nonce for this address. Request a new one.' });
   }
   if (Date.now() > stored.expiresAt) {
     nonceStore.delete(address);
+    await recordFailedLoginAttempt(tenantId, address, req, 'nonce_expired');
     return res.status(401).json({ error: 'Nonce expired. Request a new one.' });
   }
 
@@ -105,7 +197,12 @@ export const verifySignatureAndLogin = async (req, res) => {
   nonceStore.delete(address);
 
   if (!valid) {
+    await recordFailedLoginAttempt(tenantId, address, req, 'invalid_signature');
     return res.status(401).json({ error: 'Signature verification failed' });
+  }
+
+  if (tenantId) {
+    await recordLoginAttempt({ tenantId, address, req, success: true });
   }
 
   const jti = await createSessionJti(address, req);

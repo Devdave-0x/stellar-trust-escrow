@@ -13,6 +13,7 @@ import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
+import announcementController from '../controllers/announcementController.js';
 import { getAuditLog, rotateSecrets } from '../../lib/secrets.js';
 import cache from '../../lib/cache.js';
 
@@ -81,13 +82,12 @@ router.post('/users/:address/unsuspend', requireMfa, adminController.unsuspendUs
  */
 router.post('/users/:address/ban', requireMfa, adminController.banUser);
 
-// ── Escrows ────────────────────────────────────────────────────────────────────
 /**
- * @route  PATCH /api/admin/escrows/bulk-status
- * @desc   Bulk-update escrow status (max 50 ids); partial failures reported individually
- * @body   { escrow_ids: string[], status: string, reason?: string }
+ * @route  GET /api/admin/users/:address/login-history
+ * @desc   Full login history (including IP + user agent) for a single wallet address
+ * @query  page, limit
  */
-router.patch('/escrows/bulk-status', adminController.bulkUpdateEscrowStatus);
+router.get('/users/:address/login-history', adminController.getUserLoginHistory);
 
 // ── Disputes ───────────────────────────────────────────────────────────────────
 /**
@@ -194,6 +194,26 @@ router.post('/tenants/:tenantId/suspend', requireMfa, tenantController.suspendTe
  */
 router.post('/tenants/:tenantId/unsuspend', requireMfa, tenantController.unsuspendTenant);
 router.get('/tenants/:tenantId/metrics', tenantController.getTenantMetrics);
+
+// ── Announcements ──────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/announcements
+ * @desc   Create a broadcast announcement (target: all|tenant)
+ * @body   { title, body, target, tenantId?, startsAt?, endsAt, createdBy? }
+ */
+router.post('/announcements', announcementController.createAnnouncement);
+
+/**
+ * @route  PATCH /api/admin/announcements/:id
+ * @desc   Update an announcement
+ */
+router.patch('/announcements/:id', announcementController.updateAnnouncement);
+
+/**
+ * @route  DELETE /api/admin/announcements/:id
+ * @desc   Soft-delete an announcement
+ */
+router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
 // ── Feature Flags ─────────────────────────────────────────────────────────────
 router.get('/flags', featureFlagController.index);

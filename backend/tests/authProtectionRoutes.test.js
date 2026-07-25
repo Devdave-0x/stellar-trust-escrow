@@ -90,6 +90,7 @@ jest.unstable_mockModule('../api/controllers/userController.js', () => ({
     getUserProfile: okHandler,
     getUserEscrows: okHandler,
     getUserStats: okHandler,
+    getMyLoginHistory: okHandler,
   },
 }));
 
