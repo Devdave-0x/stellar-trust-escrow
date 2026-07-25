@@ -975,13 +975,39 @@ const getDisputeQueue = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/users/:address/login-history
+ * Full login history (IP + user agent included) for a single wallet address.
+ */
+const getUserLoginHistory = async (req, res) => {
+  try {
+    const { address } = req.params;
+    const { page, limit, skip } = parsePagination(req.query);
+
+    const [data, total] = await prisma.$transaction([
+      prisma.loginHistory.findMany({
+        where: { address },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.loginHistory.count({ where: { address } }),
+    ]);
+
+    res.json(buildPaginatedResponse(data, { total, page, limit }));
+  } catch (err) {
+    logControllerError('admin.getUserLoginHistory', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listUsers,
   getUserDetail,
   suspendUser,
   unsuspendUser,
   banUser,
-  bulkUpdateEscrowStatus,
+  getUserLoginHistory,
   listDisputes,
   resolveDispute,
   getStats,

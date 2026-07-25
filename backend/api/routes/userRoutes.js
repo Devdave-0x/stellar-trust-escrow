@@ -7,6 +7,7 @@ import {
   handleValidationErrors,
 } from '../../middleware/validation.js';
 import exportController from '../controllers/exportController.js';
+import escrowMessageController from '../controllers/escrowMessageController.js';
 import authMiddleware from '../middleware/auth.js';
 import { authorizeParamAddress } from '../middleware/authorization.js';
 import adminAuth, { optionalAdminAuth } from '../middleware/adminAuth.js';
@@ -49,16 +50,16 @@ router.delete('/me/sessions/:id', sessionController.revokeSession);
 router.delete('/me/sessions', sessionController.revokeAllSessions);
 
 /**
- * @route  GET /api/users/me/referral
- * @desc   The caller's referral code, total referrals, and pending rewards.
+ * @route  GET /api/users/me/unread-messages
+ * @desc   Count of unread escrow messages across all of the current user's escrows
  */
-router.get('/me/referral', referralController.getMyReferral);
+router.get('/me/unread-messages', escrowMessageController.getUnreadCount);
 
 /**
- * @route  GET /api/users/me/referrals
- * @desc   Anonymised list of users referred by the caller (joined date only).
+ * @route  GET /api/users/me/login-history
+ * @desc   Last 50 login attempts for the current user, newest first
  */
-router.get('/me/referrals', referralController.getMyReferrals);
+router.get('/me/login-history', userController.getMyLoginHistory);
 
 router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
 router.get(
