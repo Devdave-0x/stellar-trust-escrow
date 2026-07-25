@@ -29,6 +29,11 @@ import {
 } from '../../middleware/validation.js';
 import { getEscrowAuditLog } from '../../services/escrowAuditService.js';
 import { listArchiveTables } from '../../services/escrowArchiveService.js';
+import {
+  getMilestoneStatusHistory,
+  getLastStatusChangeBatch,
+  formatStatusChange,
+} from '../../services/milestoneHistoryService.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -307,7 +312,13 @@ const getMilestones = async (req, res) => {
       },
     });
 
-    res.json(buildCursorResponse(data, take, 'id', 'milestoneIndex', sortDir));
+    const lastChangeByMilestoneId = await getLastStatusChangeBatch(data.map((m) => m.id));
+    const enriched = data.map((m) => ({
+      ...m,
+      last_status_change: formatStatusChange(lastChangeByMilestoneId.get(m.id) ?? null),
+    }));
+
+    res.json(buildCursorResponse(enriched, take, 'id', 'milestoneIndex', sortDir));
   } catch (err) {
     if (err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
@@ -337,7 +348,12 @@ const getMilestone = async (req, res) => {
     });
 
     if (!milestone) return res.status(404).json({ error: 'Milestone not found' });
-    res.json(milestone);
+
+    const lastChangeByMilestoneId = await getLastStatusChangeBatch([milestone.id]);
+    res.json({
+      ...milestone,
+      last_status_change: formatStatusChange(lastChangeByMilestoneId.get(milestone.id) ?? null),
+    });
   } catch (err) {
     logControllerError('escrow.getMilestone', err, req);
     res.status(500).json({ error: err.message });
@@ -492,12 +508,59 @@ const getEscrowAudit = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/escrows/:id/milestones/:milestoneId/history
+ * Returns the paginated (oldest-first) status-change history for a single
+ * milestone. Access is restricted to escrow participants: client, freelancer,
+ * arbiter, and admins.
+ */
+const getMilestoneHistory = async (req, res) => {
+  try {
+    const escrowId = BigInt(req.params.id);
+    const milestoneIndex = parseInt(req.params.milestoneId, 10);
+
+    const escrow = await prisma.escrow.findUnique({
+      where: { id: escrowId },
+      select: { clientAddress: true, freelancerAddress: true, arbiterAddress: true },
+    });
+    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+
+    const callerAddress = req.user?.address;
+    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
+    const participants = [
+      escrow.clientAddress,
+      escrow.freelancerAddress,
+      escrow.arbiterAddress,
+    ].filter(Boolean);
+
+    if (!isAdmin && !participants.includes(callerAddress)) {
+      return res.status(403).json({ error: 'Access denied: not a participant in this escrow' });
+    }
+
+    const milestone = await prisma.milestone.findUnique({
+      where: { escrowId_milestoneIndex: { escrowId, milestoneIndex } },
+      select: { id: true },
+    });
+    if (!milestone) return res.status(404).json({ error: 'Milestone not found' });
+
+    const result = await getMilestoneStatusHistory(milestone.id, req.query);
+    res.json(result);
+  } catch (err) {
+    if (err.message?.includes('Cannot convert')) {
+      return res.status(400).json({ error: 'Invalid escrow id' });
+    }
+    logControllerError('escrow.getMilestoneHistory', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listEscrows,
   getEscrow,
   broadcastCreateEscrow,
   getMilestones,
   getMilestone,
+  getMilestoneHistory,
   onEscrowStatusChange,
   getTotalVolume,
   getActiveEscrows,

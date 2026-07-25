@@ -40,6 +40,11 @@ const prismaMock = {
     findUnique: jest.fn(),
     count: jest.fn(),
   },
+  milestoneStatusHistory: {
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    create: jest.fn(),
+  },
 };
 
 const submitTransactionMock = jest.fn();
@@ -95,6 +100,8 @@ beforeEach(() => {
   });
   prismaMock.escrow.findMany.mockResolvedValue([]);
   prismaMock.escrow.count.mockResolvedValue(0);
+  prismaMock.milestoneStatusHistory.findMany.mockResolvedValue([]);
+  prismaMock.milestoneStatusHistory.findFirst.mockResolvedValue(null);
 });
 
 describe('escrowController', () => {
@@ -300,7 +307,10 @@ describe('escrowController', () => {
 
       await escrowController.getMilestone(req, res);
 
-      expect(res.json).toHaveBeenCalledWith(fixtures.milestones[0]);
+      expect(res.json).toHaveBeenCalledWith({
+        ...fixtures.milestones[0],
+        last_status_change: null,
+      });
     });
 
     it('returns 404 if milestone not found', async () => {
