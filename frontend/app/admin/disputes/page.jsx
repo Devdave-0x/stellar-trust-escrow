@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAdminStore } from '../../../store/app-store';
 import { adminFetch } from '../../../store/admin';
+import EmptyState from '../../../components/ui/EmptyState';
 
 function ResolveModal({ dispute, onClose, onConfirm }) {
   const [clientAmount, setClientAmount] = useState('');
@@ -248,7 +249,11 @@ export default function AdminDisputesPage() {
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading…</div>
         ) : disputes.length === 0 ? (
-          <div className="card text-center py-12 text-gray-500">No disputes found.</div>
+          <EmptyState
+            type="disputes"
+            title="No disputes found"
+            description="All disputes have been resolved. New disputes will appear here when raised."
+          />
         ) : (
           disputes.map((d) => (
             <div key={d.id} className="card">
