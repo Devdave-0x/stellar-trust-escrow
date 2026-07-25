@@ -8,6 +8,7 @@
  */
 
 import searchService from '../../services/searchService.js';
+import suggestionsService from '../../services/suggestionsService.js';
 import prisma from '../../lib/prisma.js';
 import { parsePagination } from '../../lib/pagination.js';
 import { getLogger } from '../../config/logger.js';
@@ -144,4 +145,25 @@ const reindex = async (_req, res) => {
   }
 };
 
-export default { searchEscrows, getSuggestions, getAnalytics, reindex };
+/**
+ * GET /api/search/suggestions?q=<query>
+ *
+ * Autocomplete suggestions across escrows, users, and tags — up to 5 per
+ * category, prefix matches ranked above substring matches. Cached in Redis
+ * for 30s, keyed by the authenticated user and query. Queries under 2
+ * characters return an empty result set.
+ */
+const getAutocompleteSuggestions = async (req, res) => {
+  try {
+    const { q = '' } = req.query;
+    const userId = req.user?.userId ?? 'anonymous';
+
+    const suggestions = await suggestionsService.getSuggestions(prisma, userId, q);
+    res.json(suggestions);
+  } catch (err) {
+    console.error('[Search] getAutocompleteSuggestions error:', err.message);
+    res.status(500).json({ error: 'Suggestions unavailable', detail: err.message });
+  }
+};
+
+export default { searchEscrows, getSuggestions, getAnalytics, reindex, getAutocompleteSuggestions };
