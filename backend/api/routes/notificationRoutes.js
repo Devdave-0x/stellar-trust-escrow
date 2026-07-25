@@ -22,10 +22,18 @@ function getDashboardUrl(eventType, data) {
 async function enqueueNotification(eventType, data) {
   const payload = { ...data, dashboardUrl: getDashboardUrl(eventType, data) };
   switch (eventType) {
-    case 'escrow.status_changed': return emailService.notifyEscrowStatusChange(payload);
-    case 'milestone.completed':   return emailService.notifyMilestoneCompleted(payload);
-    case 'dispute.raised':        return emailService.notifyDisputeRaised(payload);
-    default: throw new Error('Unsupported notification event type');
+    case 'escrow.status_changed':
+      return emailService.notifyEscrowStatusChange(payload);
+    case 'milestone.completed':
+      return emailService.notifyMilestoneCompleted(payload);
+    case 'dispute.raised':
+      return emailService.notifyDisputeRaised(payload);
+    case 'escrow.message_received':
+      return emailService.notifyNewMessage(payload);
+    case 'auth.login_lockout':
+      return emailService.notifyLoginLockout(payload);
+    default:
+      throw new Error('Unsupported notification event type');
   }
 }
 

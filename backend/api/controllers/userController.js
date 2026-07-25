@@ -205,6 +205,31 @@ const getUserStats = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/users/me/login-history
+ * Last 50 login attempts for the current authenticated user, newest first.
+ */
+const getMyLoginHistory = async (req, res) => {
+  try {
+    const history = await prisma.loginHistory.findMany({
+      where: { address: req.user.address },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        success: true,
+        failureReason: true,
+        createdAt: true,
+      },
+    });
+
+    res.json({ data: history });
+  } catch (err) {
+    logControllerError('user.getMyLoginHistory', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 const updateUserProfile = async (req, res) => {
   try {
     const { address } = req.params;
@@ -340,4 +365,5 @@ export default {
   uploadAvatar,
   getUserActivityLog,
   changePassword,
+  getMyLoginHistory,
 };

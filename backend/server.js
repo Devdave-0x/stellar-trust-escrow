@@ -44,6 +44,7 @@ import complianceRoutes from './api/routes/complianceRoutes.js';
 import incidentRoutes from './api/routes/incidentRoutes.js';
 import batchRoutes from './api/routes/batchRoutes.js';
 import webhookRoutes from './api/routes/webhookRoutes.js';
+import announcementRoutes from './api/routes/announcementRoutes.js';
 import tenantMiddleware from './api/middleware/tenant.js';
 import auditMiddleware from './api/middleware/audit.js';
 import { createWebSocketServer, pool } from './api/websocket/handlers.js';
@@ -226,6 +227,9 @@ app.use('/api/batch', batchRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/admin/queues', queueDashboardRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/v1/announcements', announcementRoutes);
+app.use('/api/v1/users', userRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
 app.use('/api-docs', docsRouter);

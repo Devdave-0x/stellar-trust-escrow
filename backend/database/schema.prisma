@@ -28,42 +28,49 @@ datasource db {
 // ── Tenants ───────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id            String   @id @default(cuid())
-  slug          String   @unique
-  name          String
-  status        String   @default("active")
-  domains       String[] @default([])
-  branding      Json?
-  configuration Json?
-  metadata      Json?
+  id                 String    @id @default(cuid())
+  slug               String    @unique
+  name               String
+  status             String    @default("active")
+  domains            String[]  @default([])
+  branding           Json?
+  configuration      Json?
+  metadata           Json?
   /// Subscription plan, e.g. "free" | "pro" | "enterprise". No enforced enum —
   /// plans are configured operationally, not hardcoded into the schema.
-  plan                String    @default("free")
-  maxUsers            Int?      @map("max_users")
-  maxEscrowsPerMonth  Int?      @map("max_escrows_per_month")
-  suspendedAt         DateTime? @map("suspended_at")
-  suspendReason       String?   @map("suspend_reason")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  plan               String    @default("free")
+  maxUsers           Int?      @map("max_users")
+  maxEscrowsPerMonth Int?      @map("max_escrows_per_month")
+  suspendedAt        DateTime? @map("suspended_at")
+  suspendReason      String?   @map("suspend_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  users                User[]
-  escrows              Escrow[]
-  milestones           Milestone[]
-  reputationRecords    ReputationRecord[]
-  reputationEvents     ReputationEvent[]
-  disputes             Dispute[]
-  disputeEvidence      DisputeEvidence[]
-  disputeAppeals       DisputeAppeal[]
-  userProfiles         UserProfile[]
-  contractEvents       ContractEvent[]
-  webhookSubscriptions WebhookSubscription[]
-  payments             Payment[]
-  kycVerifications     KycVerification[]
-  adminAuditLogs       AdminAuditLog[]
-  auditLogs            AuditLog[]
+  users                   User[]
+  escrows                 Escrow[]
+  milestones              Milestone[]
+  reputationRecords       ReputationRecord[]
+  reputationEvents        ReputationEvent[]
+  disputes                Dispute[]
+  disputeEvidence         DisputeEvidence[]
+  disputeAppeals          DisputeAppeal[]
+  userProfiles            UserProfile[]
+  contractEvents          ContractEvent[]
+  webhookSubscriptions    WebhookSubscription[]
+  payments                Payment[]
+  kycVerifications        KycVerification[]
+  adminAuditLogs          AdminAuditLog[]
+  auditLogs               AuditLog[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   apiKeys                 ApiKey[]
+  escrowMessages          EscrowMessage[]
+  announcements           Announcement[]
+  loginHistory            LoginHistory[]
+  loginLockouts           LoginLockout[]
+  EscrowNote              EscrowNote[]
+  ChatRoomKey             ChatRoomKey[]
+  ChatMessage             ChatMessage[]
 
   @@map("tenants")
 }
@@ -71,11 +78,11 @@ model Tenant {
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id            Int      @id @default(autoincrement())
-  tenantId      String   @map("tenant_id")
-  email         String   @unique
-  password      String
-  walletAddress String?  @unique @map("wallet_address")
+  id                      Int       @id @default(autoincrement())
+  tenantId                String    @map("tenant_id")
+  email                   String    @unique
+  password                String
+  walletAddress           String?   @unique @map("wallet_address")
   role                    String    @default("user") // user | admin | superadmin
   mfaEnabled              Boolean   @default(false) @map("mfa_enabled")
   mfaEnforced             Boolean   @default(false) @map("mfa_enforced")
@@ -90,12 +97,13 @@ model User {
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
-  refreshTokens           RefreshToken[]
-  mfaMethods              MfaMethod[]
-  mfaAttempts             MfaAttempt[]
-  notifications           Notification[]
-  notificationPreference  NotificationPreference?
+  tenant                 Tenant                   @relation(fields: [tenantId], references: [id])
+  refreshTokens          RefreshToken[]
+  mfaMethods             MfaMethod[]
+  mfaAttempts            MfaAttempt[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  EmailVerificationToken EmailVerificationToken[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
@@ -271,6 +279,8 @@ model Escrow {
   /// admins via ?include_deleted=true and restorable via the admin restore endpoint.
   deletedAt         DateTime?    @map("deleted_at")
   deadline          DateTime?
+  /// Deadline by which a Draft escrow must be funded on-chain before it is auto-cancelled
+  fundingDeadline   DateTime?    @map("funding_deadline")
   createdAt         DateTime     @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
   /// Stellar ledger sequence when this escrow was created
@@ -279,9 +289,13 @@ model Escrow {
   /// Max 20 keys; values restricted to string/number/boolean — enforced in the API layer.
   metadata          Json?
 
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
-  milestones Milestone[]
-  dispute    Dispute?
+  tenant       Tenant          @relation(fields: [tenantId], references: [id])
+  milestones   Milestone[]
+  dispute      Dispute?
+  messages     EscrowMessage[]
+  frozenAt     DateTime?       @map("frozen_at")
+  freezeReason String?         @map("freeze_reason")
+  adminNotes   EscrowNote[]
 
   @@index([tenantId])
   @@index([tenantId, clientAddress])
@@ -295,6 +309,8 @@ model Escrow {
   @@index([status])
   // Composite index for filtered + sorted list queries
   @@index([status, createdAt(sort: Desc)])
+  // Composite index for the hourly funding-deadline auto-cancel job
+  @@index([status, fundingDeadline])
   // Composite index for user profile / user escrows OR queries
   @@index([clientAddress, createdAt(sort: Desc)])
   @@index([freelancerAddress, createdAt(sort: Desc)])
@@ -304,14 +320,11 @@ model Escrow {
   // Composite index for user escrows with status filter + sort (covers getUserEscrows role+status queries)
   @@index([clientAddress, status, createdAt(sort: Desc)])
   @@index([freelancerAddress, status, createdAt(sort: Desc)])
-   @@index([createdAt])
-   @@index([ownerId])
-   @@index([deletedAt])
-   @@index([tenantId, deletedAt])
-   @@map("escrows")
-  frozenAt     DateTime?    @map("frozen_at")
-  freezeReason String?      @map("freeze_reason")
-  adminNotes   EscrowNote[]
+  @@index([createdAt])
+  @@index([ownerId])
+  @@index([deletedAt])
+  @@index([tenantId, deletedAt])
+  @@map("escrows")
 }
 
 // ── Escrow Notes ───────────────────────────────────────────────────────────────
@@ -324,8 +337,8 @@ model EscrowNote {
   createdBy String   @map("created_by")
   createdAt DateTime @default(now()) @map("created_at")
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id])
-  escrow Escrow  @relation(fields: [escrowId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  escrow Escrow @relation(fields: [escrowId], references: [id])
 
   @@index([tenantId, escrowId])
   @@index([escrowId])
@@ -393,7 +406,7 @@ model ReputationRecord {
   lastUpdated      DateTime @map("last_updated")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant Tenant            @relation(fields: [tenantId], references: [id])
   events ReputationEvent[]
 
   @@index([tenantId, address])
@@ -412,13 +425,13 @@ enum ReputationEventType {
 }
 
 model ReputationEvent {
-  id            String                 @id @default(cuid())
-  tenantId      String                 @map("tenant_id")
-  address       String
-  eventType     ReputationEventType    @map("event_type")
-  escrowId      BigInt?                @map("escrow_id")
-  scoreDelta    Int                    @map("score_delta")
-  createdAt     DateTime               @default(now()) @map("created_at")
+  id         String              @id @default(cuid())
+  tenantId   String              @map("tenant_id")
+  address    String
+  eventType  ReputationEventType @map("event_type")
+  escrowId   BigInt?             @map("escrow_id")
+  scoreDelta Int                 @map("score_delta")
+  createdAt  DateTime            @default(now()) @map("created_at")
 
   reputationRecord ReputationRecord @relation(fields: [address], references: [address])
   tenant           Tenant           @relation(fields: [tenantId], references: [id])
@@ -547,7 +560,7 @@ model UserProfile {
   displayName String?  @map("display_name")
   bio         String?
   avatarUrl   String?  @map("avatar_url")
-  timezone    String?  // IANA timezone identifier, e.g. "America/New_York"
+  timezone    String? // IANA timezone identifier, e.g. "America/New_York"
   preferences Json?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -767,13 +780,13 @@ model AuditLog {
 // ── Notifications ─────────────────────────────────────────────────────────────
 
 model Notification {
-  id        String           @id @default(cuid())
-  tenantId  String           @map("tenant_id")
-  userId    Int              @map("user_id")
+  id        String            @id @default(cuid())
+  tenantId  String            @map("tenant_id")
+  userId    Int               @map("user_id")
   event     NotificationEvent
   data      Json
-  read      Boolean          @default(false)
-  createdAt DateTime         @default(now()) @map("created_at")
+  read      Boolean           @default(false)
+  createdAt DateTime          @default(now()) @map("created_at")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -784,13 +797,13 @@ model Notification {
 }
 
 model NotificationPreference {
-  id               String   @id @default(cuid())
-  userId           Int      @unique @map("user_id")
-  tenantId         String   @map("tenant_id")
+  id          String   @id @default(cuid())
+  userId      Int      @unique @map("user_id")
+  tenantId    String   @map("tenant_id")
   /// JSON map of NotificationEvent -> { email: bool, inApp: bool }
-  preferences      Json     @default("{}")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  preferences Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -967,12 +980,12 @@ model SystemConfig {
 }
 
 model EscrowApprovers {
-  id          String   @id @default(cuid())
-  escrowId    String   @unique @map("escrow_id")
-  approvers   Json
-  threshold   Int
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  escrowId  String   @unique @map("escrow_id")
+  approvers Json
+  threshold Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   approvalRecords MilestoneApprovalRecord[]
 
@@ -997,14 +1010,14 @@ model MilestoneApprovalRecord {
 }
 
 model InsuranceOptIn {
-  id             String   @id @default(cuid())
-  escrowId       String   @unique @map("escrow_id")
-  clientAddress  String   @map("client_address")
-  coverageAmount String   @map("coverage_amount")
-  premiumPaid    String   @map("premium_paid")
-  optedInAt      DateTime @map("opted_in_at")
+  id             String    @id @default(cuid())
+  escrowId       String    @unique @map("escrow_id")
+  clientAddress  String    @map("client_address")
+  coverageAmount String    @map("coverage_amount")
+  premiumPaid    String    @map("premium_paid")
+  optedInAt      DateTime  @map("opted_in_at")
   expiresAt      DateTime? @map("expires_at")
-  active         Boolean  @default(true)
+  active         Boolean   @default(true)
 
   @@index([clientAddress])
   @@index([active])
@@ -1012,16 +1025,16 @@ model InsuranceOptIn {
 }
 
 model InsuranceClaim {
-  id          String   @id @default(cuid())
-  claimId     Int      @unique @map("claim_id")
+  id          String    @id @default(cuid())
+  claimId     Int       @unique @map("claim_id")
   claimant    String
   description String
   amount      String
-  status      String   @default("Pending")
-  submittedAt DateTime @map("submitted_at")
+  status      String    @default("Pending")
+  submittedAt DateTime  @map("submitted_at")
   expiresAt   DateTime? @map("expires_at")
   paidAt      DateTime? @map("paid_at")
-  txHash      String?  @map("tx_hash")
+  txHash      String?   @map("tx_hash")
   ledger      Int?
 
   @@index([claimant])
@@ -1030,11 +1043,11 @@ model InsuranceClaim {
 }
 
 model InsuranceStake {
-  id          String   @id @default(cuid())
-  staker      String   @unique
-  amount      String
-  stakedAt    DateTime @map("staked_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  staker    String   @unique
+  amount    String
+  stakedAt  DateTime @map("staked_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("insurance_stakes")
 }
@@ -1042,7 +1055,7 @@ model InsuranceStake {
 model AnalyticsSnapshot {
   id         String   @id @default(cuid())
   snapshotAt DateTime @map("snapshot_at")
-  period     String   // '5min' | 'hourly' | 'daily'
+  period     String // '5min' | 'hourly' | 'daily'
   metric     String
   value      Float
   labels     Json?
@@ -1146,4 +1159,97 @@ model EscrowShareLink {
   @@index([escrowId])
   @@index([createdBy])
   @@map("escrow_share_links")
+}
+
+// ── Escrow Messages ──────────────────────────────────────────────────────────
+
+/// senderAddress holds the Stellar wallet address — the authenticated principal
+/// for wallet-signature logins (see UserSession) — rather than a hard FK into
+/// `users`, since most authenticated users never get a row in that table.
+model EscrowMessage {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id")
+  escrowId      BigInt   @map("escrow_id")
+  senderAddress String   @map("sender_address")
+  body          String
+  /// Array of wallet addresses that have read this message
+  readBy        Json     @default("[]") @map("read_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  escrow Escrow @relation(fields: [escrowId], references: [id])
+
+  @@index([tenantId, escrowId, createdAt(sort: Desc)])
+  @@index([escrowId])
+  @@index([senderAddress])
+  @@map("escrow_messages")
+}
+
+// ── Announcements ─────────────────────────────────────────────────────────────
+
+enum AnnouncementTarget {
+  all
+  tenant
+}
+
+model Announcement {
+  id        Int                @id @default(autoincrement())
+  title     String
+  body      String
+  target    AnnouncementTarget @default(all)
+  /// Only set when target = tenant; null means every tenant (target = all)
+  tenantId  String?            @map("tenant_id")
+  startsAt  DateTime           @map("starts_at")
+  endsAt    DateTime           @map("ends_at")
+  createdBy String             @map("created_by")
+  deletedAt DateTime?          @map("deleted_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([target, tenantId, startsAt, endsAt])
+  @@index([deletedAt])
+  @@map("announcements")
+}
+
+// ── Login History ─────────────────────────────────────────────────────────────
+
+/// address holds the Stellar wallet address that a login was attempted for —
+/// same rationale as EscrowMessage.senderAddress / UserSession.userId — since
+/// most authenticated principals never get a row in `users`.
+model LoginHistory {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id")
+  address       String?  @map("address")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  success       Boolean
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, address, createdAt(sort: Desc)])
+  @@index([address, success, createdAt(sort: Desc)])
+  @@map("login_history")
+}
+
+/// Temporary lockout after 5 consecutive failed login attempts for an address.
+/// Mirrors MfaLockout, but keyed by wallet address rather than a `users` FK,
+/// since most authenticated principals never get a row in `users`.
+model LoginLockout {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  address     String
+  lockedUntil DateTime @map("locked_until")
+  reason      String   @default("Too many failed login attempts")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, address])
+  @@index([address, lockedUntil])
+  @@map("login_lockouts")
 }
