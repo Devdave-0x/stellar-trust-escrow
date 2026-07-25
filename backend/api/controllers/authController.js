@@ -1,178 +1,189 @@
-/* eslint-disable no-unused-vars */
-import bcrypt from 'bcryptjs';
+/**
+ * Auth Controller — Wallet Signature Verification
+ *
+ * Implements challenge-response authentication for Stellar wallet addresses and
+ * issues short-lived JWTs with optional server-side session tracking.
+ */
+
+import crypto, { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
+import { Keypair, StrKey } from '@stellar/stellar-sdk';
+import sessionService from '../../services/sessionService.js';
 import prisma from '../../lib/prisma.js';
+import mfaService from '../../services/mfaService.js';
+import { deviceNameFromUserAgent } from '../../lib/deviceName.js';
+import { JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
 
-// Helper to generate tokens
-const generateTokens = (userId) => {
-  const accessToken = jwt.sign(
-    { userId },
-    process.env.JWT_ACCESS_SECRET || 'fallback_access_secret',
-    { expiresIn: process.env.JWT_ACCESS_EXPIRATION || '15m' },
-  );
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const NONCE_TTL_MS = 5 * 60 * 1000;
 
-  const refreshToken = jwt.sign(
-    { userId },
-    process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret',
-    { expiresIn: process.env.JWT_REFRESH_EXPIRATION || '7d' },
-  );
+const nonceStore = new Map();
 
-  return { accessToken, refreshToken };
-};
-
-export const register = async (req, res) => {
+function isValidStellarAddress(address) {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-      },
-    });
-
-    res.status(201).json({ message: 'User registered successfully', userId: user.id });
-  } catch (error) {
-    console.error('[Register] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return StrKey.isValidEd25519PublicKey(address);
+  } catch {
+    return false;
   }
-};
+}
 
-export const login = async (req, res) => {
+function generateNonce() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function buildChallengeMessage(address, nonce) {
+  return `Sign this message to authenticate with StellarTrustEscrow.\n\nAddress: ${address}\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
+}
+
+function verifySignature(address, message, signature) {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    // Verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    // Generate tokens
-    const { accessToken, refreshToken } = generateTokens(user.id);
-
-    // Save refresh token to user in DB
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken },
-    });
-
-    res.json({ accessToken, refreshToken, userId: user.id });
-  } catch (error) {
-    console.error('[Login] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return Keypair.fromPublicKey(address).verify(
+      Buffer.from(message, 'utf8'),
+      Buffer.from(signature, 'base64'),
+    );
+  } catch {
+    return false;
   }
+}
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? '';
+}
+
+async function createSessionJti(address, req) {
+  const jti = randomUUID();
+
+  if (typeof sessionService?.recordSession === 'function') {
+    await sessionService.recordSession({
+      userId: address,
+      jti,
+      deviceName: deviceNameFromUserAgent(req.headers['user-agent']),
+      ipAddress: getClientIp(req),
+    });
+  }
+
+  return jti;
+}
+
+export const getNonce = (req, res) => {
+  const { address } = req.body;
+
+  if (!address || !isValidStellarAddress(address)) {
+    return res.status(400).json({ error: 'Valid Stellar address required' });
+  }
+
+  const nonce = generateNonce();
+  const message = buildChallengeMessage(address, nonce);
+  const expiresAt = Date.now() + NONCE_TTL_MS;
+
+  nonceStore.set(address, { nonce, message, expiresAt });
+  setTimeout(() => nonceStore.delete(address), NONCE_TTL_MS);
+
+  return res.json({ address, nonce, message, expiresIn: NONCE_TTL_MS / 1000 });
 };
 
-export const refresh = async (req, res) => {
+export const verifySignatureAndLogin = async (req, res) => {
+  const { address, signature } = req.body;
+
+  if (!address || !isValidStellarAddress(address)) {
+    return res.status(400).json({ error: 'Valid Stellar address required' });
+  }
+  if (!signature || typeof signature !== 'string') {
+    return res.status(400).json({ error: 'Signature required' });
+  }
+
+  const stored = nonceStore.get(address);
+  if (!stored) {
+    return res.status(401).json({ error: 'No pending nonce for this address. Request a new one.' });
+  }
+  if (Date.now() > stored.expiresAt) {
+    nonceStore.delete(address);
+    return res.status(401).json({ error: 'Nonce expired. Request a new one.' });
+  }
+
+  const valid = verifySignature(address, stored.message, signature);
+  nonceStore.delete(address);
+
+  if (!valid) {
+    return res.status(401).json({ error: 'Signature verification failed' });
+  }
+
+  const jti = await createSessionJti(address, req);
+  const token = jwt.sign({ address, jti, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, {
+    algorithm: JWT_ALGORITHM,
+    expiresIn: JWT_EXPIRES_IN,
+  });
+
+  // Check if user requires 2FA (admin/arbiter with MFA enabled)
+  const user = await prisma.user.findFirst({
+    where: { walletAddress: address },
+    select: { id: true, role: true, mfaEnabled: true, mfaEnforced: true, tenantId: true },
+  });
+
+  if (user) {
+    const mfaRequired = await mfaService.requiresMfa(user.id, user.tenantId);
+    if (mfaRequired) {
+      return res.json({
+        token,
+        address,
+        expiresIn: JWT_EXPIRES_IN,
+        mfaRequired: true,
+        message:
+          'MFA verification required. Use the token to authenticate at /api/mfa/totp/verify.',
+      });
+    }
+  }
+
+  return res.json({ token, address, expiresIn: JWT_EXPIRES_IN });
+};
+
+export const refreshToken = async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Bearer token required' });
+  }
+
   try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return res.status(401).json({ error: 'Refresh token is required' });
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
+    if (payload.jti && typeof sessionService?.revokeSessionByJti === 'function') {
+      await sessionService.revokeSessionByJti(payload.jti);
     }
 
-    // Verify token
-    let decoded;
-    try {
-      decoded = jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret',
-      );
-    } catch (_err) {
-      return res.status(403).json({ error: 'Invalid or expired refresh token' });
-    }
-
-    // Verify against database
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
+    const jti = await createSessionJti(payload.address, req);
+    const token = jwt.sign({ address: payload.address, jti }, JWT_SECRET, {
+      algorithm: JWT_ALGORITHM,
+      expiresIn: JWT_EXPIRES_IN,
     });
 
-    if (!user || user.refreshToken !== refreshToken) {
-      return res.status(403).json({ error: 'Invalid refresh token' });
-    }
-
-    // Generate NEW tokens
-    const tokens = generateTokens(user.id);
-
-    // Update refresh token in DB
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken },
-    });
-
-    res.json(tokens);
-  } catch (error) {
-    console.error('[Refresh] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return res.json({ token, address: payload.address, expiresIn: JWT_EXPIRES_IN });
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 
 export const logout = async (req, res) => {
-  try {
-    const { refreshToken } = req.body;
+  const authHeader = req.headers.authorization;
 
-    // We could extract userId from auth middleware here if this route was protected.
-    // However, logout is often called just with the token to revoke.
-    // If the route is protected, we can just use req.user.userId
-
-    // Attempt to decode the token to find the user
-    let decoded;
+  if (authHeader?.startsWith('Bearer ')) {
     try {
-      if (refreshToken) {
-        decoded = jwt.verify(
-          refreshToken,
-          process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret',
-          { ignoreExpiration: true }, // allow logout even if expired
-        );
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
+      if (payload.jti && typeof sessionService?.revokeSessionByJti === 'function') {
+        await sessionService.revokeSessionByJti(payload.jti);
       }
-    } catch (_err) {
-      // If we can't decode, just move on
+    } catch {
+      // Logout is idempotent; invalid tokens are treated as already logged out.
     }
-
-    if (decoded && decoded.userId) {
-      await prisma.user.update({
-        where: { id: decoded.userId },
-        data: { refreshToken: null },
-      });
-    }
-
-    res.json({ message: 'Logged out successfully' });
-  } catch (error) {
-    console.error('[Logout] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
   }
+
+  return res.json({ ok: true });
 };
 
-export default { register, login, refresh, logout };
+// Session listing/revocation lives in sessionController.js (also mounted at
+// /api/users/me/sessions) — /api/auth/sessions* routes delegate to it.
+
+export default {
+  getNonce,
+  verifySignatureAndLogin,
+  refreshToken,
+  logout,
+};

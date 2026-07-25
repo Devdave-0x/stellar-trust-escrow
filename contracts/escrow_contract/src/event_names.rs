@@ -1,0 +1,144 @@
+//! # Event Topic Name Constants
+//!
+//! Central registry of all `symbol_short!` event topic names used by the
+//! escrow contract.  Defining them here as `pub const` makes the full topic
+//! namespace visible in one place, prevents accidental duplication, and
+//! catches typos at compile time rather than at runtime.
+//!
+//! Each constant maps 1-to-1 to a `symbol_short!` call that previously
+//! appeared inline in `events.rs`.
+
+use soroban_sdk::{symbol_short, Symbol};
+
+// ── Escrow lifecycle ──────────────────────────────────────────────────────────
+
+pub const ESCROW_CREATED: Symbol = symbol_short!("esc_crt");
+pub const ESCROW_FUNDED: Symbol = symbol_short!("esc_fund");
+pub const ESCROW_COMPLETED: Symbol = symbol_short!("esc_done");
+pub const ESCROW_CANCELLED: Symbol = symbol_short!("esc_can");
+pub const ESCROW_SPLIT: Symbol = symbol_short!("esc_spl");
+pub const ESCROW_EXPIRED: Symbol = symbol_short!("esc_exp");
+
+// ── Milestones ────────────────────────────────────────────────────────────────
+
+pub const MILESTONE_ADDED: Symbol = symbol_short!("mil_add");
+pub const MILESTONE_SUBMITTED: Symbol = symbol_short!("mil_sub");
+pub const MILESTONE_APPROVED: Symbol = symbol_short!("mil_apr");
+pub const MILESTONE_REJECTED: Symbol = symbol_short!("mil_rej");
+pub const MILESTONE_DISPUTED: Symbol = symbol_short!("mil_dis");
+pub const MILESTONE_TITLE_UPDATED: Symbol = symbol_short!("mil_tup");
+pub const MILESTONE_REJECTED_WITH_REASON: Symbol = symbol_short!("mil_rej_r");
+pub const MAX_MILESTONES_SET: Symbol = symbol_short!("mil_cap");
+
+// ── Multisig ──────────────────────────────────────────────────────────────────
+
+pub const MULTISIG_APPROVAL_RECORDED: Symbol = symbol_short!("msig_apr");
+
+// ── Funds ─────────────────────────────────────────────────────────────────────
+
+pub const FUNDS_RELEASED: Symbol = symbol_short!("funds_rel");
+pub const RENT_WITHDRAWN: Symbol = symbol_short!("rent_out");
+
+// ── Recurring payments ────────────────────────────────────────────────────────
+
+pub const RECURRING_SCHEDULE_CREATED: Symbol = symbol_short!("rec_crt");
+pub const RECURRING_PAYMENTS_PROCESSED: Symbol = symbol_short!("rec_pay");
+pub const RECURRING_SCHEDULE_PAUSED: Symbol = symbol_short!("rec_pau");
+pub const RECURRING_SCHEDULE_RESUMED: Symbol = symbol_short!("rec_res");
+pub const RECURRING_SCHEDULE_CANCELLED: Symbol = symbol_short!("rec_can");
+
+// ── Vesting ───────────────────────────────────────────────────────────────────
+
+pub const VESTING_SCHEDULE_CREATED: Symbol = symbol_short!("vest_crt");
+
+// ── Disputes ──────────────────────────────────────────────────────────────────
+
+pub const DISPUTE_RAISED: Symbol = symbol_short!("dis_rai");
+pub const DISPUTE_RESOLVED: Symbol = symbol_short!("dis_res");
+pub const DISPUTE_TIMEOUT_CLAIMED: Symbol = symbol_short!("dis_to");
+
+// ── Cancellations ─────────────────────────────────────────────────────────────
+
+pub const CANCELLATION_REQUESTED: Symbol = symbol_short!("can_req");
+pub const CANCELLATION_APPROVED: Symbol = symbol_short!("can_apr");
+pub const CANCELLATION_EXECUTED: Symbol = symbol_short!("can_exe");
+pub const CANCELLATION_COMPLETED: Symbol = symbol_short!("can_done");
+pub const CANCELLATION_REJECTED: Symbol = symbol_short!("can_rej");
+
+// ── Slashing ──────────────────────────────────────────────────────────────────
+
+pub const SLASH_APPLIED: Symbol = symbol_short!("slsh_app");
+pub const SLASH_DISPUTED: Symbol = symbol_short!("slsh_dis");
+pub const SLASH_DISPUTE_RESOLVED: Symbol = symbol_short!("slsh_res");
+
+// ── Time locks ────────────────────────────────────────────────────────────────
+
+pub const TIMELOCK_STARTED: Symbol = symbol_short!("tl_start");
+pub const TIMELOCK_RELEASED: Symbol = symbol_short!("tl_rel");
+pub const LOCK_TIME_EXPIRED: Symbol = symbol_short!("lock_exp");
+pub const LOCK_TIME_EXTENDED: Symbol = symbol_short!("lock_ext");
+
+// ── Roles ─────────────────────────────────────────────────────────────────────
+
+pub const CLIENT_ROLE_TRANSFERRED: Symbol = symbol_short!("cl_role");
+pub const ARBITER_UPDATED: Symbol = symbol_short!("arb_upd");
+pub const DEADLINE_EXTENDED: Symbol = symbol_short!("dl_ext");
+
+// ── Reputation ────────────────────────────────────────────────────────────────
+
+pub const REPUTATION_UPDATED: Symbol = symbol_short!("rep_upd");
+
+// ── Rent ──────────────────────────────────────────────────────────────────────
+
+pub const RENT_COLLECTED: Symbol = symbol_short!("rent_col");
+pub const RENT_EXPIRED: Symbol = symbol_short!("rent_exp");
+
+// ── NFT ───────────────────────────────────────────────────────────────────────
+
+pub const NFT_GATED_ESCROW_CREATED: Symbol = symbol_short!("nft_esc");
+
+// ── On-chain arbitration ──────────────────────────────────────────────────────
+
+pub const ARBITER_ASSIGNED: Symbol = symbol_short!("arb_asgn");
+pub const EVIDENCE_SUBMITTED: Symbol = symbol_short!("ev_sub");
+
+// ── Escrow-level multisig ─────────────────────────────────────────────────────
+
+pub const ESCROW_APPROVAL_SUBMITTED: Symbol = symbol_short!("esc_apr");
+pub const ESCROW_APPROVAL_REVOKED: Symbol = symbol_short!("esc_rev");
+pub const ESCROW_APPROVAL_THRESHOLD_MET: Symbol = symbol_short!("esc_thr");
+
+// ── Release timelock ──────────────────────────────────────────────────────────
+
+pub const RELEASE_PENDING: Symbol = symbol_short!("rel_pend");
+pub const RELEASE_APPROVED: Symbol = symbol_short!("rel_apr");
+pub const PENDING_RELEASE_EXECUTED: Symbol = symbol_short!("pend_rel");
+
+// ── Platform fee ──────────────────────────────────────────────────────────────
+
+pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");
+
+// ── Deadline extension ────────────────────────────────────────────────────────
+
+pub const ESCROW_EXTENDED: Symbol = symbol_short!("esc_extd");
+
+// ── Admin / contract state ────────────────────────────────────────────────────
+
+pub const ADMIN_INITIALIZED: Symbol = symbol_short!("adm_init");
+pub const ADMIN_PROPOSED: Symbol = symbol_short!("adm_prop");
+pub const ADMIN_CHANGED: Symbol = symbol_short!("adm_chg");
+pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
+pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
+pub const CONTRACT_UPGRADED: Symbol = symbol_short!("upgraded");
+
+// ── Dispute cooldown ─────────────────────────────────────────────────────────
+
+pub const COOLDOWN_ELAPSED: Symbol = symbol_short!("cd_done");
+
+// ── Admin limits ─────────────────────────────────────────────────────────────
+
+pub const LIMITS_UPDATED: Symbol = symbol_short!("lim_upd");
+
+// ── Dispute fees ─────────────────────────────────────────────────────────────
+
+pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");

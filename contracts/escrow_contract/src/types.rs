@@ -22,33 +22,248 @@ pub enum EscrowStatus {
     Cancelled,
     /// Cancellation requested - pending dispute resolution or deadline.
     CancellationPending,
+    /// Escrow deadline passed without completion. Remaining funds refunded to depositor.
+    Expired,
 }
 
-/// The lifecycle state of an individual milestone.
+// ─────────────────────────────────────────────────────────────────────────────
+// MILESTONE STATUS — compact bitflag encoding
+//
+// Replaces the `#[contracttype]` enum (tagged-union, ~40 bytes serialized) with
+// a plain `u32` constant set (~4 bytes).  Each status maps to a unique power-of-
+// two bit so callers can test membership with a single bitwise AND, and the
+// Soroban host serialises the value as a single 32-bit word.
+//
+// Bit layout (only one bit is ever set at a time):
+//   0x01  Pending   — defined, work not yet submitted
+//   0x02  Submitted — freelancer submitted work
+//   0x04  Approved  — client approved, funds pending release
+//   0x08  Released  — funds transferred to freelancer
+//   0x10  Rejected  — client rejected; freelancer should resubmit
+//   0x20  Disputed  — dispute raised; funds frozen
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Compact bitflag type for milestone lifecycle state.
+///
+/// Use the `MS_*` constants below instead of constructing raw values.
+/// A single bit is set at any given time; the bitflag layout allows
+/// cheap membership tests (`status & MS_TERMINAL != 0`) without
+/// deserialising a tagged-union enum.
+pub type MilestoneStatus = u32;
+
+/// Milestone defined but work not yet started/submitted.
+pub const MS_PENDING: MilestoneStatus = 0x01;
+/// Freelancer has submitted work for this milestone.
+pub const MS_SUBMITTED: MilestoneStatus = 0x02;
+/// Client has approved the milestone and funds are pending release.
+pub const MS_APPROVED: MilestoneStatus = 0x04;
+/// Funds have been released for this milestone.
+pub const MS_RELEASED: MilestoneStatus = 0x08;
+/// Client rejected the submission. Freelancer should resubmit.
+pub const MS_REJECTED: MilestoneStatus = 0x10;
+/// A dispute has been raised on this milestone. Funds are frozen.
+pub const MS_DISPUTED: MilestoneStatus = 0x20;
+
+/// Direction for a price-indexed release condition.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MilestoneStatus {
-    /// Milestone defined but work not yet started/submitted.
-    Pending,
-    /// Freelancer has submitted work for this milestone.
-    Submitted,
-    /// Client has approved the milestone. Funds have been released.
-    Approved,
-    /// Client rejected the submission. Freelancer should resubmit.
-    Rejected,
-    /// A dispute has been raised on this milestone. Funds are frozen.
-    Disputed,
+pub enum PriceDirection {
+    /// Release when price is at or above the target.
+    Above,
+    /// Release when price is at or below the target.
+    Below,
+}
+
+/// A price-based release condition attached to a milestone.
+/// The oracle is queried at trigger time; funds release if the condition is met.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PriceCondition {
+    /// The asset whose USD price is checked.
+    pub asset: Address,
+    /// Target price in USD with `oracle::PRICE_DECIMALS` decimal places.
+    pub target_price_usd: i128,
+    /// Whether the current price must be above or below the target.
+    pub direction: PriceDirection,
+}
+
+/// Optional price condition wrapper — mirrors `OptionalTimelock` to work around
+/// Soroban's lack of `Option<CustomContractType>` support in `#[contracttype]`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OptionalPriceCondition {
+    None,
+    Some(PriceCondition),
+}
+
+impl From<Option<PriceCondition>> for OptionalPriceCondition {
+    fn from(opt: Option<PriceCondition>) -> Self {
+        match opt {
+            Some(c) => OptionalPriceCondition::Some(c),
+            None => OptionalPriceCondition::None,
+        }
+    }
+}
+
+impl From<OptionalPriceCondition> for Option<PriceCondition> {
+    fn from(opt: OptionalPriceCondition) -> Self {
+        match opt {
+            OptionalPriceCondition::Some(c) => Some(c),
+            OptionalPriceCondition::None => None,
+        }
+    }
+}
+
+/// Mask of all terminal states (no further transitions expected).
+#[allow(dead_code)]
+pub const MS_TERMINAL: MilestoneStatus = MS_RELEASED | MS_DISPUTED;
+
+/// Mask of states that block escrow cancellation.
+#[allow(dead_code)]
+pub const MS_BLOCKS_CANCEL: MilestoneStatus = MS_SUBMITTED | MS_APPROVED;
+
+/// Timelock metadata for protecting buyers: no release until expiry.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Timelock {
+    /// Duration in ledger timestamps (seconds) to wait after start.
+    pub duration_ledger: u64,
+    /// Ledger timestamp when timelock started.
+    pub start_ledger: u64,
+}
+
+/// Optional BytesN<32> wrapper — `#[contracttype]` cannot serialize `Option<BytesN<32>>` directly.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OptionalBytesN32 {
+    None,
+    Some(BytesN<32>),
+}
+
+impl From<Option<BytesN<32>>> for OptionalBytesN32 {
+    fn from(opt: Option<BytesN<32>>) -> Self {
+        match opt {
+            Some(b) => OptionalBytesN32::Some(b),
+            None => OptionalBytesN32::None,
+        }
+    }
+}
+
+impl From<OptionalBytesN32> for Option<BytesN<32>> {
+    fn from(opt: OptionalBytesN32) -> Self {
+        match opt {
+            OptionalBytesN32::Some(b) => Some(b),
+            OptionalBytesN32::None => None,
+        }
+    }
+}
+
+/// Optional timelock wrapper — used in `EscrowState` to avoid `Option<Timelock>`
+/// which does not satisfy `ScVal: TryFrom<&Option<Timelock>>` in test mode.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OptionalTimelock {
+    None,
+    Some(Timelock),
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeTier {
+    /// Minimum escrow amount at which this tier becomes active.
+    pub min_total_amount: i128,
+    /// Fee rate in basis points (100 bps = 1%).
+    pub fee_bps: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowFeeSnapshot {
+    /// Applied fee rate in basis points for this escrow.
+    pub fee_bps: u32,
+    /// Total fee amount reserved for this escrow lifecycle.
+    pub fee_amount: i128,
+    /// Whether the fee has already been sent to treasury.
+    pub collected: bool,
+}
+
+impl From<Option<Timelock>> for OptionalTimelock {
+    fn from(opt: Option<Timelock>) -> Self {
+        match opt {
+            Some(t) => OptionalTimelock::Some(t),
+            None => OptionalTimelock::None,
+        }
+    }
+}
+
+impl From<OptionalTimelock> for Option<Timelock> {
+    fn from(opt: OptionalTimelock) -> Self {
+        match opt {
+            OptionalTimelock::Some(t) => Some(t),
+            OptionalTimelock::None => None,
+        }
+    }
+}
+
+/// Supported recurring payment intervals.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RecurringInterval {
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+/// Template for a milestone in an escrow template.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MilestoneTemplate {
+    pub title: String,
+    pub description_hash: BytesN<32>,
+    pub amount: i128,
+}
+
+/// Reusable escrow template with predefined milestones.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowTemplate {
+    pub id: u64,
+    pub creator: Address,
+    pub name: String,
+    pub milestones: soroban_sdk::Vec<MilestoneTemplate>,
+}
+
+/// Single approval by a buyer signer, recorded with timestamp.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ApprovalRecord {
+    pub signer: Address,
+    pub approved_at: u64,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCTS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Multisig policy for milestone approve/reject. Empty `approvers` disables multisig
+/// (only `client` may approve/reject, legacy behaviour).
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct MultisigConfig {
+    pub approvers: soroban_sdk::Vec<Address>,
+    pub weights: soroban_sdk::Vec<u32>,
+    pub threshold: u32,
+}
+
 /// A single milestone within an escrow agreement.
 ///
 /// Each milestone represents a discrete deliverable with a defined
 /// payment amount. Funds for a milestone are released only after
 /// the client approves the submission.
+///
+/// # Storage layout
+/// `status` is stored as a compact `u32` bitflag (see `MS_*` constants)
+/// rather than a tagged-union enum, saving ~36 bytes per milestone entry.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Milestone {
@@ -60,13 +275,12 @@ pub struct Milestone {
     pub title: String,
 
     /// IPFS content hash of the full milestone description/requirements.
-    /// TODO (contributor): implement IPFS hash validation helper
     pub description_hash: BytesN<32>,
 
     /// Token amount allocated to this milestone (in stroops / base units).
     pub amount: i128,
 
-    /// Current state of this milestone.
+    /// Current state of this milestone — one of the `MS_*` bitflag constants.
     pub status: MilestoneStatus,
 
     /// Ledger timestamp when the freelancer submitted work.
@@ -75,6 +289,64 @@ pub struct Milestone {
 
     /// Ledger timestamp when the client approved or rejected.
     pub resolved_at: Option<u64>,
+
+    /// Buyer approvals for this milestone (signer + timestamp).
+    pub approvals: soroban_sdk::Vec<ApprovalRecord>,
+
+    /// IPFS hash of the rejection rationale document, set by reject_milestone_with_reason.
+    pub rejection_reason: OptionalBytesN32,
+
+    /// Optional price-based release condition. When set, funds are released
+    /// automatically via `trigger_oracle_release` once the condition is met.
+    pub price_condition: OptionalPriceCondition,
+
+    /// Optional prerequisite milestone ID that must be Approved or Released
+    /// before this milestone can be submitted or paid out.
+    pub depends_on: Option<u32>,
+}
+
+/// Configuration for a recurring/subscription escrow.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurringPaymentConfig {
+    /// Payment interval cadence.
+    pub interval: RecurringInterval,
+
+    /// Amount released each time a payment becomes due.
+    pub payment_amount: i128,
+
+    /// Timestamp of the first scheduled payment.
+    pub start_time: u64,
+
+    /// Timestamp when the next payment becomes due.
+    pub next_payment_at: u64,
+
+    /// Optional schedule end date.
+    pub end_date: Option<u64>,
+
+    /// Total number of scheduled payments for this escrow.
+    pub total_payments: u32,
+
+    /// Remaining scheduled payments not yet released.
+    pub payments_remaining: u32,
+
+    /// Number of payments already processed.
+    pub processed_payments: u32,
+
+    /// Amount for the final payment, if the total is not evenly divisible.
+    pub final_payment_amount: Option<i128>,
+
+    /// Whether scheduled releases are currently paused.
+    pub paused: bool,
+
+    /// Whether the recurring schedule has been cancelled.
+    pub cancelled: bool,
+
+    /// Optional timestamp when the schedule was paused.
+    pub paused_at: Option<u64>,
+
+    /// Optional timestamp of the most recent processed payment.
+    pub last_payment_at: Option<u64>,
 }
 
 /// The main escrow agreement.
@@ -115,6 +387,10 @@ pub struct EscrowState {
     /// TODO (contributor): implement arbiter selection and staking
     pub arbiter: Option<Address>,
 
+    /// Addresses authorised to approve milestone releases (multi-sig).
+    /// The 2-of-N threshold velocity is used for milestone approval.
+    pub buyer_signers: soroban_sdk::Vec<Address>,
+
     /// Ledger timestamp of escrow creation.
     pub created_at: u64,
 
@@ -131,8 +407,26 @@ pub struct EscrowState {
     /// Can be used to extend the lock_time if needed.
     pub lock_time_extension: Option<u64>,
 
+    /// Optional timelock payload for buyer remorse protection.
+    pub timelock: OptionalTimelock,
+
+    /// Optional dispute timeout measured in ledger sequence increments.
+    pub dispute_timeout_ledger: Option<u32>,
+
+    /// Ledger sequence at which the current dispute was raised.
+    pub dispute_started_ledger: Option<u32>,
+
     /// IPFS hash of the full project brief / agreement document.
     pub brief_hash: BytesN<32>,
+
+    /// Multisig approvers (empty = legacy mode: only `client` may approve/reject milestones).
+    pub multisig_approvers: soroban_sdk::Vec<Address>,
+
+    /// Weight per approver (same length as `multisig_approvers` when multisig is used).
+    pub multisig_weights: soroban_sdk::Vec<u32>,
+
+    /// Minimum sum of weights required to approve a submitted milestone.
+    pub multisig_threshold: u32,
 }
 
 /// On-chain reputation record for a user address.
@@ -170,6 +464,44 @@ pub struct ReputationRecord {
     pub last_updated: u64,
 }
 
+/// Lightweight summary of a recurring payment schedule for frontend display.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurringScheduleStatus {
+    /// True when the schedule is running (not paused and not cancelled).
+    pub is_active: bool,
+    /// True when the schedule has been paused.
+    pub is_paused: bool,
+    /// True when the schedule has been cancelled.
+    pub is_cancelled: bool,
+    /// Ledger timestamp of the next scheduled payment.
+    pub next_payment_at: u64,
+    /// Number of payments not yet released.
+    pub payments_remaining: u32,
+    /// Token amount released per payment.
+    pub payment_amount: i128,
+}
+
+/// Dispute information for frontend display.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeInfo {
+    /// Escrow ID this dispute belongs to.
+    pub escrow_id: u64,
+    /// Whether the escrow is currently disputed.
+    pub is_disputed: bool,
+    /// Ledger timestamp when the dispute was raised.
+    pub disputed_at: Option<u64>,
+    /// Configured cooldown duration in seconds.
+    pub cooldown_secs: u64,
+    /// Ledger timestamp when the cooldown ends and a ruling can be submitted.
+    pub cooldown_ends_at: Option<u64>,
+    /// Whether the cooldown has elapsed.
+    pub cooldown_elapsed: bool,
+    /// Assigned arbiter address, if any.
+    pub arbiter: Option<Address>,
+}
+
 /// A cancellation request for an escrow.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -191,6 +523,54 @@ pub struct CancellationRequest {
 
     /// Whether this cancellation has been disputed.
     pub disputed: bool,
+
+    /// Whether the counterparty (non-requester) has explicitly approved the cancellation.
+    /// When true, `execute_cancellation` skips the dispute window check.
+    pub counterparty_approved: bool,
+}
+
+/// A pending mutual-consent deadline extension request.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EscrowExtensionRequest {
+    /// The escrow ID this request belongs to.
+    pub escrow_id: u64,
+
+    /// Address of the party that proposed the extension.
+    pub requested_by: Address,
+
+    /// The proposed new deadline (ledger timestamp).
+    pub proposed_deadline: u64,
+
+    /// When the request was created (ledger timestamp).
+    pub requested_at: u64,
+
+    /// When the request expires if not confirmed (ledger timestamp).
+    pub expires_at: u64,
+}
+
+/// Oracle-signed resolution payload for fallback dispute resolution.
+///
+/// Submitted by any caller once the grace period has elapsed.
+/// The contract verifies the Ed25519 signature over the canonical
+/// message `escrow_id || client_bps || freelancer_bps || expires_at`
+/// before distributing funds.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct OracleResolutionPayload {
+    /// Escrow this resolution applies to.
+    pub escrow_id: u64,
+    /// Client share in basis points (0–10000). Must sum to 10000 with freelancer_bps.
+    pub client_bps: u32,
+    /// Freelancer share in basis points (0–10000).
+    pub freelancer_bps: u32,
+    /// Ledger timestamp after which this payload is considered stale.
+    pub expires_at: u64,
+    /// Ed25519 signature over `escrow_id || client_bps || freelancer_bps || expires_at`
+    /// produced by the trusted oracle key.
+    pub signature: BytesN<64>,
+    /// Ed25519 public key of the oracle signer (must match stored trusted key).
+    pub oracle_pubkey: BytesN<32>,
 }
 
 /// A slash record for tracking penalties.
@@ -219,6 +599,31 @@ pub struct SlashRecord {
     pub disputed: bool,
 }
 
+/// On-chain dispute record storing evidence hashes and metadata.
+///
+/// Created when `raise_dispute` is called. The `evidence_hashes` list is
+/// immutable after creation — no function may modify it. Each hash is the
+/// SHA-256 digest of an off-chain evidence file (e.g., stored on IPFS or S3).
+///
+/// ## Verifying evidence against its on-chain hash
+///
+/// 1. Retrieve the evidence file from off-chain storage (IPFS, S3, etc.).
+/// 2. Compute `SHA-256(file_bytes)` to get a 32-byte digest.
+/// 3. Call `get_evidence_hashes(escrow_id)` and check that the computed
+///    digest matches one of the returned `BytesN<32>` values.
+/// 4. If the digests match, the file is authentic and unmodified since
+///    the dispute was raised.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct DisputeRecord {
+    pub escrow_id: u64,
+    pub raised_by: Address,
+    pub raised_at: u64,
+    pub milestone_id: Option<u32>,
+    /// SHA-256 hashes of evidence files. Immutable after dispute creation.
+    pub evidence_hashes: soroban_sdk::Vec<BytesN<32>>,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // META-TRANSACTIONS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +638,15 @@ pub struct MetaTransaction {
     /// The address of the user who signed this transaction
     pub signer: Address,
 
-    /// Unique nonce to prevent replay attacks
+    /// Unique nonce to prevent replay attacks.
+    ///
+    /// SECURITY: Nonces are enforced to be strictly monotonically increasing.
+    /// The contract stores the last used nonce per signer in DataKey::MetaTxNonce(signer).
+    /// Each new meta-transaction must have nonce > last_nonce, preventing:
+    /// - Replay attacks (reusing the same nonce)
+    /// - Gap attacks (skipping nonces and replaying old ones)
+    ///
+    /// After successful execution, the nonce is updated to the used value.
     pub nonce: u64,
 
     /// Maximum timestamp when this meta-tx is valid (Unix timestamp)
@@ -266,6 +679,68 @@ pub struct FeeDelegation {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GOVERNANCE TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Types of governance proposals.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub enum ProposalType {
+    /// Parameter change proposal
+    ParameterChange,
+    /// Contract upgrade proposal
+    ContractUpgrade,
+    /// Fund allocation proposal
+    FundAllocation,
+    /// Text proposal (non-binding)
+    TextProposal,
+}
+
+/// Payload for fund allocation proposals.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct FundPayload {
+    /// Recipient address
+    pub recipient: Address,
+    /// Token contract address
+    pub token: Address,
+    /// Amount to allocate
+    pub amount: i128,
+}
+
+/// Payload for parameter change proposals.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ParameterPayload {
+    /// Parameter name
+    pub name: String,
+    /// New parameter value
+    pub value: String,
+}
+
+/// Payload for contract upgrade proposals.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct UpgradePayload {
+    /// New WASM hash
+    pub wasm_hash: BytesN<32>,
+}
+
+/// Complete proposal payload for governance.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub enum ProposalPayload {
+    /// Fund allocation
+    FundAllocation(FundPayload),
+    /// Parameter change
+    ParameterChange(ParameterPayload),
+    /// Contract upgrade
+    ContractUpgrade(UpgradePayload),
+    /// Text proposal
+    Text(String),
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // STORAGE KEYS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -282,10 +757,105 @@ pub enum DataKey {
     Reputation(Address),
     /// Contract admin address — value: Address
     Admin,
+    /// Admin signer set for threshold authorization — value: Vec<Address>
+    AdminSigners,
+    /// Required number of admin signatures — value: u32
+    AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
+    /// Timestamp when the contract was paused — value: u64
+    PausedAt,
+    /// Reason the contract was paused — value: String
+    PauseReason,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
     CancellationRequest(u64),
     /// Slash record by escrow ID — key: u64, value: SlashRecord
     SlashRecord(u64),
+    /// Recurring payment config by escrow ID — key: u64, value: RecurringPaymentConfig
+    RecurringConfig(u64),
+    /// Primary oracle contract address — value: Address
+    OracleAddress,
+    /// Fallback oracle contract address — value: Address
+    FallbackOracleAddress,
+    /// Wormhole token bridge contract address — value: Address
+    WormholeBridge,
+    /// Configurable milestone cap set by admin — value: u32
+    MaxMilestones,
+    /// Meta-transaction nonce per signer — key: Address, value: u64
+    MetaTxNonce(Address),
+    /// Storage migration cursor — value: u64
+    MigrationCursor,
+    /// Approved token for whitelist — key: Address, value: bool
+    ApprovedToken(Address),
+    /// Whether token whitelist is enabled — value: bool
+    TokenWhitelistEnabled,
+    /// Escrow template by ID — key: u64, value: EscrowTemplate
+    Template(u64),
+    /// Template counter — value: u64
+    TemplateCounter,
+    /// Pending admin address during a two-step admin transfer — value: Address
+    PendingAdmin,
+    /// Escrow IDs indexed by participant address — key: Address, value: Vec<u64>
+    EscrowsByParticipant(Address),
+    /// Escrow IDs indexed by status — key: EscrowStatus, value: Vec<u64>
+    EscrowsByStatus(EscrowStatus),
+    /// Escrow IDs with active cancellation requests indexed by requester — key: Address, value: Vec<u64>
+    CancellationsByRequester(Address),
+    /// Escrow IDs indexed by slashed user address — key: Address, value: Vec<u64>
+    SlashsByAddress(Address),
+    /// Minimum arbiter reputation score threshold — value: u64
+    MinArbiterReputation,
+    /// Governance contract address for dispute escalation — value: Address
+    GovernanceContract,
+    /// Reentrancy guard flag for outbound token flows — value: bool
+    ReentrancyLock,
+    /// Treasury address for platform fee settlement — value: Address
+    PlatformTreasury,
+    /// Simple platform fee in basis points (0–10000) — value: u32
+    PlatformFeeBps,
+    /// Configured dynamic platform fee tiers — value: Vec<FeeTier>
+    PlatformFeeTiers,
+    /// Applied fee snapshot for an escrow — key: u64, value: EscrowFeeSnapshot
+    PlatformFeeSnapshot(u64),
+    /// Escrow frozen flag (security freeze) — key: u64, value: bool
+    EscrowFrozen(u64),
+    /// Oracle staleness threshold configuration — value: u64
+    OracleStaleThreshold,
+    /// Dispute resolution oracle payload by escrow ID — key: u64, value: OracleResolutionPayload
+    OracleResolution(u64),
+    /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
+    TrustedOracleKey,
+    /// Configured release timelock duration in seconds for an escrow — key: u64, value: u64
+    EscrowTimelockSecs(u64),
+    /// M-of-N multisig config for escrow-level release approval — key: u64, value: MultisigConfig
+    MultisigCfg(u64),
+    /// Addresses that have submitted an escrow-level release approval — key: u64, value: Vec<Address>
+    MultisigApprovals(u64),
+    /// Cumulative percentage allocated via add_milestone_pct — key: u64, value: u32
+    AllocatedPct(u64),
+    /// Count of percentage-based milestones added to an escrow — key: u64, value: u32
+    PctMilestoneCount(u64),
+    /// Evidence hash submitted when raising a dispute — key: u64, value: BytesN<32>
+    EvidenceHash(u64),
+    /// Approved arbiter allowlist entry — key: Address, value: bool
+    ApprovedArbiter(Address),
+    /// Semantic version string (e.g. "1.0.0") — value: String
+    ContractVersion,
+    /// Configurable dispute cooldown in seconds — value: u64
+    DisputeCooldownSecs,
+    /// Monotonically increasing counter incremented on every upgrade — value: u32
+    MigrationVersion,
+}
+
+/// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.
+#[contracttype]
+pub enum FeatDataKey {
+    /// Dispute record by escrow ID — key: u64, value: DisputeRecord
+    DisputeRecord(u64),
+    /// Pending escrow extension request — key: u64, value: EscrowExtensionRequest
+    ExtensionRequest(u64),
+    /// Minimum escrow amount — value: i128
+    MinEscrowAmount,
+    /// Maximum escrow amount — value: i128
+    MaxEscrowAmount,
 }

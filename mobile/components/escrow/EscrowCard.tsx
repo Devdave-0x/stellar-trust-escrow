@@ -22,10 +22,7 @@ export default function EscrowCard({ escrow, userAddress }: EscrowCardProps) {
   const progressPct = total > 0 ? (approved / total) * 100 : 0;
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      onPress={() => router.push(`/escrow/${escrow.id}`)}
-    >
+    <TouchableOpacity activeOpacity={0.8} onPress={() => router.push(`/escrow/${escrow.id}`)}>
       <Card style={styles.card}>
         {/* Header */}
         <View style={styles.row}>

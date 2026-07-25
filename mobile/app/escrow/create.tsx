@@ -54,18 +54,14 @@ export default function CreateEscrowScreen() {
   const router = useRouter();
   const broadcast = useBroadcastEscrow();
 
-  const set = (key: keyof FormState) => (val: string) =>
-    setForm((f) => ({ ...f, [key]: val }));
+  const set = (key: keyof FormState) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
 
   const validateForm = (): string | null => {
-    if (!isValidStellarAddress(form.freelancerAddress))
-      return 'Invalid freelancer address.';
-    if (!isValidStellarAddress(form.tokenAddress))
-      return 'Invalid token address.';
+    if (!isValidStellarAddress(form.freelancerAddress)) return 'Invalid freelancer address.';
+    if (!isValidStellarAddress(form.tokenAddress)) return 'Invalid token address.';
     if (!form.totalAmount || isNaN(Number(form.totalAmount)) || Number(form.totalAmount) <= 0)
       return 'Enter a valid amount.';
-    if (!form.briefHash.trim())
-      return 'Brief hash (IPFS CID) is required.';
+    if (!form.briefHash.trim()) return 'Brief hash (IPFS CID) is required.';
     if (form.arbiterAddress && !isValidStellarAddress(form.arbiterAddress))
       return 'Invalid arbiter address.';
     return null;
@@ -73,7 +69,10 @@ export default function CreateEscrowScreen() {
 
   const handleProceedToSign = () => {
     const err = validateForm();
-    if (err) { Alert.alert('Validation Error', err); return; }
+    if (err) {
+      Alert.alert('Validation Error', err);
+      return;
+    }
     setStep('sign');
   };
 
@@ -84,11 +83,9 @@ export default function CreateEscrowScreen() {
     }
     try {
       const result = await broadcast.mutateAsync(form.signedXdr.trim());
-      Alert.alert(
-        'Success',
-        `Escrow created!\nTx: ${result.hash.slice(0, 16)}…`,
-        [{ text: 'View Escrows', onPress: () => router.replace('/(tabs)/escrows') }],
-      );
+      Alert.alert('Success', `Escrow created!\nTx: ${result.hash.slice(0, 16)}…`, [
+        { text: 'View Escrows', onPress: () => router.replace('/(tabs)/escrows') },
+      ]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Broadcast failed';
       Alert.alert('Error', msg);
@@ -188,7 +185,12 @@ export default function CreateEscrowScreen() {
                 />
               </Card>
               <View style={styles.rowBtns}>
-                <Button title="Back" onPress={() => setStep('form')} variant="secondary" style={styles.halfBtn} />
+                <Button
+                  title="Back"
+                  onPress={() => setStep('form')}
+                  variant="secondary"
+                  style={styles.halfBtn}
+                />
                 <Button
                   title="Broadcast"
                   onPress={() => void handleBroadcast()}

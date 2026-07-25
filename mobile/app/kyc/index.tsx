@@ -32,7 +32,7 @@ export default function KycScreen() {
         const tokenRes = await kycApi.getToken(address);
         setToken(tokenRes.data.token);
       }
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Error', 'Failed to load KYC status. Please try again.');
     } finally {
       setLoading(false);
@@ -107,7 +107,10 @@ export default function KycScreen() {
         style={styles.webview}
         onMessage={(e) => {
           try {
-            const msg = JSON.parse(e.nativeEvent.data) as { type: string; payload?: { reviewStatus?: string } };
+            const msg = JSON.parse(e.nativeEvent.data) as {
+              type: string;
+              payload?: { reviewStatus?: string };
+            };
             if (msg.type === 'statusChanged' && msg.payload?.reviewStatus === 'completed') {
               void loadKycStatus();
             }

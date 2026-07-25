@@ -1,162 +1,721 @@
-# 🤝 Contributing to StellarTrustEscrow
+# Contributing to StellarTrustEscrow
 
-Thank you for your interest! This project is designed to be contributor-friendly at all levels — from fixing typos to implementing full contract features.
+This guide is the fastest path from clone to first PR. It covers local setup, testing, linting, the review process, and how to find newcomer-friendly issues.
 
----
+For the canonical clone-to-running-app walkthrough, use [Local development setup](docs/local-development.md).
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Finding an Issue](#finding-an-issue)
-- [Development Setup](#development-setup)
-- [Workflow](#workflow)
-- [Code Style](#code-style)
-- [Commit Messages](#commit-messages)
+- [Prerequisites](#prerequisites)
+- [15-Minute Quickstart](#15-minute-quickstart)
+- [Development Workflow](#development-workflow)
+- [Testing All Layers](#testing-all-layers)
+- [Code Style and Linting](#code-style-and-linting)
 - [Pull Request Process](#pull-request-process)
-- [Issue Labels](#issue-labels)
+- [Finding a First Issue](#finding-a-first-issue)
+- [OS Notes](#os-notes)
+- [Troubleshooting](#troubleshooting)
 
----
+## Prerequisites
 
-## Finding an Issue
+Install these before you start:
 
-Browse by difficulty:
+| Tool                                     | Version                           | Why it is needed                                      |
+| ---------------------------------------- | --------------------------------- | ----------------------------------------------------- |
+| Node.js                                  | 20 LTS recommended, 18+ supported | Frontend, backend, linting, and Jest/Playwright tests |
+| npm                                      | Bundled with Node.js              | Workspace installs and scripts                        |
+| Rust                                     | 1.74+                             | Soroban smart contracts                               |
+| `wasm32-unknown-unknown` target          | Latest                            | Contract builds                                       |
+| Visual Studio Build Tools (Windows only) | Current                           | Required for native Rust linking on Windows           |
+| Soroban CLI                              | 21+                               | Local contract workflows                              |
+| Docker Desktop or Docker Engine          | Latest                            | Fast local Postgres and full-stack smoke tests        |
+| PostgreSQL                               | 14+ if not using Docker           | Backend development and Prisma migrations             |
+| Git                                      | Latest                            | Branching and pull requests                           |
+| Playwright browsers                      | Current                           | Frontend end-to-end tests                             |
 
-| Label              | Description                                 | Time Estimate |
-| ------------------ | ------------------------------------------- | ------------- |
-| `good-first-issue` | No prior blockchain knowledge needed        | 1–3 hours     |
-| `easy`             | Small, well-defined tasks                   | 2–5 hours     |
-| `medium`           | Feature work, requires reading the codebase | 1–2 days      |
-| `hard`             | Complex features, architecture decisions    | 2–5 days      |
-| `smart-contract`   | Soroban / Rust work                         | Varies        |
-| `backend`          | Node.js / Express / DB work                 | Varies        |
-| `frontend`         | Next.js / React / Tailwind                  | Varies        |
-| `documentation`    | Docs, comments, guides                      | 1–3 hours     |
-| `testing`          | Write or improve tests                      | 2–4 hours     |
-| `security`         | Security review / hardening                 | Varies        |
-
-**New to the project?** Start with [`good-first-issue`](../../issues?q=label%3Agood-first-issue) or [`documentation`](../../issues?q=label%3Adocumentation).
-
-**Before starting:** Comment on the issue to claim it and avoid duplicate work.
-
----
-
-## Development Setup
-
-### Requirements
-
-- Node.js >= 18
-- Rust >= 1.74 + `wasm32-unknown-unknown` target
-- Soroban CLI >= 21.0.0
-- PostgreSQL >= 14
-
-### Setup
+Recommended install commands:
 
 ```bash
-git clone https://github.com/your-org/stellar-trust-escrow
-cd stellar-trust-escrow
-
-# Backend
-cd backend && npm install && cp .env.example .env
-# Edit .env with your local database URL
-
-# Frontend
-cd ../frontend && npm install && cp .env.example .env.local
-
-# Smart contract
-cd ../contracts/escrow_contract
+rustup toolchain install stable
 rustup target add wasm32-unknown-unknown
-cargo build
+cargo install --locked --force soroban-cli
 ```
 
----
+## Soroban Development Environment
 
-## Workflow
+This section covers everything specific to the Rust/Soroban layer. Skip it if you are only working on the frontend or backend.
+
+### Rust toolchain and Soroban CLI
 
 ```bash
-# 1. Fork the repo on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/stellar-trust-escrow
+# Install stable Rust (1.74+ required)
+rustup toolchain install stable
+rustup default stable
 
-# 2. Create a branch from main
-git checkout -b feat/escrow-milestone-approval
-# or: fix/reputation-score-bug
-# or: docs/improve-architecture
+# Add the WASM compilation target
+rustup target add wasm32-unknown-unknown
 
-# 3. Make your changes
-
-# 4. Test your changes
-cd contracts/escrow_contract && cargo test
-cd backend && npm test
-cd frontend && npm test
-
-# 5. Commit (see commit style below)
-git add .
-git commit -m "feat(contract): implement approve_milestone logic"
-
-# 6. Push and open a PR
-git push origin feat/escrow-milestone-approval
+# Install the Soroban CLI (pin to a known-good version)
+cargo install --locked soroban-cli --version 21.0.0
 ```
+
+Verify:
+
+```bash
+rustc --version        # rustc 1.74.0 or later
+soroban --version      # soroban 21.x.x
+```
+
+### Configure a Stellar testnet identity
+
+```bash
+# Generate a new keypair and fund it from Friendbot
+soroban keys generate --global contributor --network testnet
+soroban keys fund contributor --network testnet
+```
+
+### Workspace structure
+
+The Cargo workspace (`Cargo.toml` at the repository root) contains four contract crates:
+
+| Crate                              | Path                           | Purpose                        |
+| ---------------------------------- | ------------------------------ | ------------------------------ |
+| `stellar-trust-escrow-contract`    | `contracts/escrow_contract`    | Core milestone escrow logic    |
+| `stellar-trust-governance`         | `contracts/governance`         | On-chain governance and voting |
+| `stellar-trust-insurance-contract` | `contracts/insurance_contract` | Dispute insurance pool         |
+| `stellar-trust-escrow-extensions`  | `contracts/escrow_extensions`  | Optional escrow add-ons        |
+
+All four share a single `[profile.release]` in the root `Cargo.toml`:
+
+```toml
+[profile.release]
+opt-level        = "z"
+overflow-checks  = true   # integer overflow panics instead of wrapping — critical for financial logic
+debug            = 0
+strip            = "symbols"
+debug-assertions = false
+panic            = "abort"
+codegen-units    = 1
+lto              = true
+```
+
+`overflow-checks = true` is intentional. Any arithmetic that would silently wrap in a standard release build will instead abort the contract, preventing fund-accounting bugs. Do not disable it.
+
+### Running contract tests
+
+Run tests for a single crate to keep feedback fast:
+
+```bash
+# Core escrow contract
+cargo test -p stellar-trust-escrow-contract
+
+# Governance contract
+cargo test -p stellar-trust-governance
+
+# Escrow extensions
+cargo test -p stellar-trust-escrow-extensions
+
+# All crates at once
+cargo test --workspace
+```
+
+Run a specific test by name:
+
+```bash
+cargo test -p stellar-trust-escrow-contract test_approve_milestone_o1_completion_check
+```
+
+### Soroban test harness patterns
+
+Soroban tests use an in-process mock environment rather than a live network. The patterns below appear throughout the test suite.
+
+**`Env::default()`** — creates an isolated in-memory Soroban environment:
+
+```rust
+let env = Env::default();
+```
+
+**`mock_all_auths()`** — bypasses `require_auth()` checks so tests can call any function without real signatures:
+
+```rust
+env.mock_all_auths();
+```
+
+Call this once at the top of a test. Remove it if you are specifically testing authorisation failures.
+
+**`Address::generate(&env)`** — generates a deterministic test address:
+
+```rust
+let client     = Address::generate(&env);
+let freelancer = Address::generate(&env);
+```
+
+**`env.ledger().with_mut()`** — advances the ledger clock to simulate time passing:
+
+```rust
+// Jump forward 7 days
+env.ledger().with_mut(|l| {
+    l.timestamp += 7 * 24 * 60 * 60;
+});
+```
+
+Use this to test deadline expiry, timelock release, and recurring payment scheduling.
+
+A minimal test skeleton:
+
+```rust
+#[test]
+fn test_example() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let client     = Address::generate(&env);
+    let freelancer = Address::generate(&env);
+    // ... register contract, call functions, assert state
+}
+```
+
+## 15-Minute Quickstart
+
+This path assumes Node, Rust, Docker, and Git are already installed.
+
+### 1. Fork and clone
+
+```bash
+git clone https://github.com/YOUR_USERNAME/stellar-trust-escrow.git
+cd stellar-trust-escrow
+git remote add upstream https://github.com/barry01-hash/stellar-trust-escrow.git
+```
+
+### 2. Install workspace dependencies
+
+```bash
+npm ci
+```
+
+### 3. Start Postgres
+
+Use Docker for the database even if you run the app locally:
+
+```bash
+docker compose up -d postgres
+```
+
+### 4. Configure local environment files
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+```
+
+PowerShell equivalent:
+
+```powershell
+Copy-Item backend/.env.example backend/.env
+Copy-Item frontend/.env.example frontend/.env.local
+```
+
+Update these values in `backend/.env` for local development:
+
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/stellar_escrow
+DIRECT_URL=postgresql://user:password@localhost:5432/stellar_escrow
+ALLOWED_ORIGINS=http://localhost:3000
+FRONTEND_URL=http://localhost:3000
+```
+
+`frontend/.env.local` usually only needs:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:4000
+```
+
+### 5. Prepare the database
+
+```bash
+npm run db:generate -w backend
+npm run db:migrate -w backend
+```
+
+### 6. Start backend and frontend
+
+Run these in separate terminals:
+
+```bash
+npm run dev -w backend
+```
+
+```bash
+npm run dev -w frontend
+```
+
+Open `http://localhost:3000`.
+
+### 7. Optional: build the contracts locally
+
+```bash
+cargo build -p stellar-trust-escrow-contract --target wasm32-unknown-unknown
+cargo build -p stellar-trust-insurance-contract --target wasm32-unknown-unknown
+```
+
+## Development Workflow
+
+### Branch naming
+
+Branches must follow this pattern (enforced by the pre-push hook):
+
+```
+<type>/<short-description>
+```
+
+| Prefix      | When to use                                   |
+| ----------- | --------------------------------------------- |
+| `feat/`     | New functionality                             |
+| `fix/`      | Bug fix                                       |
+| `refactor/` | Code improvement, no behaviour change         |
+| `docs/`     | Documentation only                            |
+| `test/`     | Tests only                                    |
+| `chore/`    | Tooling, dependencies, config                 |
+| `hotfix/`   | Urgent production fix branched from `main`    |
+| `release/`  | Release preparation (version bump, CHANGELOG) |
+
+Examples:
+
+```
+feat/wallet-retry-logic
+fix/backend-health-route
+docs/contributor-onboarding
+chore/upgrade-prisma-5
+```
+
+Keep the description short, lowercase, and hyphen-separated. No ticket numbers in the branch name — link the issue in the PR instead.
 
 ---
 
-## Code Style
+### Commit message format — Conventional Commits
 
-### Rust (Smart Contracts)
+Every commit must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
-- Run `cargo fmt` before committing
-- Run `cargo clippy -- -D warnings` and fix all warnings
-- All public functions must have `///` doc comments
-- Use `#[contracterror]` for all error types — no `panic!` in contract code
+```
+<type>(<scope>): <short summary>
 
-### JavaScript / TypeScript (Backend & Frontend)
+<optional body — explain WHY if the diff doesn't make it obvious>
 
-- ESLint config is provided — run `npm run lint` before committing
-- Prettier is configured — run `npm run format`
-- Use `async/await` over `.then()` chains
-- All API routes must have JSDoc comments
+<optional footer>
+BREAKING CHANGE: <description>
+Closes #<issue>
+```
 
-### React (Frontend)
+**Type must be one of:**
 
-- Functional components only
-- Props should be typed with JSDoc `@param` or TypeScript interfaces
-- Keep components small — extract logic into hooks
+| Type       | When to use                                |
+| ---------- | ------------------------------------------ |
+| `feat`     | New feature visible to users or callers    |
+| `fix`      | Bug fix                                    |
+| `perf`     | Performance improvement                    |
+| `security` | Security fix or hardening                  |
+| `refactor` | Code restructuring, no behaviour change    |
+| `test`     | Adding or fixing tests                     |
+| `docs`     | Documentation only                         |
+| `chore`    | Build process, tooling, dependency updates |
+
+**Scope** is optional but encouraged — use the layer or domain (`backend`, `contracts`, `frontend`, `mobile`, `webhooks`, `auth`, etc.).
+
+**Subject line rules:**
+
+- Imperative mood: "add pagination" not "adds pagination" or "added pagination"
+- No capital first letter
+- No trailing period
+- 72 characters max
+
+**Examples:**
+
+```
+feat(backend): add cursor pagination to /api/escrows
+fix(contracts): prevent integer overflow in milestone release
+docs: expand PR lifecycle section in CONTRIBUTING
+chore(deps): upgrade @stellar/stellar-sdk to 12.1.0
+test(backend): add dispute resolution edge cases
+```
+
+If a commit introduces a breaking change, add a `BREAKING CHANGE:` footer:
+
+```
+feat(api)!: rename client_address to clientAddress in all responses
+
+BREAKING CHANGE: all API consumers must update field references.
+Closes #200
+```
+
+The `!` after the type is shorthand — the footer is still required.
 
 ---
 
-## Commit Messages
+### Typical flow
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+```bash
+# 1. Branch from develop
+git checkout develop
+git pull upstream develop
+git checkout -b feat/my-feature
 
+# 2. Make changes, then run the relevant checks
+#    (see Testing All Layers and Code Style sections below)
+
+# 3. Commit
+git add <files>
+git commit -m "feat(backend): add my feature"
+
+# 4. Push
+git push -u origin feat/my-feature
 ```
-feat(contract): implement release_funds logic
-fix(backend): handle null reputation score
-docs(readme): add deployment instructions
-test(api): add escrow controller unit tests
-refactor(frontend): extract wallet hook
-style(contract): run cargo fmt
+
+Open the pull request on GitHub, targeting `develop`. Use the PR template — filling it in completely is a requirement, not a suggestion.
+
+## Testing All Layers
+
+Run the checks that match the layer you touched. If your PR crosses multiple layers, run all of them.
+
+### Smart contracts
+
+Run the full workspace:
+
+```bash
+cargo test --workspace
 ```
 
-Scope options: `contract`, `backend`, `frontend`, `api`, `db`, `docs`, `scripts`
+Run a single crate for faster iteration:
 
----
+```bash
+cargo test -p stellar-trust-escrow-contract
+cargo test -p stellar-trust-governance
+cargo test -p stellar-trust-escrow-extensions
+cargo test -p stellar-trust-insurance-contract
+```
+
+Run a specific test by name:
+
+```bash
+cargo test -p stellar-trust-escrow-contract <test_name>
+```
+
+For deeper contract verification on macOS, Linux, or WSL:
+
+```bash
+bash scripts/test-contract.sh --gas --coverage
+```
+
+### End-to-end simulation scripts
+
+`scripts/simulate/` contains self-contained shell scripts that deploy the escrow contract to Soroban testnet and walk through real lifecycle scenarios. Use them to verify behaviour end-to-end or to demonstrate the contract to integrators.
+
+| Script                   | Scenario                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `happy-path.sh`          | Create escrow → add milestones → freelancer submits → client approves → funds released |
+| `dispute-resolution.sh`  | Escrow disputed by client → arbiter rules entirely in client's favour → full refund    |
+| `expiry-refund.sh`       | Escrow with a short deadline → freelancer misses it → `expire_escrow` refunds client   |
+| `mutual-cancellation.sh` | Client requests cancellation → freelancer consents → immediate settlement              |
+
+**Prerequisites:**
+
+```bash
+# Install the Stellar CLI (includes Soroban support)
+cargo install --locked stellar-cli
+# or, for older installs:
+cargo install --locked soroban-cli --version 21.0.0
+```
+
+**Running a simulation:**
+
+Each script is self-contained — it generates fresh key-pairs, funds them from Friendbot, builds the WASM, and deploys the contract from scratch. No existing credentials or `.env` file needed.
+
+```bash
+# Make scripts executable (first time only)
+chmod +x scripts/simulate/*.sh
+
+# Full happy-path lifecycle
+bash scripts/simulate/happy-path.sh
+
+# Arbiter dispute resolution
+bash scripts/simulate/dispute-resolution.sh
+
+# Expiry with automatic refund (waits ~60 s for deadline to pass)
+bash scripts/simulate/expiry-refund.sh
+
+# Mutual cancellation by both parties
+bash scripts/simulate/mutual-cancellation.sh
+```
+
+Each script prints a numbered step log and a summary table showing contract ID, escrow ID, outcome, and a Stellar Expert link for on-chain inspection. Expected runtime: under 2 minutes per script.
+
+**Network configuration:**
+
+By default, all scripts target Soroban testnet. Override with environment variables:
+
+```bash
+SOROBAN_NETWORK=testnet \
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org \
+SOROBAN_NETWORK_PASSPHRASE="Test SDF Network ; September 2015" \
+bash scripts/simulate/happy-path.sh
+```
+
+PRs that touch contract logic must include at least one new test. Use `Env::default()` and `mock_all_auths()` (see [Soroban test harness patterns](#soroban-test-harness-patterns) above). Time-sensitive behaviour must be covered with `env.ledger().with_mut()`.
+
+### Backend
+
+```bash
+npm run test -w backend
+```
+
+Database-related backend changes should also include:
+
+```bash
+npm run db:migrate:status -w backend
+```
+
+### Frontend
+
+```bash
+npm run test:unit -w frontend
+npm run test:integration -w frontend
+npm run test:a11y -w frontend
+```
+
+Install Playwright browsers once before the first end-to-end run:
+
+```bash
+cd frontend
+npx playwright install --with-deps chromium firefox
+```
+
+Then run:
+
+```bash
+npm run test:e2e -w frontend
+```
+
+### Helpful root shortcuts
+
+```bash
+npm run test
+npm run test:all
+```
+
+`npm run test` covers frontend and backend. `npm run test:all` adds the Rust workspace tests and a frontend production build.
+
+## Code Style and Linting
+
+### JavaScript and TypeScript
+
+```bash
+npm run lint
+npm run format
+```
+
+### Rust contracts
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+### All lint checks
+
+```bash
+npm run lint:all
+```
+
+Notes:
+
+- ESLint and Prettier cover the JS and TS codebase.
+- Husky is installed, but you should still run the relevant checks yourself before pushing.
+- Keep PRs focused. If you touch contracts and frontend together, explain why in the PR.
 
 ## Pull Request Process
 
-1. **Fill out the PR template** — describe what you changed and why
-2. **Link the issue** — use `Closes #42` in the description
-3. **Keep PRs focused** — one feature or fix per PR
-4. **Tests required** — new features need test coverage
-5. **CI must pass** — all checks green before review
-6. **One approval** — a maintainer will review within 48 hours
+### Before you open a PR
 
-### PR Checklist
+- Claim or create an issue first. Leave a comment so no one duplicates your work.
+- Keep the branch scoped to **one logical change**. If you find an unrelated bug while working, fix it in a separate branch.
+- Run all relevant checks for the layer(s) you touched (see [Testing All Layers](#testing-all-layers) and [Code Style and Linting](#code-style-and-linting)).
+- Update documentation when behaviour changes. If you add an endpoint, update `docs/api/`. If you change an env variable, update README and `.env.example`.
 
-- [ ] Branch is up to date with `main`
-- [ ] Tests pass (`cargo test` / `npm test`)
-- [ ] Linting passes (`cargo clippy` / `npm run lint`)
-- [ ] New functions have doc comments
-- [ ] PR description references the issue
+### PR lifecycle
+
+```
+Draft  →  Ready for Review  →  Approved  →  Merged
+```
+
+**Draft** — open as a draft as soon as the branch exists if you want early visibility or async feedback before the work is done. Drafts do not trigger maintainer review.
+
+**Ready for Review** — convert to "Ready for review" only when:
+
+- All checklist items in the PR template are ticked
+- CI is green (or you have explained a known transient failure)
+- You have resolved or replied to every comment from the draft phase
+
+**Approved** — at least one maintainer must approve. For changes to contract logic, two approvals are required. Approval does not mean merge — it means the reviewer is satisfied. The author does the merge after approval.
+
+**Merged** — always merge into `develop`, never directly into `main`. Use the **"Squash and merge"** strategy for feature and fix branches so the commit history on `develop` stays clean and follows Conventional Commits. Use **"Merge commit"** for `release/` branches so the merge point is visible.
+
+### Target branch
+
+| Branch type                                              | Target                                    |
+| -------------------------------------------------------- | ----------------------------------------- |
+| `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/` | `develop`                                 |
+| `release/vX.Y.Z`                                         | `main`                                    |
+| `hotfix/`                                                | `main` **and** back-merged into `develop` |
+
+Never open a PR directly against `main` unless it is a release or hotfix.
+
+### What every PR must include
+
+| Requirement            | Details                                                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Passing CI**         | All checks must be green. Do not ask for review with a red pipeline.                                                              |
+| **Tests**              | New features need tests. Bug fixes need a regression test. Refactors with no behaviour change are exempt — state this explicitly. |
+| **Documentation**      | Update any affected doc, README section, or `.env.example`. Link the relevant file in the PR body.                                |
+| **CHANGELOG entry**    | Add a line under `## [Unreleased]` for any user- or caller-visible change. See [Versioning Policy](#versioning-policy).           |
+| **Linked issue**       | `Closes #<number>` in the PR body.                                                                                                |
+| **Filled-in template** | Every section of the PR template must be completed — do not delete sections and leave them blank.                                 |
+
+### Addressing review feedback
+
+- Push follow-up commits to the same branch — do not close and reopen the PR.
+- Resolve a comment thread only after the requested change is made; let the reviewer re-check.
+- If you disagree with feedback, reply with reasoning. Maintainers can be wrong.
+- Mark trivial acknowledgements ("good catch, fixed") with a thumbs-up rather than a new comment to keep the thread readable.
+
+### Review expectations by change type
+
+| Change type        | Expectation                                                                       |
+| ------------------ | --------------------------------------------------------------------------------- |
+| Documentation only | Commands must be tested locally; no broken links                                  |
+| Backend / API      | Tests covering the new or changed behaviour; migration status verified            |
+| Contract logic     | Two approvals; new Soroban test using `Env::default()` + `mock_all_auths()`       |
+| Frontend / UI      | Screenshots or short screen recording included                                    |
+| Breaking change    | Clearly labelled in the PR title (`!` suffix on type) and body; CHANGELOG updated |
+
+## Finding a First Issue
+
+Use GitHub labels to find a good starting point:
+
+| Label              | What it usually means                                    |
+| ------------------ | -------------------------------------------------------- |
+| `good-first-issue` | Beginner-friendly tasks with a clear path to completion  |
+| `documentation`    | Docs cleanups, onboarding, examples, and guides          |
+| `frontend`         | Next.js UI, accessibility, and interaction work          |
+| `backend`          | API, services, Prisma, and operational tooling           |
+| `smart-contract`   | Rust and Soroban work                                    |
+| `testing`          | Unit, integration, accessibility, or end-to-end coverage |
+
+Useful searches:
+
+- Good first issues: `https://github.com/barry01-hash/stellar-trust-escrow/issues?q=is%3Aopen+is%3Aissue+label%3A%22good-first-issue%22`
+- Documentation issues: `https://github.com/barry01-hash/stellar-trust-escrow/issues?q=is%3Aopen+is%3Aissue+label%3Adocumentation`
+- Help wanted: `https://github.com/barry01-hash/stellar-trust-escrow/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22`
+
+If you want an issue, leave a comment so maintainers know it is in progress.
+
+## OS Notes
+
+- Linux and macOS: native setup is straightforward.
+- Windows: use PowerShell for npm and Docker commands. Install Visual Studio Build Tools for native Rust builds, or use WSL if you want Linux-style contract tooling and bash-based helper scripts like `scripts/test-contract.sh`.
+- Docker Desktop works well for local Postgres on all three platforms.
+
+## Troubleshooting
+
+### `npm ci` fails early
+
+Make sure you are on Node 18+ and rerun from the repository root.
+
+### Prisma cannot connect
+
+Confirm Docker Postgres is running:
+
+```bash
+docker compose ps postgres
+```
+
+Then verify `DATABASE_URL` and `DIRECT_URL` both point at the same local instance unless you intentionally use separate pooled and direct connections.
+
+### Rust contract builds fail on Windows
+
+Install Visual Studio Build Tools with the C++ workload, or run the Rust contract commands inside WSL.
+
+### Frontend cannot reach the backend
+
+Check that:
+
+- backend is running on port `4000`
+- `NEXT_PUBLIC_API_URL=http://localhost:4000`
+- `ALLOWED_ORIGINS` includes `http://localhost:3000`
+
+### Playwright tests fail before opening a browser
+
+Install browsers first:
+
+```bash
+cd frontend
+npx playwright install --with-deps chromium firefox
+```
+
+Questions are welcome in the issue tracker or pull request discussion. Small first contributions are absolutely fine.
 
 ---
 
-## Questions?
+## Versioning Policy
 
-Open a [Discussion](../../discussions) or comment directly on any issue. No question is too basic!
+This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`MAJOR.MINOR.PATCH`).
+
+### What triggers each version component
+
+| Component | When to increment                                                    | Examples                                                                                    |
+| --------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| MAJOR     | Breaking change — existing integrations must change to upgrade       | Renamed API field, removed endpoint, contract storage migration, changed JWT format         |
+| MINOR     | New backward-compatible feature                                      | New endpoint, new optional field, new contract function that doesn't break existing callers |
+| PATCH     | Bug fix or internal improvement that doesn't change the API contract | Fixed off-by-one in pagination, improved error message, dependency security patch           |
+
+A **breaking change** is any change that requires callers to update their code or data to continue working. When in doubt, treat it as breaking.
+
+### CHANGELOG maintenance
+
+- The CHANGELOG is updated **manually** as part of every PR that changes behaviour.
+- Every entry goes under `## [Unreleased]` until a release is cut.
+- Follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format: subsections are `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`.
+- Include the PR or issue number in parentheses: `- Added foo bar (#123)`.
+- Do **not** auto-generate the CHANGELOG from commit messages — the audience is integrators, not Git history readers.
+
+### Release process
+
+1. Create a `release/vX.Y.Z` branch from `develop`.
+2. Move all entries from `## [Unreleased]` to a new `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
+3. Update the comparison link at the bottom of `CHANGELOG.md`.
+4. Open a PR targeting `main`. Title: `release: vX.Y.Z`.
+5. After merge, create a Git tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and push it.
+6. Publish a GitHub Release using the CHANGELOG section as the body.
+7. The `.github/workflows/release.yml` workflow validates that the CHANGELOG contains an entry for the tag being released.
+
+### CHANGELOG entry format example
+
+```markdown
+## [3.0.0] - 2026-09-01
+
+> **Breaking change:** Renamed `client_address` to `clientAddress` in all API responses.
+
+### Added
+
+- `GET /api/escrows/:id/timeline` — ordered list of on-chain events for an escrow (#201)
+
+### Changed
+
+- Renamed `client_address` field to `clientAddress` in escrow API responses (#200)
+
+### Fixed
+
+- Cursor pagination no longer skips the last record on page boundaries (#199)
+
+### Security
+
+- Upgraded `@stellar/stellar-sdk` to address CVE-2026-XXXX (#198)
+```

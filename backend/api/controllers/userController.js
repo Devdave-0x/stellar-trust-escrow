@@ -1,7 +1,12 @@
+import bcrypt from 'bcryptjs';
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
+import { logControllerError } from '../../config/logger.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 import onboardingService from '../../services/onboardingService.js';
+import { getUserActivity } from '../../services/userActivityService.js';
+import { isValidTimezone, toLocalISOString } from '../../lib/timezone.js';
+import { processAndStoreAvatar } from '../../services/avatarService.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
@@ -31,7 +36,7 @@ const getUserProfile = async (req, res) => {
     const cached = await cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    const [reputation, clientEscrows, freelancerEscrows] = await Promise.all([
+    const [reputation, clientEscrows, freelancerEscrows, userProfile] = await Promise.all([
       prisma.reputationRecord.findUnique({ where: { address } }),
       prisma.escrow.findMany({
         where: { clientAddress: address },
@@ -52,6 +57,9 @@ const getUserProfile = async (req, res) => {
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 5);
 
+    const tz = userProfile?.timezone || null;
+    const localise = (date) => (tz && date ? toLocalISOString(date, tz) : date);
+
     const profile = {
       address,
       ...userProfile,
@@ -63,12 +71,21 @@ const getUserProfile = async (req, res) => {
         disputesWon: 0,
         totalVolume: '0',
       },
-      recentEscrows,
+      recentEscrows: recentEscrows.map((e) => ({
+        ...e,
+        createdAt: localise(e.createdAt),
+        deadline: localise(e.deadline),
+      })),
+      ...(tz && {
+        createdAt: localise(userProfile?.createdAt),
+        updatedAt: localise(userProfile?.updatedAt),
+      }),
     };
 
     await cache.set(cacheKey, profile, 60);
     res.json(profile);
   } catch (err) {
+    logControllerError('users.getUserProfile', err, req);
     res.status(500).json({ error: err.message });
   }
 };
@@ -112,36 +129,24 @@ const getUserEscrows = async (req, res) => {
       freelancerWhere.status = status;
     }
 
-    const [clientCount, freelancerCount] = await Promise.all([
-      prisma.escrow.count({ where: clientWhere }),
-      prisma.escrow.count({ where: freelancerWhere }),
-    ]);
+    const where = { OR: [clientWhere, freelancerWhere] };
 
-    const total = clientCount + freelancerCount;
-
-    const [clientEscrows, freelancerEscrows] = await Promise.all([
+    const [data, total] = await prisma.$transaction([
       prisma.escrow.findMany({
-        where: clientWhere,
+        where,
         select: ESCROW_SUMMARY_SELECT,
         orderBy: { createdAt: 'desc' },
-        take: skip + limit,
+        skip,
+        take: limit,
       }),
-      prisma.escrow.findMany({
-        where: freelancerWhere,
-        select: ESCROW_SUMMARY_SELECT,
-        orderBy: { createdAt: 'desc' },
-        take: skip + limit,
-      }),
+      prisma.escrow.count({ where }),
     ]);
 
-    const merged = [...clientEscrows, ...freelancerEscrows]
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(skip, skip + limit);
-
-    const result = buildPaginatedResponse(merged, { total, page, limit });
+    const result = buildPaginatedResponse(data, { total, page, limit });
     await cache.set(cacheKey, result, 15);
     res.json(result);
   } catch (err) {
+    logControllerError('users.getUserEscrows', err, req);
     res.status(500).json({ error: err.message });
   }
 };
@@ -196,6 +201,7 @@ const getUserStats = async (req, res) => {
     await cache.set(cacheKey, stats, 120);
     res.json(stats);
   } catch (err) {
+    logControllerError('users.getUserStats', err, req);
     res.status(500).json({ error: err.message });
   }
 };
@@ -204,8 +210,16 @@ const updateUserProfile = async (req, res) => {
   try {
     const { address } = req.params;
     if (!validateAddress(address, res)) return;
-    
-    const { displayName, bio, preferences } = req.body;
+
+    if (req.user?.address !== address) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { displayName, bio, preferences, timezone } = req.body;
+
+    if (timezone !== undefined && !isValidTimezone(timezone)) {
+      return res.status(400).json({ error: `Invalid IANA timezone: "${timezone}"` });
+    }
 
     const updatedProfile = await prisma.userProfile.upsert({
       where: { address },
@@ -213,12 +227,14 @@ const updateUserProfile = async (req, res) => {
         ...(displayName !== undefined && { displayName }),
         ...(bio !== undefined && { bio }),
         ...(preferences !== undefined && { preferences }),
+        ...(timezone !== undefined && { timezone }),
       },
       create: {
         address,
         displayName,
         bio,
         preferences: preferences || {},
+        timezone: timezone || null,
       },
     });
 
@@ -243,27 +259,96 @@ const uploadAvatar = async (req, res) => {
   try {
     const { address } = req.params;
     if (!validateAddress(address, res)) return;
-    
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const avatarUrl = `/uploads/${req.file.filename}`;
+    if (!req.file.mimetype?.startsWith('image/')) {
+      return res.status(415).json({ error: 'Only image files are accepted for avatars' });
+    }
+
+    const avatarUrl = await processAndStoreAvatar(req.file.buffer, address);
 
     const updatedProfile = await prisma.userProfile.upsert({
       where: { address },
       update: { avatarUrl },
-      create: {
-        address,
-        avatarUrl,
-      },
+      create: { address, avatarUrl },
     });
 
     cache.del(`users:profile:${address}`);
     res.json(updatedProfile);
   } catch (err) {
+    logControllerError('users.uploadAvatar', err, req);
     res.status(500).json({ error: err.message });
   }
 };
 
-export default { getUserProfile, getUserEscrows, getUserStats, updateUserProfile, uploadAvatar };
+const getUserActivityLog = async (req, res) => {
+  try {
+    const { address } = req.params;
+    if (!validateAddress(address, res)) return;
+
+    const { page = 1, limit = 20, category } = req.query;
+    const tenantId = req.tenant?.id ?? '_global';
+
+    const result = await getUserActivity({
+      address,
+      page: parseInt(page, 10),
+      limit: Math.min(parseInt(limit, 10), 100),
+      category: category || undefined,
+      tenantId,
+    });
+
+    res.json(result);
+  } catch (err) {
+    logControllerError('user.getUserActivityLog', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const changePassword = async (req, res) => {
+  try {
+    const { address } = req.params;
+    if (!validateAddress(address, res)) return;
+
+    if (req.user?.address !== address) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { currentPassword, password } = req.body;
+
+    const user = await prisma.user.findFirst({
+      where: { walletAddress: address },
+      select: { id: true, password: true },
+    });
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.password) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Current password is required' });
+      }
+      const match = await bcrypt.compare(currentPassword, user.password);
+      if (!match) return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const hashed = await bcrypt.hash(password, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    logControllerError('user.changePassword', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export default {
+  getUserProfile,
+  getUserEscrows,
+  getUserStats,
+  updateUserProfile,
+  uploadAvatar,
+  getUserActivityLog,
+  changePassword,
+};

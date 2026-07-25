@@ -127,6 +127,40 @@ export const cacheSize = new client.Gauge({
   registers: [register],
 });
 
+/**
+ * Rolling cache hit-rate gauge.
+ * Updated on every cache operation via recordCacheHitRate().
+ * Set to -1 when no data is available yet.
+ */
+export const cacheHitRate = new client.Gauge({
+  name: 'cache_hit_rate',
+  help: 'Rolling cache hit rate (hits / (hits + misses)). Range 0–1; -1 = no data.',
+  registers: [register],
+});
+cacheHitRate.set(-1);
+
+/**
+ * Record a cache hit or miss and update the rolling hit-rate gauge.
+ *
+ * @param {boolean}  isHit
+ * @param {string}   [keyPrefix='unknown']
+ */
+export function recordCacheHitRate(isHit, keyPrefix = 'unknown') {
+  if (isHit) {
+    cacheHitsTotal.inc({ key_prefix: keyPrefix });
+  } else {
+    cacheMissesTotal.inc({ key_prefix: keyPrefix });
+  }
+
+  // Re-read running totals and update the gauge
+  const hitsVal = cacheHitsTotal.hashMap?.['key_prefix:']?.value ?? 0;
+  const missesVal = cacheMissesTotal.hashMap?.['key_prefix:']?.value ?? 0;
+  const total = hitsVal + missesVal;
+  if (total > 0) {
+    cacheHitRate.set(parseFloat((hitsVal / total).toFixed(4)));
+  }
+}
+
 // ── Business Metrics ──────────────────────────────────────────────────────────
 
 export const escrowsCreatedTotal = new client.Counter({
@@ -152,6 +186,65 @@ export const activeEscrowsGauge = new client.Gauge({
   help: 'Current number of active escrows',
   registers: [register],
 });
+
+// ── Circuit Breaker Metrics ───────────────────────────────────────────────────
+
+export const circuitBreakerState = new client.Gauge({
+  name: 'circuit_breaker_state',
+  help: 'Current circuit breaker state: 0=CLOSED, 1=OPEN, 2=HALF_OPEN',
+  labelNames: ['name'],
+  registers: [register],
+});
+
+export const circuitBreakerCallsTotal = new client.Counter({
+  name: 'circuit_breaker_calls_total',
+  help: 'Total circuit breaker call outcomes',
+  labelNames: ['name', 'outcome'], // outcome: success | failure | rejected
+  registers: [register],
+});
+
+export const circuitBreakerTransitionsTotal = new client.Counter({
+  name: 'circuit_breaker_transitions_total',
+  help: 'Total circuit breaker state transitions',
+  labelNames: ['name', 'from', 'to'],
+  registers: [register],
+});
+
+// ── Chaos Metrics ─────────────────────────────────────────────────────────────
+
+export const chaosInjectedTotal = new client.Counter({
+  name: 'chaos_injected_total',
+  help: 'Total chaos faults injected',
+  labelNames: ['experiment_id', 'fault_type'],
+  registers: [register],
+});
+
+// ── Redis Metrics ──────────────────────────────────────────────────────────────
+
+export const redisMemoryUsageBytes = new client.Gauge({
+  name: 'redis_memory_usage_bytes',
+  help: 'Current Redis memory usage in bytes (from INFO memory)',
+  registers: [register],
+});
+
+// ── Escrow State Transition Metrics ───────────────────────────────────────────
+
+export const escrowStateTransitionsTotal = new client.Counter({
+  name: 'escrow_state_transitions_total',
+  help: 'Total number of escrow state transitions by from_state and to_state',
+  labelNames: ['from_state', 'to_state'],
+  registers: [register],
+});
+
+/**
+ * Record an escrow state transition.
+ *
+ * @param {string} fromState - previous state (use 'null' for creation)
+ * @param {string} toState   - new state
+ */
+export function recordEscrowStateTransition(fromState, toState) {
+  escrowStateTransitionsTotal.inc({ from_state: fromState ?? 'null', to_state: toState });
+}
 
 // ── Error Metrics ─────────────────────────────────────────────────────────────
 

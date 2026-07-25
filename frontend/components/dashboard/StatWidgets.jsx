@@ -32,13 +32,13 @@ function SkeletonCard() {
 function SuccessRateChart({ rate }) {
   const data = [{ name: 'Success', value: rate, fill: '#6366f1' }];
   return (
-    <div className="card flex flex-col gap-1">
+    <div className="card flex flex-col gap-1" role="region" aria-label="Success rate chart">
       <p className="text-xs text-gray-500 uppercase tracking-wider">Success Rate</p>
       {rate === null ? (
         <p className="text-2xl font-bold text-white mt-1">—</p>
       ) : (
         <div className="flex items-center gap-2">
-          <div className="w-16 h-16">
+          <div className="w-16 h-16" aria-hidden="true">
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart
                 cx="50%"
@@ -64,9 +64,19 @@ function SuccessRateChart({ rate }) {
               </RadialBarChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-3xl font-bold text-indigo-400">{rate}%</p>
+          <p className="text-3xl font-bold text-indigo-400" aria-live="polite">
+            {rate}%
+          </p>
         </div>
       )}
+      <table className="sr-only" aria-label="Success rate data">
+        <tbody>
+          <tr>
+            <td>Success Rate</td>
+            <td>{rate ?? 'N/A'}%</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -75,15 +85,33 @@ function SuccessRateChart({ rate }) {
 
 function StatWidget({ label, value, icon, color = 'text-white', sub }) {
   return (
-    <div className="card flex flex-col gap-2 group hover:border-indigo-500/40 transition-colors duration-200">
+    <div
+      className="card flex flex-col gap-2 group hover:border-indigo-500/40 transition-colors duration-200 focus-within:ring-2 focus-within:ring-indigo-500"
+      role="region"
+      aria-label={`${label} metric`}
+    >
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
-        <span className="text-lg opacity-60 group-hover:opacity-100 transition-opacity">
+        <span
+          className="text-lg opacity-60 group-hover:opacity-100 transition-opacity"
+          aria-hidden="true"
+        >
           {icon}
         </span>
       </div>
-      <p className={`text-2xl font-bold ${color}`}>{value ?? '—'}</p>
+      <p className={`text-2xl font-bold ${color}`} aria-live="polite">
+        {value ?? '—'}
+      </p>
       {sub && <p className="text-xs text-gray-600">{sub}</p>}
+      <table className="sr-only" aria-label={`${label} data`}>
+        <tbody>
+          <tr>
+            <td>{label}</td>
+            <td>{value ?? 'N/A'}</td>
+            {sub && <td>{sub}</td>}
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -114,7 +142,7 @@ export default function StatWidgets({ address }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <SkeletonCard key={i} />
         ))}
@@ -133,7 +161,7 @@ export default function StatWidgets({ address }) {
   // Empty state — user has no escrows yet
   if (!stats || stats.total === 0) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatWidget label="Total Escrows" value={0} icon="📦" />
         <StatWidget label="Active" value={0} icon="🔒" color="text-indigo-400" />
         <StatWidget label="Completed" value={0} icon="✅" color="text-emerald-400" />
@@ -145,7 +173,7 @@ export default function StatWidgets({ address }) {
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
       <StatWidget label="Total Escrows" value={stats.total} icon="📦" />
       <StatWidget label="Active" value={stats.active} icon="🔒" color="text-indigo-400" />
       <StatWidget label="Completed" value={stats.completed} icon="✅" color="text-emerald-400" />

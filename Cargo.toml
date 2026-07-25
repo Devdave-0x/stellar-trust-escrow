@@ -1,5 +1,5 @@
 [workspace]
-members = ["contracts/escrow_contract", "contracts/governance", "contracts/insurance_contract"]
+members = ["contracts/escrow_contract", "contracts/governance", "contracts/insurance_contract", "contracts/escrow_extensions", "contracts/shared"]
 resolver = "2"
 
 [profile.release]
@@ -11,3 +11,10 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
+
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

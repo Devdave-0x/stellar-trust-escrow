@@ -8,23 +8,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-
-function getAdminKey() {
-  return typeof window !== 'undefined' ? localStorage.getItem('adminApiKey') || '' : '';
-}
-
-function adminFetch(path, options = {}) {
-  return fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-api-key': getAdminKey(),
-      ...(options.headers || {}),
-    },
-  });
-}
+import { useAdminStore } from '../../../store/app-store';
+import { adminFetch } from '../../../store/admin';
 
 function truncate(str, len = 18) {
   if (!str) return '—';
@@ -66,6 +51,7 @@ function ActionModal({ user, action, onClose, onConfirm }) {
 }
 
 export default function AdminUsersPage() {
+  const { apiKey } = useAdminStore();
   const [users, setUsers] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
   const [search, setSearch] = useState('');
@@ -75,26 +61,29 @@ export default function AdminUsersPage() {
   const [toast, setToast] = useState('');
   const [modal, setModal] = useState({ user: null, action: '' });
 
-  const fetchUsers = useCallback(async (page = 1, q = '') => {
-    setLoading(true);
-    setError('');
-    try {
-      const params = new URLSearchParams({ page, limit: 20, ...(q ? { search: q } : {}) });
-      const res = await adminFetch(`/api/admin/users?${params}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch users');
-      setUsers(data.users);
-      setPagination(data.pagination);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchUsers = useCallback(
+    async (page = 1, q = '') => {
+      setLoading(true);
+      setError('');
+      try {
+        const params = new URLSearchParams({ page, limit: 20, ...(q ? { search: q } : {}) });
+        const res = await adminFetch(`/api/admin/users?${params}`, apiKey);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch users');
+        setUsers(data.users);
+        setPagination(data.pagination);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiKey],
+  );
 
   useEffect(() => {
     fetchUsers(1, search);
-  }, [search, fetchUsers]);
+  }, [apiKey, search, fetchUsers]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -105,7 +94,7 @@ export default function AdminUsersPage() {
     const { user, action } = modal;
     setModal({ user: null, action: '' });
     try {
-      const res = await adminFetch(`/api/admin/users/${user.address}/${action}`, {
+      const res = await adminFetch(`/api/admin/users/${user.address}/${action}`, apiKey, {
         method: 'POST',
         body: JSON.stringify({ reason }),
       });

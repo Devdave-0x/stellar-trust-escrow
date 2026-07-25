@@ -13,6 +13,7 @@ import reputationRoutes from '../routes/reputationRoutes.js';
 import userRoutes from '../routes/userRoutes.js';
 import auditRoutes from '../routes/auditRoutes.js';
 import adminRoutes from '../routes/adminRoutes.js';
+import complianceRoutes from '../routes/complianceRoutes.js';
 
 const router = express.Router();
 
@@ -31,5 +32,6 @@ router.use('/kyc', kycRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/audit', auditRoutes);
 router.use('/admin', adminRoutes);
+router.use('/compliance', complianceRoutes);
 
 export default router;

@@ -4,8 +4,8 @@
  * Persistent top navigation bar. Includes:
  * - Logo / brand name
  * - Nav links (Dashboard, Explorer)
+ * - NetworkIndicator pill (Testnet / Mainnet)
  * - WalletStatus indicator (connected/connecting/disconnected)
- * - Network indicator pill (Testnet / Mainnet)
  *
  * TODO (contributor — medium, Issue #37):
  * - Add mobile hamburger menu
@@ -15,27 +15,35 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { useI18n } from '../../i18n/index.jsx';
+import { useNotifications } from '../../hooks/useNotifications';
 import WalletStatus from '../ui/WalletStatus';
+import MobileDrawer from './MobileDrawer';
 import ThemeToggle from './ThemeToggle';
+import CurrencySelector from '../ui/CurrencySelector';
+import NetworkIndicator from './NetworkIndicator';
+import NotificationPanel from './NotificationPanel';
 
 export default function Header() {
   const wallet = useWallet();
   const { t } = useI18n();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
 
-  const networkLabel = wallet.network === 'mainnet' ? t('network.mainnet') : t('network.testnet');
-  const networkStyles =
-    wallet.network === 'mainnet'
-      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-      : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-  const networkDotStyles =
-    wallet.network === 'mainnet' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse';
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 0);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   return (
-    <header className="border-b border-gray-200 bg-white/80 dark:border-gray-800 dark:bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
+    <header
+      className={`border-b border-gray-200 bg-white/80 dark:border-gray-800 dark:bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50 transition-shadow duration-200 ${scrolled ? 'shadow-lg shadow-black/20' : ''}`}
+    >
       <div className="container mx-auto px-4 max-w-7xl">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -54,33 +62,107 @@ export default function Header() {
               href="/dashboard"
               className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm transition-colors"
             >
-              Dashboard
+              {t('nav.dashboard')}
             </Link>
             <Link
               href="/explorer"
               className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm transition-colors"
             >
-              Explorer
+              {t('nav.explorer')}
+            </Link>
+            <Link
+              href="/help"
+              className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm transition-colors"
+            >
+              Help
             </Link>
             {/* TODO (contributor): add Leaderboard link */}
           </nav>
 
           {/* Right Side */}
           <div className="flex items-center gap-3">
-            {/* Network Badge — shows real network when wallet is connected */}
-            <span
-              id="network-badge"
-              className={`hidden sm:flex items-center gap-1.5 text-xs border px-2.5 py-1 rounded-full transition-colors duration-300 ${networkStyles}`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${networkDotStyles}`} />
-              {networkLabel}
-            </span>
+            {/* Network Indicator */}
+            <NetworkIndicator network={wallet.network} isConnected={wallet.isConnected} />
 
             {/* Wallet Status */}
             <WalletStatus wallet={wallet} />
 
+            {/* Currency Selector */}
+            <CurrencySelector size="sm" />
+
             {/* Theme Toggle */}
             <ThemeToggle />
+
+            {/* Profile avatar — links to /profile when wallet connected */}
+            {wallet.isConnected && wallet.address && (
+              <Link
+                href="/profile"
+                aria-label="My profile"
+                className="w-8 h-8 rounded-full bg-indigo-600/30 flex items-center justify-center text-indigo-300 font-bold text-sm hover:bg-indigo-600/50 transition-colors flex-shrink-0"
+              >
+                {wallet.address.slice(1, 3)}
+              </Link>
+            )}
+
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+                aria-expanded={isNotifOpen}
+                aria-haspopup="dialog"
+                onClick={() => setIsNotifOpen((o) => !o)}
+                className="relative text-gray-400 hover:text-white p-1 rounded transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-6 h-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                  />
+                </svg>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotifOpen && (
+                <NotificationPanel
+                  notifications={notifications}
+                  onMarkRead={markRead}
+                  onMarkAllRead={markAllRead}
+                  onClose={() => setIsNotifOpen(false)}
+                />
+              )}
+            </div>
+
+            {/* Hamburger — mobile only */}
+            <button
+              className="md:hidden text-gray-400 hover:text-white p-1 rounded transition-colors"
+              aria-label="Open navigation menu"
+              aria-expanded={isMobileMenuOpen}
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-6 h-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -92,18 +174,27 @@ export default function Header() {
               className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors px-2"
               onClick={() => setIsMobileMenuOpen(false)}
             >
-              Dashboard
+              {t('nav.dashboard')}
             </Link>
             <Link
               href="/explorer"
               className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors px-2"
               onClick={() => setIsMobileMenuOpen(false)}
             >
-              Explorer
+              {t('nav.explorer')}
+            </Link>
+            <Link
+              href="/help"
+              className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors px-2"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              Help
             </Link>
           </nav>
         )}
       </div>
+
+      <MobileDrawer isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
     </header>
   );
 }

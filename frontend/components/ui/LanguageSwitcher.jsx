@@ -13,7 +13,9 @@ export default function LanguageSwitcher() {
       aria-label="Select language"
     >
       {locales.map((l) => (
-        <option key={l} value={l}>{localeNames[l]}</option>
+        <option key={l} value={l}>
+          {localeNames[l]}
+        </option>
       ))}
     </select>
   );

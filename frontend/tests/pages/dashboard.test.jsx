@@ -1,5 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import DashboardPage from '../../app/dashboard/page';
+import { renderWithAppProviders } from '../test-utils';
+
+const CONNECTED_WALLET = { address: 'GABCD1234', isConnected: true };
+
+function renderDashboard() {
+  return renderWithAppProviders(<DashboardPage />, { wallet: CONNECTED_WALLET });
+}
 
 beforeEach(() => {
   global.fetch = jest.fn((url) => {
@@ -78,48 +85,48 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  jest.resetAllMocks();
+  jest.clearAllMocks();
+  window.localStorage.clear();
 });
 
 describe('DashboardPage', () => {
-  // it('renders page heading', async () => {
-  //   render(<DashboardPage />);
-  //   expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
-  //   expect(await screen.findByText('Logo Design Project')).toBeInTheDocument();
-  // });
-
   it('renders stat cards', async () => {
-    render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Overview')).toBeInTheDocument();
+    renderDashboard();
+    expect(await screen.findByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Welcome back.')).toBeInTheDocument();
   });
 
   it('renders fetched stats values', async () => {
-    render(<DashboardPage />);
-    expect(await screen.findByText('7')).toBeInTheDocument();
-    expect(screen.getAllByText('4').length).toBeGreaterThan(0);
+    renderDashboard();
+    const totalEscrowsMetric = await screen.findByRole('region', {
+      name: /total escrows metric/i,
+    });
+    const completedMetric = screen.getByRole('region', { name: /completed metric/i });
+
+    expect(totalEscrowsMetric).toHaveTextContent('7');
+    expect(completedMetric).toHaveTextContent('4');
   });
 
   it('renders active escrows section', async () => {
-    render(<DashboardPage />);
+    renderDashboard();
     await screen.findByText('Logo Design Project');
     expect(screen.getByText('Your Active Escrows')).toBeInTheDocument();
   });
 
   it('renders escrow cards', async () => {
-    render(<DashboardPage />);
+    renderDashboard();
     expect(await screen.findByText('Logo Design Project')).toBeInTheDocument();
     expect(screen.getByText('Smart Contract Audit')).toBeInTheDocument();
   });
 
   it('renders New Escrow button', async () => {
-    render(<DashboardPage />);
+    renderDashboard();
     await screen.findByText('Logo Design Project');
-    expect(screen.getByRole('link', { name: '+ New Escrow' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '+ Create Escrow' })).toBeInTheDocument();
   });
 
   it('renders reputation badge', async () => {
-    render(<DashboardPage />);
+    renderDashboard();
     expect(await screen.findByText('87')).toBeInTheDocument();
   });
 });

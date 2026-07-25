@@ -2,13 +2,27 @@
  * Cache Service — Redis with in-memory fallback
  *
  * Exposes the same interface as the original lib/cache.js so all existing
- * controllers work without modification. Adds analytics and cache warming.
+ * controllers work without modification. Adds:
  *
- * Redis is optional: if REDIS_URL is unset or the connection fails the service
- * transparently falls back to the in-memory store.
+ * - Tag-based invalidation: tag a cached entry with one or more logical
+ *   group names (e.g. "escrow:42", "escrows") so a single
+ *   invalidateTag("escrow:42") call purges every related entry atomically.
+ *
+ * - setWithTags(key, value, ttl, tags[])
+ * - invalidateTag(tag)
+ * - invalidateTags(tags[])
+ *
+ * Redis is optional: if REDIS_URL is unset or the connection fails the
+ * service transparently falls back to the in-memory store.
  */
 
 import { createClient } from 'redis';
+import { REDIS_TIMEOUT_MS } from '../lib/timeout.js';
+import { createModuleLogger } from '../config/logger.js';
+import { scopeCacheKey, scopeCacheTag } from '../lib/tenantContext.js';
+import { cacheHitsTotal, cacheMissesTotal, cacheHitRate, redisMemoryUsageBytes } from '../lib/metrics.js';
+
+const log = createModuleLogger('cacheService');
 
 // ── Analytics counters ────────────────────────────────────────────────────────
 
@@ -17,6 +31,8 @@ const stats = { hits: 0, misses: 0, sets: 0, invalidations: 0 };
 // ── In-memory fallback ────────────────────────────────────────────────────────
 
 const memStore = new Map();
+/** tag → Set<key> */
+const memTags = new Map();
 
 const mem = {
   get(key) {
@@ -40,6 +56,16 @@ const mem = {
   size() {
     return memStore.size;
   },
+  tagAdd(tag, key) {
+    if (!memTags.has(tag)) memTags.set(tag, new Set());
+    memTags.get(tag).add(key);
+  },
+  tagKeys(tag) {
+    return [...(memTags.get(tag) ?? [])];
+  },
+  tagDel(tag) {
+    memTags.delete(tag);
+  },
 };
 
 // ── Redis client ──────────────────────────────────────────────────────────────
@@ -48,64 +74,205 @@ let redis = null;
 let redisReady = false;
 
 if (process.env.REDIS_URL) {
-  redis = createClient({ url: process.env.REDIS_URL });
+  redis = createClient({ url: process.env.REDIS_URL, commandTimeout: REDIS_TIMEOUT_MS });
   redis.on('ready', () => {
     redisReady = true;
-    console.log('[Cache] Redis connected');
+    log.info({ message: 'redis_connected' });
   });
   redis.on('error', (err) => {
     redisReady = false;
-    console.warn('[Cache] Redis error — using memory fallback:', err.message);
+    log.warn({ message: 'redis_error_fallback_memory', error: err.message });
   });
-  redis.connect().catch((err) => console.warn('[Cache] Redis connect failed:', err.message));
+  redis.connect().catch((err) => log.warn({ message: 'redis_connect_failed', error: err.message }));
+
+  if (process.env.REDIS_MEMORY_METRICS_ENABLED !== 'false') {
+    const MEMORY_POLL_INTERVAL_MS = 30_000;
+    const memTimer = setInterval(async () => {
+      try {
+        const info = await redis.info('memory').catch(() => null);
+        if (info) {
+          const match = info.match(/used_memory:(\d+)/);
+          if (match) redisMemoryUsageBytes.set(parseInt(match[1], 10));
+        }
+      } catch (_err) {
+        // ignore memory polling errors
+      }
+    }, MEMORY_POLL_INTERVAL_MS);
+    if (typeof memTimer.unref === 'function') memTimer.unref();
+  }
+}
+
+// ── Redis tag helpers ─────────────────────────────────────────────────────────
+// Tags are stored as Redis Sets: tag:<name> → [key1, key2, ...]
+
+const redisTagKey = (tag) => `tag:${tag}`;
+
+async function redisTagAdd(tag, key, ttlSeconds) {
+  const tKey = redisTagKey(tag);
+  await redis.sAdd(tKey, key).catch(() => null);
+  // Expire the tag set slightly after the longest possible entry TTL
+  await redis.expire(tKey, ttlSeconds + 60).catch(() => null);
+}
+
+async function redisTagKeys(tag) {
+  return redis.sMembers(redisTagKey(tag)).catch(() => []);
+}
+
+async function redisTagDel(tag) {
+  return redis.del(redisTagKey(tag)).catch(() => null);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 async function get(key) {
+  const scopedKey = scopeCacheKey(key);
+  // Derive a prefix label for Prometheus (first path segment)
+  const keyPrefix = key.split(':')[0] || 'unknown';
+
   if (redisReady) {
-    const raw = await redis.get(key).catch(() => null);
+    const raw = await redis.get(scopedKey).catch(() => null);
     if (raw !== null) {
       stats.hits++;
+      cacheHitsTotal.inc({ key_prefix: keyPrefix });
+      _updateHitRateGauge();
       return JSON.parse(raw);
     }
   } else {
-    const val = mem.get(key);
+    const val = mem.get(scopedKey);
     if (val !== null) {
       stats.hits++;
+      cacheHitsTotal.inc({ key_prefix: keyPrefix });
+      _updateHitRateGauge();
       return val;
     }
   }
   stats.misses++;
+  cacheMissesTotal.inc({ key_prefix: keyPrefix });
+  _updateHitRateGauge();
   return null;
 }
 
+/** Recompute and expose the rolling hit-rate gauge from running counters. */
+function _updateHitRateGauge() {
+  const total = stats.hits + stats.misses;
+  if (total > 0) {
+    cacheHitRate.set(parseFloat((stats.hits / total).toFixed(4)));
+  }
+}
+
 async function set(key, value, ttlSeconds = 60) {
+  const scopedKey = scopeCacheKey(key);
+
   stats.sets++;
   if (redisReady) {
-    await redis.set(key, JSON.stringify(value), { EX: ttlSeconds }).catch(() => {
-      mem.set(key, value, ttlSeconds); // write-through to memory on Redis failure
+    await redis.set(scopedKey, JSON.stringify(value), { EX: ttlSeconds }).catch(() => {
+      mem.set(scopedKey, value, ttlSeconds);
     });
   } else {
-    mem.set(key, value, ttlSeconds);
+    mem.set(scopedKey, value, ttlSeconds);
+  }
+}
+
+/**
+ * Store a value and associate it with one or more invalidation tags.
+ *
+ * @param {string}   key
+ * @param {*}        value
+ * @param {number}   ttlSeconds
+ * @param {string[]} tags  — logical group names, e.g. ['escrows', 'escrow:42']
+ */
+async function setWithTags(key, value, ttlSeconds = 60, tags = []) {
+  const scopedKey = scopeCacheKey(key);
+  const scopedTags = tags.map((tag) => scopeCacheTag(tag));
+
+  await set(key, value, ttlSeconds);
+  for (const tag of scopedTags) {
+    if (redisReady) {
+      await redisTagAdd(tag, scopedKey, ttlSeconds);
+    } else {
+      mem.tagAdd(tag, scopedKey);
+    }
   }
 }
 
 async function invalidate(key) {
+  const scopedKey = scopeCacheKey(key);
+
   stats.invalidations++;
-  if (redisReady) await redis.del(key).catch(() => null);
-  mem.del(key);
+  if (redisReady) await redis.del(scopedKey).catch(() => null);
+  mem.del(scopedKey);
 }
 
 async function invalidatePrefix(prefix) {
+  const scopedPrefix = scopeCacheKey(prefix);
+
   stats.invalidations++;
   if (redisReady) {
-    const keys = await redis.keys(`${prefix}*`).catch(() => []);
-    if (keys.length) await redis.del(keys).catch(() => null);
+    // Use SCAN (cursor-based) instead of KEYS to avoid blocking Redis
+    let cursor = 0;
+    do {
+      const result = await redis
+        .scan(cursor, { MATCH: `${scopedPrefix}*`, COUNT: 100 })
+        .catch(() => ({ cursor: 0, keys: [] }));
+      cursor = result.cursor;
+      if (result.keys.length) await redis.del(result.keys).catch(() => null);
+    } while (cursor !== 0);
+  }
+  for (const key of mem.keys()) {
+    if (key.startsWith(scopedPrefix)) mem.del(key);
+  }
+}
+
+/**
+ * Delete every cached entry belonging to a tenant without blocking Redis.
+ * Scans for `tenant:<slug>:*` keys using cursor-based SCAN iteration.
+ * Safe to call on tenant deletion or suspension.
+ *
+ * @param {string} slug  — tenant slug (e.g. "acme")
+ */
+async function flushTenant(slug) {
+  const prefix = `tenant:${slug}:`;
+  if (redisReady) {
+    let cursor = 0;
+    do {
+      const result = await redis
+        .scan(cursor, { MATCH: `${prefix}*`, COUNT: 100 })
+        .catch(() => ({ cursor: 0, keys: [] }));
+      cursor = result.cursor;
+      if (result.keys.length) await redis.del(result.keys).catch(() => null);
+    } while (cursor !== 0);
   }
   for (const key of mem.keys()) {
     if (key.startsWith(prefix)) mem.del(key);
   }
+}
+
+/**
+ * Invalidate all cache entries associated with a tag.
+ *
+ * @param {string} tag
+ */
+async function invalidateTag(tag) {
+  const scopedTag = scopeCacheTag(tag);
+
+  stats.invalidations++;
+  if (redisReady) {
+    const keys = await redisTagKeys(scopedTag);
+    if (keys.length) await redis.del(keys).catch(() => null);
+    await redisTagDel(scopedTag);
+  } else {
+    for (const key of mem.tagKeys(scopedTag)) mem.del(key);
+    mem.tagDel(scopedTag);
+  }
+}
+
+/**
+ * Invalidate all cache entries for multiple tags at once.
+ *
+ * @param {string[]} tags
+ */
+async function invalidateTags(tags) {
+  await Promise.all(tags.map(invalidateTag));
 }
 
 /** Warm the cache by calling a loader function if the key is cold. */
@@ -129,7 +296,28 @@ function analytics() {
 }
 
 function size() {
-  return redisReady ? null : mem.size(); // Redis size not cheaply available
+  return redisReady ? null : mem.size();
 }
 
-export default { get, set, invalidate, invalidatePrefix, warm, analytics, size };
+/** Gracefully close the Redis connection (called during server shutdown). */
+async function close() {
+  if (redis && redisReady) {
+    await redis.quit().catch((err) => log.warn({ message: 'redis_quit_error', error: err.message }));
+    redisReady = false;
+  }
+}
+
+export default {
+  get,
+  set,
+  setWithTags,
+  invalidate,
+  invalidatePrefix,
+  flushTenant,
+  invalidateTag,
+  invalidateTags,
+  warm,
+  analytics,
+  size,
+  close,
+};

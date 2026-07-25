@@ -1,13 +1,36 @@
 import express from 'express';
-import multer from 'multer';
 import userController from '../controllers/userController.js';
+import {
+  stellarAddressParam,
+  paginationQuery,
+  handleValidationErrors,
+} from '../../middleware/validation.js';
 import exportController from '../controllers/exportController.js';
 import onboardingController from '../controllers/onboardingController.js';
 import authMiddleware from '../middleware/auth.js';
 
 const upload = multer({ dest: 'uploads/' });
+import authMiddleware from '../middleware/auth.js';
+import { authorizeParamAddress } from '../middleware/authorization.js';
+import adminAuth, { optionalAdminAuth } from '../middleware/adminAuth.js';
+import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
+import { conditionalGet } from '../middleware/conditionalGet.js';
+import { validatePasswordStrength } from '../middleware/passwordStrength.js';
+import { listBookmarks } from '../controllers/bookmarkController.js';
+import sessionController from '../controllers/sessionController.js';
 
 const router = express.Router();
+router.use(optionalAdminAuth, authMiddleware);
+
+const validateAddress = [stellarAddressParam('address'), handleValidationErrors];
+const validatePagination = [...paginationQuery, handleValidationErrors];
+const exportRateLimit = createSlidingWindowRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  prefix: 'data-export',
+  message: 'Too many export requests for this address. Please try again later.',
+  keyGenerator: (req) => `data-export:address:${req.params?.address || 'unknown'}`,
+});
 
 /**
  * @route  GET /api/users/me/onboarding
@@ -32,29 +55,54 @@ router.post('/me/wallet', authMiddleware, onboardingController.connectWallet);
  * @route  GET /api/users/:address
  * @desc   Get a user's profile: reputation, escrow history, stats.
  * @param  address - Stellar public key (G...)
+ * @route  GET /api/users/me/sessions
+ * @desc   List the authenticated user's active login sessions (device, IP, last active).
+ *         The session used for this request is flagged with current: true.
  */
-router.get('/:address', userController.getUserProfile);
+router.get('/me/sessions', sessionController.listSessions);
 
 /**
- * @route  GET /api/users/:address/escrows
- * @desc   Get a paginated escrow list for a user with the standard pagination envelope.
- * @query  role (client|freelancer|all), status, page (default 1), limit (default 20, max 100)
- * @returns { data, page, limit, total, totalPages, hasNextPage, hasPreviousPage }
+ * @route  DELETE /api/users/me/sessions/:id
+ * @desc   Revoke a single session belonging to the authenticated user.
  */
-router.get('/:address/escrows', userController.getUserEscrows);
+router.delete('/me/sessions/:id', sessionController.revokeSession);
 
 /**
- * @route  GET /api/users/:address/stats
- * @desc   Aggregated stats: total volume, completion rate, avg milestone time.
+ * @route  DELETE /api/users/me/sessions
+ * @desc   Revoke every session except the current one ("sign out everywhere else").
  */
-router.get('/:address/stats', userController.getUserStats);
+router.delete('/me/sessions', sessionController.revokeAllSessions);
+
+router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
+router.get(
+  '/:address/activity',
+  validateAddress,
+  validatePagination,
+  userController.getUserActivityLog,
+);
+router.get('/:address/escrows', validateAddress, validatePagination, userController.getUserEscrows);
+router.get('/:address/stats', validateAddress, userController.getUserStats);
+router.get('/:address/bookmarks', validateAddress, validatePagination, listBookmarks);
+
+/**
+ * @route  PUT /api/users/:address/password
+ * @desc   Change user password with strength validation
+ * @body   { currentPassword?: string, password: string }
+ */
+router.put(
+  '/:address/password',
+  validateAddress,
+  authorizeParamAddress('address'),
+  validatePasswordStrength(),
+  userController.changePassword,
+);
 
 /**
  * @route  GET /api/users/:address/export
  * @desc   Export all user data in JSON format
  * @returns { version, exportedAt, userAddress, data: { escrows, payments, kyc, reputation } }
  */
-router.get('/:address/export', exportController.exportUserData);
+router.get('/:address/export', exportRateLimit, exportController.exportUserData);
 
 /**
  * @route  POST /api/users/:address/import
@@ -62,13 +110,19 @@ router.get('/:address/export', exportController.exportUserData);
  * @body   { data: {...}, mode: 'merge' | 'replace' }
  * @returns { success, results }
  */
-router.post('/:address/import', exportController.importUserData);
+router.post('/:address/import', authorizeParamAddress('address'), exportController.importUserData);
 
 /**
  * @route  GET /api/users/:address/export/file
  * @desc   Download user data as a file
  * @returns { file: 'data.json', content: {...} }
  */
-router.get('/:address/export/file', exportController.downloadExportFile);
+router.get('/:address/export/file', exportRateLimit, exportController.downloadExportFile);
+
+/**
+ * @route  DELETE /api/users/:address/data
+ * @desc   Pseudonymize user data for GDPR deletion/admin retention
+ */
+router.delete('/:address/data', adminAuth, exportController.deleteUserData);
 
 export default router;

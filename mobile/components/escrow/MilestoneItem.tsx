@@ -57,7 +57,12 @@ const styles = StyleSheet.create({
   },
   indexText: { fontSize: 12, fontWeight: '700', color: '#9ca3af' },
   content: { flex: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   title: { fontSize: 14, fontWeight: '600', color: '#e5e7eb', flex: 1, marginRight: 8 },
   amount: { fontSize: 13, color: '#9ca3af' },
   meta: { fontSize: 11, color: '#4b5563', marginTop: 2 },

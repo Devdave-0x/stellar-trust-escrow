@@ -24,10 +24,18 @@
  * @module eventIndexer
  */
 
+import { createModuleLogger } from '../config/logger.js';
 import prisma from '../lib/prisma.js';
 import { scValToNative } from '@stellar/stellar-sdk';
 import { getContractEvents, getLatestLedger } from './stellarService.js';
 import onboardingService from './onboardingService.js';
+import { broadcastEscrowEvent } from '../api/websocket/handlers.js';
+import { broadcastEscrowUpdate } from './escrowRealtime.js';
+import { indexRecord } from './reputationSearchService.js';
+import webhookService from './webhookService.js';
+import { recordEscrowStateTransition } from '../lib/metrics.js';
+
+const log = createModuleLogger('eventIndexer');
 
 const CONTRACT_ID = process.env.ESCROW_CONTRACT_ID || '';
 const POLL_INTERVAL_MS = parseInt(process.env.INDEXER_POLL_INTERVAL_MS || '5000', 10);
@@ -121,6 +129,12 @@ const handleEscrowCreated = async (event, meta) => {
     if (user) await onboardingService.completeStep(user.id, 'create_first_escrow');
   } catch (err) {
     console.warn('[Indexer] onboarding hook failed:', err.message);
+  recordEscrowStateTransition('null', 'Active');
+
+  try {
+    broadcastEscrowEvent(escrowId, 'escrow:funded', 'Active');
+  } catch (err) {
+    console.warn('[Indexer] broadcastEscrowEvent failed for handleEscrowCreated:', err.message);
   }
 };
 
@@ -246,6 +260,12 @@ const handleFundsReleased = async (event, meta) => {
     `,
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  try {
+    broadcastEscrowEvent(escrowId, 'escrow:released', 'Active');
+  } catch (err) {
+    console.warn('[Indexer] broadcastEscrowEvent failed for handleFundsReleased:', err.message);
+  }
 };
 
 /**
@@ -263,6 +283,8 @@ const handleEscrowCancelled = async (event, meta) => {
     }),
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  recordEscrowStateTransition('Active', 'Cancelled');
 };
 
 /**
@@ -290,6 +312,14 @@ const handleDisputeRaised = async (event, meta) => {
     }),
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  recordEscrowStateTransition('Active', 'Disputed');
+
+  try {
+    broadcastEscrowEvent(escrowId, 'escrow:disputed', 'Disputed');
+  } catch (err) {
+    console.warn('[Indexer] broadcastEscrowEvent failed for handleDisputeRaised:', err.message);
+  }
 };
 
 /**
@@ -316,6 +346,14 @@ const handleDisputeResolved = async (event, meta) => {
     }),
     buildEventInsert(event, meta, escrowId),
   ]);
+
+  recordEscrowStateTransition('Disputed', 'Completed');
+
+  try {
+    broadcastEscrowEvent(escrowId, 'escrow:released', 'Completed');
+  } catch (err) {
+    console.warn('[Indexer] broadcastEscrowEvent failed for handleDisputeResolved:', err.message);
+  }
 };
 
 /**
@@ -343,6 +381,9 @@ const handleReputationUpdated = async (event, meta) => {
     }),
     buildEventInsert(event, meta, null),
   ]);
+
+  // Keep ES in sync — fire-and-forget, non-blocking
+  indexRecord({ address: addr, totalScore: score, lastUpdated: meta.ledgerAt }).catch(() => {});
 };
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
@@ -371,7 +412,7 @@ const dispatchEvent = async (rawEvent) => {
   const handler = HANDLERS[eventType];
 
   if (!handler) {
-    console.warn(`[Indexer] Unknown event type: ${eventType}`);
+    log.warn({ message: 'indexer_unknown_event_type', eventType });
     return;
   }
 
@@ -385,10 +426,44 @@ const dispatchEvent = async (rawEvent) => {
 
   try {
     await handler(rawEvent, meta);
+
+    const webhookPayload = {
+      eventType,
+      ledger: String(meta.ledger),
+      ledgerAt: meta.ledgerAt.toISOString(),
+      contractId: meta.contractId,
+      escrowId: rawEvent.topic[1] != null ? String(rawEvent.topic[1]) : null,
+      topics: rawEvent.topic,
+      data: rawEvent.value,
+      txHash: meta.txHash,
+      eventIndex: meta.eventIndex,
+    };
+
+    webhookService.queueEventWebhooks(eventType, webhookPayload).catch((err) => {
+      console.warn('[Indexer] webhook dispatch failed:', err.message);
+    });
+
+    if (eventType !== 'rep_upd' && rawEvent.topic[1] != null) {
+      try {
+        const escrowId = parseBigInt(rawEvent.topic[1]);
+        broadcastEscrowUpdate(escrowId, {
+          eventType,
+          ledger: String(meta.ledger),
+          txHash: meta.txHash,
+        });
+      } catch {
+        /* ignore topics without a numeric escrow id */
+      }
+    }
   } catch (err) {
     // Unique constraint violation = already indexed, safe to skip
     if (err.code === 'P2002') return;
-    console.error(`[Indexer] Failed to handle ${eventType}:`, err.message);
+    log.error({
+      message: 'indexer_handle_event_failed',
+      eventType,
+      error: err.message,
+      stack: err.stack,
+    });
     throw err;
   }
 };
@@ -403,7 +478,7 @@ const dispatchEvent = async (rawEvent) => {
  */
 const fetchAndProcessEvents = async (fromLedger) => {
   if (!CONTRACT_ID) {
-    console.warn('[Indexer] ESCROW_CONTRACT_ID not set — skipping fetch');
+    log.warn({ message: 'indexer_escrow_contract_id_unset' });
     return fromLedger;
   }
 
@@ -415,7 +490,11 @@ const fetchAndProcessEvents = async (fromLedger) => {
   }
 
   if (events.length > 0) {
-    console.log(`[Indexer] Processed ${events.length} events up to ledger ${latestLedger}`);
+    log.info({
+      message: 'indexer_events_processed',
+      count: events.length,
+      latestLedger: String(latestLedger),
+    });
   }
 
   return latestLedger;
@@ -434,7 +513,7 @@ const startIndexer = async () => {
   });
 
   let lastProcessedLedger = Number(state.lastProcessedLedger);
-  console.log(`[Indexer] Starting from ledger ${lastProcessedLedger}`);
+  log.info({ message: 'indexer_started', lastProcessedLedger });
 
   const tick = async () => {
     try {
@@ -447,7 +526,11 @@ const startIndexer = async () => {
         });
       }
     } catch (err) {
-      console.error('[Indexer] Polling error:', err.message);
+      log.error({
+        message: 'indexer_polling_error',
+        error: err.message,
+        stack: err.stack,
+      });
     }
   };
 

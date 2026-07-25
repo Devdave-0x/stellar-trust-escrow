@@ -16,9 +16,7 @@ export const NETWORK_PASSPHRASE =
     : 'Test SDF Network ; September 2015';
 
 export const HORIZON_URL =
-  NETWORK === 'mainnet'
-    ? 'https://horizon.stellar.org'
-    : 'https://horizon-testnet.stellar.org';
+  NETWORK === 'mainnet' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org';
 
 /**
  * Truncates a Stellar address for display.

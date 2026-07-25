@@ -8,7 +8,11 @@
  */
 
 import { stringify } from 'csv-stringify/sync';
+import { createModuleLogger } from '../config/logger.js';
 import prisma from '../lib/prisma.js';
+import { withSpan } from '../lib/tracing.js';
+
+const auditLogger = createModuleLogger('auditService');
 
 // ── Categories & Actions ──────────────────────────────────────────────────────
 
@@ -20,6 +24,7 @@ export const AuditCategory = {
   ADMIN: 'ADMIN',
   PAYMENT: 'PAYMENT',
   KYC: 'KYC',
+  REPORTING: 'REPORTING',
 };
 
 export const AuditAction = {
@@ -47,6 +52,10 @@ export const AuditAction = {
   SUSPEND_USER: 'SUSPEND_USER',
   BAN_USER: 'BAN_USER',
   UPDATE_SETTINGS: 'UPDATE_SETTINGS',
+  FREEZE_ESCROW: 'FREEZE_ESCROW',
+  FORCE_TRANSITION_ESCROW: 'FORCE_TRANSITION_ESCROW',
+  ESCROW_ADD_NOTE: 'ESCROW_ADD_NOTE',
+  ESCROW_LIST_INSPECT: 'ESCROW_LIST_INSPECT',
   // Payment
   PAYMENT_INITIATED: 'PAYMENT_INITIATED',
   PAYMENT_COMPLETED: 'PAYMENT_COMPLETED',
@@ -56,6 +65,12 @@ export const AuditAction = {
   KYC_SUBMITTED: 'KYC_SUBMITTED',
   KYC_APPROVED: 'KYC_APPROVED',
   KYC_DECLINED: 'KYC_DECLINED',
+  // Reporting
+  REPORT_GENERATED: 'REPORT_GENERATED',
+  REPORT_EXPORTED: 'REPORT_EXPORTED',
+  REPORT_SCHEDULED: 'REPORT_SCHEDULED',
+  REPORT_SCHEDULED_RUN: 'REPORT_SCHEDULED_RUN',
+  REPORT_SCHEDULE_DISABLED: 'REPORT_SCHEDULE_DISABLED',
 };
 
 // ── Write ─────────────────────────────────────────────────────────────────────
@@ -75,19 +90,32 @@ export const AuditAction = {
  */
 export async function log(entry) {
   try {
-    await prisma.auditLog.create({
-      data: {
-        category: entry.category,
-        action: entry.action,
-        actor: entry.actor,
-        resourceId: entry.resourceId ?? null,
-        metadata: entry.metadata ?? undefined,
-        statusCode: entry.statusCode ?? null,
-        ipAddress: entry.ipAddress ?? null,
+    await withSpan(
+      'auditService.log',
+      {
+        'audit.category': entry.category,
+        'audit.action': entry.action,
       },
-    });
+      async () => {
+        await prisma.auditLog.create({
+          data: {
+            category: entry.category,
+            action: entry.action,
+            actor: entry.actor,
+            resourceId: entry.resourceId ?? null,
+            metadata: entry.metadata ?? undefined,
+            statusCode: entry.statusCode ?? null,
+            ipAddress: entry.ipAddress ?? null,
+          },
+        });
+      },
+    );
   } catch (err) {
-    console.error('[AuditService] Failed to write audit log:', err.message);
+    auditLogger.error({
+      message: 'audit_write_failed',
+      error: err.message,
+      stack: err.stack,
+    });
   }
 }
 

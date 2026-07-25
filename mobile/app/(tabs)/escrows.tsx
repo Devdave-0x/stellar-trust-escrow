@@ -3,14 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  RefreshControl,
-} from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useUserEscrows } from '../../hooks/useEscrows';
@@ -65,11 +58,17 @@ export default function EscrowsScreen() {
         data={escrows}
         keyExtractor={(e) => String(e.id)}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#6366f1" />}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#6366f1" />
+        }
         renderItem={({ item }) => <EscrowCard escrow={item} userAddress={address} />}
         ListEmptyComponent={
           !isLoading ? (
-            <EmptyState icon="📋" title="No escrows found" subtitle="Try changing the filters above" />
+            <EmptyState
+              icon="📋"
+              title="No escrows found"
+              subtitle="Try changing the filters above"
+            />
           ) : null
         }
       />
@@ -79,7 +78,13 @@ export default function EscrowsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0f0f0f' },
-  filterRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, gap: 8, flexWrap: 'wrap' },
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,

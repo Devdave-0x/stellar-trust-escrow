@@ -12,8 +12,10 @@
     "title": "ضمان",
     "status": {
       "active": "نشط",
-      "completed": "مكتمل",
+      "releaseRequested": "طلب الإصدار",
       "disputed": "متنازع عليه",
+      "expired": "منتهي",
+      "completed": "مكتمل",
       "cancelled": "ملغى"
     },
     "fields": {

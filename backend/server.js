@@ -1,16 +1,28 @@
-// Sentry must be initialised before any other imports so it can
-// instrument all subsequent modules (HTTP, DB, etc.)
+import { initTracing } from './lib/tracing.js';
+// Tracing and Sentry must be initialised before other imports so instrumentation patches apply.
+initTracing();
 import './lib/sentry.js';
 import * as Sentry from '@sentry/node';
 
 import 'dotenv/config';
+import { randomUUID } from 'crypto';
+import { initSecrets } from './lib/secrets.js';
 import http from 'http';
 import compressionMiddleware from './middleware/compression.js';
-import cors from 'cors';
+import { corsMiddleware } from './middleware/cors.js';
 import express from 'express';
 import helmet from 'helmet';
-import morgan from 'morgan';
+import { requestLogger } from './lib/logger.js';
 
+import cookieParser from 'cookie-parser';
+import {
+  sanitizeInputs,
+  csrfProtection,
+  generateCsrfToken,
+  REQUEST_SIZE_LIMIT,
+} from './middleware/validation.js';
+
+import { idempotencyMiddleware } from './api/middleware/idempotency.js';
 import docsRouter from './docs/index.js';
 import disputeRoutes from './api/routes/disputeRoutes.js';
 import searchRoutes from './api/routes/searchRoutes.js';
@@ -18,6 +30,7 @@ import escrowRoutes from './api/routes/escrowRoutes.js';
 import eventRoutes from './api/routes/eventRoutes.js';
 import kycRoutes from './api/routes/kycRoutes.js';
 import adminRoutes from './api/routes/adminRoutes.js';
+import adminEscrowRoutes from './api/routes/adminEscrowRoutes.js';
 import notificationRoutes from './api/routes/notificationRoutes.js';
 import paymentRoutes from './api/routes/paymentRoutes.js';
 import relayerRoutes from './api/routes/relayerRoutes.js';
@@ -25,54 +38,95 @@ import reputationRoutes from './api/routes/reputationRoutes.js';
 import userRoutes from './api/routes/userRoutes.js';
 import auditRoutes from './api/routes/auditRoutes.js';
 import authRoutes from './api/routes/authRoutes.js';
-import authMiddleware from './api/middleware/auth.js';
+import complianceRoutes from './api/routes/complianceRoutes.js';
+import incidentRoutes from './api/routes/incidentRoutes.js';
+import batchRoutes from './api/routes/batchRoutes.js';
+import webhookRoutes from './api/routes/webhookRoutes.js';
+import tenantMiddleware from './api/middleware/tenant.js';
 import auditMiddleware from './api/middleware/audit.js';
 import apiV1Routes from './api/v1/index.js';
 import { deprecatedRoute as _deprecatedRoute } from './api/middleware/version.js';
 import { createWebSocketServer, pool } from './api/websocket/handlers.js';
 import cache from './lib/cache.js';
 import { attachPrismaMetrics } from './lib/prismaMetrics.js';
+import { attachPrismaTracing } from './lib/prismaTracing.js';
+import healthRoutes from './api/routes/healthRoutes.js';
+import tenantRoutes from './api/routes/tenantRoutes.js';
+import wsHealthRoutes from './api/routes/wsHealth.js';
 import prisma, { startConnectionMonitoring } from './lib/prisma.js';
 import { errorsTotal } from './lib/metrics.js';
-import { apiRateLimit, leaderboardRateLimit } from './middleware/rateLimit.js';
+import { TimeoutError } from './lib/timeout.js';
+import { leaderboardRateLimit } from './middleware/rateLimit.js';
+import metricsRoutes from './api/routes/metricsRoutes.js';
 import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
+import tracingMiddleware from './middleware/tracingMiddleware.js';
+import logger, { getLogger } from './config/logger.js';
 import emailService from './services/emailService.js';
+import complianceService from './services/complianceService.js';
 import { startIndexer } from './services/eventIndexer.js';
+import { startRpcMonitor } from './monitoring/rpcMonitor.js';
+import { createEventWorker, createDeadLetterWorker } from './services/eventWorker.js';
 import { setupSwagger } from './api/docs/swagger.js';
+import { getBackupStatus } from './services/backupMonitor.js';
+import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
+import { createGateway } from './gateway/index.js';
+import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
+import chatRoutes from './api/routes/chatRoutes.js';
 
-// Attach Prisma query instrumentation and monitoring
+// Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
-startConnectionMonitoring(prisma);
+attachPrismaTracing(prisma);
 
 const PORT = process.env.PORT || 4000;
 const app = express();
+const sentryRequestHandler = Sentry.expressRequestHandler?.() ?? ((_req, _res, next) => next());
+const sentryTracingHandler = Sentry.expressTracingHandler?.() ?? ((_req, _res, next) => next());
+const sentryErrorHandler =
+  Sentry.expressErrorHandler?.({
+    shouldHandleError(err) {
+      return !err.statusCode || err.statusCode >= 500;
+    },
+  }) ?? ((err, _req, _res, next) => next(err));
 
 // ── Sentry request handler — must be first middleware ─────────────────────────
 // Attaches trace context and request data to every event captured downstream.
-app.use(Sentry.expressRequestHandler());
+app.use(sentryRequestHandler);
 
 app.use(helmet());
 app.use(compressionMiddleware);
 app.use(metricsMiddleware);
 app.use(responseTime);
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    credentials: true,
-  }),
-);
-app.use(morgan('combined'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(tracingMiddleware);
+app.use(requestLogger);
+app.use((req, res, next) => {
+  const requestId =
+    req.id || req.headers['x-request-id'] || req.headers['x-correlation-id'] || randomUUID();
+  req.id = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  next();
+});
+app.use(corsMiddleware);
+app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
+app.use(cookieParser());
+app.use(sanitizeInputs);
+app.use(csrfProtection);
 app.use('/uploads', express.static('uploads'));
 app.use(auditMiddleware);
+// Idempotency key enforcement for all POST and PATCH requests
+app.use(idempotencyMiddleware());
 
 // ── Sentry tracing handler — after body parsers, before routes ────────────────
-app.use(Sentry.expressTracingHandler());
+app.use(sentryTracingHandler);
 
-app.use('/api/', apiRateLimit);
+// ── API Gateway — centralized auth, rate limiting, logging, metrics ───────────
+app.use('/api', ...createGateway());
+
+// Leaderboard gets a tighter dedicated limit on top of the gateway limit
 app.use('/api/reputation/leaderboard', leaderboardRateLimit);
+
+app.use('/metrics', metricsRoutes);
 
 app.get('/health', async (_req, res) => {
   let dbStatus = 'ok';
@@ -101,14 +155,21 @@ app.get('/health', async (_req, res) => {
         timestamp: poolCheck[0].current_time,
       };
     } catch (poolError) {
-      // Pool info not available, that's ok
-      console.warn('[HEALTH] Could not get pool info:', poolError.message);
+      getLogger().warn({
+        message: 'health_db_pool_info_unavailable',
+        error: poolError.message,
+      });
     }
   } catch (error) {
     dbStatus = 'error';
-    console.error('[HEALTH] Database check failed:', error.message);
+    getLogger().error({
+      message: 'health_database_check_failed',
+      error: error.message,
+      stack: error.stack,
+    });
   }
 
+  const backupStatus = await getBackupStatus();
   const status = dbStatus === 'ok' ? 'ok' : 'degraded';
   res.status(dbStatus === 'ok' ? 200 : 503).json({
     status,
@@ -121,46 +182,78 @@ app.get('/health', async (_req, res) => {
       latencyMs: dbLatencyMs,
       pool: dbPoolInfo,
     },
+    backup: backupStatus,
   });
 });
 
+app.get('/api/csrf-token', generateCsrfToken);
+
+// ── API Routes ────────────────────────────────────────────────────────────────
+// Auth is handled by the gateway above — no per-route authMiddleware needed.
+app.use('/api/health', healthRoutes);
+app.use('/ws/health', wsHealthRoutes);
+app.use('/api', tenantMiddleware);
 app.use('/api/auth', authRoutes);
-app.use('/api/escrows', authMiddleware, escrowRoutes);
+app.use('/api/tenant', tenantRoutes);
+app.use('/api/escrows', escrowRoutes);
+app.use('/api/v1/escrows', escrowRoutes);
+
+// Public share link resolver — no auth required
+import { resolveShareLink } from './api/controllers/shareLinkController.js';
+app.get('/api/share/:token', resolveShareLink);
 
 // ── API Documentation ─────────────────────────────────────────────────────────
 setupSwagger(app);
-app.use('/api/users', authMiddleware, userRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/reputation', reputationRoutes);
 app.use('/api/disputes', disputeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/webhooks', webhookRoutes);
 app.use('/api/kyc', kycRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/relayer', relayerRoutes);
 app.use('/api/audit', auditRoutes);
-app.use('/docs', docsRouter);
+app.use('/api/compliance', complianceRoutes);
+app.use('/api/incidents', incidentRoutes);
+app.use('/api/admin/escrows', adminEscrowRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/v1', apiV1Routes);
+app.use('/api/batch', batchRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/admin/queues', queueDashboardRoutes);
+app.use('/docs', docsRouter);
+// Alias — acceptance criteria requires /api-docs
+app.use('/api-docs', docsRouter);
+
+// ── Example: Deprecated API Version ───────────────────────────────────────────
+// Uncomment to deprecate unversioned endpoints in favor of /api/v1
+// app.use('/api', deprecateVersion(deprecationPresets.legacyUnversioned));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
+  getLogger().warn({
+    message: 'http_not_found',
+    method: req.method,
+    path: req.originalUrl?.split('?')[0],
+  });
   res.status(404).json({ error: 'Route not found' });
 });
 
 // ── Sentry error handler — must be before the generic error handler ───────────
 // Captures unhandled Express errors and attaches request context.
-app.use(
-  Sentry.expressErrorHandler({
-    shouldHandleError(err) {
-      // Report all 5xx errors; skip expected 4xx client errors
-      return !err.statusCode || err.statusCode >= 500;
-    },
-  }),
-);
+app.use(sentryErrorHandler);
 
 // ── Generic error handler ─────────────────────────────────────────────────────
 
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, _next) => {
+  if (err instanceof TimeoutError) {
+    return res.status(504).json({
+      error: { code: err.code, message: err.message },
+    });
+  }
+
   const statusCode = err.statusCode || 500;
 
   // Attach Sentry event ID to response so support can correlate reports
@@ -168,27 +261,111 @@ app.use((err, _req, res, _next) => {
   const body = { error: err.message || 'Internal server error' };
   if (sentryId) body.errorId = sentryId;
 
+  const log = req?.log || logger;
+  log.error(
+    {
+      err,
+      statusCode,
+      requestId: req?.id,
+      route: req?.path || 'unknown',
+      userId: req?.user?.userId,
+    },
+    'Unhandled error',
+  );
+
   if (statusCode >= 500) {
-    console.error(err.stack);
+    Sentry.captureException(err);
   }
 
-  errorsTotal.inc({ type: err.name || 'Error', route: _req?.path || 'unknown' });
+  errorsTotal.inc({ type: err.name || 'Error', route: req?.path || 'unknown' });
   res.status(statusCode).json(body);
 });
 
 const server = http.createServer(app);
 createWebSocketServer(server);
 
-server.listen(PORT, async () => {
-  console.log(`API running on port ${PORT}`);
-  console.log(`Network: ${process.env.STELLAR_NETWORK}`);
-  await emailService.start();
-  console.log('[EmailService] Queue processor started');
-  console.log('[WebSocket] Server attached');
-  startIndexer().catch((err) => {
-    console.error('[Indexer] Failed to start:', err.message);
-    Sentry.captureException(err, { tags: { component: 'indexer' } });
+async function startServer() {
+  return new Promise((resolve, reject) => {
+    server.listen(PORT, async () => {
+      try {
+        startConnectionMonitoring(prisma);
+        // Load secrets first — merges vault/env secrets into process.env
+        await initSecrets();
+
+        // ── Stellar / Soroban env validation ───────────────────────────────
+        if (!process.env.SOROBAN_RPC_URL) {
+          throw new Error(
+            '[Config] SOROBAN_RPC_URL is not set. The indexer and broadcast endpoint require a Soroban RPC endpoint.',
+          );
+        }
+        if (
+          process.env.STELLAR_NETWORK === 'testnet' &&
+          process.env.NODE_ENV !== 'development' &&
+          process.env.NODE_ENV !== 'test'
+        ) {
+          throw new Error(
+            `[Config] STELLAR_NETWORK=testnet is not allowed in NODE_ENV=${process.env.NODE_ENV}. Set STELLAR_NETWORK=mainnet for production deployments.`,
+          );
+        }
+        logger.info(
+          { secretsBackend: process.env.SECRETS_BACKEND || 'env' },
+          'Secrets backend loaded',
+        );
+        logger.info({ port: PORT, network: process.env.STELLAR_NETWORK }, 'API server started');
+        await emailService.start();
+        logger.info('[EmailService] Queue processor started');
+        complianceService.startScheduler();
+        logger.info('[ComplianceService] Scheduler started');
+        logger.info('[WebSocket] Server attached');
+
+        try {
+          const eventWorker = createEventWorker();
+          const deadLetterWorker = createDeadLetterWorker();
+          logger.info('[BullMQ] Event processing workers started');
+
+          const closeWorkers = async () => {
+            logger.info('[BullMQ] Shutting down workers...');
+            await eventWorker.close();
+            await deadLetterWorker.close();
+          };
+
+          process.once('SIGTERM', closeWorkers);
+          process.once('SIGINT', closeWorkers);
+        } catch (error) {
+          logger.error({ err: error }, '[BullMQ] Failed to start workers');
+          Sentry.captureException(error, { tags: { component: 'bullmq-workers' } });
+        }
+
+        startIndexer().catch((err) => {
+          logger.error({ err, component: 'indexer' }, 'Indexer failed to start');
+          Sentry.captureException(err, { tags: { component: 'indexer' } });
+        });
+        startRpcMonitor();
+
+        // Reputation ES sync — ensure index + initial sync on startup
+        ensureIndex().then(() =>
+          syncFromPrisma().catch((err) =>
+            logger.warn({ err }, '[ReputationSearch] Initial sync failed'),
+          ),
+        );
+        resolve(server);
+      } catch (error) {
+        reject(error);
+      }
+    });
   });
-});
+}
+
+if (
+  process.env.NODE_ENV !== 'test' &&
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
+  startServer().catch((error) => {
+    logger.error({ err: error }, 'Failed to start API server');
+    process.exitCode = 1;
+  });
+}
 
 export default app;
+export { server, startServer };

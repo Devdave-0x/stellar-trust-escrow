@@ -1,8 +1,26 @@
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod pause_tests {
-    use crate::{EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MilestoneStatus};
-    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String};
-    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String};
+    use crate::{
+        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig,
+        MS_PENDING, UNPAUSE_MIN_DELAY_SECS,
+    };
+
+    fn advance(env: &soroban_sdk::Env, seconds: u64) {
+        env.ledger().with_mut(|l| l.timestamp += seconds);
+    }
+
+    fn no_multisig(env: &Env) -> MultisigConfig {
+        MultisigConfig {
+            approvers: soroban_sdk::Vec::new(env),
+            weights: soroban_sdk::Vec::new(env),
+            threshold: 0,
+        }
+    }
+    use soroban_sdk::{
+        testutils::{Address as _, Events, Ledger as _},
+        Address, BytesN, Env, String, Symbol, TryFromVal,
+    };
 
     fn setup() -> (Env, Address, Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -27,12 +45,12 @@ mod pause_tests {
         let non_admin = Address::generate(&env);
 
         // Non-admin cannot pause
-        let result = client.try_pause(&non_admin);
+        let result = client.try_pause(&non_admin, &String::from_str(&env, ""));
         assert!(result.is_err());
         assert!(!client.is_paused());
 
         // Admin can pause
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
         assert!(client.is_paused());
 
         // Non-admin cannot unpause
@@ -40,7 +58,8 @@ mod pause_tests {
         assert!(result.is_err());
         assert!(client.is_paused());
 
-        // Admin can unpause
+        // Admin can unpause after the mandatory delay
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
@@ -52,7 +71,7 @@ mod pause_tests {
         let freelancer = Address::generate(&env);
         let token = register_token(&env, &admin, &client_addr, 1030);
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
 
         let result = client.try_create_escrow(
             &client_addr,
@@ -63,13 +82,12 @@ mod pause_tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(&env),
         );
 
         assert!(
-            match result {
-                Err(Ok(EscrowError::ContractPaused)) => true,
-                _ => false,
-            },
+            matches!(result, Err(Ok(EscrowError::E31))),
             "Should fail with ContractPaused error"
         );
     }
@@ -90,9 +108,11 @@ mod pause_tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(&env),
         );
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
 
         let result = client.try_add_milestone(
             &client_addr,
@@ -103,16 +123,13 @@ mod pause_tests {
         );
 
         assert!(
-            match result {
-                Err(Ok(EscrowError::ContractPaused)) => true,
-                _ => false,
-            },
+            matches!(result, Err(Ok(EscrowError::E31))),
             "Should fail with ContractPaused error"
         );
     }
 
     #[test]
-    fn test_existing_operations_work_when_paused() {
+    fn test_mutations_blocked_when_paused() {
         let (env, admin, _, client) = setup();
         let client_addr = Address::generate(&env);
         let freelancer = Address::generate(&env);
@@ -127,6 +144,8 @@ mod pause_tests {
             &None,
             &None,
             &None,
+            &None,
+            &no_multisig(&env),
         );
 
         let mid = client.add_milestone(
@@ -137,19 +156,95 @@ mod pause_tests {
             &1000,
         );
 
-        client.pause(&admin);
+        client.pause(&admin, &String::from_str(&env, ""));
 
-        // Submit milestone should work
-        client.submit_milestone(&freelancer, &escrow_id, &mid);
-        let milestone = client.get_milestone(&escrow_id, &mid);
-        assert_eq!(milestone.status, MilestoneStatus::Submitted);
+        // submit_milestone must be blocked
+        let result = client.try_submit_milestone(&freelancer, &escrow_id, &mid);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::E31))),
+            "submit_milestone should fail with ContractPaused"
+        );
 
-        // Approve milestone should work
-        client.approve_milestone(&client_addr, &escrow_id, &mid);
+        // approve_milestone must be blocked
+        let result = client.try_approve_milestone(&client_addr, &escrow_id, &mid);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::E31))),
+            "approve_milestone should fail with ContractPaused"
+        );
+
+        // View functions must still work
         let milestone = client.get_milestone(&escrow_id, &mid);
-        assert_eq!(milestone.status, MilestoneStatus::Approved);
+        assert_eq!(milestone.status, MS_PENDING);
 
         let escrow = client.get_escrow(&escrow_id);
-        assert_eq!(escrow.status, EscrowStatus::Completed);
+        assert_eq!(escrow.status, EscrowStatus::Active);
+    }
+
+    #[test]
+    fn test_pause_unpause_restores_add_milestone() {
+        let (env, admin, _, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_addr = register_token(&env, &admin, &client_addr, 2000);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token_addr,
+            &1000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.pause(&admin, &String::from_str(&env, ""));
+        assert!(client.is_paused());
+
+        let result = client.try_add_milestone(
+            &client_addr,
+            &escrow_id,
+            &String::from_str(&env, "Test"),
+            &BytesN::from_array(&env, &[2; 32]),
+            &500,
+        );
+        assert!(
+            matches!(result, Err(Ok(EscrowError::E31))),
+            "Should fail with ContractPaused error"
+        );
+
+        advance(&env, UNPAUSE_MIN_DELAY_SECS);
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+
+        client.add_milestone(
+            &client_addr,
+            &escrow_id,
+            &String::from_str(&env, "Test2"),
+            &BytesN::from_array(&env, &[3; 32]),
+            &500,
+        );
+
+        let events = env.events().all();
+        let mut has_paused = false;
+        let mut has_unpaused = false;
+
+        for event in events.iter() {
+            let topics = event.1;
+            if !topics.is_empty() {
+                if let Ok(sym) = Symbol::try_from_val(&env, &topics.get_unchecked(0)) {
+                    if sym == soroban_sdk::symbol_short!("paused") {
+                        has_paused = true;
+                    } else if sym == soroban_sdk::symbol_short!("unpaused") {
+                        has_unpaused = true;
+                    }
+                }
+            }
+        }
+
+        assert!(has_paused, "paused event must be emitted");
+        assert!(has_unpaused, "unpaused event must be emitted");
     }
 }

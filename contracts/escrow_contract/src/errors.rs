@@ -1,84 +1,81 @@
-//! # Contract Errors
-//!
-//! All possible error conditions returned by the escrow contract.
-//! Every public function returns `Result<T, EscrowError>`.
-
 use soroban_sdk::contracterror;
 
-#[contracterror]
+#[contracterror(export = false)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum EscrowError {
-    // ── Initialization ────────────────────────────────────────────────────────
-    AlreadyInitialized = 1,
-    NotInitialized = 2,
-
-    // ── Authorization ─────────────────────────────────────────────────────────
-    Unauthorized = 3,
-    AdminOnly = 4,
-    ClientOnly = 5,
-    FreelancerOnly = 6,
-    ArbiterOnly = 7,
-
-    // ── Escrow State ──────────────────────────────────────────────────────────
-    EscrowNotFound = 8,
-    EscrowNotActive = 9,
-    EscrowNotDisputed = 10,
-    EscrowFinalized = 11,
-    CannotCancelWithPendingFunds = 12,
-
-    // ── Milestone ─────────────────────────────────────────────────────────────
-    MilestoneNotFound = 13,
-    InvalidMilestoneState = 14,
-    MilestoneAmountExceedsEscrow = 15,
-    TooManyMilestones = 16,
-    InvalidMilestoneAmount = 17,
-
-    // ── Funds ─────────────────────────────────────────────────────────────────
-    TransferFailed = 18,
-    InvalidEscrowAmount = 19,
-    AmountMismatch = 20,
-    /// The escrow is not in a valid state for this operation.
-    InvalidEscrowState = 21,
-
-    // ── Reputation ────────────────────────────────────────────────────────────
-    ReputationNotFound = 22,
-
-    // ── Dispute ───────────────────────────────────────────────────────────────
-    DisputeAlreadyExists = 23,
-    NoActiveDisputableMilestone = 24,
-
-    // ── Deadline ──────────────────────────────────────────────────────────────
-    InvalidDeadline = 25,
-    DeadlineExpired = 26,
-
-    // ── Time Lock ─────────────────────────────────────────────────────────────
-    /// The specified lock time is in the past.
-    InvalidLockTime = 27,
-    /// Funds are still locked until the lock time expires.
-    LockTimeNotExpired = 28,
-    /// The lock time has expired.
-    LockTimeExpired = 29,
-    /// Cannot extend lock time to the past.
-    InvalidLockTimeExtension = 30,
-    /// The contract is currently paused.
-    ContractPaused = 31,
-
-    // ── Cancellation ──────────────────────────────────────────────────────────
-    CancellationNotFound = 32,
-    CancellationAlreadyExists = 33,
-    CancellationAlreadyDisputed = 34,
-    CancellationDisputePeriodActive = 35,
-    CancellationDisputeDeadlineExpired = 36,
-    CancellationDisputed = 37,
-
-    // ── Slashing ─────────────────────────────────────────────────────────────
-    SlashNotFound = 38,
-    SlashAlreadyDisputed = 39,
-    SlashDisputeDeadlineExpired = 40,
-    InvalidSlashAmount = 41,
-
-    // ── Storage Migration ───────────────────────────────────────────────────────
-    /// Storage migration failed - possibly due to incompatible data format.
-    StorageMigrationFailed = 42,
+pub enum EcErr {
+    E1 = 1,
+    E2 = 2,
+    E3 = 3,
+    E4 = 4,
+    E5 = 5,
+    E7 = 7,
+    E8 = 8,
+    E9 = 9,
+    E10 = 10,
+    E11 = 11,
+    E12 = 12,
+    E13 = 13,
+    E14 = 14,
+    E15 = 15,
+    E16 = 16,
+    E17 = 17,
+    E19 = 19,
+    E20 = 20,
+    E22 = 22,
+    E23 = 23,
+    E24 = 24,
+    E26 = 26,
+    E28 = 28,
+    E30 = 30,
+    E31 = 31,
+    E32 = 32,
+    E33 = 33,
+    E34 = 34,
+    E35 = 35,
+    E36 = 36,
+    E37 = 37,
+    E38 = 38,
+    E39 = 39,
+    E40 = 40,
+    E41 = 41,
+    E42 = 42,
+    E43 = 43,
+    E44 = 44,
+    E45 = 45,
+    E46 = 46,
+    E47 = 47,
+    E51 = 51,
+    E53 = 53,
+    E54 = 54,
+    E55 = 55,
+    E56 = 56,
+    E57 = 57,
+    E58 = 58,
+    E59 = 59,
+    E60 = 60,
+    E61 = 61,
+    E62 = 62,
+    E63 = 63,
+    E64 = 64,
+    E65 = 65,
+    E66 = 66,
+    OracleStaleFeed = 67,
+    OracleInvalidPrice = 68,
+    OraclePriceConversionFailed = 69,
+    E70 = 70,
+    E71 = 71,
+    E72 = 72,
+    E73 = 73,
+    E74 = 74,
+    /// Dispute record not found for this escrow (escrow is not disputed)
+    EscrowNotDisputed = 75,
+    /// Contract has not been initialized
+    NotInitialized = 76,
+    /// Platform treasury address has not been configured
+    TreasuryNotConfigured = 77,
 }
+
+/// Backward-compatible alias — existing code imports `EscrowError`; the oracle
+/// refactor renamed the enum to `EcErr` without updating call sites.
+pub type EscrowError = EcErr;

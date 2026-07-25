@@ -88,6 +88,27 @@ pub enum DataKey {
     Governor(Address),
     /// Vote record: (claim_id, governor) → bool (true = for) — persistent storage.
     Vote(u32, Address),
+    // ── Staking ───────────────────────────────────────────────────────────────
+    /// Per-staker record — persistent.
+    Stake(Address),
+    /// Sum of all nominal staked amounts — instance.
+    StakeTotal,
+    /// Actual staked token pool (after slashes) — instance.
+    StakePool,
+    /// Yield accumulator: fees per nominal staked token × YIELD_PRECISION — instance.
+    YieldAccumulator,
+    /// Overflow yield pending distribution (accrued before any stakers) — instance.
+    YieldOverflow,
+    /// Reentrancy guard — instance.
+    ReentrancyLock,
+    /// Slash proposal by ID — persistent.
+    SlashProposal(u32),
+    /// Auto-increment slash proposal counter — instance.
+    SlashCounter,
+    /// Governor vote on a slash proposal: (slash_id, governor) → bool — persistent.
+    SlashVote(u32, Address),
+    /// Configured slash ceiling in bps (default 4000 = 40%) — instance.
+    MaxSlashBps,
 }
 
 /// Mutable aggregate stats stored under DataKey::FundStats.
@@ -99,4 +120,42 @@ pub struct FundStats {
     pub total_claims: u32,
     pub paid_claims: u32,
     pub governor_count: u32,
+}
+
+// ── Staking types ─────────────────────────────────────────────────────────────
+
+/// Per-staker record.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct StakeRecord {
+    pub staker: Address,
+    /// Nominal staked amount (pre-slash, in token units).
+    pub amount: i128,
+    /// Yield accumulator index at last interaction (for reward calculation).
+    pub reward_debt: i128,
+}
+
+/// Lifecycle state of a slash proposal.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SlashStatus {
+    Pending,
+    Approved,
+    Rejected,
+    Executed,
+}
+
+/// A governance-approved slash proposal.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct SlashProposal {
+    pub id: u32,
+    pub proposer: Address,
+    /// Slash in basis points — ceiling 4000 (40%).
+    pub slash_bps: u32,
+    pub reason: String,
+    pub votes_for: u32,
+    pub votes_against: u32,
+    pub status: SlashStatus,
+    pub created_at: u64,
 }

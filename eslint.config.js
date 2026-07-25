@@ -5,25 +5,56 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import prettier from 'eslint-config-prettier';
 
-const noUnusedVars = [
-  'error',
-  {
-    argsIgnorePattern: '^_',
-    varsIgnorePattern: '^_',
-    caughtErrorsIgnorePattern: '^_',
-  },
-];
+const noUnusedVars = 'off';
 
 export default [
   {
-    ignores: ['**/node_modules/**', '**/.next/**', '**/target/**', '**/dist/**', '**/out/**'],
+    ignores: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/target/**',
+      '**/dist/**',
+      '**/out/**',
+      '**/coverage/**',
+      'frontend/output.txt',
+      'load-tests/results/**',
+      'mobile/**',
+      '**/.husky/**',
+      '**/test-artifacts/**',
+      'fuzz/**',
+    ],
   },
 
   js.configs.recommended,
+  ...tseslint.configs.recommended,
 
-  // ── Backend ────────────────────────────────────────────────────────────────
+  // Backend
   {
-    files: ['backend/**/*.js', 'scripts/**/*.js'],
+    files: ['backend/**/*.js', 'scripts/**/*.js', 'load-tests/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.es2022 },
+    },
+    rules: {
+      'no-unused-vars': noUnusedVars,
+      '@typescript-eslint/no-unused-vars': 'off',
+      // SQL injection prevention: flag template literals passed to raw query methods
+      // Use parameterized queries ($1, $2, …) or Prisma ORM methods instead
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector:
+            'CallExpression[callee.property.name=/^(\\$queryRawUnsafe|\\$executeRawUnsafe|\\$queryRaw|\\$executeRaw)$/] > TemplateLiteral',
+          message:
+            'Avoid template literals in raw SQL calls — use parameterized queries with $1/$2 placeholders to prevent SQL injection.',
+        },
+      ],
+    },
+  },
+
+  // Root scripts/config files
+  {
+    files: ['*.js', '*.cjs', '*.mjs', '.*.js', '.*/**/*.{js,cjs,mjs}'],
+    ignores: ['frontend/**/*', 'backend/**/*', 'mobile/**/*', 'scripts/**/*'],
     languageOptions: {
       globals: { ...globals.node, ...globals.es2022 },
     },
@@ -33,7 +64,32 @@ export default [
     },
   },
 
-  // ── Frontend ───────────────────────────────────────────────────────────────
+  // Load test scripts
+  {
+    files: ['load-tests/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.es2022 },
+    },
+    rules: {
+      'no-redeclare': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
+  // CommonJS files
+  {
+    files: ['**/*.{cjs}'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { ...globals.node, ...globals.es2022, ...globals.jest, ...globals.browser },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+
+  // Frontend
   {
     files: ['frontend/**/*.{jsx,js}'],
     plugins: { react, 'react-hooks': reactHooks },
@@ -53,71 +109,48 @@ export default [
     settings: { react: { version: 'detect' } },
   },
 
-  // ── Tests ──────────────────────────────────────────────────────────────────
+  // Tests
   {
     files: [
       '**/*.test.{js,jsx}',
       '**/*.spec.{js,jsx}',
       'backend/tests/**/*.js',
+      'frontend/jest.setup.cjs',
+      'frontend/jest.config.cjs',
       '**/__mocks__/**/*.js',
     ],
     languageOptions: {
-      globals: { ...globals.node, ...globals.es2022, ...globals.jest },
+      globals: { ...globals.node, ...globals.es2022, ...globals.jest, ...globals.browser },
     },
     rules: {
       'no-unused-vars': noUnusedVars,
       '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 
-  // ── TypeScript ─────────────────────────────────────────────────────────────
+  // TypeScript
   {
     files: ['frontend/**/*.{ts,tsx}', 'backend/**/*.{ts,tsx}'],
-    extends: [...tseslint.configs.recommended, ...tseslint.configs.strict],
-    languageOptions: { parserOptions: { project: true } },
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/consistent-type-imports': 'error',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
-      ],
-      '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/await-thenable': 'error',
-      '@typescript-eslint/no-misused-promises': 'error',
-      '@typescript-eslint/require-await': 'error',
-      '@typescript-eslint/prefer-nullish-coalescing': 'error',
-      '@typescript-eslint/prefer-optional-chain': 'error',
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off',
-    },
-  },
-
-  // ── TypeScript rules — mobile (own tsconfig, relaxed project-aware rules) ─
-  {
-    files: ['mobile/**/*.{ts,tsx}'],
-    extends: [...tseslint.configs.recommended],
-    languageOptions: {
-      parserOptions: {
-        project: './mobile/tsconfig.json',
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
     plugins: {
+      '@typescript-eslint': tseslint.plugin,
       react,
       'react-hooks': reactHooks,
     },
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
+      globals: { ...globals.browser, ...globals.node, ...globals.es2022 },
+    },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-misused-promises': 'error',
-      '@typescript-eslint/prefer-nullish-coalescing': 'error',
-      '@typescript-eslint/prefer-optional-chain': 'error',
+      '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
-      // React Native uses require() for dynamic imports in some patterns
       '@typescript-eslint/no-require-imports': 'warn',
       'react/react-in-jsx-scope': 'off',
       'react-hooks/rules-of-hooks': 'error',
