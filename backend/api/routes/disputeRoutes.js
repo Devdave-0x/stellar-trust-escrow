@@ -13,6 +13,11 @@ import {
 const router = express.Router();
 router.use(authMiddleware);
 
+// ── Create ────────────────────────────────────────────────────────────────────
+
+/** POST /api/disputes — raise a dispute; requires categoryId, auto-assigns arbiter pool */
+router.post('/', disputeController.createDispute);
+
 // ── List / Get ────────────────────────────────────────────────────────────────
 
 router.get(

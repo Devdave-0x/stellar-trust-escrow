@@ -11,6 +11,8 @@ const router = express.Router();
 import adminAuth, { issueAdminToken, ADMIN_TOKEN_TTL } from '../middleware/adminAuth.js';
 import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
+import disputeCategoryController from '../controllers/disputeCategoryController.js';
+import configController from '../controllers/configController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
 import { getAuditLog, rotateSecrets } from '../../lib/secrets.js';
@@ -111,6 +113,47 @@ router.get('/settings', adminController.getSettings);
  * @security Requires MFA verification
  */
 router.patch('/settings', requireMfa, adminController.updateSettings);
+
+// ── System Config ──────────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/config
+ * @desc   Returns all system_config entries
+ */
+router.get('/config', configController.getAllConfig);
+
+/**
+ * @route  PATCH /api/admin/config/:key
+ * @desc   Update a config value; validated against its declared type
+ * @body   { value: string }
+ */
+router.patch('/config/:key', configController.updateConfig);
+
+// ── Dispute Categories ─────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/dispute-categories
+ * @desc   List all dispute categories
+ */
+router.get('/dispute-categories', disputeCategoryController.adminListCategories);
+
+/**
+ * @route  POST /api/admin/dispute-categories
+ * @desc   Create a dispute category
+ * @body   { name: string, description?: string, defaultArbiterPoolId?: string }
+ */
+router.post('/dispute-categories', disputeCategoryController.adminCreateCategory);
+
+/**
+ * @route  PATCH /api/admin/dispute-categories/:id
+ * @desc   Update a dispute category
+ * @body   { name?: string, description?: string, defaultArbiterPoolId?: string }
+ */
+router.patch('/dispute-categories/:id', disputeCategoryController.adminUpdateCategory);
+
+/**
+ * @route  DELETE /api/admin/dispute-categories/:id
+ * @desc   Delete a dispute category
+ */
+router.delete('/dispute-categories/:id', disputeCategoryController.adminDeleteCategory);
 
 // ── Audit Logs ─────────────────────────────────────────────────────────────────
 /**

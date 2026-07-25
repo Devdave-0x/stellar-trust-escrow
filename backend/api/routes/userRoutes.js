@@ -6,6 +6,10 @@ import {
   handleValidationErrors,
 } from '../../middleware/validation.js';
 import exportController from '../controllers/exportController.js';
+import onboardingController from '../controllers/onboardingController.js';
+import authMiddleware from '../middleware/auth.js';
+
+const upload = multer({ dest: 'uploads/' });
 import authMiddleware from '../middleware/auth.js';
 import { authorizeParamAddress } from '../middleware/authorization.js';
 import adminAuth, { optionalAdminAuth } from '../middleware/adminAuth.js';
@@ -29,6 +33,28 @@ const exportRateLimit = createSlidingWindowRateLimiter({
 });
 
 /**
+ * @route  GET /api/users/me/onboarding
+ * @desc   Returns all onboarding checklist steps with completion state
+ */
+router.get('/me/onboarding', authMiddleware, onboardingController.getOnboarding);
+
+/**
+ * @route  GET /api/users/me/onboarding/progress
+ * @desc   Returns { total, completed, percentage }
+ */
+router.get('/me/onboarding/progress', authMiddleware, onboardingController.getOnboardingProgress);
+
+/**
+ * @route  POST /api/users/me/wallet
+ * @desc   Link a Stellar wallet address to the authenticated user; completes the connect_wallet step
+ * @body   { address: string }
+ */
+router.post('/me/wallet', authMiddleware, onboardingController.connectWallet);
+
+/**
+ * @route  GET /api/users/:address
+ * @desc   Get a user's profile: reputation, escrow history, stats.
+ * @param  address - Stellar public key (G...)
  * @route  GET /api/users/me/sessions
  * @desc   List the authenticated user's active login sessions (device, IP, last active).
  *         The session used for this request is flagged with current: true.

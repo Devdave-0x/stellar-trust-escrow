@@ -3,6 +3,7 @@ import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
 import { logControllerError } from '../../config/logger.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import onboardingService from '../../services/onboardingService.js';
 import { getUserActivity } from '../../services/userActivityService.js';
 import { isValidTimezone, toLocalISOString } from '../../lib/timezone.js';
 import { processAndStoreAvatar } from '../../services/avatarService.js';
@@ -238,6 +239,16 @@ const updateUserProfile = async (req, res) => {
     });
 
     cache.del(`users:profile:${address}`);
+
+    if (displayName !== undefined && bio !== undefined) {
+      try {
+        const user = await prisma.user.findUnique({ where: { walletAddress: address } });
+        if (user) await onboardingService.completeStep(user.id, 'complete_profile');
+      } catch (err) {
+        console.warn('[UserController] onboarding hook failed:', err.message);
+      }
+    }
+
     res.json(updatedProfile);
   } catch (err) {
     res.status(500).json({ error: err.message });

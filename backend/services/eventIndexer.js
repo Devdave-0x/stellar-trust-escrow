@@ -28,6 +28,7 @@ import { createModuleLogger } from '../config/logger.js';
 import prisma from '../lib/prisma.js';
 import { scValToNative } from '@stellar/stellar-sdk';
 import { getContractEvents, getLatestLedger } from './stellarService.js';
+import onboardingService from './onboardingService.js';
 import { broadcastEscrowEvent } from '../api/websocket/handlers.js';
 import { broadcastEscrowUpdate } from './escrowRealtime.js';
 import { indexRecord } from './reputationSearchService.js';
@@ -120,6 +121,14 @@ const handleEscrowCreated = async (event, meta) => {
     buildEventInsert(event, meta, escrowId),
   ]);
 
+  // Onboarding hook: complete "create_first_escrow" for the client, if that
+  // wallet address is linked to a registered user. Never let this block indexing.
+  try {
+    const clientAddress = parseAddress(client);
+    const user = await prisma.user.findUnique({ where: { walletAddress: clientAddress } });
+    if (user) await onboardingService.completeStep(user.id, 'create_first_escrow');
+  } catch (err) {
+    console.warn('[Indexer] onboarding hook failed:', err.message);
   recordEscrowStateTransition('null', 'Active');
 
   try {
