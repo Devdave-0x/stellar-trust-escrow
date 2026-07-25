@@ -308,6 +308,28 @@ model Milestone {
   @@map("milestones")
 }
 
+/// Immutable, append-only record of every milestone status transition.
+/// Written by escrowService (release/dispute) and the escrow indexer
+/// (on-chain submission events) — never written to directly.
+model MilestoneStatusHistory {
+  id          BigInt   @id @default(autoincrement())
+  milestoneId Int      @map("milestone_id")
+  /// Denormalized for direct filtering/access-control without a join
+  escrowId    BigInt   @map("escrow_id")
+  /// Status before the transition (null when the milestone was first created)
+  fromStatus  String?  @map("from_status")
+  /// Status after the transition
+  toStatus    String   @map("to_status")
+  /// Stellar address (or 'system:indexer') of the actor who triggered the transition
+  changedBy   String   @map("changed_by")
+  reason      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([milestoneId, createdAt])
+  @@index([escrowId, createdAt])
+  @@map("milestone_status_history")
+}
+
 // ── Reputation ────────────────────────────────────────────────────────────────
 
 model ReputationRecord {
