@@ -30,6 +30,7 @@ import {
 } from '../../middleware/validation.js';
 import { getEscrowAuditLog } from '../../services/escrowAuditService.js';
 import { listArchiveTables } from '../../services/escrowArchiveService.js';
+import { validateEscrowMetadata } from '../../lib/escrowMetadataValidation.js';
 import {
   getMilestoneStatusHistory,
   getLastStatusChangeBatch,
@@ -326,7 +327,12 @@ const getEscrow = async (req, res) => {
       },
     });
 
-    if (escrow && !escrow.deletedAt) return res.json(escrow);
+    if (escrow && !escrow.deletedAt) {
+      return res.json({
+        ...escrow,
+        hoursUntilDeadline: hoursUntilDeadline(escrow.fundingDeadline),
+      });
+    }
 
     // Fallback: search archive partition tables
     const tables = await listArchiveTables(prisma);
@@ -350,11 +356,30 @@ const getEscrow = async (req, res) => {
   }
 };
 
+/** Hours remaining until a funding deadline, or null when there is none / it has passed. */
+function hoursUntilDeadline(fundingDeadline) {
+  if (!fundingDeadline) return null;
+  const diffMs = new Date(fundingDeadline).getTime() - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+}
+
 const broadcastCreateEscrow = async (req, res) => {
   try {
-    const { signedXdr, metadata } = req.body;
+    const { signedXdr, metadata, fundingDeadline } = req.body;
     if (!signedXdr || typeof signedXdr !== 'string') {
       return res.status(400).json({ error: 'signedXdr is required' });
+    }
+
+    let parsedFundingDeadline;
+    if (fundingDeadline !== undefined) {
+      parsedFundingDeadline = new Date(fundingDeadline);
+      if (Number.isNaN(parsedFundingDeadline.getTime())) {
+        return res.status(400).json({ error: 'fundingDeadline must be a valid date' });
+      }
+      if (parsedFundingDeadline.getTime() <= Date.now()) {
+        return res.status(400).json({ error: 'fundingDeadline must be in the future' });
+      }
     }
 
     const metadataValidation = validateEscrowMetadata(metadata);
@@ -400,6 +425,7 @@ const broadcastCreateEscrow = async (req, res) => {
           createdAt: new Date(),
           createdLedger: BigInt(0),
           metadata: metadata ?? undefined,
+          fundingDeadline: parsedFundingDeadline ?? undefined,
         },
         update: {}, // indexer will fill in the details on next tick
       });

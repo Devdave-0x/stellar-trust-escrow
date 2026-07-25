@@ -31,6 +31,8 @@ const TENANT_SCOPED_MODELS = new Set([
   'AdminAuditLog',
   'AuditLog',
   'ApiKey',
+  'EscrowMessage',
+  'LoginHistory',
 ]);
 
 const READ_MANY_ACTIONS = new Set([
