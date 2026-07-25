@@ -38,6 +38,17 @@ router.get(
   disputeController.getDispute,
 );
 
+// ── Timeline ──────────────────────────────────────────────────────────────────
+
+router.get(
+  '/:id/timeline',
+  cacheResponse({
+    ttl: TTL.DETAIL,
+    tags: (req) => [`dispute:${req.params.id}`],
+  }),
+  disputeController.getTimeline,
+);
+
 // ── Evidence ──────────────────────────────────────────────────────────────────
 
 router.post(

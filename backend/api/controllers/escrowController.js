@@ -8,6 +8,7 @@
  * relevant cache tags directly so stale data is never served.
  */
 
+import { stringify } from 'csv-stringify';
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
 import { recordEscrowStateTransition } from '../../lib/metrics.js';
@@ -49,6 +50,18 @@ const ESCROW_SUMMARY_SELECT = {
 const VALID_SORT_FIELDS = ['createdAt', 'totalAmount', 'status'];
 const VALID_SORT_ORDERS = ['asc', 'desc'];
 const VALID_ESCROW_STATUSES = new Set(['Active', 'Completed', 'Disputed', 'Cancelled']);
+
+const CSV_EXPORT_COLUMNS = [
+  'id',
+  'title',
+  'amount',
+  'currency',
+  'status',
+  'counterparty',
+  'created_at',
+  'completed_at',
+];
+const CSV_EXPORT_BATCH_SIZE = 500;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -139,6 +152,16 @@ const listEscrows = async (req, res) => {
       }
     }
 
+    // metadata[key]=value query filter, e.g. ?metadata[propertyType]=condo
+    if (req.query.metadata && typeof req.query.metadata === 'object') {
+      const metadataFilters = Object.entries(req.query.metadata).map(([key, value]) => ({
+        metadata: { path: [key], equals: value },
+      }));
+      if (metadataFilters.length) {
+        where.AND = [...(where.AND ?? []), ...metadataFilters];
+      }
+    }
+
     // Escrow id is a BigInt — cursor id needs BigInt conversion
     const findArgs = buildPrismaFindArgs({
       parsedCursor: parsedCursor ? { ...parsedCursor, id: BigInt(parsedCursor.id) } : null,
@@ -158,6 +181,110 @@ const listEscrows = async (req, res) => {
   } catch (err) {
     logControllerError('escrow.listEscrows', err, req);
     res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * GET /api/escrows/export.csv
+ * Streams a CSV of the authenticated user's escrows (as client or freelancer).
+ * Rows are fetched in batches ordered by id so the whole result set is never
+ * buffered in memory at once.
+ *
+ * Note on column mapping: this schema has no dedicated `title`/`currency`/
+ * `completedAt` fields, so `title` uses the escrow's brief hash (the closest
+ * existing description reference), `currency` uses the Soroban token address
+ * (the unit the amount is denominated in), and `completed_at` uses `updatedAt`
+ * for escrows in the Completed status.
+ */
+const exportEscrowsCsv = async (req, res) => {
+  try {
+    const address = req.user?.address;
+    if (!address) return res.status(401).json({ error: 'Authentication required' });
+
+    const { from, to } = req.query;
+    if (from && isNaN(Date.parse(from))) {
+      return res.status(400).json({ error: 'from must be a valid ISO date string' });
+    }
+    if (to && isNaN(Date.parse(to))) {
+      return res.status(400).json({ error: 'to must be a valid ISO date string' });
+    }
+
+    const where = { OR: [{ clientAddress: address }, { freelancerAddress: address }] };
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to) {
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="escrows-${dateStamp}.csv"`);
+
+    const stringifier = stringify({ header: true, columns: CSV_EXPORT_COLUMNS });
+    stringifier.on('error', (err) => {
+      logControllerError('escrow.exportEscrowsCsv', err, req);
+      res.destroy(err);
+    });
+    stringifier.pipe(res);
+
+    let cursorId = null;
+    for (;;) {
+      const batchWhere = cursorId !== null ? { ...where, id: { gt: cursorId } } : where;
+      const batch = await prisma.escrow.findMany({
+        where: batchWhere,
+        orderBy: { id: 'asc' },
+        take: CSV_EXPORT_BATCH_SIZE,
+        select: {
+          id: true,
+          briefHash: true,
+          totalAmount: true,
+          tokenAddress: true,
+          status: true,
+          clientAddress: true,
+          freelancerAddress: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (batch.length === 0) break;
+
+      for (const escrow of batch) {
+        stringifier.write({
+          id: escrow.id.toString(),
+          title: escrow.briefHash || '',
+          amount: escrow.totalAmount,
+          currency: escrow.tokenAddress,
+          status: escrow.status,
+          counterparty:
+            escrow.clientAddress === address ? escrow.freelancerAddress : escrow.clientAddress,
+          created_at:
+            escrow.createdAt instanceof Date ? escrow.createdAt.toISOString() : escrow.createdAt,
+          completed_at:
+            escrow.status === 'Completed'
+              ? escrow.updatedAt instanceof Date
+                ? escrow.updatedAt.toISOString()
+                : escrow.updatedAt
+              : '',
+        });
+      }
+
+      cursorId = batch[batch.length - 1].id;
+      if (batch.length < CSV_EXPORT_BATCH_SIZE) break;
+    }
+
+    stringifier.end();
+  } catch (err) {
+    logControllerError('escrow.exportEscrowsCsv', err, req);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.destroy(err);
+    }
   }
 };
 
@@ -222,9 +349,14 @@ const getEscrow = async (req, res) => {
 
 const broadcastCreateEscrow = async (req, res) => {
   try {
-    const { signedXdr } = req.body;
+    const { signedXdr, metadata } = req.body;
     if (!signedXdr || typeof signedXdr !== 'string') {
       return res.status(400).json({ error: 'signedXdr is required' });
+    }
+
+    const metadataValidation = validateEscrowMetadata(metadata);
+    if (!metadataValidation.valid) {
+      return res.status(400).json({ error: metadataValidation.error });
     }
 
     const result = await submitTransaction(signedXdr);
@@ -264,6 +396,7 @@ const broadcastCreateEscrow = async (req, res) => {
           briefHash: '',
           createdAt: new Date(),
           createdLedger: BigInt(0),
+          metadata: metadata ?? undefined,
         },
         update: {}, // indexer will fill in the details on next tick
       });
@@ -277,6 +410,58 @@ const broadcastCreateEscrow = async (req, res) => {
     });
   } catch (err) {
     logControllerError('escrow.broadcastCreateEscrow', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * PATCH /api/escrows/:id/metadata
+ * Merge-update (not replace) the escrow's custom metadata object.
+ * Restricted to the escrow's parties (client/freelancer) and admins.
+ */
+const updateEscrowMetadata = async (req, res) => {
+  try {
+    const id = BigInt(req.params.id);
+    const { metadata } = req.body;
+
+    if (metadata === undefined || metadata === null || typeof metadata !== 'object') {
+      return res.status(400).json({ error: 'metadata object is required' });
+    }
+
+    const patchValidation = validateEscrowMetadata(metadata);
+    if (!patchValidation.valid) {
+      return res.status(400).json({ error: patchValidation.error });
+    }
+
+    const escrow = await prisma.escrow.findUnique({
+      where: { id },
+      select: { metadata: true, clientAddress: true, freelancerAddress: true },
+    });
+    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+
+    const callerAddress = req.user?.address;
+    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
+    const isParty =
+      callerAddress === escrow.clientAddress || callerAddress === escrow.freelancerAddress;
+    if (!isAdmin && !isParty) {
+      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    }
+
+    const merged = { ...(escrow.metadata ?? {}), ...metadata };
+    const mergedValidation = validateEscrowMetadata(merged);
+    if (!mergedValidation.valid) {
+      return res.status(400).json({ error: mergedValidation.error });
+    }
+
+    const updated = await prisma.escrow.update({ where: { id }, data: { metadata: merged } });
+    await invalidateEscrowCache(id);
+
+    res.json({ id: updated.id.toString(), metadata: updated.metadata });
+  } catch (err) {
+    if (err.message?.includes('Cannot convert')) {
+      return res.status(400).json({ error: 'Invalid escrow id' });
+    }
+    logControllerError('escrow.updateEscrowMetadata', err, req);
     res.status(500).json({ error: err.message });
   }
 };
@@ -556,8 +741,10 @@ const getMilestoneHistory = async (req, res) => {
 
 export default {
   listEscrows,
+  exportEscrowsCsv,
   getEscrow,
   broadcastCreateEscrow,
+  updateEscrowMetadata,
   getMilestones,
   getMilestone,
   getMilestoneHistory,
