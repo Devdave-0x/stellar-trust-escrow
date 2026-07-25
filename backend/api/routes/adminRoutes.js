@@ -158,10 +158,33 @@ router.post('/escrows/archive', requireMfa, adminController.triggerEscrowArchive
 router.post('/stellar/reconcile', adminController.reconcileStellar);
 
 // ── Tenants ───────────────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/tenants
+ * @desc   Paginated tenant list
+ * @query  page, limit, search, plan, status
+ */
 router.get('/tenants', tenantController.listTenants);
 router.post('/tenants', tenantController.createTenant);
+/**
+ * @route  GET /api/admin/tenants/:tenantId
+ * @desc   Tenant detail: plan, limits, usage stats (escrow/user counts, API calls this month)
+ */
 router.get('/tenants/:tenantId', tenantController.getTenant);
+/**
+ * @route  PATCH /api/admin/tenants/:tenantId
+ * @desc   Update plan, maxUsers, maxEscrowsPerMonth (and other tenant fields)
+ */
 router.patch('/tenants/:tenantId', tenantController.updateTenant);
+/**
+ * @route  POST /api/admin/tenants/:tenantId/suspend
+ * @desc   Suspend a tenant; all of its users get 403 "Tenant suspended"
+ * @body   { reason: string }
+ */
+router.post('/tenants/:tenantId/suspend', requireMfa, tenantController.suspendTenant);
+/**
+ * @route  POST /api/admin/tenants/:tenantId/unsuspend
+ */
+router.post('/tenants/:tenantId/unsuspend', requireMfa, tenantController.unsuspendTenant);
 router.get('/tenants/:tenantId/metrics', tenantController.getTenantMetrics);
 
 // ── Feature Flags ─────────────────────────────────────────────────────────────

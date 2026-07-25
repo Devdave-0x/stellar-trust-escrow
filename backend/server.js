@@ -1,3 +1,4 @@
+import './lib/bigintJson.js';
 import { initTracing } from './lib/tracing.js';
 // Tracing and Sentry must be initialised before other imports so instrumentation patches apply.
 initTracing();
@@ -27,6 +28,7 @@ import docsRouter from './docs/index.js';
 import disputeRoutes from './api/routes/disputeRoutes.js';
 import searchRoutes from './api/routes/searchRoutes.js';
 import escrowRoutes from './api/routes/escrowRoutes.js';
+import apiKeyRoutes from './api/routes/apiKeyRoutes.js';
 import eventRoutes from './api/routes/eventRoutes.js';
 import kycRoutes from './api/routes/kycRoutes.js';
 import adminRoutes from './api/routes/adminRoutes.js';
@@ -195,6 +197,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/escrows', escrowRoutes);
 app.use('/api/v1/escrows', escrowRoutes);
+app.use('/api/api-keys', apiKeyRoutes);
+app.use('/api/v1/api-keys', apiKeyRoutes);
 
 // Public share link resolver — no auth required
 import { resolveShareLink } from './api/controllers/shareLinkController.js';
@@ -215,7 +219,9 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/admin/escrows', adminEscrowRoutes);
+app.use('/api/v1/admin/escrows', adminEscrowRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use('/api/batch', batchRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/chat', chatRoutes);

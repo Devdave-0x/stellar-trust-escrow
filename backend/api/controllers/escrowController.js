@@ -49,7 +49,7 @@ const ESCROW_SUMMARY_SELECT = {
 
 const VALID_SORT_FIELDS = ['createdAt', 'totalAmount', 'status'];
 const VALID_SORT_ORDERS = ['asc', 'desc'];
-const VALID_ESCROW_STATUSES = new Set(['Active', 'Completed', 'Disputed', 'Cancelled']);
+const VALID_ESCROW_STATUSES = new Set(['Draft', 'Active', 'Completed', 'Disputed', 'Cancelled']);
 
 const CSV_EXPORT_COLUMNS = [
   'id',
@@ -109,7 +109,7 @@ const listEscrows = async (req, res) => {
     const resolvedSortBy = VALID_SORT_FIELDS.includes(sortField) ? sortField : 'createdAt';
     const resolvedSortOrder = VALID_SORT_ORDERS.includes(sortDir) ? sortDir : 'desc';
 
-    const where = {};
+    const where = { deletedAt: null };
 
     if (status) {
       const statuses = status
@@ -209,7 +209,10 @@ const exportEscrowsCsv = async (req, res) => {
       return res.status(400).json({ error: 'to must be a valid ISO date string' });
     }
 
-    const where = { OR: [{ clientAddress: address }, { freelancerAddress: address }] };
+    const where = {
+      deletedAt: null,
+      OR: [{ clientAddress: address }, { freelancerAddress: address }],
+    };
     if (from || to) {
       where.createdAt = {};
       if (from) where.createdAt.gte = new Date(from);
@@ -323,7 +326,7 @@ const getEscrow = async (req, res) => {
       },
     });
 
-    if (escrow) return res.json(escrow);
+    if (escrow && !escrow.deletedAt) return res.json(escrow);
 
     // Fallback: search archive partition tables
     const tables = await listArchiveTables(prisma);
@@ -466,6 +469,186 @@ const updateEscrowMetadata = async (req, res) => {
   }
 };
 
+/**
+ * DELETE /api/escrows/:id
+ * Soft-deletes an escrow (sets deletedAt) instead of removing the row, so
+ * audit history is preserved. Only allowed while the escrow is in Draft or
+ * Cancelled status. Restricted to the escrow's owner/parties, or an admin.
+ */
+const deleteEscrow = async (req, res) => {
+  try {
+    const id = BigInt(req.params.id);
+    const address = req.user?.address;
+    if (!address) return res.status(401).json({ error: 'Authentication required' });
+
+    const escrow = await prisma.escrow.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        deletedAt: true,
+        ownerId: true,
+        clientAddress: true,
+        freelancerAddress: true,
+      },
+    });
+    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+
+    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
+    const isOwnerOrParty =
+      address === escrow.ownerId ||
+      address === escrow.clientAddress ||
+      address === escrow.freelancerAddress;
+    if (!isAdmin && !isOwnerOrParty) {
+      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    }
+
+    if (escrow.deletedAt) {
+      return res.status(409).json({ error: 'Escrow already deleted' });
+    }
+
+    if (escrow.status !== 'Draft' && escrow.status !== 'Cancelled') {
+      return res
+        .status(400)
+        .json({ error: 'Only escrows in Draft or Cancelled status can be deleted' });
+    }
+
+    const deletedAt = new Date();
+    await prisma.escrow.update({ where: { id }, data: { deletedAt } });
+    await invalidateEscrowCache(id);
+
+    res.json({ message: 'Escrow deleted.', escrowId: id.toString(), deletedAt });
+  } catch (err) {
+    if (err.message?.includes('Cannot convert')) {
+      return res.status(400).json({ error: 'Invalid escrow id' });
+    }
+    logControllerError('escrow.deleteEscrow', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * POST /api/escrows/:id/clone
+ * Duplicates an escrow's title/description/milestone structure/participant
+ * addresses into a brand-new Draft escrow owned by the requesting user,
+ * with all transaction data (balances, milestone progress) reset.
+ * Accepts optional overrides: { title, amount, deadline }.
+ */
+const cloneEscrow = async (req, res) => {
+  try {
+    const sourceId = BigInt(req.params.id);
+    const address = req.user?.address;
+    if (!address) return res.status(401).json({ error: 'Authentication required' });
+
+    const source = await prisma.escrow.findUnique({
+      where: { id: sourceId },
+      include: { milestones: { orderBy: { milestoneIndex: 'asc' } } },
+    });
+    if (!source) return res.status(404).json({ error: 'Escrow not found' });
+
+    const { title: titleOverride, amount: amountOverride, deadline: deadlineOverride } =
+      req.body || {};
+
+    if (
+      amountOverride !== undefined &&
+      typeof amountOverride !== 'string' &&
+      typeof amountOverride !== 'number'
+    ) {
+      return res.status(400).json({ error: 'amount must be a string or number' });
+    }
+    if (
+      deadlineOverride !== undefined &&
+      deadlineOverride !== null &&
+      isNaN(Date.parse(deadlineOverride))
+    ) {
+      return res.status(400).json({ error: 'deadline must be a valid ISO date string' });
+    }
+
+    const baseTitle = source.title || 'Untitled Escrow';
+    const title = titleOverride !== undefined ? String(titleOverride) : `${baseTitle} (Copy)`;
+    const totalAmount = amountOverride !== undefined ? String(amountOverride) : source.totalAmount;
+    const deadline =
+      deadlineOverride !== undefined
+        ? deadlineOverride === null
+          ? null
+          : new Date(deadlineOverride)
+        : source.deadline;
+
+    // Draft escrows have no on-chain counterpart yet, so they can't use a
+    // real contract-assigned ID. Allocate a synthetic negative one instead —
+    // on-chain IDs are always non-negative, so this can never collide.
+    const [{ id: rawDraftId }] = await prisma.$queryRawUnsafe(
+      `SELECT -nextval('escrow_draft_id_seq') AS id`,
+    );
+
+    const created = await prisma.escrow.create({
+      data: {
+        id: BigInt(rawDraftId),
+        tenantId: source.tenantId,
+        clientAddress: source.clientAddress,
+        freelancerAddress: source.freelancerAddress,
+        arbiterAddress: source.arbiterAddress,
+        tokenAddress: source.tokenAddress,
+        totalAmount,
+        remainingBalance: totalAmount,
+        status: 'Draft',
+        briefHash: '',
+        title,
+        description: source.description,
+        ownerId: address,
+        deadline,
+        createdAt: new Date(),
+        createdLedger: BigInt(0),
+        metadata: source.metadata ?? undefined,
+        milestones: {
+          create: source.milestones.map((m) => ({
+            tenantId: m.tenantId,
+            milestoneIndex: m.milestoneIndex,
+            title: m.title,
+            descriptionHash: m.descriptionHash,
+            amount: m.amount,
+            status: 'Pending',
+          })),
+        },
+      },
+      include: { milestones: { orderBy: { milestoneIndex: 'asc' } } },
+    });
+
+    await cache.invalidateTags(['escrows']);
+
+    res.status(201).json({
+      id: created.id.toString(),
+      tenantId: created.tenantId,
+      clientAddress: created.clientAddress,
+      freelancerAddress: created.freelancerAddress,
+      arbiterAddress: created.arbiterAddress,
+      tokenAddress: created.tokenAddress,
+      totalAmount: created.totalAmount,
+      remainingBalance: created.remainingBalance,
+      status: created.status,
+      title: created.title,
+      description: created.description,
+      ownerId: created.ownerId,
+      deadline: created.deadline,
+      createdAt: created.createdAt,
+      metadata: created.metadata,
+      milestones: created.milestones.map((m) => ({
+        id: m.id,
+        milestoneIndex: m.milestoneIndex,
+        title: m.title,
+        amount: m.amount,
+        status: m.status,
+      })),
+    });
+  } catch (err) {
+    if (err.message?.includes('Cannot convert')) {
+      return res.status(400).json({ error: 'Invalid escrow id' });
+    }
+    logControllerError('escrow.cloneEscrow', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 const getMilestones = async (req, res) => {
   try {
     const escrowId = BigInt(req.params.id);
@@ -602,6 +785,7 @@ const getTotalVolume = async (req, res) => {
   try {
     const stats = await getCachedStats('stats:volume', async () => {
       const result = await prisma.escrow.aggregate({
+        where: { deletedAt: null },
         _sum: { totalAmount: true },
       });
       return {
@@ -619,7 +803,7 @@ const getActiveEscrows = async (req, res) => {
   try {
     const stats = await getCachedStats('stats:active', async () => {
       const count = await prisma.escrow.count({
-        where: { status: 'Active' },
+        where: { status: 'Active', deletedAt: null },
       });
       return {
         activeEscrowCount: count,
@@ -636,8 +820,8 @@ const getSuccessRate = async (req, res) => {
   try {
     const stats = await getCachedStats('stats:success', async () => {
       const [completedCount, totalCount] = await Promise.all([
-        prisma.escrow.count({ where: { status: 'Completed' } }),
-        prisma.escrow.count(),
+        prisma.escrow.count({ where: { status: 'Completed', deletedAt: null } }),
+        prisma.escrow.count({ where: { deletedAt: null } }),
       ]);
       const successRate = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
       return {
@@ -744,6 +928,8 @@ export default {
   exportEscrowsCsv,
   getEscrow,
   broadcastCreateEscrow,
+  cloneEscrow,
+  deleteEscrow,
   updateEscrowMetadata,
   getMilestones,
   getMilestone,
