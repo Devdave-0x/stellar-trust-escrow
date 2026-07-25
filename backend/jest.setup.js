@@ -1,4 +1,5 @@
 import { createRequire } from 'module';
+import './lib/bigintJson.js';
 
 if (typeof global.require === 'undefined') {
   global.require = createRequire(import.meta.url);
