@@ -7,9 +7,7 @@
  * @module controllers/adminController
  */
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../../lib/prisma.js';
 
 // ── Users ──────────────────────────────────────────────────────────────────────
 
@@ -22,9 +20,7 @@ const listUsers = async (req, res) => {
     const { page = 1, limit = 20, search = '' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const where = search
-      ? { address: { contains: search, mode: 'insensitive' } }
-      : {};
+    const where = search ? { address: { contains: search, mode: 'insensitive' } } : {};
 
     const [users, total] = await Promise.all([
       prisma.reputationRecord.findMany({
@@ -213,9 +209,7 @@ const resolveDispute = async (req, res) => {
     const { clientAmount, freelancerAmount, notes = '' } = req.body;
 
     if (clientAmount === undefined || freelancerAmount === undefined) {
-      return res
-        .status(400)
-        .json({ error: 'clientAmount and freelancerAmount are required.' });
+      return res.status(400).json({ error: 'clientAmount and freelancerAmount are required.' });
     }
 
     const dispute = await prisma.dispute.findUnique({
@@ -282,7 +276,12 @@ const getStats = async (req, res) => {
     ]);
 
     res.json({
-      escrows: { total: totalEscrows, active: activeEscrows, completed: completedEscrows, disputed: disputedEscrows },
+      escrows: {
+        total: totalEscrows,
+        active: activeEscrows,
+        completed: completedEscrows,
+        disputed: disputedEscrows,
+      },
       users: { total: totalUsers },
       disputes: { open: openDisputes, resolved: disputedEscrows - openDisputes },
     });
@@ -293,22 +292,74 @@ const getStats = async (req, res) => {
 
 // ── Audit Logs ─────────────────────────────────────────────────────────────────
 
+const AUDIT_LOG_EXPORT_MAX_ROWS = 10000;
+
+/**
+ * Builds a Prisma `where` clause from audit log filter query params.
+ * Throws a validation error (with `.statusCode`) if neither actor_id nor
+ * resource_id is present, to prevent unfiltered full-table scans.
+ */
+function buildAuditLogWhere(query) {
+  const { actor_id, action, resource_type, resource_id, from, to } = query;
+
+  if (!actor_id && !resource_id) {
+    const err = new Error('At least one of actor_id or resource_id is required.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const where = {};
+  if (actor_id) where.performedBy = actor_id;
+  if (action) where.action = action;
+  if (resource_type) where.resourceType = resource_type;
+  if (resource_id) where.targetAddress = resource_id;
+
+  if (from || to) {
+    where.performedAt = {};
+    if (from) {
+      const fromDate = new Date(from);
+      if (isNaN(fromDate.getTime())) {
+        const err = new Error('Invalid "from" date.');
+        err.statusCode = 400;
+        throw err;
+      }
+      where.performedAt.gte = fromDate;
+    }
+    if (to) {
+      const toDate = new Date(to);
+      if (isNaN(toDate.getTime())) {
+        const err = new Error('Invalid "to" date.');
+        err.statusCode = 400;
+        throw err;
+      }
+      where.performedAt.lte = toDate;
+    }
+  }
+
+  return where;
+}
+
 /**
  * GET /api/admin/audit-logs
- * Returns a paginated audit log of all admin actions.
+ * Returns a paginated, filterable audit log of all admin actions.
+ *
+ * @query  page, limit, actor_id, action, resource_type, resource_id, from, to
+ *         At least one of actor_id or resource_id is required.
  */
 const getAuditLogs = async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    const where = buildAuditLogWhere(req.query);
 
     const [logs, total] = await Promise.all([
       prisma.adminAuditLog.findMany({
+        where,
         skip,
         take: parseInt(limit),
         orderBy: { performedAt: 'desc' },
       }),
-      prisma.adminAuditLog.count(),
+      prisma.adminAuditLog.count({ where }),
     ]);
 
     res.json({
@@ -320,6 +371,62 @@ const getAuditLogs = async (req, res) => {
         pages: Math.ceil(total / parseInt(limit)),
       },
     });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+};
+
+/** Escapes a single CSV field per RFC 4180. */
+function csvEscape(value) {
+  const str = value === null || value === undefined ? '' : String(value);
+  if (/[",\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+const AUDIT_LOG_CSV_COLUMNS = [
+  'id',
+  'action',
+  'targetAddress',
+  'resourceType',
+  'reason',
+  'performedBy',
+  'performedAt',
+];
+
+/**
+ * GET /api/admin/audit-logs/export.csv
+ * Streams a CSV export of audit logs matching the same filters as
+ * GET /api/admin/audit-logs. Capped at AUDIT_LOG_EXPORT_MAX_ROWS rows.
+ *
+ * @query  actor_id, action, resource_type, resource_id, from, to
+ *         At least one of actor_id or resource_id is required.
+ */
+const exportAuditLogsCsv = async (req, res) => {
+  let where;
+  try {
+    where = buildAuditLogWhere(req.query);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message });
+  }
+
+  try {
+    const logs = await prisma.adminAuditLog.findMany({
+      where,
+      take: AUDIT_LOG_EXPORT_MAX_ROWS,
+      orderBy: { performedAt: 'desc' },
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit-log-export.csv"');
+
+    res.write(AUDIT_LOG_CSV_COLUMNS.join(',') + '\n');
+    for (const log of logs) {
+      const row = AUDIT_LOG_CSV_COLUMNS.map((col) => csvEscape(log[col])).join(',');
+      res.write(row + '\n');
+    }
+    res.end();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -383,6 +490,7 @@ export default {
   resolveDispute,
   getStats,
   getAuditLogs,
+  exportAuditLogsCsv,
   getSettings,
   updateSettings,
 };

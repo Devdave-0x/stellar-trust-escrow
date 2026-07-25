@@ -22,29 +22,32 @@ datasource db {
 
 model Escrow {
   /// On-chain escrow_id from the contract
-  id                BigInt      @id
-  clientAddress     String      @map("client_address")
-  freelancerAddress String      @map("freelancer_address")
-  arbiterAddress    String?     @map("arbiter_address")
-  tokenAddress      String      @map("token_address")
-  totalAmount       String      @map("total_amount")   // BigInt stored as string
-  remainingBalance  String      @map("remaining_balance")
+  id                BigInt       @id
+  clientAddress     String       @map("client_address")
+  freelancerAddress String       @map("freelancer_address")
+  arbiterAddress    String?      @map("arbiter_address")
+  tokenAddress      String       @map("token_address")
+  totalAmount       String       @map("total_amount") // BigInt stored as string
+  remainingBalance  String       @map("remaining_balance")
   status            EscrowStatus
-  briefHash         String      @map("brief_hash")     // IPFS / content hash
+  briefHash         String       @map("brief_hash") // IPFS / content hash
   deadline          DateTime?
-  createdAt         DateTime    @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
+  createdAt         DateTime     @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
   /// Stellar ledger sequence when this escrow was created
-  createdLedger     BigInt      @map("created_ledger")
+  createdLedger     BigInt       @map("created_ledger")
+  /// Tenant that owns this escrow, for usage tracking (Issue #222)
+  tenantId          Int?         @map("tenant_id")
 
-  milestones        Milestone[]
-  dispute           Dispute?
+  milestones Milestone[]
+  dispute    Dispute?
 
   @@index([clientAddress])
   @@index([freelancerAddress])
   @@index([status])
   // Composite index for filtered + sorted list queries
   @@index([status, createdAt(sort: Desc)])
+  @@index([tenantId, createdAt])
   @@map("escrows")
 }
 
@@ -57,12 +60,12 @@ model Milestone {
   escrowId        BigInt          @map("escrow_id")
   title           String
   descriptionHash String          @map("description_hash")
-  amount          String          // BigInt as string
+  amount          String // BigInt as string
   status          MilestoneStatus
   submittedAt     DateTime?       @map("submitted_at")
   resolvedAt      DateTime?       @map("resolved_at")
 
-  escrow          Escrow          @relation(fields: [escrowId], references: [id])
+  escrow Escrow @relation(fields: [escrowId], references: [id])
 
   @@unique([escrowId, milestoneIndex])
   @@index([escrowId])
@@ -72,14 +75,14 @@ model Milestone {
 // ── Reputation ────────────────────────────────────────────────────────────────
 
 model ReputationRecord {
-  address           String   @id
-  totalScore        BigInt   @default(0) @map("total_score")
-  completedEscrows  Int      @default(0) @map("completed_escrows")
-  disputedEscrows   Int      @default(0) @map("disputed_escrows")
-  disputesWon       Int      @default(0) @map("disputes_won")
-  totalVolume       String   @default("0") @map("total_volume") // BigInt as string
-  lastUpdated       DateTime @map("last_updated")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  address          String   @id
+  totalScore       BigInt   @default(0) @map("total_score")
+  completedEscrows Int      @default(0) @map("completed_escrows")
+  disputedEscrows  Int      @default(0) @map("disputed_escrows")
+  disputesWon      Int      @default(0) @map("disputes_won")
+  totalVolume      String   @default("0") @map("total_volume") // BigInt as string
+  lastUpdated      DateTime @map("last_updated")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@index([totalScore(sort: Desc)])
   @@map("reputation_records")
@@ -88,21 +91,21 @@ model ReputationRecord {
 // ── Disputes ─────────────────────────────────────────────────────────────────
 
 model Dispute {
-  id              Int       @id @default(autoincrement())
-  escrowId        BigInt    @unique @map("escrow_id")
-  raisedByAddress String    @map("raised_by_address")
-  raisedAt        DateTime  @map("raised_at")
-  resolvedAt      DateTime? @map("resolved_at")
+  id               Int       @id @default(autoincrement())
+  escrowId         BigInt    @unique @map("escrow_id")
+  raisedByAddress  String    @map("raised_by_address")
+  raisedAt         DateTime  @map("raised_at")
+  resolvedAt       DateTime? @map("resolved_at")
   /// Amount returned to client on resolution
-  clientAmount    String?   @map("client_amount")
+  clientAmount     String?   @map("client_amount")
   /// Amount sent to freelancer on resolution
-  freelancerAmount String?  @map("freelancer_amount")
+  freelancerAmount String?   @map("freelancer_amount")
   /// Address that resolved the dispute (arbiter or admin)
-  resolvedBy      String?   @map("resolved_by")
+  resolvedBy       String?   @map("resolved_by")
   /// Outcome description
-  resolution      String?
+  resolution       String?
 
-  escrow          Escrow    @relation(fields: [escrowId], references: [id])
+  escrow Escrow @relation(fields: [escrowId], references: [id])
 
   @@index([raisedByAddress])
   @@map("disputes")
@@ -122,24 +125,78 @@ model IndexerState {
 
 /// Immutable record of every admin action for accountability and audit trails.
 model AdminAuditLog {
-  id              Int      @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   /// Action taken, e.g. SUSPEND_USER, BAN_USER, RESOLVE_DISPUTE
-  action          String
-  /// The address or resource the action was taken against
-  targetAddress   String   @map("target_address")
+  action        String
+  /// The address or resource the action was taken against (resource_id)
+  targetAddress String   @map("target_address")
+  /// Type of resource the action was taken against, e.g. user, escrow, dispute
+  resourceType  String?  @map("resource_type")
   /// Human-readable reason supplied by the admin
-  reason          String   @default("")
-  /// Identifier of the admin who performed the action
-  performedBy     String   @map("performed_by")
-  performedAt     DateTime @map("performed_at")
+  reason        String   @default("")
+  /// Identifier of the admin who performed the action (actor_id)
+  performedBy   String   @map("performed_by")
+  performedAt   DateTime @map("performed_at")
 
   @@index([action])
   @@index([targetAddress])
   @@index([performedAt(sort: Desc)])
+  // Supports filtering audit log by actor within a date range
+  @@index([performedBy, performedAt])
+  // Supports filtering audit log by resource within a date range
+  @@index([resourceType, targetAddress, performedAt])
   @@map("admin_audit_logs")
 }
 
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+/// A file (dispute evidence, milestone deliverable, etc.) attached to an
+/// escrow-related entity and stored in S3.
+model Attachment {
+  id         Int                  @id @default(autoincrement())
+  entityType AttachmentEntityType @map("entity_type")
+  /// Polymorphic reference to the owning entity (escrow id, milestone id, etc.)
+  entityId   String               @map("entity_id")
+  filename   String
+  mimeType   String               @map("mime_type")
+  sizeBytes  Int                  @map("size_bytes")
+  s3Key      String               @map("s3_key")
+  uploadedBy String               @map("uploaded_by")
+  createdAt  DateTime             @default(now()) @map("created_at")
+  /// Soft-delete marker; null means the attachment is active.
+  deletedAt  DateTime?            @map("deleted_at")
+  /// Tenant that owns this attachment, for storage usage tracking (Issue #222)
+  tenantId   Int?                 @map("tenant_id")
+
+  @@index([entityType, entityId])
+  @@index([uploadedBy])
+  @@index([tenantId])
+  @@map("attachments")
+}
+
+// ── Tenants ───────────────────────────────────────────────────────────────────
+
+/// A billable tenant/organization using the platform, scoped for usage tracking.
+model Tenant {
+  id                Int      @id @default(autoincrement())
+  name              String
+  apiCallLimit      Int      @default(100000) @map("api_call_limit")
+  escrowLimit       Int      @default(1000) @map("escrow_limit")
+  storageLimitBytes BigInt   @default(5368709120) @map("storage_limit_bytes") // 5 GiB
+  userLimit         Int      @default(50) @map("user_limit")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("tenants")
+}
+
 // ── Enums ─────────────────────────────────────────────────────────────────────
+
+enum AttachmentEntityType {
+  escrow
+  milestone
+  dispute
+  note
+}
 
 enum EscrowStatus {
   Active

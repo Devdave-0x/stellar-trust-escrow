@@ -81,9 +81,19 @@ router.patch('/settings', adminController.updateSettings);
 // ── Audit Logs ─────────────────────────────────────────────────────────────────
 /**
  * @route  GET /api/admin/audit-logs
- * @desc   Paginated audit log of all admin actions
- * @query  page, limit
+ * @desc   Paginated, filterable audit log of all admin actions
+ * @query  page, limit, actor_id, action, resource_type, resource_id, from, to
+ *         At least one of actor_id or resource_id is required.
  */
 router.get('/audit-logs', adminController.getAuditLogs);
+
+/**
+ * @route  GET /api/admin/audit-logs/export.csv
+ * @desc   Streams a CSV export of audit logs matching the same filters
+ *         as GET /api/admin/audit-logs. Capped at 10,000 rows.
+ * @query  actor_id, action, resource_type, resource_id, from, to
+ *         At least one of actor_id or resource_id is required.
+ */
+router.get('/audit-logs/export.csv', adminController.exportAuditLogsCsv);
 
 export default router;

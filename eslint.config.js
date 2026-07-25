@@ -3,9 +3,31 @@ import tseslint from 'typescript-eslint';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default [
   js.configs.recommended,
+
+  {
+    files: ['backend/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
+
+  {
+    files: ['frontend/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+  },
+
+  {
+    files: ['**/*.test.{js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.jest },
+    },
+  },
 
   // ✅ Base TypeScript rules
   ...tseslint.configs.recommended,

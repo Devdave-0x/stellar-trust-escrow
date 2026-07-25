@@ -27,6 +27,7 @@
 
 import { useState } from 'react';
 import Button from '../../../components/ui/Button';
+import LoadingButton from '../../../components/ui/LoadingButton';
 
 const STEPS = [
   { id: 1, label: 'Counterparty' },
@@ -135,9 +136,9 @@ export default function CreateEscrowPage() {
             Next →
           </Button>
         ) : (
-          <Button variant="primary" onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? 'Signing…' : 'Sign & Create Escrow'}
-          </Button>
+          <LoadingButton variant="primary" onClick={handleSubmit} isLoading={isSubmitting}>
+            Sign & Create Escrow
+          </LoadingButton>
         )}
       </div>
     </div>
