@@ -57,6 +57,14 @@ router.post('/batch-release', batchRateLimit, escrowController.batchRelease);
 router.get('/search', escrowController.searchEscrows);
 
 /**
+ * @route  GET /api/escrows/export.csv
+ * @desc   Streams a CSV of the authenticated user's escrows.
+ * @query  from  {string}  ISO date — createdAt >= from
+ * @query  to    {string}  ISO date — createdAt <= to
+ */
+router.get('/export.csv', escrowController.exportEscrowsCsv);
+
+/**
  * @route  GET /api/escrows
  * @desc   Cursor-paginated list of escrows.
  *         Query params: cursor, limit, status, client, freelancer, sortBy, sortOrder
@@ -84,6 +92,17 @@ router.post(
   invalidateOn({ tags: ['escrows', 'stats:volume', 'stats:active', 'stats:success'] }),
   auditTransitionMiddleware(),
   escrowController.broadcastCreateEscrow,
+);
+
+/**
+ * @route  PATCH /api/escrows/:id/metadata
+ * @desc   Merge-update the escrow's custom metadata object (client/freelancer/admin only).
+ */
+router.patch(
+  '/:id/metadata',
+  validateEscrowId,
+  invalidateOn({ tags: (req) => ['escrows', `escrow:${req.params.id}`] }),
+  escrowController.updateEscrowMetadata,
 );
 
 /**

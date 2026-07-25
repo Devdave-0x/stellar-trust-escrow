@@ -13,6 +13,7 @@ import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
 import { conditionalGet } from '../middleware/conditionalGet.js';
 import { validatePasswordStrength } from '../middleware/passwordStrength.js';
 import { listBookmarks } from '../controllers/bookmarkController.js';
+import sessionController from '../controllers/sessionController.js';
 
 const router = express.Router();
 router.use(optionalAdminAuth, authMiddleware);
@@ -26,6 +27,25 @@ const exportRateLimit = createSlidingWindowRateLimiter({
   message: 'Too many export requests for this address. Please try again later.',
   keyGenerator: (req) => `data-export:address:${req.params?.address || 'unknown'}`,
 });
+
+/**
+ * @route  GET /api/users/me/sessions
+ * @desc   List the authenticated user's active login sessions (device, IP, last active).
+ *         The session used for this request is flagged with current: true.
+ */
+router.get('/me/sessions', sessionController.listSessions);
+
+/**
+ * @route  DELETE /api/users/me/sessions/:id
+ * @desc   Revoke a single session belonging to the authenticated user.
+ */
+router.delete('/me/sessions/:id', sessionController.revokeSession);
+
+/**
+ * @route  DELETE /api/users/me/sessions
+ * @desc   Revoke every session except the current one ("sign out everywhere else").
+ */
+router.delete('/me/sessions', sessionController.revokeAllSessions);
 
 router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
 router.get(
