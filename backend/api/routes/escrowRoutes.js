@@ -4,6 +4,7 @@ import escrowController, {
   validateEscrowId,
   validatePagination,
 } from '../controllers/escrowController.js';
+import certificateController from '../controllers/certificateController.js';
 import { cacheResponse, invalidateOn, TTL } from '../middleware/cache.js';
 import { conditionalGet } from '../middleware/conditionalGet.js';
 import authMiddleware from '../middleware/auth.js';
@@ -166,6 +167,12 @@ router.get(
   validatePagination,
   escrowController.getMilestoneHistory,
 );
+
+/**
+ * @route  GET /api/escrows/:id/certificate
+ * @desc   Signed PDF completion certificate — only available once Completed.
+ */
+router.get('/:id/certificate', validateEscrowId, certificateController.getCertificate);
 
 /**
  * @route  GET /api/escrows/:id

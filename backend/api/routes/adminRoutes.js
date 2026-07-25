@@ -81,6 +81,14 @@ router.post('/users/:address/unsuspend', requireMfa, adminController.unsuspendUs
  */
 router.post('/users/:address/ban', requireMfa, adminController.banUser);
 
+// ── Escrows ────────────────────────────────────────────────────────────────────
+/**
+ * @route  PATCH /api/admin/escrows/bulk-status
+ * @desc   Bulk-update escrow status (max 50 ids); partial failures reported individually
+ * @body   { escrow_ids: string[], status: string, reason?: string }
+ */
+router.patch('/escrows/bulk-status', adminController.bulkUpdateEscrowStatus);
+
 // ── Disputes ───────────────────────────────────────────────────────────────────
 /**
  * @route  GET /api/admin/disputes

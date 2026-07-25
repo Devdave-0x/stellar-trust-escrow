@@ -1,6 +1,7 @@
 import express from 'express';
 import searchController from '../controllers/searchController.js';
 import adminAuth from '../middleware/adminAuth.js';
+import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -31,6 +32,15 @@ router.get('/', searchController.searchEscrows);
  * @returns { suggestions: [{ text, score }] }
  */
 router.get('/suggest', searchController.getSuggestions);
+
+/**
+ * @route  GET /api/search/suggestions
+ * @desc   Autocomplete suggestions across escrows, users, and tags.
+ * @query  q  {string}  search prefix (min 2 chars, otherwise returns empty arrays)
+ * @access Authenticated — cache is keyed by user id
+ * @returns { escrows: [{id,title}], users: [{address,name}], tags: [{id,name}] }
+ */
+router.get('/suggestions', authMiddleware, searchController.getAutocompleteSuggestions);
 
 /**
  * @route  GET /api/search/analytics
