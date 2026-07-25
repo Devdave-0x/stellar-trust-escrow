@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import LoadingButton from '../../../components/ui/LoadingButton';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -116,13 +117,9 @@ export default function AdminSettingsPage() {
                 />
               </div>
               <div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : 'Save Changes'}
-                </button>
+                <LoadingButton type="submit" isLoading={saving}>
+                  Save Changes
+                </LoadingButton>
               </div>
             </form>
             <p className="text-xs text-gray-600 mt-3">

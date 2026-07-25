@@ -9,7 +9,7 @@
  * @param {'sm'|'md'|'lg'} [props.size='md']
  * @param {string}  [props.href]          — renders as Next.js Link if provided
  * @param {boolean} [props.disabled]
- * @param {boolean} [props.isLoading]     — TODO (contributor — easy): add spinner
+ * @param {boolean} [props.isLoading]     — disables the button; for a spinner + stable width, use LoadingButton
  * @param {Function} [props.onClick]
  * @param {React.ReactNode} props.children
  */
@@ -46,7 +46,6 @@ export default function Button({
 
   const classes = `${base} ${VARIANTS[variant]} ${SIZES[size]} ${className}`;
 
-  // TODO (contributor — easy): add isLoading spinner state
   if (href && !disabled) {
     return (
       <Link href={href} className={classes} {...rest}>

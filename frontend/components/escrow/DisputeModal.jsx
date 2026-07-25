@@ -22,6 +22,7 @@
 
 import { useState } from 'react';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 
 export default function DisputeModal({ isOpen, onClose, escrowId }) {
   const [reason, setReason] = useState('');
@@ -104,15 +105,14 @@ export default function DisputeModal({ isOpen, onClose, escrowId }) {
             >
               Cancel
             </Button>
-            <Button
+            <LoadingButton
               variant="danger"
               className="flex-1"
               onClick={handleRaise}
-              disabled={isSubmitting}
               isLoading={isSubmitting}
             >
-              {isSubmitting ? 'Signing…' : 'Confirm Dispute'}
-            </Button>
+              Confirm Dispute
+            </LoadingButton>
           </div>
         </div>
       </div>
