@@ -11,6 +11,7 @@ import TruncatedAddress from '../../components/ui/TruncatedAddress';
 import EscrowCard from '../../components/escrow/EscrowCard';
 import ErrorBoundary from '../../components/error/ErrorBoundary';
 import StatCard from '../../components/ui/StatCard';
+import EmptyState from '../../components/ui/EmptyState';
 import { useWalletStore } from '../../store/app-store';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -229,11 +230,14 @@ export default function MyProfilePage() {
             <Spinner />
           </div>
         ) : Object.keys(grouped).length === 0 ? (
-          <div className="card text-center py-10">
-            <p className="text-gray-400">No escrows yet.</p>
-            <Button href="/escrow/create" variant="primary" className="mt-4">
-              Create your first escrow
-            </Button>
+          <div className="card">
+            <EmptyState
+              type="escrows"
+              title="No escrows yet"
+              description="Create your first escrow to get started with secure, milestone-based payments on Stellar."
+              actionLabel="Create your first escrow"
+              actionHref="/escrow/create"
+            />
           </div>
         ) : (
           Object.entries(grouped).map(([status, group]) => (
