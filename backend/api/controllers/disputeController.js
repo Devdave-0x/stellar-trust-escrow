@@ -16,6 +16,7 @@ import { uploadEvidence } from '../middleware/fileUpload.js';
 import ipfsService from '../../services/ipfsService.js';
 import { broadcastToDispute } from '../websocket/handlers.js';
 import { verifyFile, merkleRoot, hashFile } from '../../services/ipfsHashService.js';
+import { getDisputeTimeline } from '../../services/disputeTimelineService.js';
 import respond from '../../lib/respond.js';
 
 /**
@@ -37,12 +38,7 @@ const listDisputes = async (req, res) => {
     );
     const limit = Math.min(take, DISPUTE_MAX_LIMIT);
 
-    const {
-      status,
-      raisedBy,
-      dateFrom,
-      dateTo,
-    } = req.query;
+    const { status, raisedBy, dateFrom, dateTo } = req.query;
 
     const resolvedSortBy = VALID_DISPUTE_SORT_FIELDS.has(sortField) ? sortField : 'raisedAt';
     const resolvedSortOrder = VALID_SORT_ORDERS.has(sortDir) ? sortDir : 'desc';
@@ -75,9 +71,7 @@ const listDisputes = async (req, res) => {
     }
 
     const findArgs = buildPrismaFindArgs({
-      parsedCursor: parsedCursor
-        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
-        : null,
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) } : null,
       take: limit,
       sortField: resolvedSortBy,
       sortDir: resolvedSortOrder,
@@ -268,7 +262,11 @@ const postEvidence = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    return respond.success(res, { evidence: evidenceWithUrls, count: evidenceRecords.length }, { created: true });
+    return respond.success(
+      res,
+      { evidence: evidenceWithUrls, count: evidenceRecords.length },
+      { created: true },
+    );
   } catch (error) {
     console.error('Error posting evidence:', error);
     return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to post evidence');
@@ -290,9 +288,7 @@ const listEvidence = async (req, res) => {
     if (submittedBy) where.submittedBy = submittedBy;
 
     const findArgs = buildPrismaFindArgs({
-      parsedCursor: parsedCursor
-        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
-        : null,
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) } : null,
       take,
       sortField: 'submittedAt',
       sortDir,
@@ -483,9 +479,7 @@ const getResolutionHistory = async (req, res) => {
     };
 
     const findArgs = buildPrismaFindArgs({
-      parsedCursor: parsedCursor
-        ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) }
-        : null,
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) } : null,
       take,
       sortField: 'resolvedAt',
       sortDir,
@@ -564,6 +558,30 @@ const verifyEvidence = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/disputes/:id/timeline
+ * Chronological timeline of a dispute's lifecycle, aggregated from the
+ * existing dispute/evidence/appeal/escrow tables.
+ */
+const getTimeline = async (req, res) => {
+  try {
+    const disputeId = parseInt(req.params.id, 10);
+    if (Number.isNaN(disputeId)) {
+      return respond.error(res, 400, 'VALIDATION_ERROR', 'Invalid dispute id');
+    }
+
+    const events = await getDisputeTimeline(disputeId, req.tenant.id);
+    if (!events) {
+      return respond.error(res, 404, 'NOT_FOUND', 'Dispute not found');
+    }
+
+    return respond.success(res, { events });
+  } catch (error) {
+    console.error('Error getting dispute timeline:', error);
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to get dispute timeline');
+  }
+};
+
 function determineUserRole(dispute, userAddress) {
   if (dispute.raisedByAddress === userAddress) {
     return dispute.escrow.clientAddress === userAddress ? 'client' : 'freelancer';
@@ -618,4 +636,5 @@ export default {
   getResolutionHistory,
   uploadEvidence,
   verifyEvidence,
+  getTimeline,
 };

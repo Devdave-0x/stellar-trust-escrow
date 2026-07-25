@@ -88,13 +88,19 @@ function buildPrismaMock(overrides = {}) {
     escrow: {
       findFirst: jest.fn(async ({ where } = {}) => {
         if (where?.id) {
-          const rawId = typeof where.id === 'bigint' ? where.id : BigInt(String(where.id).replace(/[^0-9]/g, '') || 0);
+          const rawId =
+            typeof where.id === 'bigint'
+              ? where.id
+              : BigInt(String(where.id).replace(/[^0-9]/g, '') || 0);
           return escrows.find((e) => e.id === rawId) || null;
         }
         if (where?.AND) {
           for (const clause of where.AND) {
             if (clause.id) {
-              const rawId = typeof clause.id === 'bigint' ? clause.id : BigInt(String(clause.id).replace(/[^0-9]/g, '') || 0);
+              const rawId =
+                typeof clause.id === 'bigint'
+                  ? clause.id
+                  : BigInt(String(clause.id).replace(/[^0-9]/g, '') || 0);
               const match = escrows.find((e) => e.id === rawId);
               if (match) return match;
             }
@@ -108,32 +114,56 @@ function buildPrismaMock(overrides = {}) {
           results = results.filter((e) => where.status.in.includes(e.status));
         }
         if (where?.clientAddress?.contains) {
-          results = results.filter((e) => e.clientAddress.toLowerCase().includes(where.clientAddress.contains.toLowerCase()));
+          results = results.filter((e) =>
+            e.clientAddress.toLowerCase().includes(where.clientAddress.contains.toLowerCase()),
+          );
         }
         if (where?.freelancerAddress?.contains) {
-          results = results.filter((e) => e.freelancerAddress.toLowerCase().includes(where.freelancerAddress.contains.toLowerCase()));
+          results = results.filter((e) =>
+            e.freelancerAddress
+              .toLowerCase()
+              .includes(where.freelancerAddress.contains.toLowerCase()),
+          );
         }
         if (where?.OR) {
           results = results.filter((e) =>
             where.OR.some((c) => {
               if (c.id && typeof c.id === 'object' && c.id.equals) {
-                try { return e.id === c.id.equals; } catch { return false; }
+                try {
+                  return e.id === c.id.equals;
+                } catch {
+                  return false;
+                }
               }
-              if (c.clientAddress?.contains) return e.clientAddress.toLowerCase().includes(c.clientAddress.contains.toLowerCase());
-              if (c.freelancerAddress?.contains) return e.freelancerAddress.toLowerCase().includes(c.freelancerAddress.contains.toLowerCase());
+              if (c.clientAddress?.contains)
+                return e.clientAddress
+                  .toLowerCase()
+                  .includes(c.clientAddress.contains.toLowerCase());
+              if (c.freelancerAddress?.contains)
+                return e.freelancerAddress
+                  .toLowerCase()
+                  .includes(c.freelancerAddress.contains.toLowerCase());
               return false;
             }),
           );
         }
-        if (where?.totalAmount?.gte) results = results.filter((e) => e.totalAmount >= where.totalAmount.gte);
-        if (where?.totalAmount?.lte) results = results.filter((e) => e.totalAmount <= where.totalAmount.lte);
-        if (where?.createdAt?.gte) results = results.filter((e) => e.createdAt >= where.createdAt.gte);
-        if (where?.createdAt?.lte) results = results.filter((e) => e.createdAt <= where.createdAt.lte);
+        if (where?.totalAmount?.gte)
+          results = results.filter((e) => e.totalAmount >= where.totalAmount.gte);
+        if (where?.totalAmount?.lte)
+          results = results.filter((e) => e.totalAmount <= where.totalAmount.lte);
+        if (where?.createdAt?.gte)
+          results = results.filter((e) => e.createdAt >= where.createdAt.gte);
+        if (where?.createdAt?.lte)
+          results = results.filter((e) => e.createdAt <= where.createdAt.lte);
         return results;
       }),
       count: jest.fn(async () => escrows.length),
       updateMany: jest.fn(async ({ where, data } = {}) => {
-        const rawId = where?.id ? (typeof where.id === 'bigint' ? where.id : BigInt(String(where.id).replace(/[^0-9]/g, '') || 0)) : null;
+        const rawId = where?.id
+          ? typeof where.id === 'bigint'
+            ? where.id
+            : BigInt(String(where.id).replace(/[^0-9]/g, '') || 0)
+          : null;
         let count = 0;
         for (const e of escrows) {
           if (rawId !== null && e.id === rawId) {
@@ -144,7 +174,12 @@ function buildPrismaMock(overrides = {}) {
         return { count };
       }),
       create: jest.fn(async ({ data } = {}) => {
-        const record = { id: BigInt(nextEscrowId++), ...data, createdAt: new Date(), updatedAt: new Date() };
+        const record = {
+          id: BigInt(nextEscrowId++),
+          ...data,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
         escrows.push(record);
         return record;
       }),
@@ -175,7 +210,12 @@ function buildPrismaMock(overrides = {}) {
       count: jest.fn(async () => 0),
     },
     tenant: {
-      findFirst: jest.fn(async () => ({ id: 'tenant_default', slug: 'default', name: 'Default', status: 'active' })),
+      findFirst: jest.fn(async () => ({
+        id: 'tenant_default',
+        slug: 'default',
+        name: 'Default',
+        status: 'active',
+      })),
     },
   };
 
@@ -229,14 +269,17 @@ describe('Admin Escrow Routes', () => {
       const app = createApp();
       const res = await request(app)
         .get('/api/admin/escrows')
-        .set('Authorization', `Bearer ${jwt.sign({ address: ADDRESS_B, jti: 'jti' }, JWT_SECRET, { expiresIn: '1h' })}`);
+        .set(
+          'Authorization',
+          `Bearer ${jwt.sign({ address: ADDRESS_B, jti: 'jti' }, JWT_SECRET, { expiresIn: '1h' })}`,
+        );
       expect(res.status).toBe(403);
     });
 
     it('returns 200 for admin user (controller fails due to empty mock, proving auth passed)', async () => {
       const app = createApp();
       const { base } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       const res = await request(app)
         .get('/api/admin/escrows')
@@ -250,7 +293,7 @@ describe('Admin Escrow Routes', () => {
     it('returns 200 with empty list when no escrows', async () => {
       const app = createApp();
       const { base } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       const res = await request(app)
         .get('/api/admin/escrows')
@@ -266,11 +309,37 @@ describe('Admin Escrow Routes', () => {
     it('returns 200 with paginated escrow list', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       escrows.push(
-        { id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null, tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' } },
-        { id: 2n, tenantId: 't2', clientAddress: ADDRESS_B, freelancerAddress: ADDRESS_A, status: 'Completed', totalAmount: '200', createdAt: new Date(), updatedAt: new Date(), createdLedger: 2n, milestones: [], dispute: null, tenant: { id: 't2', slug: 't2', name: 'T2', status: 'active' } },
+        {
+          id: 1n,
+          tenantId: 't1',
+          clientAddress: ADDRESS_A,
+          freelancerAddress: ADDRESS_B,
+          status: 'Active',
+          totalAmount: '100',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 1n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' },
+        },
+        {
+          id: 2n,
+          tenantId: 't2',
+          clientAddress: ADDRESS_B,
+          freelancerAddress: ADDRESS_A,
+          status: 'Completed',
+          totalAmount: '200',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 2n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't2', slug: 't2', name: 'T2', status: 'active' },
+        },
       );
 
       const res = await request(app)
@@ -287,11 +356,37 @@ describe('Admin Escrow Routes', () => {
     it('applies status filter', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       escrows.push(
-        { id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null, tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' } },
-        { id: 2n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Completed', totalAmount: '200', createdAt: new Date(), updatedAt: new Date(), createdLedger: 2n, milestones: [], dispute: null, tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' } },
+        {
+          id: 1n,
+          tenantId: 't1',
+          clientAddress: ADDRESS_A,
+          freelancerAddress: ADDRESS_B,
+          status: 'Active',
+          totalAmount: '100',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 1n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' },
+        },
+        {
+          id: 2n,
+          tenantId: 't1',
+          clientAddress: ADDRESS_A,
+          freelancerAddress: ADDRESS_B,
+          status: 'Completed',
+          totalAmount: '200',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 2n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' },
+        },
       );
 
       const res = await request(app)
@@ -306,11 +401,37 @@ describe('Admin Escrow Routes', () => {
     it('applies client filter', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       escrows.push(
-        { id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null, tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' } },
-        { id: 2n, tenantId: 't1', clientAddress: ADDRESS_B, freelancerAddress: ADDRESS_A, status: 'Active', totalAmount: '200', createdAt: new Date(), updatedAt: new Date(), createdLedger: 2n, milestones: [], dispute: null, tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' } },
+        {
+          id: 1n,
+          tenantId: 't1',
+          clientAddress: ADDRESS_A,
+          freelancerAddress: ADDRESS_B,
+          status: 'Active',
+          totalAmount: '100',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 1n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' },
+        },
+        {
+          id: 2n,
+          tenantId: 't1',
+          clientAddress: ADDRESS_B,
+          freelancerAddress: ADDRESS_A,
+          status: 'Active',
+          totalAmount: '200',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 2n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' },
+        },
       );
 
       const res = await request(app)
@@ -325,11 +446,37 @@ describe('Admin Escrow Routes', () => {
     it('applies amount range filter', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       escrows.push(
-        { id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null, tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' } },
-        { id: 2n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '500', createdAt: new Date(), updatedAt: new Date(), createdLedger: 2n, milestones: [], dispute: null, tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' } },
+        {
+          id: 1n,
+          tenantId: 't1',
+          clientAddress: ADDRESS_A,
+          freelancerAddress: ADDRESS_B,
+          status: 'Active',
+          totalAmount: '100',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 1n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' },
+        },
+        {
+          id: 2n,
+          tenantId: 't1',
+          clientAddress: ADDRESS_A,
+          freelancerAddress: ADDRESS_B,
+          status: 'Active',
+          totalAmount: '500',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdLedger: 2n,
+          milestones: [],
+          dispute: null,
+          tenant: { id: 't1', slug: 't1', name: 'T1', status: 'active' },
+        },
       );
 
       const res = await request(app)
@@ -346,7 +493,7 @@ describe('Admin Escrow Routes', () => {
     it('returns 404 when escrow not found', async () => {
       const app = createApp();
       const { base } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       const res = await request(app)
         .post('/api/admin/escrows/999/freeze')
@@ -360,9 +507,23 @@ describe('Admin Escrow Routes', () => {
     it('returns 409 when already frozen', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, frozenAt: new Date(), freezeReason: 'prev', milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        frozenAt: new Date(),
+        freezeReason: 'prev',
+        milestones: [],
+        dispute: null,
+      });
 
       const res = await request(app)
         .post('/api/admin/escrows/1/freeze')
@@ -376,9 +537,23 @@ describe('Admin Escrow Routes', () => {
     it('returns 200 and freezes the escrow', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, frozenAt: null, freezeReason: null, milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        frozenAt: null,
+        freezeReason: null,
+        milestones: [],
+        dispute: null,
+      });
 
       const res = await request(app)
         .post('/api/admin/escrows/1/freeze')
@@ -390,7 +565,10 @@ describe('Admin Escrow Routes', () => {
       expect(base.escrow.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ id: 1n }),
-          data: expect.objectContaining({ frozenAt: expect.any(Date), freezeReason: 'Compliance review' }),
+          data: expect.objectContaining({
+            frozenAt: expect.any(Date),
+            freezeReason: 'Compliance review',
+          }),
         }),
       );
       expect(base.adminAuditLog.create).toHaveBeenCalledWith(
@@ -414,7 +592,7 @@ describe('Admin Escrow Routes', () => {
     it('returns 404 when escrow not found', async () => {
       const app = createApp();
       const { base } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       const res = await request(app)
         .post('/api/admin/escrows/999/force-transition')
@@ -439,9 +617,21 @@ describe('Admin Escrow Routes', () => {
     it('returns 200 and updates status', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        milestones: [],
+        dispute: null,
+      });
 
       const res = await request(app)
         .post('/api/admin/escrows/1/force-transition')
@@ -457,7 +647,9 @@ describe('Admin Escrow Routes', () => {
         }),
       );
       expect(base.adminAuditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ action: 'FORCE_TRANSITION_ESCROW' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'FORCE_TRANSITION_ESCROW' }),
+        }),
       );
     });
   });
@@ -466,7 +658,7 @@ describe('Admin Escrow Routes', () => {
     it('returns 404 when escrow not found', async () => {
       const app = createApp();
       const { base } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
       const res = await request(app)
         .post('/api/admin/escrows/999/notes')
@@ -491,9 +683,21 @@ describe('Admin Escrow Routes', () => {
     it('returns 201 and creates note', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        milestones: [],
+        dispute: null,
+      });
 
       const res = await request(app)
         .post('/api/admin/escrows/1/notes')
@@ -517,16 +721,26 @@ describe('Admin Escrow Routes', () => {
     it('returns 429 when admin rate limit is exceeded', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        milestones: [],
+        dispute: null,
+      });
 
       const token = createAdminToken();
 
       for (let i = 0; i < 31; i++) {
-        await request(app)
-          .get('/api/admin/escrows')
-          .set('Authorization', `Bearer ${token}`);
+        await request(app).get('/api/admin/escrows').set('Authorization', `Bearer ${token}`);
       }
 
       const res = await request(app)
@@ -542,9 +756,9 @@ describe('Admin Escrow Routes', () => {
     it('writes an audit log entry on list', async () => {
       const app = createApp();
       const { base } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      const { log: auditLogMock } = await import('../../services/auditService.js');
+      const { log: auditLogMock } = await import('../services/auditService.js');
 
       await request(app)
         .get('/api/admin/escrows')
@@ -562,9 +776,23 @@ describe('Admin Escrow Routes', () => {
     it('writes admin audit log on freeze', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, frozenAt: null, freezeReason: null, milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        frozenAt: null,
+        freezeReason: null,
+        milestones: [],
+        dispute: null,
+      });
 
       await request(app)
         .post('/api/admin/escrows/1/freeze')
@@ -572,16 +800,30 @@ describe('Admin Escrow Routes', () => {
         .send({ reason: 'Compliance' });
 
       expect(base.adminAuditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ action: 'FREEZE_ESCROW', reason: 'Compliance' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'FREEZE_ESCROW', reason: 'Compliance' }),
+        }),
       );
     });
 
     it('writes admin audit log on force transition', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        milestones: [],
+        dispute: null,
+      });
 
       await request(app)
         .post('/api/admin/escrows/1/force-transition')
@@ -589,16 +831,33 @@ describe('Admin Escrow Routes', () => {
         .send({ status: 'Completed', reason: 'Admin override' });
 
       expect(base.adminAuditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ action: 'FORCE_TRANSITION_ESCROW', reason: 'Admin override' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'FORCE_TRANSITION_ESCROW',
+            reason: 'Admin override',
+          }),
+        }),
       );
     });
 
     it('writes admin audit log on note', async () => {
       const app = createApp();
       const { base, escrows } = buildPrismaMock();
-      jest.unstable_mockModule('../../lib/prisma.js', () => ({ default: base }));
+      jest.unstable_mockModule('../lib/prisma.js', () => ({ default: base }));
 
-      escrows.push({ id: 1n, tenantId: 't1', clientAddress: ADDRESS_A, freelancerAddress: ADDRESS_B, status: 'Active', totalAmount: '100', createdAt: new Date(), updatedAt: new Date(), createdLedger: 1n, milestones: [], dispute: null });
+      escrows.push({
+        id: 1n,
+        tenantId: 't1',
+        clientAddress: ADDRESS_A,
+        freelancerAddress: ADDRESS_B,
+        status: 'Active',
+        totalAmount: '100',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdLedger: 1n,
+        milestones: [],
+        dispute: null,
+      });
 
       await request(app)
         .post('/api/admin/escrows/1/notes')
@@ -606,7 +865,9 @@ describe('Admin Escrow Routes', () => {
         .send({ note: 'Internal note' });
 
       expect(base.adminAuditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ action: 'ESCROW_ADD_NOTE', reason: 'Internal note' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'ESCROW_ADD_NOTE', reason: 'Internal note' }),
+        }),
       );
     });
   });

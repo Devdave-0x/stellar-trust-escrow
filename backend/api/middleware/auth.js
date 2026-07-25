@@ -26,6 +26,7 @@ export default async function authMiddleware(req, res, next) {
       if (!valid) {
         return res.status(401).json({ error: 'Session revoked or expired. Please log in again.' });
       }
+      await sessionService.touchSession(payload.jti).catch(() => {});
     }
     req.user = { address: payload.address, jti: payload.jti };
     next();

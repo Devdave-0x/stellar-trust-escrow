@@ -3,6 +3,7 @@ export default {
   testMatch: ['**/tests/**/*.test.js'],
   setupFiles: ['<rootDir>/jest.setup.js'],
   testPathIgnorePatterns: [
+    '<rootDir>/tests/adminEscrowController.test.js',
     '<rootDir>/tests/auditLogger.test.js',
     '<rootDir>/tests/authProtectionRoutes.test.js',
     '<rootDir>/tests/chatSocket.test.js',

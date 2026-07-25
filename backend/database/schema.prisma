@@ -228,6 +228,9 @@ model Escrow {
   updatedAt         DateTime     @updatedAt @map("updated_at")
   /// Stellar ledger sequence when this escrow was created
   createdLedger     BigInt       @map("created_ledger")
+  /// Tenant-defined structured data (freelance/real-estate/product-specific fields).
+  /// Max 20 keys; values restricted to string/number/boolean — enforced in the API layer.
+  metadata          Json?
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id])
   milestones Milestone[]
@@ -1053,6 +1056,28 @@ model EscrowBookmark {
   @@index([userAddress])
   @@index([escrowId])
   @@map("escrow_bookmarks")
+}
+
+// ── User Sessions ─────────────────────────────────────────────────────────────
+
+/// Tracks active login sessions per device so users can view and revoke them
+/// (e.g. "sign out everywhere else"). `userId` holds the Stellar wallet address —
+/// the authenticated principal for wallet-signature logins — mirroring
+/// UserProfile.address / ReputationRecord.address / EscrowBookmark.userAddress,
+/// rather than a hard FK into `users`, since most authenticated users never get
+/// a row in that table.
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  /// SHA-256 hash of the session's JWT `jti` — never the raw token.
+  tokenHash    String   @unique @map("token_hash")
+  deviceName   String?  @map("device_name")
+  ipAddress    String?  @map("ip_address")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, lastActiveAt(sort: Desc)])
+  @@map("user_sessions")
 }
 
 // ── Escrow Share Links ────────────────────────────────────────────────────────
