@@ -2,10 +2,31 @@ import express from 'express';
 import multer from 'multer';
 import userController from '../controllers/userController.js';
 import exportController from '../controllers/exportController.js';
+import onboardingController from '../controllers/onboardingController.js';
+import authMiddleware from '../middleware/auth.js';
 
 const upload = multer({ dest: 'uploads/' });
 
 const router = express.Router();
+
+/**
+ * @route  GET /api/users/me/onboarding
+ * @desc   Returns all onboarding checklist steps with completion state
+ */
+router.get('/me/onboarding', authMiddleware, onboardingController.getOnboarding);
+
+/**
+ * @route  GET /api/users/me/onboarding/progress
+ * @desc   Returns { total, completed, percentage }
+ */
+router.get('/me/onboarding/progress', authMiddleware, onboardingController.getOnboardingProgress);
+
+/**
+ * @route  POST /api/users/me/wallet
+ * @desc   Link a Stellar wallet address to the authenticated user; completes the connect_wallet step
+ * @body   { address: string }
+ */
+router.post('/me/wallet', authMiddleware, onboardingController.connectWallet);
 
 /**
  * @route  GET /api/users/:address

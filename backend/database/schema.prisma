@@ -25,8 +25,13 @@ model User {
   email        String   @unique
   password     String
   refreshToken String?  @map("refresh_token")
+  /// Linked Stellar wallet address — set via POST /api/v1/users/me/wallet
+  walletAddress String? @unique @map("wallet_address")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+
+  escrowTemplates    EscrowTemplate[]
+  onboardingProgress OnboardingChecklist[]
 
   @@map("users")
 }
@@ -128,8 +133,12 @@ model Dispute {
   resolutionType   String?   @map("resolution_type")
   /// Whether this dispute was auto-resolved
   autoResolved     Boolean   @default(false) @map("auto_resolved")
+  categoryId       Int?      @map("category_id")
+  /// Arbiter pool assigned at creation time, copied from the category's default
+  assignedArbiterPoolId String? @map("assigned_arbiter_pool_id")
 
   escrow   Escrow            @relation(fields: [escrowId], references: [id])
+  category DisputeCategory?  @relation(fields: [categoryId], references: [id])
   evidence DisputeEvidence[]
   appeals  DisputeAppeal[]
 
@@ -138,7 +147,21 @@ model Dispute {
   @@index([resolvedAt])
   // Composite index for listing disputes sorted by raisedAt with resolution filter
   @@index([resolvedAt, raisedAt(sort: Desc)])
+  @@index([categoryId])
   @@map("disputes")
+}
+
+model DisputeCategory {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @unique
+  description          String?
+  defaultArbiterPoolId String?  @map("default_arbiter_pool_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  disputes Dispute[]
+
+  @@map("dispute_categories")
 }
 
 model DisputeEvidence {
@@ -328,6 +351,57 @@ model AuditLog {
   @@index([category, createdAt(sort: Desc)])
   @@index([actor, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ── Escrow Templates ──────────────────────────────────────────────────────────
+
+model EscrowTemplate {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  name      String
+  /// { titlePrefix, amount, currency, milestones: [{title, amount}], tags: [] }
+  config    Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("escrow_templates")
+}
+
+// ── Onboarding Checklist ──────────────────────────────────────────────────────
+
+model OnboardingChecklist {
+  id          Int            @id @default(autoincrement())
+  userId      Int            @map("user_id")
+  step        OnboardingStep
+  completedAt DateTime?      @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, step])
+  @@index([userId])
+  @@map("onboarding_checklist")
+}
+
+// ── System Configuration ──────────────────────────────────────────────────────
+
+model SystemConfig {
+  key         String   @id
+  value       String
+  description String?
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_config")
+}
+
+enum OnboardingStep {
+  verify_email
+  connect_wallet
+  create_first_escrow
+  complete_profile
+  invite_counterparty
 }
 
 enum EscrowStatus {

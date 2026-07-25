@@ -27,7 +27,7 @@ import auditRoutes from './api/routes/auditRoutes.js';
 import authRoutes from './api/routes/authRoutes.js';
 import authMiddleware from './api/middleware/auth.js';
 import auditMiddleware from './api/middleware/audit.js';
-import _apiV1Routes from './api/v1/index.js';
+import apiV1Routes from './api/v1/index.js';
 import { deprecatedRoute as _deprecatedRoute } from './api/middleware/version.js';
 import { createWebSocketServer, pool } from './api/websocket/handlers.js';
 import cache from './lib/cache.js';
@@ -140,6 +140,7 @@ app.use('/api/relayer', relayerRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/docs', docsRouter);
 app.use('/api/admin', adminRoutes);
+app.use('/api/v1', apiV1Routes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {

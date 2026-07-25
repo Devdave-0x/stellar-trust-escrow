@@ -3,6 +3,11 @@ import disputeController from '../controllers/disputeController.js';
 
 const router = express.Router();
 
+// ── Create ────────────────────────────────────────────────────────────────────
+
+/** POST /api/disputes — raise a dispute; requires categoryId, auto-assigns arbiter pool */
+router.post('/', disputeController.createDispute);
+
 // ── List / Get ────────────────────────────────────────────────────────────────
 
 /** GET /api/disputes — paginated list */

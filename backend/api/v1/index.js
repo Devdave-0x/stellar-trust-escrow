@@ -2,7 +2,9 @@ import express from 'express';
 import { versioning } from '../middleware/version.js';
 
 import disputeRoutes from '../routes/disputeRoutes.js';
+import disputeCategoryRoutes from '../routes/disputeCategoryRoutes.js';
 import escrowRoutes from '../routes/escrowRoutes.js';
+import escrowTemplateRoutes from '../routes/escrowTemplateRoutes.js';
 import eventRoutes from '../routes/eventRoutes.js';
 import kycRoutes from '../routes/kycRoutes.js';
 import notificationRoutes from '../routes/notificationRoutes.js';
@@ -10,6 +12,7 @@ import paymentRoutes from '../routes/paymentRoutes.js';
 import reputationRoutes from '../routes/reputationRoutes.js';
 import userRoutes from '../routes/userRoutes.js';
 import auditRoutes from '../routes/auditRoutes.js';
+import adminRoutes from '../routes/adminRoutes.js';
 
 const router = express.Router();
 
@@ -17,13 +20,16 @@ const router = express.Router();
 router.use(versioning('v1'));
 
 router.use('/escrows', escrowRoutes);
+router.use('/escrow-templates', escrowTemplateRoutes);
 router.use('/users', userRoutes);
 router.use('/reputation', reputationRoutes);
 router.use('/disputes', disputeRoutes);
+router.use('/dispute-categories', disputeCategoryRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/events', eventRoutes);
 router.use('/kyc', kycRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/audit', auditRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;
