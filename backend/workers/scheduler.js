@@ -7,6 +7,7 @@ import { runGarbageCollector } from '../services/ipfsGarbageCollector.js';
 import { runDisputeEscalationJob } from '../services/disputeEscalationService.js';
 import { purgeScheduledDeletions } from '../services/accountDeletionService.js';
 import { purgeExpiredActivity } from '../services/userActivityService.js';
+import { cancelExpiredDraftEscrows } from './fundingDeadlineJob.js';
 
 // Daily cleanup at 2AM UTC
 cron.schedule(
@@ -40,6 +41,16 @@ cron.schedule(
   },
   { timezone: 'UTC' },
 );
+
+// Hourly sweep: cancel Draft escrows past their funding deadline
+cron.schedule('0 * * * *', async () => {
+  try {
+    const { checked, cancelled } = await cancelExpiredDraftEscrows();
+    console.log(`[Scheduler] Funding deadline sweep: checked=${checked} cancelled=${cancelled}`);
+  } catch (err) {
+    console.error('[Scheduler] Funding deadline sweep failed:', err.message);
+  }
+});
 
 // Daily ES reputation sync at 3AM UTC
 cron.schedule(
