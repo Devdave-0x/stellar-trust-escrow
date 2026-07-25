@@ -29,6 +29,10 @@ async function enqueueNotification(eventType, data) {
       return emailService.notifyMilestoneCompleted(payload);
     case 'dispute.raised':
       return emailService.notifyDisputeRaised(payload);
+    case 'escrow.message_received':
+      return emailService.notifyNewMessage(payload);
+    case 'auth.login_lockout':
+      return emailService.notifyLoginLockout(payload);
     default:
       throw new Error('Unsupported notification event type');
   }

@@ -463,11 +463,45 @@ const updateSettings = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/users/:id/login-history
+ * Full login history (IP + user agent included) for a single user.
+ */
+const getUserLoginHistory = async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const { page, limit, skip } = parsePagination(req.query);
+
+    const [data, total] = await prisma.$transaction([
+      prisma.loginHistory.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.loginHistory.count({ where: { userId } }),
+    ]);
+
+    res.json(buildPaginatedResponse(data, { total, page, limit }));
+  } catch (err) {
+    logControllerError('admin.getUserLoginHistory', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listUsers,
   getUserDetail,
   suspendUser,
   banUser,
+  getUserLoginHistory,
   listDisputes,
   resolveDispute,
   getStats,

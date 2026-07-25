@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { scheduledQueue } from '../queues/index.js';
 import { syncFromPrisma } from '../services/reputationSearchService.js';
+import { cancelExpiredDraftEscrows } from './fundingDeadlineJob.js';
 
 // Daily cleanup at 2AM UTC
 cron.schedule(
@@ -21,6 +22,16 @@ cron.schedule(
 cron.schedule('0 * * * *', async () => {
   console.log('[Scheduler] Running hourly reputation check');
   await scheduledQueue.add('reputation-check', {});
+});
+
+// Hourly sweep: cancel Draft escrows past their funding deadline
+cron.schedule('0 * * * *', async () => {
+  try {
+    const { checked, cancelled } = await cancelExpiredDraftEscrows();
+    console.log(`[Scheduler] Funding deadline sweep: checked=${checked} cancelled=${cancelled}`);
+  } catch (err) {
+    console.error('[Scheduler] Funding deadline sweep failed:', err.message);
+  }
 });
 
 // Daily ES reputation sync at 3AM UTC

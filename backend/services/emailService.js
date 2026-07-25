@@ -9,6 +9,8 @@ import {
 import disputeRaisedTemplate from '../templates/emails/disputeRaised.js';
 import escrowStatusChangedTemplate from '../templates/emails/escrowStatusChanged.js';
 import milestoneCompletedTemplate from '../templates/emails/milestoneCompleted.js';
+import newEscrowMessageTemplate from '../templates/emails/newEscrowMessage.js';
+import loginLockoutTemplate from '../templates/emails/loginLockout.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -144,6 +146,14 @@ async function notifyDisputeRaised(payload) {
   return queueNotifications('dispute.raised', payload, disputeRaisedTemplate);
 }
 
+async function notifyNewMessage(payload) {
+  return queueNotifications('escrow.message_received', payload, newEscrowMessageTemplate);
+}
+
+async function notifyLoginLockout(payload) {
+  return queueNotifications('auth.login_lockout', payload, loginLockoutTemplate);
+}
+
 function resetEmailServiceForTests() {
   preferences.clear();
   __resetForTests();
@@ -156,6 +166,8 @@ export {
   notifyDisputeRaised,
   notifyEscrowStatusChange,
   notifyMilestoneCompleted,
+  notifyNewMessage,
+  notifyLoginLockout,
 };
 
 export default {
@@ -167,5 +179,7 @@ export default {
   notifyDisputeRaised,
   notifyEscrowStatusChange,
   notifyMilestoneCompleted,
+  notifyNewMessage,
+  notifyLoginLockout,
   __resetForTests: resetEmailServiceForTests,
 };

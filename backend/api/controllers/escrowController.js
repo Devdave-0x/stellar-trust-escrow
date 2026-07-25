@@ -165,7 +165,11 @@ const getEscrow = async (req, res) => {
     });
 
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
-    res.json(escrow);
+
+    res.json({
+      ...escrow,
+      hoursUntilDeadline: hoursUntilDeadline(escrow.fundingDeadline),
+    });
   } catch (err) {
     if (err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
@@ -175,12 +179,33 @@ const getEscrow = async (req, res) => {
   }
 };
 
+/** Hours remaining until a funding deadline, or null when there is none / it has passed. */
+function hoursUntilDeadline(fundingDeadline) {
+  if (!fundingDeadline) return null;
+  const diffMs = new Date(fundingDeadline).getTime() - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+}
+
 const broadcastCreateEscrow = async (req, res) => {
   try {
-    const { signedXdr } = req.body;
+    const { signedXdr, fundingDeadline } = req.body;
     if (!signedXdr || typeof signedXdr !== 'string') {
       return res.status(400).json({ error: 'signedXdr is required' });
     }
+
+    if (fundingDeadline !== undefined) {
+      const parsed = new Date(fundingDeadline);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: 'fundingDeadline must be a valid date' });
+      }
+      if (parsed.getTime() <= Date.now()) {
+        return res.status(400).json({ error: 'fundingDeadline must be in the future' });
+      }
+    }
+
+    // Escrow creation happens on-chain (broadcast + indexer, see Issue #20/#27);
+    // fundingDeadline is validated here and will be persisted once that lands.
     res.status(501).json({ error: 'Not implemented - see Issue #20' });
   } catch (err) {
     logControllerError('escrow.broadcastCreateEscrow', err, req);

@@ -7,8 +7,65 @@ import refreshTokenService from '../../services/refreshTokenService.js';
 import tokenBlacklistService from '../../services/tokenBlacklistService.js';
 import tokenMetricsService from '../../services/tokenMetricsService.js';
 import cookieUtils from '../../lib/cookieUtils.js';
+import emailService from '../../services/emailService.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+
+const FAILED_LOGIN_LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_MINUTES = 15;
+
+// ── Login history / lockout helpers ───────────────────────────────────────────
+
+async function recordLoginAttempt({ tenantId, userId, req, success, failureReason }) {
+  try {
+    await prisma.loginHistory.create({
+      data: {
+        tenantId,
+        userId: userId ?? null,
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent') || null,
+        success,
+        failureReason: failureReason || null,
+      },
+    });
+  } catch (err) {
+    console.error('[LoginHistory] Failed to record attempt:', err.message);
+  }
+}
+
+async function sendLockoutAlertEmail(user, lockedUntil) {
+  try {
+    if (!user.email) return;
+    await emailService.notifyLoginLockout({
+      unlockMinutes: LOCKOUT_MINUTES,
+      lockedUntil: lockedUntil.toISOString(),
+      recipients: [{ email: user.email }],
+    });
+  } catch (err) {
+    console.error('[LoginHistory] Failed to send lockout alert email:', err.message);
+  }
+}
+
+/** Locks the account for LOCKOUT_MINUTES after 5 consecutive failed attempts. */
+async function handleFailedLoginAttempt(user) {
+  const recent = await prisma.loginHistory.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: 'desc' },
+    take: FAILED_LOGIN_LOCKOUT_THRESHOLD,
+  });
+
+  const consecutiveFailures = [];
+  for (const attempt of recent) {
+    if (attempt.success) break;
+    consecutiveFailures.push(attempt);
+  }
+
+  if (consecutiveFailures.length < FAILED_LOGIN_LOCKOUT_THRESHOLD) return;
+
+  const lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
+  await prisma.user.update({ where: { id: user.id }, data: { lockedUntil } });
+  await sendLockoutAlertEmail(user, lockedUntil);
+}
 
 function normalizeWalletAddress(body = {}) {
   return body.walletAddress || body.stellarAddress || null;
@@ -109,14 +166,27 @@ export const login = async (req, res) => {
     });
 
     if (!user) {
+      await recordLoginAttempt({ tenantId, userId: null, req, success: false, failureReason: 'user_not_found' });
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      await recordLoginAttempt({ tenantId, userId: user.id, req, success: false, failureReason: 'account_locked' });
+      return res.status(423).json({ error: 'Account locked due to too many failed attempts. Try again later.' });
     }
 
     // Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      await recordLoginAttempt({ tenantId, userId: user.id, req, success: false, failureReason: 'invalid_password' });
+      await handleFailedLoginAttempt(user);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+
+    if (user.lockedUntil) {
+      await prisma.user.update({ where: { id: user.id }, data: { lockedUntil: null } });
+    }
+    await recordLoginAttempt({ tenantId, userId: user.id, req, success: true });
 
     // Generate access token
     const accessToken = generateAccessToken(user);

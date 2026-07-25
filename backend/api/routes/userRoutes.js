@@ -6,6 +6,7 @@ import {
   handleValidationErrors,
 } from '../../middleware/validation.js';
 import exportController from '../controllers/exportController.js';
+import escrowMessageController from '../controllers/escrowMessageController.js';
 import authMiddleware from '../middleware/auth.js';
 import { authorizeParamAddress } from '../middleware/authorization.js';
 
@@ -14,6 +15,18 @@ router.use(authMiddleware);
 
 const validateAddress = [stellarAddressParam('address'), handleValidationErrors];
 const validatePagination = [...paginationQuery, handleValidationErrors];
+
+/**
+ * @route  GET /api/users/me/unread-messages
+ * @desc   Count of unread escrow messages across all of the current user's escrows
+ */
+router.get('/me/unread-messages', escrowMessageController.getUnreadCount);
+
+/**
+ * @route  GET /api/users/me/login-history
+ * @desc   Last 50 login attempts for the current user, newest first
+ */
+router.get('/me/login-history', userController.getMyLoginHistory);
 
 router.get('/:address', validateAddress, userController.getUserProfile);
 router.get('/:address/escrows', validateAddress, validatePagination, userController.getUserEscrows);

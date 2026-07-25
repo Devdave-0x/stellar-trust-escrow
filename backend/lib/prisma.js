@@ -28,6 +28,8 @@ const TENANT_SCOPED_MODELS = new Set([
   'KycVerification',
   'AdminAuditLog',
   'AuditLog',
+  'EscrowMessage',
+  'LoginHistory',
 ]);
 
 const READ_MANY_ACTIONS = new Set([

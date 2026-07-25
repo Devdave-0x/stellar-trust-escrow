@@ -12,6 +12,7 @@ import adminAuth from '../middleware/adminAuth.js';
 import adminController from '../controllers/adminController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
+import announcementController from '../controllers/announcementController.js';
 import { getAuditLog, rotateSecrets } from '../../lib/secrets.js';
 import cache from '../../lib/cache.js';
 
@@ -52,6 +53,13 @@ router.post('/users/:address/suspend', adminController.suspendUser);
  * @body   { reason: string }
  */
 router.post('/users/:address/ban', adminController.banUser);
+
+/**
+ * @route  GET /api/admin/users/:id/login-history
+ * @desc   Full login history (including IP + user agent) for a single user
+ * @query  page, limit
+ */
+router.get('/users/:id/login-history', adminController.getUserLoginHistory);
 
 // ── Disputes ───────────────────────────────────────────────────────────────────
 /**
@@ -116,6 +124,26 @@ router.post('/tenants', tenantController.createTenant);
 router.get('/tenants/:tenantId', tenantController.getTenant);
 router.patch('/tenants/:tenantId', tenantController.updateTenant);
 router.get('/tenants/:tenantId/metrics', tenantController.getTenantMetrics);
+
+// ── Announcements ──────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/announcements
+ * @desc   Create a broadcast announcement (target: all|tenant)
+ * @body   { title, body, target, tenantId?, startsAt?, endsAt, createdBy? }
+ */
+router.post('/announcements', announcementController.createAnnouncement);
+
+/**
+ * @route  PATCH /api/admin/announcements/:id
+ * @desc   Update an announcement
+ */
+router.patch('/announcements/:id', announcementController.updateAnnouncement);
+
+/**
+ * @route  DELETE /api/admin/announcements/:id
+ * @desc   Soft-delete an announcement
+ */
+router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
 // ── Feature Flags ─────────────────────────────────────────────────────────────
 router.get('/flags', featureFlagController.index);

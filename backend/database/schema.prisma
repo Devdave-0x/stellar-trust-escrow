@@ -52,6 +52,9 @@ model Tenant {
   kycVerifications  KycVerification[]
   adminAuditLogs    AdminAuditLog[]
   auditLogs         AuditLog[]
+  escrowMessages    EscrowMessage[]
+  announcements     Announcement[]
+  loginHistory      LoginHistory[]
 
   @@map("tenants")
 }
@@ -59,16 +62,21 @@ model Tenant {
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id           Int      @id @default(autoincrement())
-  tenantId     String   @map("tenant_id")
-  email        String   @unique
-  password     String
-  walletAddress String? @unique @map("wallet_address")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id")
+  email         String   @unique
+  password      String
+  walletAddress String?  @unique @map("wallet_address")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
-  refreshTokens RefreshToken[]
+  /// Set when the account is locked after repeated failed login attempts; null when unlocked
+  lockedUntil DateTime? @map("locked_until")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  refreshTokens  RefreshToken[]
+  escrowMessages EscrowMessage[]
+  loginHistory   LoginHistory[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
@@ -78,18 +86,18 @@ model User {
 // ── Refresh Tokens ─────────────────────────────────────────────────────────────
 
 model RefreshToken {
-  id         String   @id @default(cuid())
-  userId     Int      @map("user_id")
-  tenantId   String   @map("tenant_id")
-  tokenHash  String   @unique @map("token_hash")
-  deviceInfo Json?    @map("device_info")
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  isActive   Boolean  @default(true) @map("is_active")
-  expiresAt  DateTime @map("expires_at")
+  id         String    @id @default(cuid())
+  userId     Int       @map("user_id")
+  tenantId   String    @map("tenant_id")
+  tokenHash  String    @unique @map("token_hash")
+  deviceInfo Json?     @map("device_info")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  isActive   Boolean   @default(true) @map("is_active")
+  expiresAt  DateTime  @map("expires_at")
   lastUsedAt DateTime? @map("last_used_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -115,14 +123,17 @@ model Escrow {
   status            EscrowStatus
   briefHash         String       @map("brief_hash") // IPFS / content hash
   deadline          DateTime?
+  /// Deadline by which a Draft escrow must be funded on-chain before it is auto-cancelled
+  fundingDeadline   DateTime?    @map("funding_deadline")
   createdAt         DateTime     @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
   /// Stellar ledger sequence when this escrow was created
   createdLedger     BigInt       @map("created_ledger")
 
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
   milestones Milestone[]
   dispute    Dispute?
+  messages   EscrowMessage[]
 
   @@index([tenantId])
   @@index([tenantId, clientAddress])
@@ -136,6 +147,8 @@ model Escrow {
   @@index([status])
   // Composite index for filtered + sorted list queries
   @@index([status, createdAt(sort: Desc)])
+  // Composite index for the hourly funding-deadline auto-cancel job
+  @@index([status, fundingDeadline])
   // Composite index for user profile / user escrows OR queries
   @@index([clientAddress, createdAt(sort: Desc)])
   @@index([freelancerAddress, createdAt(sort: Desc)])
@@ -484,6 +497,7 @@ model AuditLog {
 }
 
 enum EscrowStatus {
+  Draft
   Active
   Completed
   Disputed
@@ -524,4 +538,74 @@ enum PaymentStatus {
   Completed
   Failed
   Refunded
+}
+
+// ── Escrow Messages ──────────────────────────────────────────────────────────
+
+model EscrowMessage {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @map("tenant_id")
+  escrowId  BigInt   @map("escrow_id")
+  senderId  Int      @map("sender_id")
+  body      String
+  /// Array of User ids that have read this message
+  readBy    Json     @default("[]") @map("read_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  escrow Escrow @relation(fields: [escrowId], references: [id])
+  sender User   @relation(fields: [senderId], references: [id])
+
+  @@index([tenantId, escrowId, createdAt(sort: Desc)])
+  @@index([escrowId])
+  @@index([senderId])
+  @@map("escrow_messages")
+}
+
+// ── Announcements ─────────────────────────────────────────────────────────────
+
+enum AnnouncementTarget {
+  all
+  tenant
+}
+
+model Announcement {
+  id        Int                @id @default(autoincrement())
+  title     String
+  body      String
+  target    AnnouncementTarget @default(all)
+  /// Only set when target = tenant; null means every tenant (target = all)
+  tenantId  String?            @map("tenant_id")
+  startsAt  DateTime           @map("starts_at")
+  endsAt    DateTime           @map("ends_at")
+  createdBy String             @map("created_by")
+  deletedAt DateTime?          @map("deleted_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([target, tenantId, startsAt, endsAt])
+  @@index([deletedAt])
+  @@map("announcements")
+}
+
+// ── Login History ─────────────────────────────────────────────────────────────
+
+model LoginHistory {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id")
+  userId        Int?     @map("user_id")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  success       Boolean
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId, createdAt(sort: Desc)])
+  @@index([userId, success, createdAt(sort: Desc)])
+  @@map("login_history")
 }
