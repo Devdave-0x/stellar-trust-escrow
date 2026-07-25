@@ -17,19 +17,22 @@
  * - Handle empty milestones array with an informative empty state
  */
 
+import EmptyState from '../ui/EmptyState';
 import MilestoneItem from './MilestoneItem';
 
 export default function MilestoneList({ milestones = [], role, onApprove, onReject, onSubmit }) {
   if (milestones.length === 0) {
     return (
-      <div className="card text-center py-10 text-gray-500">
-        <p className="text-lg mb-1">No milestones yet</p>
-        <p className="text-sm">
-          {role === 'client'
-            ? 'Add milestones to define the project deliverables.'
-            : 'The client has not added any milestones yet.'}
-        </p>
-        {/* TODO (contributor — Issue #40): add "Add Milestone" button for client */}
+      <div className="card">
+        <EmptyState
+          type="escrows"
+          title="No milestones yet"
+          description={
+            role === 'client'
+              ? 'Add milestones to define the project deliverables.'
+              : 'The client has not added any milestones yet.'
+          }
+        />
       </div>
     );
   }

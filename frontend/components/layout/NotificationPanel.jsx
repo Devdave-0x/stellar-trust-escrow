@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
+import EmptyState from '../ui/EmptyState';
 
 const EVENT_LABELS = {
   escrow_funded: 'Escrow funded',
@@ -100,8 +101,13 @@ export default function NotificationPanel({ notifications, onMarkRead, onMarkAll
         {/* List */}
         <ul className="overflow-y-auto flex-1 divide-y divide-gray-100 dark:divide-gray-800">
           {notifications.length === 0 ? (
-            <li className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              No notifications yet
+            <li className="px-2 py-4">
+              <EmptyState
+                type="notifications"
+                title="No notifications yet"
+                description="You're all caught up! New notifications will appear here."
+                className="scale-75 py-4"
+              />
             </li>
           ) : (
             notifications.map((n) => (
