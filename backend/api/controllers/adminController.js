@@ -14,8 +14,10 @@ import keyRotationService from '../../services/keyRotationService.js';
 import { TIER_LIMITS } from '../../config/rateLimits.js';
 import { logControllerError, getLogger } from '../../config/logger.js';
 import { getUserUsage } from '../middleware/rateLimiter.js';
+import { ESCROW_STATUSES, isValidTransition } from '../../lib/escrowTransitions.js';
 
 const adminLog = getLogger();
+const MAX_BULK_ESCROW_IDS = 50;
 
 // JSON.stringify does not guarantee key order, so two objects with the same
 // contents but different insertion order produce different cache keys.
@@ -418,6 +420,92 @@ const resolveDispute = async (req, res) => {
     res.json({ message: 'Dispute resolved.', dispute: result.dispute });
   } catch (err) {
     logControllerError('admin.resolveDispute', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── Escrows ────────────────────────────────────────────────────────────────────
+
+/**
+ * PATCH /api/admin/escrows/bulk-status
+ * Bulk-updates the status of up to 50 escrows. Partial failures do not roll
+ * back successful updates; each outcome is reported individually.
+ *
+ * Body: { escrow_ids: string[], status: string, reason?: string }
+ */
+const bulkUpdateEscrowStatus = async (req, res) => {
+  try {
+    const { escrow_ids: escrowIds, status, reason = '' } = req.body ?? {};
+    const tenantId = req.tenant?.id;
+
+    if (!Array.isArray(escrowIds) || escrowIds.length === 0) {
+      return res.status(400).json({ error: 'escrow_ids must be a non-empty array' });
+    }
+    if (escrowIds.length > MAX_BULK_ESCROW_IDS) {
+      return res
+        .status(400)
+        .json({ error: `A maximum of ${MAX_BULK_ESCROW_IDS} escrow_ids are allowed per request` });
+    }
+    if (!ESCROW_STATUSES.includes(status)) {
+      return res
+        .status(400)
+        .json({ error: `status must be one of: ${ESCROW_STATUSES.join(', ')}` });
+    }
+
+    let updated = 0;
+    const failed = [];
+
+    for (const rawId of escrowIds) {
+      let escrowId;
+      try {
+        escrowId = BigInt(rawId);
+      } catch {
+        failed.push({ escrow_id: String(rawId), reason: 'Invalid escrow id' });
+        continue;
+      }
+
+      try {
+        // Per-escrow transaction: read → validate transition → update → audit log.
+        // Isolated per id so one failure never rolls back prior successes.
+        const result = await prisma.$transaction(async (tx) => {
+          const escrow = await tx.escrow.findFirst({
+            where: { id: escrowId, ...(tenantId ? { tenantId } : {}) },
+            select: { id: true, status: true },
+          });
+
+          if (!escrow) return { error: 'Escrow not found' };
+          if (!isValidTransition(escrow.status, status)) {
+            return { error: `Invalid transition: ${escrow.status} -> ${status}` };
+          }
+
+          await tx.escrow.update({ where: { id: escrowId }, data: { status } });
+          await tx.adminAuditLog.create({
+            data: {
+              action: 'BULK_ESCROW_STATUS_UPDATE',
+              targetAddress: escrowId.toString(),
+              reason,
+              performedBy: 'admin',
+              performedAt: new Date(),
+            },
+          });
+
+          return { ok: true };
+        });
+
+        if (result.error) {
+          failed.push({ escrow_id: escrowId.toString(), reason: result.error });
+        } else {
+          updated += 1;
+        }
+      } catch (err) {
+        failed.push({ escrow_id: escrowId.toString(), reason: err.message });
+      }
+    }
+
+    if (updated > 0) await cache.invalidatePrefix('escrows');
+    res.json({ updated, failed });
+  } catch (err) {
+    logControllerError('admin.bulkUpdateEscrowStatus', err, req);
     res.status(500).json({ error: err.message });
   }
 };
@@ -893,6 +981,7 @@ export default {
   suspendUser,
   unsuspendUser,
   banUser,
+  bulkUpdateEscrowStatus,
   listDisputes,
   resolveDispute,
   getStats,

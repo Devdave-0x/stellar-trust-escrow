@@ -64,6 +64,11 @@ model Tenant {
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   apiKeys                 ApiKey[]
+  chatRoomKeys         ChatRoomKey[]
+  chatMessages         ChatMessage[]
+  referrals            Referral[]
+  tags                 Tag[]
+  escrowNotes          EscrowNote[]
 
   @@map("tenants")
 }
@@ -96,6 +101,7 @@ model User {
   mfaAttempts             MfaAttempt[]
   notifications           Notification[]
   notificationPreference  NotificationPreference?
+  emailVerificationTokens EmailVerificationToken[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
@@ -182,6 +188,27 @@ model MfaLockout {
 enum MfaType {
   TOTP
   WEBAUTHN
+}
+
+// ── Referrals ─────────────────────────────────────────────────────────────────
+
+/// Referrer/referred are Stellar wallet addresses (not hard FKs into `users`),
+/// mirroring UserProfile.address — most authenticated callers never get a
+/// `users` row, since this app authenticates by wallet signature.
+model Referral {
+  id              Int       @id @default(autoincrement())
+  tenantId        String    @map("tenant_id")
+  referrerAddress String    @map("referrer_address")
+  /// One referred address can only appear once — referred at most once
+  referredAddress String    @unique @map("referred_address")
+  codeUsed        String    @map("code_used")
+  rewardedAt      DateTime? @map("rewarded_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, referrerAddress])
+  @@map("referrals")
 }
 
 // ── Refresh Tokens ─────────────────────────────────────────────────────────────
@@ -279,9 +306,13 @@ model Escrow {
   /// Max 20 keys; values restricted to string/number/boolean — enforced in the API layer.
   metadata          Json?
 
+  frozenAt     DateTime?    @map("frozen_at")
+  freezeReason String?      @map("freeze_reason")
+
   tenant     Tenant      @relation(fields: [tenantId], references: [id])
   milestones Milestone[]
   dispute    Dispute?
+  adminNotes EscrowNote[]
 
   @@index([tenantId])
   @@index([tenantId, clientAddress])
@@ -309,9 +340,6 @@ model Escrow {
    @@index([deletedAt])
    @@index([tenantId, deletedAt])
    @@map("escrows")
-  frozenAt     DateTime?    @map("frozen_at")
-  freezeReason String?      @map("freeze_reason")
-  adminNotes   EscrowNote[]
 }
 
 // ── Escrow Notes ───────────────────────────────────────────────────────────────
@@ -549,6 +577,8 @@ model UserProfile {
   avatarUrl   String?  @map("avatar_url")
   timezone    String?  // IANA timezone identifier, e.g. "America/New_York"
   preferences Json?
+  /// Unique 8-char alphanumeric code used to refer new users
+  referralCode String? @unique @map("referral_code")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -852,6 +882,21 @@ model EscrowAuditLog {
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([actorId, createdAt(sort: Desc)])
   @@map("escrow_audit_log")
+}
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+
+model Tag {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId, name])
+  @@map("tags")
 }
 
 // ── Feature Flags ─────────────────────────────────────────────────────────────

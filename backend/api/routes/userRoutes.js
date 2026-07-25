@@ -1,5 +1,6 @@
 import express from 'express';
 import userController from '../controllers/userController.js';
+import referralController from '../controllers/referralController.js';
 import {
   stellarAddressParam,
   paginationQuery,
@@ -46,6 +47,18 @@ router.delete('/me/sessions/:id', sessionController.revokeSession);
  * @desc   Revoke every session except the current one ("sign out everywhere else").
  */
 router.delete('/me/sessions', sessionController.revokeAllSessions);
+
+/**
+ * @route  GET /api/users/me/referral
+ * @desc   The caller's referral code, total referrals, and pending rewards.
+ */
+router.get('/me/referral', referralController.getMyReferral);
+
+/**
+ * @route  GET /api/users/me/referrals
+ * @desc   Anonymised list of users referred by the caller (joined date only).
+ */
+router.get('/me/referrals', referralController.getMyReferrals);
 
 router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
 router.get(
