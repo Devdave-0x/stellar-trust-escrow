@@ -9,6 +9,9 @@ import crypto, { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import sessionService from '../../services/sessionService.js';
+import prisma from '../../lib/prisma.js';
+import mfaService from '../../services/mfaService.js';
+import { deviceNameFromUserAgent } from '../../lib/deviceName.js';
 import { JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
@@ -48,16 +51,18 @@ function getClientIp(req) {
 }
 
 async function createSessionJti(address, req) {
-  if (typeof sessionService?.createSession !== 'function') {
-    return randomUUID();
+  const jti = randomUUID();
+
+  if (typeof sessionService?.recordSession === 'function') {
+    await sessionService.recordSession({
+      userId: address,
+      jti,
+      deviceName: deviceNameFromUserAgent(req.headers['user-agent']),
+      ipAddress: getClientIp(req),
+    });
   }
 
-  return sessionService.createSession({
-    address,
-    userAgent: req.headers['user-agent'],
-    ipAddress: getClientIp(req),
-    expiresIn: JWT_EXPIRES_IN,
-  });
+  return jti;
 }
 
 export const getNonce = (req, res) => {
@@ -123,7 +128,8 @@ export const verifySignatureAndLogin = async (req, res) => {
         address,
         expiresIn: JWT_EXPIRES_IN,
         mfaRequired: true,
-        message: 'MFA verification required. Use the token to authenticate at /api/mfa/totp/verify.',
+        message:
+          'MFA verification required. Use the token to authenticate at /api/mfa/totp/verify.',
       });
     }
   }
@@ -139,8 +145,8 @@ export const refreshToken = async (req, res) => {
 
   try {
     const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
-    if (payload.jti && typeof sessionService?.revokeSession === 'function') {
-      await sessionService.revokeSession(payload.jti);
+    if (payload.jti && typeof sessionService?.revokeSessionByJti === 'function') {
+      await sessionService.revokeSessionByJti(payload.jti);
     }
 
     const jti = await createSessionJti(payload.address, req);
@@ -161,8 +167,8 @@ export const logout = async (req, res) => {
   if (authHeader?.startsWith('Bearer ')) {
     try {
       const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
-      if (payload.jti && typeof sessionService?.revokeSession === 'function') {
-        await sessionService.revokeSession(payload.jti);
+      if (payload.jti && typeof sessionService?.revokeSessionByJti === 'function') {
+        await sessionService.revokeSessionByJti(payload.jti);
       }
     } catch {
       // Logout is idempotent; invalid tokens are treated as already logged out.
@@ -172,54 +178,12 @@ export const logout = async (req, res) => {
   return res.json({ ok: true });
 };
 
-export const listSessions = async (req, res) => {
-  try {
-    const address = req.user?.address ?? req.user?.userId;
-    if (!address) return res.status(401).json({ error: 'Authentication required' });
-
-    const sessions =
-      typeof sessionService?.listSessions === 'function'
-        ? await sessionService.listSessions(address)
-        : [];
-    return res.json({ data: sessions });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
-
-export const revokeSession = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!id) return res.status(400).json({ error: 'Session id required' });
-    if (typeof sessionService?.revokeSession === 'function') {
-      await sessionService.revokeSession(id);
-    }
-    return res.json({ ok: true });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
-
-export const revokeAllSessions = async (req, res) => {
-  try {
-    const address = req.user?.address ?? req.user?.userId;
-    if (!address) return res.status(401).json({ error: 'Authentication required' });
-
-    if (typeof sessionService?.revokeAllSessions === 'function') {
-      await sessionService.revokeAllSessions(address);
-    }
-    return res.json({ ok: true });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
+// Session listing/revocation lives in sessionController.js (also mounted at
+// /api/users/me/sessions) — /api/auth/sessions* routes delegate to it.
 
 export default {
   getNonce,
   verifySignatureAndLogin,
   refreshToken,
   logout,
-  listSessions,
-  revokeSession,
-  revokeAllSessions,
 };

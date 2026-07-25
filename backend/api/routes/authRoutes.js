@@ -1,5 +1,6 @@
 import express from 'express';
 import authController from '../controllers/authController.js';
+import sessionController from '../controllers/sessionController.js';
 import authMiddleware from '../middleware/auth.js';
 import { validate } from '../../middleware/zodValidate.js';
 import { nonceSchema, verifySchema, refreshSchema } from '../../../shared/schemas/auth.js';
@@ -21,9 +22,9 @@ router.post('/refresh', validate(refreshSchema), authController.refreshToken);
 router.post('/logout', authController.logout);
 
 /** Session management */
-router.get('/sessions', authMiddleware, authController.listSessions);
-router.delete('/sessions/:id', authMiddleware, authController.revokeSession);
-router.delete('/sessions', authMiddleware, authController.revokeAllSessions);
+router.get('/sessions', authMiddleware, sessionController.listSessions);
+router.delete('/sessions/:id', authMiddleware, sessionController.revokeSession);
+router.delete('/sessions', authMiddleware, sessionController.revokeAllSessions);
 
 // ── 2FA convenience aliases (issue #76) ───────────────────────────────────────
 // POST /api/auth/2fa/setup  → initialise TOTP and return QR code
