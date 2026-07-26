@@ -74,6 +74,8 @@ pub enum EcErr {
     NotInitialized = 76,
     /// Platform treasury address has not been configured
     TreasuryNotConfigured = 77,
+    /// Escrow already has the maximum number of arbiters assigned
+    TooManyArbiters = 78,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
