@@ -71,6 +71,7 @@ mod batch_approve_release_e2e_tests;
 mod bridge;
 mod bridge_tests;
 mod dispute_cooldown_tests;
+mod dust_threshold;
 mod errors;
 mod event_names;
 mod event_tests;
