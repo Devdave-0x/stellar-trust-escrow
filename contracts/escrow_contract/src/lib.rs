@@ -77,6 +77,7 @@ mod event_names;
 mod event_tests;
 mod events;
 mod fuzz_tests;
+mod get_escrow_states_tests;
 mod governance_escalation_tests;
 mod integration_lifecycle_tests;
 mod lock_time_enforcement_tests;
@@ -5137,6 +5138,29 @@ impl EscrowContract {
 
     pub fn get_escrow(env: Env, escrow_id: u64) -> Result<EscrowState, EscrowError> {
         ContractStorage::load_escrow(&env, escrow_id)
+    }
+
+    /// Batch view: returns the state of several escrows in a single call, to
+    /// reduce round trips for clients that need to poll multiple escrows.
+    ///
+    /// Capped at `MAX_BATCH_ESCROW_STATES` (20) IDs per call — returns
+    /// `EscrowError::BatchTooLarge` if exceeded. Unknown escrow IDs are simply
+    /// omitted from the result map rather than causing an error.
+    pub fn get_escrow_states(
+        env: Env,
+        escrow_ids: soroban_sdk::Vec<u64>,
+    ) -> Result<soroban_sdk::Map<u64, EscrowState>, EscrowError> {
+        if escrow_ids.len() > MAX_BATCH_ESCROW_STATES {
+            return Err(EscrowError::BatchTooLarge);
+        }
+
+        let mut result = soroban_sdk::Map::new(&env);
+        for escrow_id in escrow_ids.iter() {
+            if let Ok(state) = ContractStorage::load_escrow(&env, escrow_id) {
+                result.set(escrow_id, state);
+            }
+        }
+        Ok(result)
     }
 
     /// O(1) lightweight view — returns only the escrow header without loading milestones.
