@@ -142,3 +142,8 @@ pub const LIMITS_UPDATED: Symbol = symbol_short!("lim_upd");
 // ── Dispute fees ─────────────────────────────────────────────────────────────
 
 pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");
+
+// ── Admin transfer (two-step, with timestamp) ────────────────────────────────
+
+pub const ADMIN_TRANSFERRED: Symbol = symbol_short!("adm_trf");
+pub const ADMIN_ACCEPTED: Symbol = symbol_short!("adm_acc");

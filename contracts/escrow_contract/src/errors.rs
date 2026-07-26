@@ -78,6 +78,10 @@ pub enum EcErr {
     RecipientBlocked = 78,
     /// Release amount is below the minimum dust threshold
     AmountBelowDustThreshold = 79,
+    /// Milestone duration (deadline_ledger - current_ledger) is below MIN_MILESTONE_DURATION_LEDGERS
+    MilestoneTooShort = 80,
+    /// Batch request exceeded the maximum allowed number of escrow IDs
+    BatchTooLarge = 81,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
