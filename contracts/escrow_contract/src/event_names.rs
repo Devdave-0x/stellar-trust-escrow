@@ -142,3 +142,7 @@ pub const LIMITS_UPDATED: Symbol = symbol_short!("lim_upd");
 // ── Dispute fees ─────────────────────────────────────────────────────────────
 
 pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");
+
+// ── Milestone title (canonical create_milestone entry point) ──────────────────
+
+pub const MILESTONE_CREATED: Symbol = symbol_short!("mile_crt");

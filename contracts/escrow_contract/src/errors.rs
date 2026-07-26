@@ -74,6 +74,8 @@ pub enum EcErr {
     NotInitialized = 76,
     /// Platform treasury address has not been configured
     TreasuryNotConfigured = 77,
+    /// Milestone title exceeds the maximum allowed length (64 bytes).
+    MilestoneTitleTooLong = 78,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
