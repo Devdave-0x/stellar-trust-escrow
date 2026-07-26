@@ -74,6 +74,10 @@ pub enum EcErr {
     NotInitialized = 76,
     /// Platform treasury address has not been configured
     TreasuryNotConfigured = 77,
+    /// Milestone duration (deadline_ledger - current_ledger) is below MIN_MILESTONE_DURATION_LEDGERS
+    MilestoneTooShort = 78,
+    /// Batch request exceeded the maximum allowed number of escrow IDs
+    BatchTooLarge = 79,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
