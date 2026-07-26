@@ -349,6 +349,16 @@ pub struct RecurringPaymentConfig {
     pub last_payment_at: Option<u64>,
 }
 
+/// Read-only view of an escrow's parties, for third parties (auditors,
+/// investors) who need to verify escrow details without participant permissions.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowParticipants {
+    pub buyer: Address,
+    pub seller: Address,
+    pub arbiters: soroban_sdk::Vec<Address>,
+}
+
 /// The main escrow agreement.
 ///
 /// One escrow can contain multiple milestones. Funds for all milestones
