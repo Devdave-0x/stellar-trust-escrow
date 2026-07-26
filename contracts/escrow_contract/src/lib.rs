@@ -73,6 +73,7 @@ mod bridge;
 mod bridge_tests;
 mod dispute_cooldown_tests;
 mod errors;
+mod escrow_creator_count;
 mod event_names;
 mod event_tests;
 mod events;
@@ -2113,6 +2114,8 @@ impl EscrowContract {
         );
 
         events::emit_escrow_created(&env, escrow_id, &client, &freelancer, total_amount);
+
+        escrow_creator_count::increment(&env, &client);
 
         if let Some(initial_arbiter) = arbiter_for_cap {
             let mut arbiters = arbiter_limit::load_arbiter_list(&env, escrow_id);
@@ -6178,6 +6181,16 @@ impl EscrowContract {
     /// Returns whether `nonce` has already been consumed.
     pub fn is_nonce_used(env: Env, nonce: BytesN<32>) -> bool {
         nonce_registry::is_nonce_used(&env, &nonce)
+    }
+
+    // ── Escrow count by creator (issue: per-address analytics) ─────────────
+
+    /// Returns the number of escrows created by `address`.
+    pub fn get_escrow_count(env: Env, address: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::EscrowCountByCreator(address))
+            .unwrap_or(0u32)
     }
 }
 
