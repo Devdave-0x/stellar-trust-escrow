@@ -96,7 +96,7 @@ export default function CurrencyAmount({
       )}
 
       {/* Legacy USDC subtitle */}
-      {usdcStr && <span className={`${classes.sub} text-gray-500">{usdcStr}</span>}
+      {usdcStr && <span className={`${classes.sub} text-gray-500`}>{usdcStr}</span>}
     </span>
   );
 }

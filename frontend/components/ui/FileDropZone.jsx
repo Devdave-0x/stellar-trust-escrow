@@ -22,7 +22,8 @@
  */
 
 import { useCallback, useRef, useState, useId } from 'react';
-import { Upload, X, FileText, Image, Film, File, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, X, FileText, Image, Film, File, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
+import { formatFileSize, isOverSizeWarningThreshold } from '../../lib/formatFileSize';
 
 const DEFAULT_ACCEPTED = {
   'application/pdf': 'PDF',
@@ -37,12 +38,6 @@ const DEFAULT_ACCEPTED = {
 const DEFAULT_MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 const DEFAULT_MAX_FILES = 10;
 
-function formatBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function getFileIcon(type) {
   if (type.startsWith('image/'))
     return <Image size={16} className="text-indigo-400" aria-hidden="true" />;
@@ -55,16 +50,17 @@ function getFileIcon(type) {
 
 // ── File row ──────────────────────────────────────────────────────────────────
 
-function FileRow({ file, onCancel }) {
+function FileRow({ file, onCancel, maxSizeBytes }) {
   const isDone = file.progress >= 100 && !file.error;
   const isCancelled = file.cancelled;
+  const isNearLimit = !file.error && maxSizeBytes && isOverSizeWarningThreshold(file.size, maxSizeBytes);
 
   return (
     <li
       className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300"
       style={{
         background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.06)',
+        border: `1px solid ${isNearLimit && !isDone ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.06)'}`,
         animation: 'slideInFile 0.25s ease-out both',
         opacity: isCancelled ? 0.4 : 1,
       }}
@@ -77,7 +73,20 @@ function FileRow({ file, onCancel }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-1">
           <span className="text-xs text-white font-medium truncate">{file.name}</span>
-          <span className="text-[10px] text-gray-500 flex-shrink-0">{formatBytes(file.size)}</span>
+          <span className="text-[10px] flex-shrink-0 flex items-center gap-1">
+            {isNearLimit && !isDone && !file.error && (
+              <span
+                className="text-amber-400"
+                title="File size is over 80% of the allowed limit"
+                aria-label="Warning: file size near limit"
+              >
+                <AlertTriangle size={11} aria-hidden="true" />
+              </span>
+            )}
+            <span className={isNearLimit && !isDone && !file.error ? 'text-amber-400' : 'text-gray-500'}>
+              {formatFileSize(file.size)}
+            </span>
+          </span>
         </div>
 
         {file.error ? (
