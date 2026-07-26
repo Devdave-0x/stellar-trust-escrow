@@ -148,3 +148,11 @@ pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");
 
 pub const ADMIN_TRANSFERRED: Symbol = symbol_short!("adm_trf");
 pub const ADMIN_ACCEPTED: Symbol = symbol_short!("adm_acc");
+
+// ── Milestone title (canonical create_milestone entry point) ──────────────────
+
+pub const MILESTONE_CREATED: Symbol = symbol_short!("mile_crt");
+
+// ── Escrow creation timing record ──────────────────────────────────────────────
+
+pub const ESCROW_CREATION_TIME: Symbol = symbol_short!("esc_ctim");

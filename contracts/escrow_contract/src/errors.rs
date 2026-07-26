@@ -88,6 +88,8 @@ pub enum EcErr {
     NonceAlreadyUsed = 83,
     /// Escrow participant list exceeds MAX_PARTICIPANTS.
     TooManyParticipants = 84,
+    /// Milestone title exceeds the maximum allowed length (64 bytes).
+    MilestoneTitleTooLong = 85,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
