@@ -64,6 +64,7 @@
 #![deny(warnings)]
 #![allow(clippy::too_many_arguments)]
 
+mod admin_transfer_event_tests;
 mod admin_transfer_tests;
 mod arbiter_reputation_tests;
 mod batch_add_milestones_cap_tests;
@@ -78,11 +79,14 @@ mod event_names;
 mod event_tests;
 mod events;
 mod fuzz_tests;
+mod get_escrow_states_tests;
+mod get_participants_tests;
 mod governance_escalation_tests;
 mod integration_lifecycle_tests;
 mod lock_time_enforcement_tests;
 mod max_escrow_amount_tests;
 mod meta_snapshot_tests;
+mod min_milestone_duration_tests;
 mod nft;
 mod nft_tests;
 mod oracle;
@@ -106,7 +110,7 @@ mod version_tests;
 pub use errors::EscrowError;
 use storage::StorageManager;
 pub use types::{
-    ApprovalRecord, DataKey, DisputeInfo, EscrowFeeSnapshot, EscrowState, EscrowStatus,
+    ApprovalRecord, DataKey, DisputeInfo, EscrowFeeSnapshot, EscrowParticipants, EscrowState, EscrowStatus,
     EscrowTemplate, FeeTier, Milestone, MilestoneStatus, MilestoneTemplate, MultisigConfig,
     OptionalBytesN32, OptionalPriceCondition, OptionalTimelock, OracleResolutionPayload,
     PriceCondition, PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord,
@@ -154,6 +158,11 @@ const RENT_PERIOD_SECONDS: u64 = 86_400;
 const RENT_RESERVE_PERIODS: u64 = 30;
 const RENT_PER_ENTRY_PER_PERIOD: i128 = 1;
 pub const MAX_MILESTONES: u32 = 20;
+/// Minimum allowed milestone duration in ledgers (~8 minutes on Stellar, at ~5s/ledger).
+/// Milestones with a shorter window are almost always a mistake by the caller.
+pub const MIN_MILESTONE_DURATION_LEDGERS: u32 = 100;
+/// Maximum number of escrow IDs accepted by `get_escrow_states` in one call.
+pub const MAX_BATCH_ESCROW_STATES: u32 = 20;
 pub const MAX_STRING_LEN: u32 = 256;
 pub const MAX_BUYER_SIGNERS: u32 = 10;
 
@@ -2401,6 +2410,36 @@ impl EscrowContract {
 
         events::emit_milestone_added(env, escrow_id, milestone_id, amount);
         Ok(milestone_id)
+    }
+
+    /// Creates a milestone with an optional deadline, enforcing a minimum duration.
+    ///
+    /// When `deadline_ledger` is provided, `deadline_ledger - current_ledger` must be
+    /// at least `MIN_MILESTONE_DURATION_LEDGERS` (~8 minutes on Stellar); otherwise
+    /// `EscrowError::MilestoneTooShort` is returned. When no deadline is given, the
+    /// check is skipped and this behaves like `add_milestone`.
+    pub fn create_milestone(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        title: String,
+        description_hash: BytesN<32>,
+        amount: i128,
+        deadline_ledger: Option<u32>,
+    ) -> Result<u32, EscrowError> {
+        if let Some(deadline) = deadline_ledger {
+            let current_ledger = env.ledger().sequence();
+            let duration = deadline.saturating_sub(current_ledger);
+            if duration < MIN_MILESTONE_DURATION_LEDGERS {
+                return Err(EscrowError::MilestoneTooShort);
+            }
+        }
+
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+
+        Self::add_milestone_internal(&env, &caller, escrow_id, title, description_hash, amount)
     }
 
     /// Adds a milestone defined by a percentage of the escrow's total amount.
@@ -4829,6 +4868,7 @@ impl EscrowContract {
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_proposed(&env, &caller, &new_admin);
+        events::emit_admin_transferred(&env, &caller, &new_admin);
         Ok(())
     }
 
@@ -4862,6 +4902,7 @@ impl EscrowContract {
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_changed(&env, &old_admin, &caller);
+        events::emit_admin_accepted(&env, &caller);
         Ok(())
     }
 
@@ -5104,12 +5145,51 @@ impl EscrowContract {
         ContractStorage::load_escrow(&env, escrow_id)
     }
 
+    /// Batch view: returns the state of several escrows in a single call, to
+    /// reduce round trips for clients that need to poll multiple escrows.
+    ///
+    /// Capped at `MAX_BATCH_ESCROW_STATES` (20) IDs per call — returns
+    /// `EscrowError::BatchTooLarge` if exceeded. Unknown escrow IDs are simply
+    /// omitted from the result map rather than causing an error.
+    pub fn get_escrow_states(
+        env: Env,
+        escrow_ids: soroban_sdk::Vec<u64>,
+    ) -> Result<soroban_sdk::Map<u64, EscrowState>, EscrowError> {
+        if escrow_ids.len() > MAX_BATCH_ESCROW_STATES {
+            return Err(EscrowError::BatchTooLarge);
+        }
+
+        let mut result = soroban_sdk::Map::new(&env);
+        for escrow_id in escrow_ids.iter() {
+            if let Ok(state) = ContractStorage::load_escrow(&env, escrow_id) {
+                result.set(escrow_id, state);
+            }
+        }
+        Ok(result)
+    }
+
     /// O(1) lightweight view — returns only the escrow header without loading milestones.
     /// Suitable for monitoring dashboards that only need status, balances, and party info.
     pub fn get_escrow_meta(env: Env, escrow_id: u64) -> Result<EscrowMeta, EscrowError> {
         let mut meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
         ContractStorage::settle_rent_for_access(&env, &mut meta)?;
         Ok(meta)
+    }
+
+    /// Read-only view of an escrow's parties — buyer, seller, and any arbiters.
+    /// Callable by anyone (no participant permissions required), for auditors
+    /// and investors who need to verify escrow details.
+    pub fn get_participants(env: Env, escrow_id: u64) -> Result<EscrowParticipants, EscrowError> {
+        let meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+        let mut arbiters = soroban_sdk::Vec::new(&env);
+        if let Some(arbiter) = meta.arbiter {
+            arbiters.push_back(arbiter);
+        }
+        Ok(EscrowParticipants {
+            buyer: meta.client,
+            seller: meta.freelancer,
+            arbiters,
+        })
     }
 
     /// Returns the optional SHA-256 terms hash stored at escrow creation.
