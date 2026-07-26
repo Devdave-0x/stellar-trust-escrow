@@ -74,6 +74,8 @@ pub enum EcErr {
     NotInitialized = 76,
     /// Platform treasury address has not been configured
     TreasuryNotConfigured = 77,
+    /// Escrow participant list exceeds MAX_PARTICIPANTS.
+    TooManyParticipants = 78,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle

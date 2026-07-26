@@ -62,6 +62,15 @@ pub fn emit_release_approved(
     );
 }
 
+/// Emits `EscrowCreated { participant_count }` so indexers can track how
+/// many signers/participants were registered on escrow creation.
+pub fn emit_escrow_created_participant_count(env: &Env, escrow_id: u64, participant_count: u32) {
+    env.events().publish(
+        (ev::ESCROW_CREATED, symbol_short!("partcnt")),
+        (escrow_id, participant_count),
+    );
+}
+
 pub fn emit_milestone_added(env: &Env, escrow_id: u64, milestone_id: u32, amount: i128) {
     env.events()
         .publish((ev::MILESTONE_ADDED, escrow_id), (milestone_id, amount));
