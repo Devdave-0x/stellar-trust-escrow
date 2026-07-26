@@ -84,6 +84,7 @@ mod max_escrow_amount_tests;
 mod meta_snapshot_tests;
 mod nft;
 mod nft_tests;
+mod nonce_registry;
 mod oracle;
 mod oracle_fallback_tests;
 mod oracle_overflow_tests;
@@ -6163,6 +6164,20 @@ impl EscrowContract {
     /// Returns the number of arbiters currently assigned to an escrow.
     pub fn get_arbiter_count(env: Env, escrow_id: u64) -> u32 {
         arbiter_limit::load_arbiter_list(&env, escrow_id).len()
+    }
+
+    // ── Nonce registry (issue: replay protection for signed messages) ──────
+
+    /// Verifies `nonce` has not been used before, then records it. Intended
+    /// to be called by entry points that accept an off-chain signed message
+    /// (approvals, consent) to prevent replay of the same signed payload.
+    pub fn consume_signed_nonce(env: Env, nonce: BytesN<32>) -> Result<(), EscrowError> {
+        nonce_registry::consume_nonce(&env, &nonce)
+    }
+
+    /// Returns whether `nonce` has already been consumed.
+    pub fn is_nonce_used(env: Env, nonce: BytesN<32>) -> bool {
+        nonce_registry::is_nonce_used(&env, &nonce)
     }
 }
 
