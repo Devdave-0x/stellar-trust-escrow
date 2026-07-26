@@ -128,3 +128,36 @@
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
 }
+
+/* AlertBanner animations */
+@keyframes banner-slide-down {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes banner-slide-up {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+    max-height: 200px;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+    max-height: 0;
+  }
+}
+
+.animate-banner-enter {
+  animation: banner-slide-down 0.35s ease-out forwards;
+}
+
+.animate-banner-exit {
+  animation: banner-slide-up 0.3s ease-in forwards;
+}
