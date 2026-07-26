@@ -92,6 +92,7 @@ mod oracle_overflow_tests;
 mod oracle_tests;
 mod partial_cancel_tests;
 mod pause_tests;
+mod platform_fee_bps_tests;
 mod property_tests;
 mod reentrancy_tests;
 mod self_escrow_tests;
@@ -1706,7 +1707,7 @@ impl EscrowContract {
         env.storage().instance().get(&DataKey::PlatformTreasury)
     }
 
-    /// Sets a flat platform fee in basis points (0–10000). Admin only.
+    /// Sets a flat platform fee in basis points (max 1000 = 10%). Admin only.
     pub fn set_platform_fee_bps(
         env: Env,
         caller: Address,
@@ -1714,13 +1715,21 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         ContractStorage::require_admin(&env, &caller)?;
         caller.require_auth();
-        if fee_bps > 10_000 {
+        if fee_bps > 1_000 {
             return Err(EscrowError::E19);
         }
+        let old_bps: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0_u32);
         env.storage()
             .instance()
             .set(&DataKey::PlatformFeeBps, &fee_bps);
         ContractStorage::bump_instance_ttl(&env);
+        if old_bps != fee_bps {
+            events::emit_platform_fee_updated(&env, old_bps, fee_bps);
+        }
         Ok(())
     }
 
