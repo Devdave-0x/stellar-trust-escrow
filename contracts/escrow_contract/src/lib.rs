@@ -65,6 +65,7 @@
 #![allow(clippy::too_many_arguments)]
 
 mod admin_transfer_tests;
+mod arbiter_limit;
 mod arbiter_reputation_tests;
 mod batch_add_milestones_cap_tests;
 mod batch_approve_release_e2e_tests;
@@ -2046,6 +2047,10 @@ impl EscrowContract {
             return Err(EscrowError::E74);
         }
 
+        // Cloned before `arbiter` is moved into `EscrowMeta` below, so the
+        // initial arbiter list can be seeded (capped at MAX_ARBITERS_PER_ESCROW).
+        let arbiter_for_cap = arbiter.clone();
+
         let escrow_id = ContractStorage::next_escrow_id(&env)?;
         let rent_reserve = ContractStorage::reserve_for_entries(1);
 
@@ -2107,6 +2112,18 @@ impl EscrowContract {
         );
 
         events::emit_escrow_created(&env, escrow_id, &client, &freelancer, total_amount);
+
+        if let Some(initial_arbiter) = arbiter_for_cap {
+            let mut arbiters = arbiter_limit::load_arbiter_list(&env, escrow_id);
+            if arbiters.len() >= arbiter_limit::MAX_ARBITERS_PER_ESCROW {
+                return Err(EscrowError::TooManyArbiters);
+            }
+            arbiters.push_back(initial_arbiter);
+            env.storage()
+                .persistent()
+                .set(&DataKey::ArbiterList(escrow_id), &arbiters);
+        }
+
         Ok(escrow_id)
     }
 
@@ -6114,6 +6131,38 @@ impl EscrowContract {
 
         // Stub: skip nonce and signature checks for now
         Ok(())
+    }
+
+    // ── Arbiter cap (issue: max arbiters per escrow) ────────────────────────
+
+    /// Assigns an additional arbiter to an escrow, enforcing
+    /// `MAX_ARBITERS_PER_ESCROW`. Admin-only.
+    pub fn assign_arbiter(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+
+        let mut arbiters = arbiter_limit::load_arbiter_list(&env, escrow_id);
+        if arbiters.iter().any(|a| a == arbiter) {
+            return Ok(());
+        }
+        if arbiters.len() >= arbiter_limit::MAX_ARBITERS_PER_ESCROW {
+            return Err(EscrowError::TooManyArbiters);
+        }
+        arbiters.push_back(arbiter);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ArbiterList(escrow_id), &arbiters);
+        Ok(())
+    }
+
+    /// Returns the number of arbiters currently assigned to an escrow.
+    pub fn get_arbiter_count(env: Env, escrow_id: u64) -> u32 {
+        arbiter_limit::load_arbiter_list(&env, escrow_id).len()
     }
 }
 
