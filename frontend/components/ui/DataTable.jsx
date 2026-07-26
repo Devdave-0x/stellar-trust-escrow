@@ -67,7 +67,10 @@ export default function DataTable({
       {/* Desktop table — hidden below sm */}
       <div className="hidden sm:block overflow-x-auto">
         <table className="w-full table-fixed min-w-full text-sm">
-          <thead className="bg-gray-50/50 dark:bg-gray-800/50 border-b border-white/10">
+          <thead
+            className="bg-gray-50 dark:bg-gray-800 border-b border-white/10"
+            style={{ position: 'sticky', top: 0, zIndex: 10 }}
+          >
             <tr>
               {columns.map((col) => (
                 <th

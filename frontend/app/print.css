@@ -1,0 +1,208 @@
+/* ============================================================
+   Print Stylesheet — Stellar Trust Escrow
+   Optimises escrow detail pages and data tables for printing.
+   ============================================================ */
+
+@media print {
+  /* ── Reset ─────────────────────────────────────────────── */
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 12pt;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* ── Platform logo at top ──────────────────────────────── */
+  body::before {
+    content: '◆ Stellar Trust Escrow';
+    display: block;
+    font-size: 14pt;
+    font-weight: 700;
+    color: #000 !important;
+    margin-bottom: 8pt;
+    padding-bottom: 6pt;
+    border-bottom: 2px solid #000;
+  }
+
+  /* ── Hide non-printable elements ───────────────────────── */
+  nav,
+  header,
+  footer:not(.print-footer),
+  aside,
+  .sidebar,
+  [role='navigation'],
+  [data-sidebar],
+  button:not(.print-keep),
+  a:not([href^='http']):not(.print-keep),
+  .no-print,
+  [data-tooltip],
+  .tooltip,
+  .skeleton,
+  [aria-busy='true'],
+  .animate-pulse,
+  .animate-spin,
+  .animate-pulse-slow,
+  .sticky,
+  [class*='Toast'],
+  [class*='toast'],
+  [role='dialog'],
+  [aria-modal='true'],
+  input,
+  select,
+  textarea,
+  .print\\:hidden {
+    display: none !important;
+  }
+
+  /* ── Show full content ─────────────────────────────────── */
+  .truncate,
+  [class*='truncate'] {
+    white-space: normal !important;
+    overflow: visible !important;
+  }
+
+  /* ── Layout ────────────────────────────────────────────── */
+  .max-w-6xl,
+  .max-w-7xl,
+  .container {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Two-column layout for escrow detail — preserve the existing grid */
+  .grid.grid-cols-1.lg\\:grid-cols-3 {
+    grid-template-columns: 2fr 1fr !important;
+    gap: 16pt !important;
+  }
+
+  /* ── Cards and sections ────────────────────────────────── */
+  .card {
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+    padding: 12pt !important;
+    margin-bottom: 8pt !important;
+    page-break-inside: avoid;
+  }
+
+  /* ── Tables ────────────────────────────────────────────── */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  th {
+    background: #f5f5f5 !important;
+    color: #000 !important;
+    font-weight: 600 !important;
+    text-align: left !important;
+    padding: 6pt 8pt !important;
+    border-bottom: 2px solid #000 !important;
+  }
+
+  td {
+    padding: 4pt 8pt !important;
+    border-bottom: 1px solid #ddd !important;
+    color: #000 !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* ── Typography ────────────────────────────────────────── */
+  h1 {
+    font-size: 18pt !important;
+    color: #000 !important;
+    margin-bottom: 4pt !important;
+  }
+
+  h2 {
+    font-size: 14pt !important;
+    color: #000 !important;
+    margin-bottom: 4pt !important;
+  }
+
+  h3 {
+    font-size: 12pt !important;
+    color: #000 !important;
+  }
+
+  p,
+  span,
+  li {
+    color: #000 !important;
+  }
+
+  code,
+  .font-mono {
+    font-family: 'Courier New', monospace !important;
+    font-size: 9pt !important;
+    color: #000 !important;
+  }
+
+  /* ── Links ─────────────────────────────────────────────── */
+  a {
+    color: #000 !important;
+    text-decoration: underline !important;
+  }
+
+  a[href^='http']::after {
+    content: ' (' attr(href) ')';
+    font-size: 9pt;
+    color: #555 !important;
+  }
+
+  /* ── Badges ────────────────────────────────────────────── */
+  [class*='badge'],
+  [role='status'] {
+    border: 1px solid #000 !important;
+    color: #000 !important;
+    background: none !important;
+  }
+
+  /* ── Header / Footer ───────────────────────────────────── */
+  @page {
+    margin: 15mm 12mm 20mm 12mm;
+  }
+
+  /* Print footer */
+  body::after {
+    content: 'Printed from Stellar Trust Escrow';
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 8pt;
+    color: #888 !important;
+    padding: 6pt 0;
+    border-top: 1px solid #ddd;
+  }
+
+  /* ── StickyTable: ensure thead prints on every page ────── */
+  thead[style*='position: sticky'],
+  thead.sticky-header {
+    position: static !important;
+    display: table-header-group !important;
+  }
+}
