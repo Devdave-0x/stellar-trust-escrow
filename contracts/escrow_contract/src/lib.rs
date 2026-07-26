@@ -64,6 +64,7 @@
 #![deny(warnings)]
 #![allow(clippy::too_many_arguments)]
 
+mod admin_transfer_event_tests;
 mod admin_transfer_tests;
 mod arbiter_reputation_tests;
 mod batch_add_milestones_cap_tests;
@@ -4825,6 +4826,7 @@ impl EscrowContract {
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_proposed(&env, &caller, &new_admin);
+        events::emit_admin_transferred(&env, &caller, &new_admin);
         Ok(())
     }
 
@@ -4858,6 +4860,7 @@ impl EscrowContract {
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_changed(&env, &old_admin, &caller);
+        events::emit_admin_accepted(&env, &caller);
         Ok(())
     }
 

@@ -437,6 +437,22 @@ pub fn emit_admin_changed(env: &Env, old_admin: &Address, new_admin: &Address) {
         .publish((ev::ADMIN_CHANGED,), (old_admin.clone(), new_admin.clone()));
 }
 
+/// Emitted when `propose_admin` (step 1 of the two-step admin transfer) is called.
+pub fn emit_admin_transferred(env: &Env, old_admin: &Address, new_admin: &Address) {
+    env.events().publish(
+        (ev::ADMIN_TRANSFERRED,),
+        (old_admin.clone(), new_admin.clone(), env.ledger().timestamp()),
+    );
+}
+
+/// Emitted when `accept_admin` (step 2 of the two-step admin transfer) succeeds.
+pub fn emit_admin_accepted(env: &Env, new_admin: &Address) {
+    env.events().publish(
+        (ev::ADMIN_ACCEPTED,),
+        (new_admin.clone(), env.ledger().timestamp()),
+    );
+}
+
 pub fn emit_max_milestones_set(env: &Env, new_max: u32) {
     env.events().publish((ev::MAX_MILESTONES_SET,), new_max);
 }
