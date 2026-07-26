@@ -82,6 +82,7 @@ mod integration_lifecycle_tests;
 mod lock_time_enforcement_tests;
 mod max_escrow_amount_tests;
 mod meta_snapshot_tests;
+mod min_milestone_duration_tests;
 mod nft;
 mod nft_tests;
 mod oracle;
@@ -151,6 +152,11 @@ const RENT_PERIOD_SECONDS: u64 = 86_400;
 const RENT_RESERVE_PERIODS: u64 = 30;
 const RENT_PER_ENTRY_PER_PERIOD: i128 = 1;
 pub const MAX_MILESTONES: u32 = 20;
+/// Minimum allowed milestone duration in ledgers (~8 minutes on Stellar, at ~5s/ledger).
+/// Milestones with a shorter window are almost always a mistake by the caller.
+pub const MIN_MILESTONE_DURATION_LEDGERS: u32 = 100;
+/// Maximum number of escrow IDs accepted by `get_escrow_states` in one call.
+pub const MAX_BATCH_ESCROW_STATES: u32 = 20;
 pub const MAX_STRING_LEN: u32 = 256;
 pub const MAX_BUYER_SIGNERS: u32 = 10;
 
@@ -2398,6 +2404,36 @@ impl EscrowContract {
 
         events::emit_milestone_added(env, escrow_id, milestone_id, amount);
         Ok(milestone_id)
+    }
+
+    /// Creates a milestone with an optional deadline, enforcing a minimum duration.
+    ///
+    /// When `deadline_ledger` is provided, `deadline_ledger - current_ledger` must be
+    /// at least `MIN_MILESTONE_DURATION_LEDGERS` (~8 minutes on Stellar); otherwise
+    /// `EscrowError::MilestoneTooShort` is returned. When no deadline is given, the
+    /// check is skipped and this behaves like `add_milestone`.
+    pub fn create_milestone(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        title: String,
+        description_hash: BytesN<32>,
+        amount: i128,
+        deadline_ledger: Option<u32>,
+    ) -> Result<u32, EscrowError> {
+        if let Some(deadline) = deadline_ledger {
+            let current_ledger = env.ledger().sequence();
+            let duration = deadline.saturating_sub(current_ledger);
+            if duration < MIN_MILESTONE_DURATION_LEDGERS {
+                return Err(EscrowError::MilestoneTooShort);
+            }
+        }
+
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+
+        Self::add_milestone_internal(&env, &caller, escrow_id, title, description_hash, amount)
     }
 
     /// Adds a milestone defined by a percentage of the escrow's total amount.
