@@ -94,6 +94,8 @@ mod reentrancy_tests;
 mod self_escrow_tests;
 mod timelock_enforcement_tests;
 mod transfer_client_tests;
+mod tvl;
+mod tvl_tests;
 mod types;
 mod unit_coverage_tests;
 mod upgrade_tests;
@@ -1753,6 +1755,12 @@ impl EscrowContract {
 
     // ── Escrow Lifecycle ──────────────────────────────────────────────────────
 
+    /// Returns the total value currently locked in the contract across all
+    /// active escrows. Callable by anyone.
+    pub fn get_total_value_locked(env: Env) -> i128 {
+        tvl::get_total_value_locked(&env)
+    }
+
     /// Creates a new escrow and locks funds in the contract.
     ///
     /// # Gas notes
@@ -2057,6 +2065,7 @@ impl EscrowContract {
         );
         events::emit_escrow_funded(&env, escrow_id, &client, total_amount, now);
         ContractStorage::charge_rent_reserve(&env, &token, &client, rent_reserve)?;
+        tvl::increase(&env, total_amount);
 
         ContractStorage::save_escrow_meta(
             &env,
@@ -3361,6 +3370,7 @@ impl EscrowContract {
                 &meta.freelancer,
                 &payout_amount,
             );
+            tvl::decrease(&env, amount);
 
             events::emit_funds_released(&env, escrow_id, &meta.freelancer, payout_amount);
             if timelock_ok && !is_admin {
@@ -3481,6 +3491,7 @@ impl EscrowContract {
                 );
             }
 
+            tvl::decrease(&env, meta.remaining_balance);
             meta.remaining_balance = 0;
             meta.status = EscrowStatus::Cancelled;
             Self::remove_from_vec_index(
