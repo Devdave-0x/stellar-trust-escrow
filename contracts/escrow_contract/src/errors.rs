@@ -76,6 +76,8 @@ pub enum EcErr {
     TreasuryNotConfigured = 77,
     /// Escrow already has the maximum number of arbiters assigned
     TooManyArbiters = 78,
+    /// This nonce has already been used and cannot be replayed
+    NonceAlreadyUsed = 79,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
