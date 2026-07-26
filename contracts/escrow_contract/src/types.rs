@@ -858,4 +858,6 @@ pub enum FeatDataKey {
     MinEscrowAmount,
     /// Maximum escrow amount — value: i128
     MaxEscrowAmount,
+    /// Currently active (registered) arbiter addresses — value: Vec<Address>
+    ActiveArbiters,
 }
