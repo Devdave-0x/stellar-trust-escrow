@@ -78,6 +78,7 @@ mod event_tests;
 mod events;
 mod fuzz_tests;
 mod get_escrow_states_tests;
+mod get_participants_tests;
 mod governance_escalation_tests;
 mod integration_lifecycle_tests;
 mod lock_time_enforcement_tests;
@@ -105,7 +106,7 @@ mod version_tests;
 pub use errors::EscrowError;
 use storage::StorageManager;
 pub use types::{
-    ApprovalRecord, DataKey, DisputeInfo, EscrowFeeSnapshot, EscrowState, EscrowStatus,
+    ApprovalRecord, DataKey, DisputeInfo, EscrowFeeSnapshot, EscrowParticipants, EscrowState, EscrowStatus,
     EscrowTemplate, FeeTier, Milestone, MilestoneStatus, MilestoneTemplate, MultisigConfig,
     OptionalBytesN32, OptionalPriceCondition, OptionalTimelock, OracleResolutionPayload,
     PriceCondition, PriceDirection, RecurringInterval, RecurringScheduleStatus, ReputationRecord,
@@ -5169,6 +5170,22 @@ impl EscrowContract {
         let mut meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
         ContractStorage::settle_rent_for_access(&env, &mut meta)?;
         Ok(meta)
+    }
+
+    /// Read-only view of an escrow's parties — buyer, seller, and any arbiters.
+    /// Callable by anyone (no participant permissions required), for auditors
+    /// and investors who need to verify escrow details.
+    pub fn get_participants(env: Env, escrow_id: u64) -> Result<EscrowParticipants, EscrowError> {
+        let meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+        let mut arbiters = soroban_sdk::Vec::new(&env);
+        if let Some(arbiter) = meta.arbiter {
+            arbiters.push_back(arbiter);
+        }
+        Ok(EscrowParticipants {
+            buyer: meta.client,
+            seller: meta.freelancer,
+            arbiters,
+        })
     }
 
     /// Returns the optional SHA-256 terms hash stored at escrow creation.
