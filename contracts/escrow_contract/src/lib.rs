@@ -93,6 +93,7 @@ mod pause_tests;
 mod property_tests;
 mod reentrancy_tests;
 mod release_allowlist;
+mod schema_version;
 mod self_escrow_tests;
 mod timelock_enforcement_tests;
 mod transfer_client_tests;
