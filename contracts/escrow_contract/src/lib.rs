@@ -73,6 +73,7 @@ mod bridge;
 mod bridge_tests;
 mod dispute_cooldown_tests;
 mod errors;
+mod escrow_creation_time_tests;
 mod event_names;
 mod event_tests;
 mod events;
@@ -2111,7 +2112,16 @@ impl EscrowContract {
             escrow_id,
         );
 
+        let creation_ledger = env.ledger().sequence();
+        let creation_timestamp = env.ledger().timestamp();
+        let creation_key = FeatDataKey::EscrowCreationInfo(escrow_id);
+        env.storage()
+            .persistent()
+            .set(&creation_key, &(creation_ledger, creation_timestamp));
+        Self::bump_persistent_ttl(&env, &creation_key);
+
         events::emit_escrow_created(&env, escrow_id, &client, &freelancer, total_amount);
+        events::emit_escrow_creation_time(&env, escrow_id, creation_ledger, creation_timestamp);
         Ok(escrow_id)
     }
 
@@ -6227,6 +6237,15 @@ impl EscrowContract {
             .instance()
             .get(&FeatDataKey::ActiveArbiters)
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// Returns the immutable `(ledger_sequence, timestamp)` pair recorded
+    /// when the escrow was created.
+    pub fn get_escrow_creation_time(env: Env, escrow_id: u64) -> Result<(u32, u64), EscrowError> {
+        env.storage()
+            .persistent()
+            .get(&FeatDataKey::EscrowCreationInfo(escrow_id))
+            .ok_or(EscrowError::E13)
     }
 }
 
