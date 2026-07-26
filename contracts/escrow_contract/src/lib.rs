@@ -91,6 +91,7 @@ mod partial_cancel_tests;
 mod pause_tests;
 mod property_tests;
 mod reentrancy_tests;
+mod release_allowlist;
 mod self_escrow_tests;
 mod timelock_enforcement_tests;
 mod transfer_client_tests;
