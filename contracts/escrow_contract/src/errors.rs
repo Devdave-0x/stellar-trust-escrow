@@ -86,6 +86,8 @@ pub enum EcErr {
     TooManyArbiters = 82,
     /// This nonce has already been used and cannot be replayed
     NonceAlreadyUsed = 83,
+    /// Escrow participant list exceeds MAX_PARTICIPANTS.
+    TooManyParticipants = 84,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
