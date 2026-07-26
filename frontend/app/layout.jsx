@@ -12,6 +12,7 @@ import ErrorBoundary from '../components/error/ErrorBoundary';
 import { AppStoreProvider } from '../store/app-store';
 import { PreferencesProvider } from '../contexts/PreferencesContext';
 import TokenRefreshManager from '../components/auth/TokenRefreshManager';
+import SkipLink from './skip-link';
 
 const PerformanceMonitor = dynamic(() => import('../components/ui/PerformanceMonitor'), {
   ssr: false,
@@ -45,6 +46,7 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href={API_ORIGIN} crossOrigin="anonymous" />
       </head>
       <body className="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans">
+        <SkipLink />
         <AppStoreProvider>
           <I18nProvider>
             <PreferencesProvider>
