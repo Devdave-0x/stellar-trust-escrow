@@ -1,15 +1,15 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import CommandPalette from '../../../components/ui/CommandPalette';
 
-const pushMock = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 describe('CommandPalette', () => {
   beforeEach(() => {
-    pushMock.mockClear();
+    mockPush.mockClear();
     window.localStorage.clear();
   });
 
@@ -51,7 +51,7 @@ describe('CommandPalette', () => {
     fireEvent.change(input, { target: { value: 'Dashboard' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(pushMock).toHaveBeenCalledWith('/dashboard');
+    expect(mockPush).toHaveBeenCalledWith('/dashboard');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
