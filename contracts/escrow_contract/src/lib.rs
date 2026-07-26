@@ -80,6 +80,7 @@ mod governance_escalation_tests;
 mod integration_lifecycle_tests;
 mod lock_time_enforcement_tests;
 mod max_escrow_amount_tests;
+mod max_participants_tests;
 mod meta_snapshot_tests;
 mod nft;
 mod nft_tests;
@@ -171,6 +172,10 @@ pub const MIN_ESCROW_AMOUNT: i128 = 1_i128;
 /// This prevents sybil attacks where fresh addresses with zero reputation
 /// could be used to gain control over dispute resolution.
 pub const MIN_ARBITER_REPUTATION_SCORE: u64 = 100;
+
+/// Maximum number of participants (buyer signers) allowed on a single escrow.
+/// Caps gas costs for signature checks and prevents abuse via unbounded lists.
+pub const MAX_PARTICIPANTS: u32 = 10;
 
 /// Semantic version of the deployed contract. Must match `version` in Cargo.toml.
 pub const CONTRACT_VERSION: &str = "0.1.0";
@@ -2047,6 +2052,11 @@ impl EscrowContract {
             }
             signers
         };
+
+        if buyer_signers.is_empty() || buyer_signers.len() > MAX_PARTICIPANTS {
+            return Err(EscrowError::TooManyParticipants);
+        }
+
         // Verify depositor has sufficient balance for any SAC token (covers trustline check).
         // A depositor without a trustline for a classic Stellar asset will show balance 0.
         let depositor_balance = token::Client::new(&env, &token).balance(&client);
@@ -2066,6 +2076,7 @@ impl EscrowContract {
         events::emit_escrow_funded(&env, escrow_id, &client, total_amount, now);
         ContractStorage::charge_rent_reserve(&env, &token, &client, rent_reserve)?;
         tvl::increase(&env, total_amount);
+        events::emit_escrow_created_participant_count(&env, escrow_id, buyer_signers.len());
 
         ContractStorage::save_escrow_meta(
             &env,
