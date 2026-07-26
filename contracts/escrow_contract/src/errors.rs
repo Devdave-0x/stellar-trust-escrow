@@ -82,6 +82,10 @@ pub enum EcErr {
     MilestoneTooShort = 80,
     /// Batch request exceeded the maximum allowed number of escrow IDs
     BatchTooLarge = 81,
+    /// Escrow already has the maximum number of arbiters assigned
+    TooManyArbiters = 82,
+    /// This nonce has already been used and cannot be replayed
+    NonceAlreadyUsed = 83,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle

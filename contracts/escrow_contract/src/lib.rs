@@ -66,6 +66,7 @@
 
 mod admin_transfer_event_tests;
 mod admin_transfer_tests;
+mod arbiter_limit;
 mod arbiter_reputation_tests;
 mod batch_add_milestones_cap_tests;
 mod batch_approve_release_e2e_tests;
@@ -74,6 +75,7 @@ mod bridge_tests;
 mod dispute_cooldown_tests;
 mod dust_threshold;
 mod errors;
+mod escrow_creator_count;
 mod escrow_label;
 mod event_names;
 mod event_tests;
@@ -89,12 +91,14 @@ mod meta_snapshot_tests;
 mod min_milestone_duration_tests;
 mod nft;
 mod nft_tests;
+mod nonce_registry;
 mod oracle;
 mod oracle_fallback_tests;
 mod oracle_overflow_tests;
 mod oracle_tests;
 mod partial_cancel_tests;
 mod pause_tests;
+mod platform_fee_bps_tests;
 mod property_tests;
 mod reentrancy_tests;
 mod release_allowlist;
@@ -1716,7 +1720,7 @@ impl EscrowContract {
         env.storage().instance().get(&DataKey::PlatformTreasury)
     }
 
-    /// Sets a flat platform fee in basis points (0–10000). Admin only.
+    /// Sets a flat platform fee in basis points (max 1000 = 10%). Admin only.
     pub fn set_platform_fee_bps(
         env: Env,
         caller: Address,
@@ -1724,13 +1728,21 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         ContractStorage::require_admin(&env, &caller)?;
         caller.require_auth();
-        if fee_bps > 10_000 {
+        if fee_bps > 1_000 {
             return Err(EscrowError::E19);
         }
+        let old_bps: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0_u32);
         env.storage()
             .instance()
             .set(&DataKey::PlatformFeeBps, &fee_bps);
         ContractStorage::bump_instance_ttl(&env);
+        if old_bps != fee_bps {
+            events::emit_platform_fee_updated(&env, old_bps, fee_bps);
+        }
         Ok(())
     }
 
@@ -2059,6 +2071,10 @@ impl EscrowContract {
             return Err(EscrowError::E74);
         }
 
+        // Cloned before `arbiter` is moved into `EscrowMeta` below, so the
+        // initial arbiter list can be seeded (capped at MAX_ARBITERS_PER_ESCROW).
+        let arbiter_for_cap = arbiter.clone();
+
         let escrow_id = ContractStorage::next_escrow_id(&env)?;
         let rent_reserve = ContractStorage::reserve_for_entries(1);
 
@@ -2120,6 +2136,20 @@ impl EscrowContract {
         );
 
         events::emit_escrow_created(&env, escrow_id, &client, &freelancer, total_amount);
+
+        escrow_creator_count::increment(&env, &client);
+
+        if let Some(initial_arbiter) = arbiter_for_cap {
+            let mut arbiters = arbiter_limit::load_arbiter_list(&env, escrow_id);
+            if arbiters.len() >= arbiter_limit::MAX_ARBITERS_PER_ESCROW {
+                return Err(EscrowError::TooManyArbiters);
+            }
+            arbiters.push_back(initial_arbiter);
+            env.storage()
+                .persistent()
+                .set(&DataKey::ArbiterList(escrow_id), &arbiters);
+        }
+
         Ok(escrow_id)
     }
 
@@ -6198,6 +6228,62 @@ impl EscrowContract {
 
         // Stub: skip nonce and signature checks for now
         Ok(())
+    }
+
+    // ── Arbiter cap (issue: max arbiters per escrow) ────────────────────────
+
+    /// Assigns an additional arbiter to an escrow, enforcing
+    /// `MAX_ARBITERS_PER_ESCROW`. Admin-only.
+    pub fn assign_arbiter(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_admin(&env, &caller)?;
+        caller.require_auth();
+
+        let mut arbiters = arbiter_limit::load_arbiter_list(&env, escrow_id);
+        if arbiters.iter().any(|a| a == arbiter) {
+            return Ok(());
+        }
+        if arbiters.len() >= arbiter_limit::MAX_ARBITERS_PER_ESCROW {
+            return Err(EscrowError::TooManyArbiters);
+        }
+        arbiters.push_back(arbiter);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ArbiterList(escrow_id), &arbiters);
+        Ok(())
+    }
+
+    /// Returns the number of arbiters currently assigned to an escrow.
+    pub fn get_arbiter_count(env: Env, escrow_id: u64) -> u32 {
+        arbiter_limit::load_arbiter_list(&env, escrow_id).len()
+    }
+
+    // ── Nonce registry (issue: replay protection for signed messages) ──────
+
+    /// Verifies `nonce` has not been used before, then records it. Intended
+    /// to be called by entry points that accept an off-chain signed message
+    /// (approvals, consent) to prevent replay of the same signed payload.
+    pub fn consume_signed_nonce(env: Env, nonce: BytesN<32>) -> Result<(), EscrowError> {
+        nonce_registry::consume_nonce(&env, &nonce)
+    }
+
+    /// Returns whether `nonce` has already been consumed.
+    pub fn is_nonce_used(env: Env, nonce: BytesN<32>) -> bool {
+        nonce_registry::is_nonce_used(&env, &nonce)
+    }
+
+    // ── Escrow count by creator (issue: per-address analytics) ─────────────
+
+    /// Returns the number of escrows created by `address`.
+    pub fn get_escrow_count(env: Env, address: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::EscrowCountByCreator(address))
+            .unwrap_or(0u32)
     }
 }
 
