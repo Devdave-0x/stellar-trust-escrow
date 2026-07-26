@@ -38,6 +38,7 @@ pub const MULTISIG_APPROVAL_RECORDED: Symbol = symbol_short!("msig_apr");
 
 pub const FUNDS_RELEASED: Symbol = symbol_short!("funds_rel");
 pub const RENT_WITHDRAWN: Symbol = symbol_short!("rent_out");
+pub const PLATFORM_FEE_UPDATED: Symbol = symbol_short!("fee_upd");
 
 // ── Recurring payments ────────────────────────────────────────────────────────
 

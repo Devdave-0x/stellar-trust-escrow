@@ -16,6 +16,14 @@ use soroban_sdk::{symbol_short, Address, Env};
 
 use crate::event_names as ev;
 
+/// Emitted when the admin changes the platform fee rate.
+///
+/// Schema: topic=(PLATFORM_FEE_UPDATED,), data=(old_bps, new_bps)
+pub fn emit_platform_fee_updated(env: &Env, old_bps: u32, new_bps: u32) {
+    env.events()
+        .publish((ev::PLATFORM_FEE_UPDATED,), (old_bps, new_bps));
+}
+
 pub fn emit_escrow_created(
     env: &Env,
     escrow_id: u64,

@@ -839,6 +839,12 @@ pub enum DataKey {
     EscrowTimelockSecs(u64),
     /// M-of-N multisig config for escrow-level release approval — key: u64, value: MultisigConfig
     MultisigCfg(u64),
+    /// Assigned arbiters for an escrow — key: u64, value: Vec<Address>
+    ArbiterList(u64),
+    /// Off-chain signed message nonce registry — key: BytesN<32>, value: bool
+    UsedNonce(BytesN<32>),
+    /// Number of escrows created by an address — key: Address, value: u32
+    EscrowCountByCreator(Address),
     /// Addresses that have submitted an escrow-level release approval — key: u64, value: Vec<Address>
     MultisigApprovals(u64),
     /// Cumulative percentage allocated via add_milestone_pct — key: u64, value: u32
