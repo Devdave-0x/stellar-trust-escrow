@@ -74,6 +74,8 @@ pub enum EcErr {
     NotInitialized = 76,
     /// Platform treasury address has not been configured
     TreasuryNotConfigured = 77,
+    /// Recipient address is on the platform-managed release blocklist
+    RecipientBlocked = 78,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
