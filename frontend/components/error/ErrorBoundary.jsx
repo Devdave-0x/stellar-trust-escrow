@@ -10,7 +10,7 @@ const REPORT_URL = 'https://github.com/stellar-trust-escrow/issues/new';
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, resetKey: 0 };
   }
 
   static getDerivedStateFromError(error) {
@@ -33,12 +33,17 @@ class ErrorBoundary extends Component {
   }
 
   handleRetry = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState((prev) => ({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      resetKey: prev.resetKey + 1,
+    }));
   };
 
   render() {
     if (!this.state.hasError) {
-      return this.props.children;
+      return <span key={this.state.resetKey}>{this.props.children}</span>;
     }
 
     const { fallback } = this.props;
