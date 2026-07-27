@@ -71,6 +71,8 @@ model Tenant {
   EscrowNote              EscrowNote[]
   ChatRoomKey             ChatRoomKey[]
   ChatMessage             ChatMessage[]
+  onboardingChecklists    OnboardingChecklist[]
+  escrowTemplates         EscrowTemplate[]
 
   @@map("tenants")
 }
@@ -1290,4 +1292,64 @@ model LoginLockout {
   @@unique([tenantId, address])
   @@index([address, lockedUntil])
   @@map("login_lockouts")
+}
+
+// ── Onboarding Checklist (#216) ───────────────────────────────────────────────
+
+enum OnboardingStep {
+  verify_email
+  connect_wallet
+  create_first_escrow
+  complete_profile
+  invite_counterparty
+}
+
+/// Tracks per-user onboarding progress. One row per (userAddress, tenantId, step).
+model OnboardingChecklist {
+  id          Int            @id @default(autoincrement())
+  userAddress String         @map("user_address")
+  tenantId    String         @map("tenant_id")
+  step        OnboardingStep
+  completedAt DateTime?      @map("completed_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([userAddress, tenantId, step])
+  @@index([userAddress, tenantId])
+  @@map("onboarding_checklists")
+}
+
+// ── System Configuration (#217) ──────────────────────────────────────────────
+
+/// Platform-wide configuration store. Each key has a type hint
+/// so the PATCH endpoint can validate values before persisting.
+model SystemConfig {
+  key         String   @id
+  value       String
+  type        String   @default("string")
+  description String?
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("system_configs")
+}
+
+// ── Escrow Templates (#219) ───────────────────────────────────────────────────
+
+/// Saved reusable escrow configurations per user.
+model EscrowTemplate {
+  id          Int      @id @default(autoincrement())
+  userAddress String   @map("user_address")
+  tenantId    String   @map("tenant_id")
+  name        String
+  config      Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([userAddress, tenantId])
+  @@map("escrow_templates")
 }
