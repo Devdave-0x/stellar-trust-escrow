@@ -78,6 +78,9 @@ mod self_escrow_tests;
 mod timelock_enforcement_tests;
 mod transfer_client_tests;
 mod types;
+mod roles;
+mod validation;
+mod multi_asset;
 mod upgrade_tests;
 
 pub use errors::EscrowError;
@@ -2777,7 +2780,61 @@ impl EscrowContract {
         Ok(())
     }
 
-    /// Client rejects a submitted milestone.
+
+    // ── Multi-asset entry points (#101) ────────────────────────────────────
+
+    /// Deposit an additional token type into an existing escrow.
+    pub fn deposit_asset(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        token: Address,
+        amount: i128,
+    ) -> Result<(), EscrowError> {
+        multi_asset::deposit_asset(&env, &caller, escrow_id, &token, amount)
+    }
+
+    /// Release a specific asset from a multi-asset escrow to the freelancer.
+    pub fn release_asset(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        token: Address,
+        amount: i128,
+    ) -> Result<(), EscrowError> {
+        multi_asset::release_asset(&env, &caller, escrow_id, &token, amount)
+    }
+
+    /// Get all additional asset allocations for an escrow.
+    pub fn get_asset_allocations(env: Env, escrow_id: u64) -> soroban_sdk::Vec<multi_asset::AssetAllocation> {
+        multi_asset::get_asset_allocations(&env, escrow_id)
+    }
+
+    // ── RBAC entry points (#100) ───────────────────────────────────────────
+
+    /// Get the role of an address for a specific escrow.
+    pub fn get_role(env: Env, address: Address, escrow_id: u64) -> Option<u32> {
+        match roles::get_role(&env, &address, escrow_id) {
+            Ok(Some(roles::Role::Admin)) => Some(0),
+            Ok(Some(roles::Role::Client)) => Some(1),
+            Ok(Some(roles::Role::Freelancer)) => Some(2),
+            Ok(Some(roles::Role::Arbiter)) => Some(3),
+            Ok(Some(roles::Role::Participant)) => Some(4),
+            _ => None,
+        }
+    }
+
+    /// Assign an arbiter to an escrow. Only admin or client may call this.
+    pub fn assign_arbiter(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        new_arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        roles::assign_arbiter(&env, &caller, escrow_id, &new_arbiter)
+    }
+
+        /// Client rejects a submitted milestone.
     ///
     /// # Gas notes
     /// - Loads only the single milestone entry.

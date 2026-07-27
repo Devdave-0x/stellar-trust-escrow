@@ -71,6 +71,34 @@ pub enum EcErr {
     TimelockNotExpired = 72,
     /// No timelock release time is configured on this escrow.
     TimelockNotSet = 73,
+
+    // ── Validation errors (#102) ──────────────────────────────────────────
+    /// Amount is zero or negative.
+    InvalidAmount = 80,
+    /// Amount exceeds safe computation bounds.
+    AmountOverflow = 81,
+    /// Brief hash is all zeros (invalid).
+    InvalidBriefHash = 82,
+    /// Deadline is in the past.
+    DeadlineInPast = 83,
+    /// Lock time is in the past.
+    LockTimeInPast = 84,
+    /// Milestone title is empty.
+    TitleEmpty = 85,
+    /// Milestone title exceeds maximum length.
+    TitleTooLong = 86,
+    /// Too many buyer signers.
+    TooManySigners = 87,
+
+    // ── Multi-asset errors (#101) ─────────────────────────────────────────
+    /// Token is not on the approved whitelist.
+    TokenNotApproved = 90,
+    /// Insufficient balance in the asset allocation.
+    InsufficientAssetBalance = 91,
+
+    // ── RBAC errors (#100) ────────────────────────────────────────────────
+    /// Caller does not have the required role.
+    UnauthorizedRole = 95,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
