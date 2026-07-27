@@ -33,21 +33,31 @@ function signPayload(secret, timestamp, body) {
 /**
  * Verify an HMAC-SHA256 signature in a timing-safe manner.
  *
+ * Mirrors the `sha256=` prefixed, timestamp-bound scheme documented in
+ * docs/webhook-delivery.md and produced by signPayload/queueSubscriptionWebhook.
+ *
  * @param {string} secret - The shared webhook secret.
- * @param {object} payload - The parsed JSON payload object to verify.
- * @param {string} receivedSignature - The hex signature received in X-Webhook-Signature.
+ * @param {string} timestamp - The value from the X-Webhook-Timestamp header.
+ * @param {object|string} payload - The parsed JSON payload (or raw body) to verify.
+ * @param {string} receivedSignature - The signature received in X-Webhook-Signature.
  * @returns {boolean} true if the signature is valid, false otherwise.
  */
-function verifySignature(secret, payload, receivedSignature) {
+function verifySignature(secret, timestamp, payload, receivedSignature) {
   if (!receivedSignature || typeof receivedSignature !== 'string') {
     return false;
   }
-  const expected = signPayload(secret, payload);
-  const expectedBuf = Buffer.from(expected, 'hex');
-  const receivedBuf = Buffer.from(receivedSignature, 'hex');
-  if (expectedBuf.length !== receivedBuf.length) {
+
+  const expectedHex = signPayload(secret, timestamp, payload).slice('sha256='.length);
+  const receivedHex = receivedSignature.startsWith('sha256=')
+    ? receivedSignature.slice('sha256='.length)
+    : receivedSignature;
+
+  if (!/^[0-9a-f]+$/i.test(receivedHex) || receivedHex.length !== expectedHex.length) {
     return false;
   }
+
+  const expectedBuf = Buffer.from(expectedHex, 'hex');
+  const receivedBuf = Buffer.from(receivedHex, 'hex');
   return crypto.timingSafeEqual(expectedBuf, receivedBuf);
 }
 
@@ -150,7 +160,12 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
   });
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signedPayload = buildWebhookPayload(eventType, payload, delivery.id, new Date().toISOString());
+  const signedPayload = buildWebhookPayload(
+    eventType,
+    payload,
+    delivery.id,
+    new Date().toISOString(),
+  );
   const signature = signPayload(subscription.secret, timestamp, signedPayload);
   const headers = {
     'Content-Type': 'application/json',

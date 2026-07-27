@@ -1,10 +1,13 @@
 /**
  * Webhook HMAC signature verification tests
  *
- * Covers:
+ * Covers the scheme documented in docs/webhook-delivery.md: signatures are
+ * `sha256=` prefixed HMAC-SHA256 digests computed over `timestamp + "." + rawBody`.
+ *
  *  Unit — signPayload / verifySignature utility
  *    • valid signature is accepted
  *    • invalid (tampered) signature is rejected
+ *    • tampered timestamp is rejected (prevents replay across payloads)
  *    • empty / missing body is handled safely
  *    • wrong secret is rejected
  *    • timing-safe comparison is used (crypto.timingSafeEqual is called)
@@ -12,7 +15,7 @@
  *  Integration — webhook delivery pipeline
  *    • correct signature computed during queueSubscriptionWebhook passes verification
  *    • tampered payload produces a rejected signature
- *    • X-Webhook-Signature header value matches the documented spec (raw hex, no prefix)
+ *    • X-Webhook-Signature header value matches the documented spec (sha256= prefix + hex)
  *    • SIGNATURE_HEADER constant equals 'X-Webhook-Signature'
  *    • buildWebhookPayload envelope matches the documented JSON structure
  */
@@ -24,6 +27,7 @@ import crypto from 'crypto';
 // Shared test fixtures
 // ---------------------------------------------------------------------------
 const TEST_SECRET = 'super-secret-key-for-tests-1234';
+const TEST_TIMESTAMP = '1780000000';
 const TEST_PAYLOAD = {
   eventType: 'esc_crt',
   deliveryId: 'delivery_abc123',
@@ -43,8 +47,9 @@ const TEST_PAYLOAD = {
  * Compute the reference HMAC-SHA256 signature independently of the service
  * so we can cross-check without depending on the implementation under test.
  */
-function computeReferenceHmac(secret, payloadObj) {
-  return crypto.createHmac('sha256', secret).update(JSON.stringify(payloadObj)).digest('hex');
+function computeReferenceHmac(secret, timestamp, payloadObj) {
+  const signingInput = `${timestamp}.${JSON.stringify(payloadObj)}`;
+  return `sha256=${crypto.createHmac('sha256', secret).update(signingInput).digest('hex')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,46 +70,51 @@ describe('webhookService HMAC utilities — unit', () => {
   // ── signPayload ────────────────────────────────────────────────────────
 
   describe('signPayload', () => {
-    it('produces a non-empty hex string', () => {
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
+    it('produces a "sha256=" prefixed hex string', () => {
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
       expect(typeof sig).toBe('string');
-      expect(sig.length).toBeGreaterThan(0);
-      expect(sig).toMatch(/^[0-9a-f]+$/);
+      expect(sig).toMatch(/^sha256=[0-9a-f]+$/);
     });
 
-    it('produces a 64-character hex string (SHA-256 = 32 bytes)', () => {
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      expect(sig).toHaveLength(64);
+    it('produces a 64-character hex digest (SHA-256 = 32 bytes)', () => {
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      expect(sig.slice('sha256='.length)).toHaveLength(64);
     });
 
     it('is deterministic — same inputs always yield the same signature', () => {
-      const sig1 = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      const sig2 = signPayload(TEST_SECRET, TEST_PAYLOAD);
+      const sig1 = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      const sig2 = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
       expect(sig1).toBe(sig2);
     });
 
     it('matches an independently-computed HMAC-SHA256 reference value', () => {
-      const expected = computeReferenceHmac(TEST_SECRET, TEST_PAYLOAD);
-      expect(signPayload(TEST_SECRET, TEST_PAYLOAD)).toBe(expected);
+      const expected = computeReferenceHmac(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      expect(signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD)).toBe(expected);
     });
 
     it('produces a different signature when the secret changes', () => {
-      const sig1 = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      const sig2 = signPayload('a-completely-different-secret', TEST_PAYLOAD);
+      const sig1 = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      const sig2 = signPayload('a-completely-different-secret', TEST_TIMESTAMP, TEST_PAYLOAD);
       expect(sig1).not.toBe(sig2);
     });
 
     it('produces a different signature when the payload changes', () => {
-      const sig1 = signPayload(TEST_SECRET, TEST_PAYLOAD);
+      const sig1 = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
       const tampered = { ...TEST_PAYLOAD, data: { ...TEST_PAYLOAD.data, escrowId: '99' } };
-      const sig2 = signPayload(TEST_SECRET, tampered);
+      const sig2 = signPayload(TEST_SECRET, TEST_TIMESTAMP, tampered);
+      expect(sig1).not.toBe(sig2);
+    });
+
+    it('produces a different signature when the timestamp changes', () => {
+      const sig1 = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      const sig2 = signPayload(TEST_SECRET, '1780000001', TEST_PAYLOAD);
       expect(sig1).not.toBe(sig2);
     });
 
     it('handles an empty object payload without throwing', () => {
-      expect(() => signPayload(TEST_SECRET, {})).not.toThrow();
-      const sig = signPayload(TEST_SECRET, {});
-      expect(sig).toHaveLength(64);
+      expect(() => signPayload(TEST_SECRET, TEST_TIMESTAMP, {})).not.toThrow();
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, {});
+      expect(sig.slice('sha256='.length)).toHaveLength(64);
     });
   });
 
@@ -112,45 +122,61 @@ describe('webhookService HMAC utilities — unit', () => {
 
   describe('verifySignature', () => {
     it('returns true for a valid signature', () => {
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      expect(verifySignature(TEST_SECRET, TEST_PAYLOAD, sig)).toBe(true);
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, sig)).toBe(true);
+    });
+
+    it('accepts a received signature without the "sha256=" prefix', () => {
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      const bareHex = sig.slice('sha256='.length);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, bareHex)).toBe(true);
     });
 
     it('returns false when the received signature is wrong', () => {
-      const badSig = 'a'.repeat(64); // plausible-length but wrong hex
-      expect(verifySignature(TEST_SECRET, TEST_PAYLOAD, badSig)).toBe(false);
+      const badSig = `sha256=${'a'.repeat(64)}`; // plausible-length but wrong hex
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, badSig)).toBe(false);
     });
 
     it('returns false when the payload has been tampered', () => {
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
       const tampered = { ...TEST_PAYLOAD, data: { ...TEST_PAYLOAD.data, escrowId: '99' } };
-      expect(verifySignature(TEST_SECRET, tampered, sig)).toBe(false);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, tampered, sig)).toBe(false);
+    });
+
+    it('returns false when the timestamp has been tampered', () => {
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      expect(verifySignature(TEST_SECRET, '1780000001', TEST_PAYLOAD, sig)).toBe(false);
     });
 
     it('returns false when the wrong secret is used', () => {
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      expect(verifySignature('wrong-secret', TEST_PAYLOAD, sig)).toBe(false);
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      expect(verifySignature('wrong-secret', TEST_TIMESTAMP, TEST_PAYLOAD, sig)).toBe(false);
     });
 
     it('returns false for a missing (undefined) signature', () => {
-      expect(verifySignature(TEST_SECRET, TEST_PAYLOAD, undefined)).toBe(false);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, undefined)).toBe(false);
     });
 
     it('returns false for a null signature', () => {
-      expect(verifySignature(TEST_SECRET, TEST_PAYLOAD, null)).toBe(false);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, null)).toBe(false);
     });
 
     it('returns false for an empty string signature', () => {
-      expect(verifySignature(TEST_SECRET, TEST_PAYLOAD, '')).toBe(false);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, '')).toBe(false);
     });
 
     it('returns false for a signature of different length (not a valid hex digest)', () => {
-      expect(verifySignature(TEST_SECRET, TEST_PAYLOAD, 'abc123')).toBe(false);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, 'abc123')).toBe(false);
+    });
+
+    it('returns false for a non-hex signature of the correct length', () => {
+      const sig = `sha256=${'z'.repeat(64)}`;
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, sig)).toBe(false);
     });
 
     it('handles an empty object payload safely (both sides agree)', () => {
-      const sig = signPayload(TEST_SECRET, {});
-      expect(verifySignature(TEST_SECRET, {}, sig)).toBe(true);
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, {});
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, {}, sig)).toBe(true);
     });
   });
 
@@ -161,8 +187,8 @@ describe('webhookService HMAC utilities — unit', () => {
       // Spy on the real crypto module at test-time.
       const timingSafeSpy = jest.spyOn(crypto, 'timingSafeEqual');
 
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      verifySignature(TEST_SECRET, TEST_PAYLOAD, sig);
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, sig);
 
       expect(timingSafeSpy).toHaveBeenCalled();
       timingSafeSpy.mockRestore();
@@ -172,7 +198,7 @@ describe('webhookService HMAC utilities — unit', () => {
       const timingSafeSpy = jest.spyOn(crypto, 'timingSafeEqual');
 
       // Short/mismatched signature skips timingSafeEqual entirely
-      verifySignature(TEST_SECRET, TEST_PAYLOAD, 'short');
+      verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, 'short');
 
       expect(timingSafeSpy).not.toHaveBeenCalled();
       timingSafeSpy.mockRestore();
@@ -204,6 +230,7 @@ describe('webhookService delivery pipeline — integration', () => {
 
   let webhookService;
   let SIGNATURE_HEADER;
+  let TIMESTAMP_HEADER;
   let DELIVERY_ID_HEADER;
   let EVENT_TYPE_HEADER;
   let signPayload;
@@ -227,6 +254,7 @@ describe('webhookService delivery pipeline — integration', () => {
     const mod = await import('../services/webhookService.js');
     webhookService = mod.default;
     SIGNATURE_HEADER = mod.SIGNATURE_HEADER;
+    TIMESTAMP_HEADER = mod.TIMESTAMP_HEADER;
     DELIVERY_ID_HEADER = mod.DELIVERY_ID_HEADER;
     EVENT_TYPE_HEADER = mod.EVENT_TYPE_HEADER;
     signPayload = mod.signPayload;
@@ -243,6 +271,10 @@ describe('webhookService delivery pipeline — integration', () => {
       expect(SIGNATURE_HEADER).toBe('X-Webhook-Signature');
     });
 
+    it('TIMESTAMP_HEADER constant equals "X-Webhook-Timestamp"', () => {
+      expect(TIMESTAMP_HEADER).toBe('X-Webhook-Timestamp');
+    });
+
     it('DELIVERY_ID_HEADER constant equals "X-Webhook-Delivery-Id"', () => {
       expect(DELIVERY_ID_HEADER).toBe('X-Webhook-Delivery-Id');
     });
@@ -257,20 +289,13 @@ describe('webhookService delivery pipeline — integration', () => {
   describe('X-Webhook-Signature header value format (documented spec)', () => {
     beforeEach(() => loadService());
 
-    it('is a raw lowercase hex string with no prefix (e.g. no "sha256=" prefix)', () => {
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      // Per the documented spec: compute HMAC-SHA256, digest('hex') — no prefix
-      expect(sig).toMatch(/^[0-9a-f]{64}$/);
-      expect(sig).not.toContain('=');
-      expect(sig).not.toMatch(/^sha256=/);
+    it('is "sha256=" followed by a lowercase hex digest', () => {
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      // Per docs/webhook-delivery.md: sha256= prefix + HMAC-SHA256 hex digest
+      expect(sig).toMatch(/^sha256=[0-9a-f]{64}$/);
     });
 
-    it('is exactly 64 hex characters (256-bit SHA-256 output)', () => {
-      const sig = signPayload(TEST_SECRET, TEST_PAYLOAD);
-      expect(sig).toHaveLength(64);
-    });
-
-    it('header value set during queueEventWebhooks is a 64-char lowercase hex string', async () => {
+    it('header value set during queueEventWebhooks matches the documented format', async () => {
       const subscription = {
         id: 'sub_1',
         url: 'https://example.com/hook',
@@ -288,10 +313,11 @@ describe('webhookService delivery pipeline — integration', () => {
       const callArgs = enqueueWebhookDeliveryMock.mock.calls[0];
       const headers = callArgs[3]; // 4th arg: headers object
       const signature = headers[SIGNATURE_HEADER];
+      const timestamp = headers[TIMESTAMP_HEADER];
 
       expect(signature).toBeDefined();
-      expect(signature).toMatch(/^[0-9a-f]{64}$/);
-      expect(signature).not.toContain('=');
+      expect(signature).toMatch(/^sha256=[0-9a-f]{64}$/);
+      expect(timestamp).toMatch(/^\d+$/);
     });
   });
 
@@ -337,9 +363,10 @@ describe('webhookService delivery pipeline — integration', () => {
       const signedPayload = callArgs[2]; // 3rd arg: payload passed to the worker
       const headers = callArgs[3]; // 4th arg: headers object
       const receivedSignature = headers[SIGNATURE_HEADER];
+      const timestamp = headers[TIMESTAMP_HEADER];
 
       // A recipient verifying the delivery should succeed.
-      expect(verifySignature(TEST_SECRET, signedPayload, receivedSignature)).toBe(true);
+      expect(verifySignature(TEST_SECRET, timestamp, signedPayload, receivedSignature)).toBe(true);
     });
   });
 
@@ -367,6 +394,7 @@ describe('webhookService delivery pipeline — integration', () => {
       const originalPayload = callArgs[2];
       const headers = callArgs[3];
       const receivedSignature = headers[SIGNATURE_HEADER];
+      const timestamp = headers[TIMESTAMP_HEADER];
 
       // Attacker tampers with the payload after delivery
       const tamperedPayload = {
@@ -374,7 +402,9 @@ describe('webhookService delivery pipeline — integration', () => {
         data: { ...originalPayload.data, ledger: '999999' },
       };
 
-      expect(verifySignature(TEST_SECRET, tamperedPayload, receivedSignature)).toBe(false);
+      expect(verifySignature(TEST_SECRET, timestamp, tamperedPayload, receivedSignature)).toBe(
+        false,
+      );
     });
 
     it('verifySignature returns false when eventType has been altered', async () => {
@@ -396,10 +426,13 @@ describe('webhookService delivery pipeline — integration', () => {
       const originalPayload = callArgs[2];
       const headers = callArgs[3];
       const receivedSignature = headers[SIGNATURE_HEADER];
+      const timestamp = headers[TIMESTAMP_HEADER];
 
       const tamperedPayload = { ...originalPayload, eventType: 'funds_rel' };
 
-      expect(verifySignature(TEST_SECRET, tamperedPayload, receivedSignature)).toBe(false);
+      expect(verifySignature(TEST_SECRET, timestamp, tamperedPayload, receivedSignature)).toBe(
+        false,
+      );
     });
 
     it('verifySignature returns false when using a different subscription secret', async () => {
@@ -421,9 +454,44 @@ describe('webhookService delivery pipeline — integration', () => {
       const signedPayload = callArgs[2];
       const headers = callArgs[3];
       const receivedSignature = headers[SIGNATURE_HEADER];
+      const timestamp = headers[TIMESTAMP_HEADER];
 
       // Recipient using the wrong secret cannot forge a match
-      expect(verifySignature('attacker-does-not-know-the-secret', signedPayload, receivedSignature)).toBe(false);
+      expect(
+        verifySignature(
+          'attacker-does-not-know-the-secret',
+          timestamp,
+          signedPayload,
+          receivedSignature,
+        ),
+      ).toBe(false);
+    });
+
+    it('verifySignature returns false when the timestamp has been altered (replay protection)', async () => {
+      const subscription = {
+        id: 'sub_1',
+        url: 'https://example.com/hook',
+        secret: TEST_SECRET,
+        eventTypes: ['esc_crt'],
+        isActive: true,
+      };
+      prismaMock.webhookSubscription.findMany.mockResolvedValue([subscription]);
+      prismaMock.webhookDelivery.create.mockResolvedValue({ id: 'delivery_1' });
+      prismaMock.webhookDelivery.update.mockResolvedValue({});
+      enqueueWebhookDeliveryMock.mockResolvedValue({});
+
+      await webhookService.queueEventWebhooks('esc_crt', { ledger: '100' });
+
+      const callArgs = enqueueWebhookDeliveryMock.mock.calls[0];
+      const signedPayload = callArgs[2];
+      const headers = callArgs[3];
+      const receivedSignature = headers[SIGNATURE_HEADER];
+      const originalTimestamp = headers[TIMESTAMP_HEADER];
+      const replayedTimestamp = String(Number(originalTimestamp) + 1);
+
+      expect(
+        verifySignature(TEST_SECRET, replayedTimestamp, signedPayload, receivedSignature),
+      ).toBe(false);
     });
   });
 
@@ -432,7 +500,7 @@ describe('webhookService delivery pipeline — integration', () => {
   describe('all delivery headers present', () => {
     beforeEach(() => loadService());
 
-    it('enqueued delivery includes X-Webhook-Signature, X-Webhook-Delivery-Id, and X-Webhook-Event-Type', async () => {
+    it('enqueued delivery includes X-Webhook-Signature, X-Webhook-Timestamp, X-Webhook-Delivery-Id, and X-Webhook-Event-Type', async () => {
       const subscription = {
         id: 'sub_2',
         url: 'https://example.com/hook',
@@ -450,6 +518,7 @@ describe('webhookService delivery pipeline — integration', () => {
       const headers = enqueueWebhookDeliveryMock.mock.calls[0][3];
 
       expect(headers).toHaveProperty(SIGNATURE_HEADER);
+      expect(headers).toHaveProperty(TIMESTAMP_HEADER);
       expect(headers).toHaveProperty(DELIVERY_ID_HEADER, 'delivery_2');
       expect(headers).toHaveProperty(EVENT_TYPE_HEADER, 'mil_apr');
       expect(headers).toHaveProperty('Content-Type', 'application/json');
