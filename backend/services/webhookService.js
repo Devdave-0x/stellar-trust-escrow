@@ -27,6 +27,27 @@ function signPayload(secret, payload) {
   return crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
 }
 
+/**
+ * Verify an HMAC-SHA256 signature in a timing-safe manner.
+ *
+ * @param {string} secret - The shared webhook secret.
+ * @param {object} payload - The parsed JSON payload object to verify.
+ * @param {string} receivedSignature - The hex signature received in X-Webhook-Signature.
+ * @returns {boolean} true if the signature is valid, false otherwise.
+ */
+function verifySignature(secret, payload, receivedSignature) {
+  if (!receivedSignature || typeof receivedSignature !== 'string') {
+    return false;
+  }
+  const expected = signPayload(secret, payload);
+  const expectedBuf = Buffer.from(expected, 'hex');
+  const receivedBuf = Buffer.from(receivedSignature, 'hex');
+  if (expectedBuf.length !== receivedBuf.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+}
+
 async function createSubscription({ url, eventTypes, createdBy }) {
   const subscriptionSecret = generateSecret();
   const subscription = await prisma.webhookSubscription.create({
@@ -162,6 +183,7 @@ export {
   getDeliveryHistory,
   queueEventWebhooks,
   signPayload,
+  verifySignature,
   buildWebhookPayload,
   SIGNATURE_HEADER,
   DELIVERY_ID_HEADER,
@@ -175,4 +197,5 @@ export default {
   getDeliveryHistory,
   queueEventWebhooks,
   signPayload,
+  verifySignature,
 };
