@@ -23,6 +23,7 @@ import { withRetry } from '../lib/transaction.js';
 import LockManager from '../services/lockManager.js';
 import { createModuleLogger } from '../config/logger.js';
 import { syncCid } from './ipfsSyncWorker.js';
+import { recordEscrowStateTransition } from '../lib/metrics.js';
 
 const logger = createModuleLogger('worker.escrowIndexer');
 
@@ -293,6 +294,7 @@ async function handleFundsReleased(event, escrowId) {
 async function handleEscrowCancelled(event, escrowId) {
   if (!escrowId) return;
   await prisma.escrow.updateMany({ where: { id: escrowId }, data: { status: 'Cancelled' } });
+  recordEscrowStateTransition('Active', 'Cancelled');
 }
 
 async function handleDisputeRaised(event, escrowId) {
@@ -311,6 +313,8 @@ async function handleDisputeRaised(event, escrowId) {
     }),
   ]);
 
+  recordEscrowStateTransition('Active', 'Disputed');
+
   // Pre-fetch IPFS evidence metadata asynchronously
   const cid = event.value?.[1] ?? event.cid;
   if (cid) syncCid(String(cid), Number(escrowId));
@@ -319,6 +323,7 @@ async function handleDisputeRaised(event, escrowId) {
 async function handleDisputeResolved(event, escrowId) {
   if (!escrowId) return;
   await prisma.escrow.updateMany({ where: { id: escrowId }, data: { status: 'Completed' } });
+  recordEscrowStateTransition('Disputed', 'Completed');
 }
 
 async function handleReputationUpdated(event) {

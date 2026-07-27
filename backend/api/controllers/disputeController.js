@@ -6,28 +6,52 @@
  */
 
 import prisma from '../../lib/prisma.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+import {
+  parseCursorPagination,
+  buildPrismaFindArgs,
+  buildCursorResponse,
+} from '../../lib/pagination.js';
+import { logTransition, EscrowAuditAction } from '../../services/escrowAuditService.js';
 import { uploadEvidence } from '../middleware/fileUpload.js';
 import ipfsService from '../../services/ipfsService.js';
 import { broadcastToDispute } from '../websocket/handlers.js';
 import { verifyFile, merkleRoot, hashFile } from '../../services/ipfsHashService.js';
+import { getDisputeTimeline } from '../../services/disputeTimelineService.js';
+import respond from '../../lib/respond.js';
 
 /**
  * List and get handlers assume query/params are already validated by
  * `validate(disputeListQueryRules)` and `validate(disputeEscrowIdParamRules)`.
  */
 
+const VALID_DISPUTE_SORT_FIELDS = new Set(['raisedAt', 'resolvedAt', 'id']);
+const VALID_SORT_ORDERS = new Set(['asc', 'desc']);
+
+const DISPUTE_MAX_LIMIT = 50;
+
 const listDisputes = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
-    const {
-      status,
-      raisedBy,
-      dateFrom,
-      dateTo,
-      sortBy = 'raisedAt',
-      sortOrder = 'desc',
-    } = req.query;
+    const { take, parsedCursor, sortField, sortDir } = parseCursorPagination(
+      req.query,
+      'raisedAt',
+      'desc',
+    );
+    const limit = Math.min(take, DISPUTE_MAX_LIMIT);
+
+    const { status, raisedBy, dateFrom, dateTo } = req.query;
+
+    const resolvedSortBy = VALID_DISPUTE_SORT_FIELDS.has(sortField) ? sortField : 'raisedAt';
+    const resolvedSortOrder = VALID_SORT_ORDERS.has(sortDir) ? sortDir : 'desc';
+
+    if (dateFrom && isNaN(Date.parse(dateFrom))) {
+      return res.status(400).json({ error: 'dateFrom must be a valid ISO date string' });
+    }
+    if (dateTo && isNaN(Date.parse(dateTo))) {
+      return res.status(400).json({ error: 'dateTo must be a valid ISO date string' });
+    }
+    if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+      return res.status(400).json({ error: 'dateFrom must not be after dateTo' });
+    }
 
     const where = {
       tenantId: req.tenant.id,
@@ -46,52 +70,49 @@ const listDisputes = async (req, res) => {
       if (dateTo) where.raisedAt.lte = new Date(dateTo);
     }
 
-    const [disputes, total] = await Promise.all([
-      prisma.dispute.findMany({
-        where,
-        include: {
-          escrow: {
-            select: {
-              clientAddress: true,
-              freelancerAddress: true,
-              totalAmount: true,
-              status: true,
-            },
-          },
-          evidence: {
-            select: {
-              id: true,
-              evidenceType: true,
-              submittedBy: true,
-              submittedAt: true,
-              filename: true,
-              ipfsCid: true,
-              thumbnailCid: true,
-              scanStatus: true,
-            },
-            orderBy: { submittedAt: 'desc' },
-          },
-          _count: {
-            select: { evidence: true, appeals: true },
-          },
-        },
-        orderBy: { [sortBy]: sortOrder },
-        skip,
-        take: limit,
-      }),
-      prisma.dispute.count({ where }),
-    ]);
-
-    const response = buildPaginatedResponse(disputes, {
-      total,
-      page,
-      limit,
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) } : null,
+      take: limit,
+      sortField: resolvedSortBy,
+      sortDir: resolvedSortOrder,
+      idField: 'id',
     });
 
-    res.json(response);
+    const disputes = await prisma.dispute.findMany({
+      where,
+      include: {
+        escrow: {
+          select: {
+            clientAddress: true,
+            freelancerAddress: true,
+            totalAmount: true,
+            status: true,
+          },
+        },
+        evidence: {
+          select: {
+            id: true,
+            evidenceType: true,
+            submittedBy: true,
+            submittedAt: true,
+            filename: true,
+            ipfsCid: true,
+            thumbnailCid: true,
+            scanStatus: true,
+          },
+          orderBy: { submittedAt: 'desc' },
+        },
+        _count: {
+          select: { evidence: true, appeals: true },
+        },
+      },
+      ...findArgs,
+    });
+
+    res.json(buildCursorResponse(disputes, limit, 'id', resolvedSortBy, resolvedSortOrder));
   } catch (error) {
     console.error('Error listing disputes:', error);
-    res.status(500).json({ error: 'Failed to list disputes' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to list disputes');
   }
 };
 
@@ -132,7 +153,7 @@ const getDispute = async (req, res) => {
     });
 
     if (!dispute) {
-      return res.status(404).json({ error: 'Dispute not found' });
+      return respond.error(res, 404, 'NOT_FOUND', 'Dispute not found');
     }
 
     const evidenceWithUrls = await Promise.all(
@@ -148,13 +169,10 @@ const getDispute = async (req, res) => {
       }),
     );
 
-    res.json({
-      ...dispute,
-      evidence: evidenceWithUrls,
-    });
+    return respond.success(res, { ...dispute, evidence: evidenceWithUrls });
   } catch (error) {
     console.error('Error getting dispute:', error);
-    res.status(500).json({ error: 'Failed to get dispute' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to get dispute');
   }
 };
 
@@ -164,7 +182,7 @@ const postEvidence = async (req, res) => {
     const userAddress = req.userAddress; // set by validateDisputeAccess in fileUpload middleware
 
     if (!userAddress) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return respond.error(res, 401, 'UNAUTHENTICATED', 'User not authenticated');
     }
 
     const dispute = req.dispute;
@@ -172,10 +190,12 @@ const postEvidence = async (req, res) => {
     const scanResults = req.virusScanResults || [];
 
     if (uploadResults.length === 0 && !description) {
-      return res.status(400).json({
-        error: 'No evidence provided',
-        message: 'Either files or text description is required',
-      });
+      return respond.error(
+        res,
+        400,
+        'VALIDATION_ERROR',
+        'Either files or text description is required',
+      );
     }
 
     const evidenceRecords = [];
@@ -242,21 +262,21 @@ const postEvidence = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    res.status(201).json({
-      message: 'Evidence uploaded successfully',
-      evidence: evidenceWithUrls,
-      count: evidenceRecords.length,
-    });
+    return respond.success(
+      res,
+      { evidence: evidenceWithUrls, count: evidenceRecords.length },
+      { created: true },
+    );
   } catch (error) {
     console.error('Error posting evidence:', error);
-    res.status(500).json({ error: 'Failed to post evidence' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to post evidence');
   }
 };
 
 const listEvidence = async (req, res) => {
   try {
     const { id } = req.params;
-    const { page, limit, skip } = parsePagination(req.query);
+    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'submittedAt', 'desc');
     const { evidenceType, submittedBy } = req.query;
 
     const where = {
@@ -267,15 +287,18 @@ const listEvidence = async (req, res) => {
     if (evidenceType) where.evidenceType = evidenceType;
     if (submittedBy) where.submittedBy = submittedBy;
 
-    const [evidence, total] = await Promise.all([
-      prisma.disputeEvidence.findMany({
-        where,
-        orderBy: { submittedAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.disputeEvidence.count({ where }),
-    ]);
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) } : null,
+      take,
+      sortField: 'submittedAt',
+      sortDir,
+      idField: 'id',
+    });
+
+    const evidence = await prisma.disputeEvidence.findMany({
+      where,
+      ...findArgs,
+    });
 
     const evidenceWithUrls = await Promise.all(
       evidence.map(async (evidenceItem) => {
@@ -290,16 +313,10 @@ const listEvidence = async (req, res) => {
       }),
     );
 
-    const response = buildPaginatedResponse(evidenceWithUrls, {
-      total,
-      page,
-      limit,
-    });
-
-    res.json(response);
+    res.json(buildCursorResponse(evidenceWithUrls, take, 'id', 'submittedAt', sortDir));
   } catch (error) {
     console.error('Error listing evidence:', error);
-    res.status(500).json({ error: 'Failed to list evidence' });
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to list evidence');
   }
 };
 
@@ -315,6 +332,22 @@ const autoResolve = async (req, res) => {
         resolutionType: 'AUTO',
         autoResolved: true,
         resolution: 'Automatically resolved based on evidence and contract terms',
+      },
+    });
+
+    // Log the state transition to the immutable audit trail
+    await logTransition({
+      escrowId: dispute.escrowId,
+      tenantId: req.tenant?.id ?? dispute.tenantId,
+      actorId: 'system',
+      actorIp: req.ip || null,
+      action: EscrowAuditAction.RESOLVE_DISPUTE,
+      fromState: 'Disputed',
+      toState: 'Completed',
+      metadata: {
+        disputeId: dispute.id,
+        resolutionType: 'AUTO',
+        resolvedBy: 'system',
       },
     });
 
@@ -438,44 +471,36 @@ const patchAppeal = async (req, res) => {
 
 const getResolutionHistory = async (req, res) => {
   try {
-    const { page, limit, skip } = parsePagination(req.query);
+    const { take, parsedCursor, sortDir } = parseCursorPagination(req.query, 'resolvedAt', 'desc');
 
-    const [disputes, total] = await Promise.all([
-      prisma.dispute.findMany({
-        where: {
-          tenantId: req.tenant.id,
-          resolvedAt: { not: null },
-        },
-        include: {
-          escrow: {
-            select: {
-              clientAddress: true,
-              freelancerAddress: true,
-              totalAmount: true,
-            },
-          },
-        },
-        orderBy: { resolvedAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.dispute.count({
-        where: {
-          tenantId: req.tenant.id,
-          resolvedAt: { not: null },
-        },
-      }),
-    ]);
+    const where = {
+      tenantId: req.tenant.id,
+      resolvedAt: { not: null },
+    };
 
-    const response = buildPaginatedResponse({
-      items: disputes,
-      total,
-      page,
-      limit,
-      request: req,
+    const findArgs = buildPrismaFindArgs({
+      parsedCursor: parsedCursor ? { ...parsedCursor, id: parseInt(parsedCursor.id, 10) } : null,
+      take,
+      sortField: 'resolvedAt',
+      sortDir,
+      idField: 'id',
     });
 
-    res.json(response);
+    const disputes = await prisma.dispute.findMany({
+      where,
+      include: {
+        escrow: {
+          select: {
+            clientAddress: true,
+            freelancerAddress: true,
+            totalAmount: true,
+          },
+        },
+      },
+      ...findArgs,
+    });
+
+    res.json(buildCursorResponse(disputes, take, 'id', 'resolvedAt', sortDir));
   } catch (error) {
     console.error('Error getting resolution history:', error);
     res.status(500).json({ error: 'Failed to get resolution history' });
@@ -533,6 +558,30 @@ const verifyEvidence = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/disputes/:id/timeline
+ * Chronological timeline of a dispute's lifecycle, aggregated from the
+ * existing dispute/evidence/appeal/escrow tables.
+ */
+const getTimeline = async (req, res) => {
+  try {
+    const disputeId = parseInt(req.params.id, 10);
+    if (Number.isNaN(disputeId)) {
+      return respond.error(res, 400, 'VALIDATION_ERROR', 'Invalid dispute id');
+    }
+
+    const events = await getDisputeTimeline(disputeId, req.tenant.id);
+    if (!events) {
+      return respond.error(res, 404, 'NOT_FOUND', 'Dispute not found');
+    }
+
+    return respond.success(res, { events });
+  } catch (error) {
+    console.error('Error getting dispute timeline:', error);
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to get dispute timeline');
+  }
+};
+
 function determineUserRole(dispute, userAddress) {
   if (dispute.raisedByAddress === userAddress) {
     return dispute.escrow.clientAddress === userAddress ? 'client' : 'freelancer';
@@ -587,4 +636,5 @@ export default {
   getResolutionHistory,
   uploadEvidence,
   verifyEvidence,
+  getTimeline,
 };

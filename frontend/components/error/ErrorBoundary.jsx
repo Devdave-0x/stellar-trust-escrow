@@ -5,19 +5,12 @@ import * as Sentry from '@sentry/nextjs';
 import Button from '../ui/Button';
 import Link from 'next/link';
 
-/**
- * Comprehensive ErrorBoundary for component/route-level error catching.
- * Features:
- * - Catches JS errors in tree
- * - Reports to Sentry + console
- * - Graceful fallback UI with recovery
- * - Retry button remounts children
- * - Consistent dark theme styling
- */
+const REPORT_URL = 'https://github.com/stellar-trust-escrow/issues/new';
+
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, resetKey: 0 };
   }
 
   static getDerivedStateFromError(error) {
@@ -25,69 +18,79 @@ class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log to console with stack
     console.error('ErrorBoundary caught error:', error, errorInfo);
 
-    // Report to Sentry
     Sentry.withScope((scope) => {
       scope.setExtras({ componentStack: errorInfo.componentStack });
       Sentry.captureException(error);
     });
 
-    // Optional callback
+    this.setState({ errorInfo });
+
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
     }
   }
 
   handleRetry = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState((prev) => ({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      resetKey: prev.resetKey + 1,
+    }));
   };
 
   render() {
     if (!this.state.hasError) {
-      // Render children with key for remount on retry
-      return <div key={this.props.childrenKey || Math.random()}>{this.props.children}</div>;
+      return <span key={this.state.resetKey}>{this.props.children}</span>;
     }
 
-    const { fallback = this.renderFallback() } = this.props;
+    const { fallback } = this.props;
+    if (fallback) return fallback;
 
-    return fallback;
+    return this.renderFallback();
   }
 
   renderFallback() {
+    const errorMsg = this.state.error?.message || '';
+    const reportBody = encodeURIComponent(
+      `**Error:** ${errorMsg}\n\n**Stack:**\n${this.state.errorInfo?.componentStack || ''}`,
+    );
+    const reportUrl = `${REPORT_URL}?title=${encodeURIComponent('UI Error: ' + errorMsg.slice(0, 80))}&body=${reportBody}`;
+
     return (
-      <div className="min-h-[400px] flex items-center justify-center p-8">
-        <div className="text-center space-y-6 max-w-md mx-auto">
-          <div className="w-20 h-20 bg-red-500/10 border-2 border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <span className="text-3xl">⚠️</span>
+      <div className="min-h-[200px] flex items-center justify-center p-8" role="alert" aria-live="assertive">
+        <div className="text-center space-y-4 max-w-md mx-auto">
+          <div className="w-16 h-16 bg-red-500/10 border-2 border-red-500/20 rounded-2xl flex items-center justify-center mx-auto">
+            <span className="text-2xl" aria-hidden="true">⚠️</span>
           </div>
-          <div className="space-y-3">
-            <h2 className="text-2xl font-bold text-white">Something went wrong</h2>
-            <p className="text-gray-400 leading-relaxed">
-              This section encountered an unexpected error. We've logged it for review.
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-white">Something went wrong</h2>
+            <p className="text-gray-400 text-sm leading-relaxed">
+              This section encountered an unexpected error. Other parts of the page are unaffected.
             </p>
-            {this.state.error?.message && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-300">
+            {errorMsg && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-300 text-left">
                 <code className="font-mono break-all">
-                  {this.state.error.message.length > 100
-                    ? `${this.state.error.message.slice(0, 100)}…`
-                    : this.state.error.message}
+                  {errorMsg.length > 120 ? `${errorMsg.slice(0, 120)}…` : errorMsg}
                 </code>
               </div>
             )}
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
             <Button onClick={this.handleRetry} className="w-full sm:w-auto">
-              Try Again
+              Retry
             </Button>
-            <Button variant="secondary" href="/" asChild className="w-full sm:w-auto">
-              <Link href="/">Go Home</Link>
-            </Button>
+            <a
+              href={reportUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1 px-4 py-2 text-sm rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 transition-colors w-full sm:w-auto"
+            >
+              Report issue ↗
+            </a>
           </div>
-          <p className="text-xs text-gray-500">
-            Error reported automatically. Refresh page if issue persists.
-          </p>
         </div>
       </div>
     );

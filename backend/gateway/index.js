@@ -11,6 +11,7 @@
 
 import crypto from 'crypto';
 import authMiddleware from '../api/middleware/auth.js';
+import apiKeyAuth from '../api/middleware/apiKeyAuth.js';
 import { createPerUserRateLimiter } from '../api/middleware/rateLimiter.js';
 import { httpRequestDuration, httpRequestTotal, httpRequestsInFlight } from '../lib/metrics.js';
 
@@ -101,9 +102,12 @@ export function createGateway() {
     gatewayLogger,
     gatewayMetrics,
 
-    // Auth: skip public routes, otherwise require valid JWT
+    // Auth: skip public routes, otherwise require a valid JWT or API key.
+    // x-api-key takes precedence when present so API-key clients never fall
+    // through to the JWT path.
     (req, res, next) => {
       if (isPublicRoute(req)) return next();
+      if (req.headers['x-api-key']) return apiKeyAuth(req, res, next);
       return authMiddleware(req, res, next);
     },
 

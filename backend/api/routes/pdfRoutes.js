@@ -9,6 +9,7 @@
 
 import express from 'express';
 import authMiddleware from '../middleware/auth.js';
+import { requireFeature } from '../middleware/featureFlags.js';
 import {
   generatePdf,
   signPdfHandler,
@@ -19,7 +20,8 @@ import {
 const router = express.Router();
 router.use(authMiddleware);
 
-router.post('/:id/generate-pdf', validateEscrowId, generatePdf);
-router.post('/:id/sign-pdf', validateEscrowId, validateSignPdf, signPdfHandler);
+// Gated by 'pdf-export' feature flag (issue #79)
+router.post('/:id/generate-pdf', requireFeature('pdf-export'), validateEscrowId, generatePdf);
+router.post('/:id/sign-pdf', requireFeature('pdf-export'), validateEscrowId, validateSignPdf, signPdfHandler);
 
 export default router;

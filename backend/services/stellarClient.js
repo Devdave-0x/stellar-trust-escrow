@@ -18,6 +18,7 @@
 
 import { SorobanRpc, Transaction, Networks } from '@stellar/stellar-sdk';
 import { createModuleLogger } from '../config/logger.js';
+import { HORIZON_TIMEOUT_MS, TimeoutError } from '../lib/timeout.js';
 
 const logger = createModuleLogger('service.stellarClient');
 
@@ -32,8 +33,9 @@ const HORIZON_ENDPOINTS = (process.env.HORIZON_ENDPOINTS || DEFAULT_HORIZON_ENDP
   .filter((url) => url);
 const HEALTH_CHECK_INTERVAL = parseInt(process.env.HEALTH_CHECK_INTERVAL_MS || '60000', 10);
 const NODE_RECOVERY_WINDOW = parseInt(process.env.NODE_RECOVERY_WINDOW_MS || '300000', 10);
+// Horizon calls are capped at HORIZON_TIMEOUT_MS (default 5 s) to prevent indefinite hangs.
 const QUERY_TIMEOUT = parseInt(
-  process.env.QUERY_TIMEOUT_MS || (process.env.NODE_ENV === 'test' ? '250' : '30000'),
+  process.env.QUERY_TIMEOUT_MS || (process.env.NODE_ENV === 'test' ? '250' : String(HORIZON_TIMEOUT_MS)),
   10,
 );
 const NETWORK = process.env.STELLAR_NETWORK || 'testnet';
@@ -151,7 +153,7 @@ export class StellarClient {
         const result = await Promise.race([
           server.getLatestLedger(),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Health check timeout')), QUERY_TIMEOUT),
+            setTimeout(() => reject(new TimeoutError('horizon.healthCheck', QUERY_TIMEOUT)), QUERY_TIMEOUT),
           ),
         ]);
         const latency = Date.now() - startTime;
@@ -211,7 +213,7 @@ export class StellarClient {
         const result = await Promise.race([
           queryFn(server),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Query timeout')), QUERY_TIMEOUT),
+            setTimeout(() => reject(new TimeoutError('horizon.query', QUERY_TIMEOUT)), QUERY_TIMEOUT),
           ),
         ]);
 

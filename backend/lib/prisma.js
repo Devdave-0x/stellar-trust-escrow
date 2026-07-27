@@ -30,6 +30,9 @@ const TENANT_SCOPED_MODELS = new Set([
   'WebhookDelivery',
   'AdminAuditLog',
   'AuditLog',
+  'ApiKey',
+  'EscrowMessage',
+  'LoginHistory',
 ]);
 
 const READ_MANY_ACTIONS = new Set([

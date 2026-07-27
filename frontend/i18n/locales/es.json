@@ -12,8 +12,10 @@
     "title": "Depósito",
     "status": {
       "active": "Activo",
-      "completed": "Completado",
+      "releaseRequested": "Liberación Solicitada",
       "disputed": "En Disputa",
+      "expired": "Expirado",
+      "completed": "Completado",
       "cancelled": "Cancelado"
     },
     "fields": {

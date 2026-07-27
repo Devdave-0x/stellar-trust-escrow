@@ -12,8 +12,10 @@
     "title": "Treuhand",
     "status": {
       "active": "Aktiv",
-      "completed": "Abgeschlossen",
+      "releaseRequested": "Freigabe Angefordert",
       "disputed": "Streitig",
+      "expired": "Abgelaufen",
+      "completed": "Abgeschlossen",
       "cancelled": "Abgebrochen"
     },
     "fields": {

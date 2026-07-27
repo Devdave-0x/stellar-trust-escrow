@@ -12,9 +12,33 @@
 
 #![allow(dead_code)]
 
-use soroban_sdk::{symbol_short, Address, Env};
+use soroban_sdk::{symbol_short, Address, Env, String};
 
 use crate::event_names as ev;
+
+/// Emitted when the admin changes the platform fee rate.
+///
+/// Schema: topic=(PLATFORM_FEE_UPDATED,), data=(old_bps, new_bps)
+pub fn emit_platform_fee_updated(env: &Env, old_bps: u32, new_bps: u32) {
+    env.events()
+        .publish((ev::PLATFORM_FEE_UPDATED,), (old_bps, new_bps));
+}
+
+/// Emitted by the canonical `create_milestone` entry point, carrying the
+/// human-readable title alongside the milestone identifier for indexers.
+pub fn emit_milestone_created(env: &Env, escrow_id: u64, milestone_id: u32, title: &String) {
+    env.events().publish(
+        (ev::MILESTONE_CREATED, escrow_id),
+        (milestone_id, title.clone()),
+    );
+}
+
+/// Emitted alongside `escrow_created` to record the immutable creation
+/// ledger sequence + timestamp for indexers.
+pub fn emit_escrow_creation_time(env: &Env, escrow_id: u64, ledger: u32, timestamp: u64) {
+    env.events()
+        .publish((ev::ESCROW_CREATION_TIME, escrow_id), (ledger, timestamp));
+}
 
 pub fn emit_escrow_created(
     env: &Env,
@@ -26,6 +50,48 @@ pub fn emit_escrow_created(
     env.events().publish(
         (ev::ESCROW_CREATED, escrow_id),
         (client.clone(), freelancer.clone(), amount),
+    );
+}
+
+/// Emitted immediately after the depositor's tokens are transferred to the contract.
+///
+/// Schema: topic=(ESCROW_FUNDED, escrow_id), data=(depositor, amount, timestamp)
+pub fn emit_escrow_funded(
+    env: &Env,
+    escrow_id: u64,
+    depositor: &Address,
+    amount: i128,
+    timestamp: u64,
+) {
+    env.events().publish(
+        (ev::ESCROW_FUNDED, escrow_id),
+        (depositor.clone(), amount, timestamp),
+    );
+}
+
+/// Emitted when a milestone transitions to the Approved state (release approved by client).
+///
+/// Schema: topic=(RELEASE_APPROVED, escrow_id), data=(approver, milestone_id, amount, timestamp)
+pub fn emit_release_approved(
+    env: &Env,
+    escrow_id: u64,
+    approver: &Address,
+    milestone_id: u32,
+    amount: i128,
+    timestamp: u64,
+) {
+    env.events().publish(
+        (ev::RELEASE_APPROVED, escrow_id),
+        (approver.clone(), milestone_id, amount, timestamp),
+    );
+}
+
+/// Emits `EscrowCreated { participant_count }` so indexers can track how
+/// many signers/participants were registered on escrow creation.
+pub fn emit_escrow_created_participant_count(env: &Env, escrow_id: u64, participant_count: u32) {
+    env.events().publish(
+        (ev::ESCROW_CREATED, symbol_short!("partcnt")),
+        (escrow_id, participant_count),
     );
 }
 
@@ -169,6 +235,11 @@ pub fn emit_escrow_cancelled(env: &Env, escrow_id: u64, returned_amount: i128) {
         .publish((ev::ESCROW_CANCELLED, escrow_id), returned_amount);
 }
 
+pub fn emit_escrow_expired(env: &Env, escrow_id: u64, refund_amount: i128) {
+    env.events()
+        .publish((ev::ESCROW_EXPIRED, escrow_id), refund_amount);
+}
+
 pub fn emit_dispute_raised(env: &Env, escrow_id: u64, raised_by: &Address) {
     env.events()
         .publish((ev::DISPUTE_RAISED, escrow_id), raised_by.clone());
@@ -234,8 +305,19 @@ pub fn emit_lock_time_extended(
     );
 }
 
+pub fn emit_contract_upgraded(env: &Env, old_version: u32, new_version: u32, admin: &Address) {
+    env.events().publish(
+        (ev::CONTRACT_UPGRADED, new_version),
+        (old_version, admin.clone()),
+    );
+}
+
 pub fn emit_contract_paused(env: &Env, admin: &Address) {
     env.events().publish((ev::CONTRACT_PAUSED,), admin.clone());
+}
+
+pub fn emit_limits_updated(env: &Env, min: i128, max: i128) {
+    env.events().publish((ev::LIMITS_UPDATED,), (min, max));
 }
 
 pub fn emit_contract_unpaused(env: &Env, admin: &Address) {
@@ -258,6 +340,51 @@ pub fn emit_cancellation_executed(
 pub fn emit_cancellation_approved(env: &Env, escrow_id: u64, approver: &Address) {
     env.events()
         .publish((ev::CANCELLATION_APPROVED, escrow_id), approver.clone());
+}
+
+pub fn emit_cancellation_completed(env: &Env, escrow_id: u64, refund_amount: i128) {
+    env.events()
+        .publish((ev::CANCELLATION_COMPLETED, escrow_id), refund_amount);
+}
+
+pub fn emit_cancellation_rejected(env: &Env, escrow_id: u64, rejected_by: &Address) {
+    env.events()
+        .publish((ev::CANCELLATION_REJECTED, escrow_id), rejected_by.clone());
+}
+
+pub fn emit_fee_collected(env: &Env, escrow_id: u64, amount: i128, treasury: &Address) {
+    env.events()
+        .publish((ev::FEE_COLLECTED, escrow_id), (amount, treasury.clone()));
+}
+
+pub fn emit_escrow_extended(
+    env: &Env,
+    escrow_id: u64,
+    old_deadline: Option<u64>,
+    new_deadline: u64,
+) {
+    env.events().publish(
+        (ev::ESCROW_EXTENDED, escrow_id),
+        (old_deadline, new_deadline),
+    );
+}
+
+pub fn emit_arbitration_fee_paid(
+    env: &Env,
+    arbiter: &Address,
+    arbiter_amount: i128,
+    treasury: &Address,
+    treasury_amount: i128,
+) {
+    env.events().publish(
+        (ev::ARBITRATION_FEE_PAID,),
+        (
+            arbiter.clone(),
+            arbiter_amount,
+            treasury.clone(),
+            treasury_amount,
+        ),
+    );
 }
 
 pub fn emit_cancellation_requested(
@@ -341,6 +468,22 @@ pub fn emit_admin_proposed(env: &Env, current_admin: &Address, pending_admin: &A
 pub fn emit_admin_changed(env: &Env, old_admin: &Address, new_admin: &Address) {
     env.events()
         .publish((ev::ADMIN_CHANGED,), (old_admin.clone(), new_admin.clone()));
+}
+
+/// Emitted when `propose_admin` (step 1 of the two-step admin transfer) is called.
+pub fn emit_admin_transferred(env: &Env, old_admin: &Address, new_admin: &Address) {
+    env.events().publish(
+        (ev::ADMIN_TRANSFERRED,),
+        (old_admin.clone(), new_admin.clone(), env.ledger().timestamp()),
+    );
+}
+
+/// Emitted when `accept_admin` (step 2 of the two-step admin transfer) succeeds.
+pub fn emit_admin_accepted(env: &Env, new_admin: &Address) {
+    env.events().publish(
+        (ev::ADMIN_ACCEPTED,),
+        (new_admin.clone(), env.ledger().timestamp()),
+    );
 }
 
 pub fn emit_max_milestones_set(env: &Env, new_max: u32) {
@@ -448,4 +591,54 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
         (symbol_short!("ref_pay"), escrow_id),
         (referrer.clone(), amount),
     );
+}
+
+pub fn emit_arbiter_assigned(env: &Env, escrow_id: u64, arbiter: &Address) {
+    env.events()
+        .publish((ev::ARBITER_ASSIGNED, escrow_id), arbiter.clone());
+}
+
+pub fn emit_evidence_submitted(env: &Env, escrow_id: u64, evidence_hash: &soroban_sdk::BytesN<32>) {
+    env.events()
+        .publish((ev::EVIDENCE_SUBMITTED, escrow_id), evidence_hash.clone());
+}
+
+pub fn emit_escrow_approval_submitted(
+    env: &Env,
+    escrow_id: u64,
+    signer: &Address,
+    approval_count: u32,
+    threshold: u32,
+) {
+    env.events().publish(
+        (ev::ESCROW_APPROVAL_SUBMITTED, escrow_id),
+        (signer.clone(), approval_count, threshold),
+    );
+}
+
+pub fn emit_escrow_approval_revoked(env: &Env, escrow_id: u64, signer: &Address) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_REVOKED, escrow_id), signer.clone());
+}
+
+pub fn emit_escrow_approval_threshold_met(env: &Env, escrow_id: u64, threshold: u32) {
+    env.events()
+        .publish((ev::ESCROW_APPROVAL_THRESHOLD_MET, escrow_id), threshold);
+}
+
+pub fn emit_release_pending(env: &Env, escrow_id: u64, milestone_id: u32, release_at: u64) {
+    env.events()
+        .publish((ev::RELEASE_PENDING, escrow_id), (milestone_id, release_at));
+}
+
+pub fn emit_pending_release_executed(env: &Env, escrow_id: u64, milestone_id: u32, amount: i128) {
+    env.events().publish(
+        (ev::PENDING_RELEASE_EXECUTED, escrow_id),
+        (milestone_id, amount),
+    );
+}
+
+pub fn emit_cooldown_elapsed(env: &Env, escrow_id: u64, cooldown_ended_at: u64) {
+    env.events()
+        .publish((ev::COOLDOWN_ELAPSED, escrow_id), cooldown_ended_at);
 }

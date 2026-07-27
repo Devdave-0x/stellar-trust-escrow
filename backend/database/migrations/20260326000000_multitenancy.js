@@ -119,8 +119,8 @@ export async function up(prisma) {
 
   await prisma.$executeRawUnsafe(
     `
-      INSERT INTO tenants (id, slug, name, status, branding, configuration, metadata)
-      VALUES ($1, $2, $3, 'active', '{}'::jsonb, '{}'::jsonb, jsonb_build_object('bootstrappedBy', '20260326000000_multitenancy'))
+      INSERT INTO tenants (id, slug, name, status, branding, configuration, metadata, created_at, updated_at)
+      VALUES ($1, $2, $3, 'active', '{}'::jsonb, '{}'::jsonb, jsonb_build_object('bootstrappedBy', '20260326000000_multitenancy'), NOW(), NOW())
       ON CONFLICT (id) DO UPDATE
       SET slug = EXCLUDED.slug,
           name = EXCLUDED.name,

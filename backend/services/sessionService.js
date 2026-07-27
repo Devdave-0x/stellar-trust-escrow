@@ -1,94 +1,96 @@
 /**
  * Session Service
  *
- * Tracks active JWT sessions in PostgreSQL so tokens can be individually
- * or globally revoked. Falls back to in-memory store when DB is unavailable.
+ * Tracks active login sessions per device in the `user_sessions` table so users
+ * can see everywhere they're logged in and revoke individual devices or "sign
+ * out everywhere else". `userId` is the Stellar wallet address — the
+ * authenticated principal for wallet-signature logins (see UserSession in
+ * schema.prisma for why this isn't a hard FK into `users`).
+ *
+ * Only a SHA-256 hash of the JWT `jti` is stored, never the raw token.
  */
 
 import crypto from 'crypto';
 import prisma from '../lib/prisma.js';
 
-const memSessions = new Map();
+/** How often last_active_at is allowed to be bumped, to avoid write amplification. */
+const TOUCH_INTERVAL_MS = 60 * 1000;
 
-function nowPlusSeconds(seconds) {
-  return new Date(Date.now() + seconds * 1000);
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
-function parseExpiresIn(expiresIn) {
-  if (typeof expiresIn === 'number') return expiresIn;
-  const match = String(expiresIn).match(/^(\d+)([smhd])$/);
-  if (!match) return 86400;
-  const [, n, unit] = match;
-  return parseInt(n) * { s: 1, m: 60, h: 3600, d: 86400 }[unit];
+/** Record a new session at login/refresh time. */
+export async function recordSession({ userId, jti, deviceName, ipAddress }) {
+  return prisma.userSession.create({
+    data: {
+      userId,
+      tokenHash: hashToken(jti),
+      deviceName: deviceName ?? null,
+      ipAddress: ipAddress ?? null,
+    },
+  });
 }
 
-export async function createSession({ address, userAgent, ipAddress, expiresIn = '24h' }) {
-  const jti = crypto.randomUUID();
-  const expiresAt = nowPlusSeconds(parseExpiresIn(expiresIn));
-  try {
-    await prisma.session.create({
-      data: { jti, address, userAgent: userAgent ?? '', ipAddress: ipAddress ?? '', expiresAt },
-    });
-  } catch {
-    memSessions.set(jti, {
-      jti,
-      address,
-      userAgent,
-      ipAddress,
-      expiresAt,
-      revokedAt: null,
-      createdAt: new Date(),
-    });
-  }
-  return jti;
-}
-
+/** Whether a session for this jti still exists (i.e. hasn't been revoked). */
 export async function isSessionValid(jti) {
-  try {
-    const s = await prisma.session.findUnique({ where: { jti } });
-    if (!s || s.revokedAt || s.expiresAt < new Date()) return false;
-    return true;
-  } catch {
-    const s = memSessions.get(jti);
-    if (!s || s.revokedAt || s.expiresAt < new Date()) return false;
-    return true;
-  }
+  if (!jti) return false;
+  const session = await prisma.userSession.findUnique({ where: { tokenHash: hashToken(jti) } });
+  return !!session;
 }
 
-export async function listSessions(address) {
-  try {
-    return prisma.session.findMany({
-      where: { address, revokedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-      select: { jti: true, userAgent: true, ipAddress: true, createdAt: true, expiresAt: true },
-    });
-  } catch {
-    return [...memSessions.values()].filter(
-      (s) => s.address === address && !s.revokedAt && s.expiresAt > new Date(),
-    );
-  }
+/** Bumps last_active_at for the session, but at most once per minute. */
+export async function touchSession(jti) {
+  if (!jti) return;
+  const cutoff = new Date(Date.now() - TOUCH_INTERVAL_MS);
+  await prisma.userSession.updateMany({
+    where: { tokenHash: hashToken(jti), lastActiveAt: { lt: cutoff } },
+    data: { lastActiveAt: new Date() },
+  });
 }
 
-export async function revokeSession(jti) {
-  try {
-    await prisma.session.update({ where: { jti }, data: { revokedAt: new Date() } });
-  } catch {
-    const s = memSessions.get(jti);
-    if (s) s.revokedAt = new Date();
-  }
+/** List a user's active sessions, most recently active first, with the current one flagged. */
+export async function listSessions(userId, currentJti) {
+  const sessions = await prisma.userSession.findMany({
+    where: { userId },
+    orderBy: { lastActiveAt: 'desc' },
+  });
+  const currentHash = currentJti ? hashToken(currentJti) : null;
+  return sessions.map(({ tokenHash, ...session }) => ({
+    ...session,
+    current: tokenHash === currentHash,
+  }));
 }
 
-export async function revokeAllSessions(address) {
-  try {
-    await prisma.session.updateMany({
-      where: { address, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-  } catch {
-    for (const s of memSessions.values()) {
-      if (s.address === address) s.revokedAt = new Date();
-    }
-  }
+/** Revoke a single session by its row id, scoped to its owner. Returns whether a row was deleted. */
+export async function revokeSession(userId, sessionId) {
+  const result = await prisma.userSession.deleteMany({ where: { id: sessionId, userId } });
+  return result.count > 0;
 }
 
-export default { createSession, isSessionValid, listSessions, revokeSession, revokeAllSessions };
+/** Revoke the session tied to a specific jti (used on logout/refresh). */
+export async function revokeSessionByJti(jti) {
+  if (!jti) return;
+  await prisma.userSession.deleteMany({ where: { tokenHash: hashToken(jti) } });
+}
+
+/** Revoke every session for a user except the current one ("sign out everywhere else"). */
+export async function revokeAllExcept(userId, currentJti) {
+  const currentHash = currentJti ? hashToken(currentJti) : null;
+  return prisma.userSession.deleteMany({
+    where: {
+      userId,
+      ...(currentHash ? { tokenHash: { not: currentHash } } : {}),
+    },
+  });
+}
+
+export default {
+  recordSession,
+  isSessionValid,
+  touchSession,
+  listSessions,
+  revokeSession,
+  revokeSessionByJti,
+  revokeAllExcept,
+};
