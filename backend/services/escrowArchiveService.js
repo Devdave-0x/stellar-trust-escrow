@@ -1,4 +1,4 @@
-const ARCHIVE_RETENTION_DAYS = 365;
+const ARCHIVE_RETENTION_DAYS = 90;
 
 function getArchiveTableName(date = new Date()) {
   const value = new Date(date);
@@ -30,10 +30,11 @@ async function archiveCompletedEscrows(
   prisma,
   olderThan = new Date(Date.now() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000),
 ) {
+  // Archive terminal-state escrows: Completed and Cancelled
   const rows = await prisma.escrow.findMany({
     where: {
-      status: 'Completed',
-      createdAt: { lt: olderThan },
+      status: { in: ['Completed', 'Cancelled'] },
+      updatedAt: { lt: olderThan },
     },
     orderBy: { createdAt: 'asc' },
     take: 500,
@@ -63,6 +64,8 @@ async function archiveCompletedEscrows(
   return { archived: archived.length, rows: archived };
 }
 
+const ARCHIVE_TABLE_RE = /^escrows_archive_\d{4}_\d{2}$/;
+
 async function listArchiveTables(prisma) {
   const rows = await prisma.$queryRawUnsafe(`
     SELECT tablename
@@ -72,7 +75,8 @@ async function listArchiveTables(prisma) {
     ORDER BY tablename ASC
   `);
 
-  return rows.map((row) => row.tablename);
+  // Validate names against expected pattern before returning for use in raw SQL
+  return rows.map((row) => row.tablename).filter((name) => ARCHIVE_TABLE_RE.test(name));
 }
 
 export {

@@ -28,20 +28,48 @@ const cacheMock = {
 
 const prismaMock = {
   $transaction: jest.fn(async (operations) => operations),
+  $queryRawUnsafe: jest.fn().mockResolvedValue([]),
   escrow: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
     count: jest.fn(),
+    upsert: jest.fn(),
   },
   milestone: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
     count: jest.fn(),
   },
+  milestoneStatusHistory: {
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    create: jest.fn(),
+  },
 };
+
+const submitTransactionMock = jest.fn();
 
 jest.unstable_mockModule('../lib/cache.js', () => ({ default: cacheMock }));
 jest.unstable_mockModule('../lib/prisma.js', () => ({ default: prismaMock }));
+jest.unstable_mockModule('../services/stellarService.js', () => ({
+  submitTransaction: submitTransactionMock,
+  getContractEvents: jest.fn(),
+  getLatestLedger: jest.fn(),
+}));
+jest.unstable_mockModule('@stellar/stellar-sdk', () => ({
+  xdr: {
+    ScVal: {
+      fromXDR: jest.fn(() => ({ type: 'u64', value: () => 42n })),
+    },
+  },
+  scValToNative: jest.fn(() => 42n),
+  SorobanRpc: {},
+  Transaction: jest.fn(),
+  Networks: {
+    TESTNET: 'Test SDF Network ; September 2015',
+    PUBLIC: 'Public Global Stellar Network ; September 2015',
+  },
+}));
 
 const { default: escrowController } = await import('../api/controllers/escrowController.js');
 
@@ -64,12 +92,16 @@ function createMockRes() {
 beforeEach(() => {
   jest.clearAllMocks();
   cacheMock.get.mockReturnValue(null);
+  submitTransactionMock.mockResolvedValue({ hash: 'abc123', status: 'SUCCESS', returnValue: null });
+  prismaMock.escrow.upsert.mockResolvedValue({});
   // Default prisma transaction behavior
   prismaMock.$transaction.mockImplementation(async (ops) => {
     return Promise.all(ops);
   });
   prismaMock.escrow.findMany.mockResolvedValue([]);
   prismaMock.escrow.count.mockResolvedValue(0);
+  prismaMock.milestoneStatusHistory.findMany.mockResolvedValue([]);
+  prismaMock.milestoneStatusHistory.findFirst.mockResolvedValue(null);
 });
 
 describe('escrowController', () => {
@@ -85,7 +117,6 @@ describe('escrowController', () => {
 
       expect(res.json).toHaveBeenCalled();
       expect(res.body.data).toHaveLength(fixtures.escrows.length);
-      expect(res.body.total).toBe(fixtures.escrows.length);
     });
 
     it('returns the normalized paginated response shape', async () => {
@@ -96,12 +127,8 @@ describe('escrowController', () => {
 
       expect(res.json).toHaveBeenCalledWith({
         data: [],
-        page: 1,
-        limit: 20,
-        total: 0,
-        totalPages: 0,
-        hasNextPage: false,
-        hasPreviousPage: false,
+        next_cursor: null,
+        has_more: false,
       });
     });
 
@@ -156,7 +183,7 @@ describe('escrowController', () => {
     it('returns 500 on error', async () => {
       const req = { query: {} };
       const res = createMockRes();
-      prismaMock.$transaction.mockRejectedValue(new Error('DB Error'));
+      prismaMock.escrow.findMany.mockRejectedValue(new Error('DB Error'));
 
       await escrowController.listEscrows(req, res);
 
@@ -174,7 +201,7 @@ describe('escrowController', () => {
 
       await escrowController.getEscrow(req, res);
 
-      expect(res.json).toHaveBeenCalledWith(escrow);
+      expect(res.json).toHaveBeenCalledWith({ ...escrow, hoursUntilDeadline: null });
     });
 
     it('returns 404 if escrow not found', async () => {
@@ -196,6 +223,33 @@ describe('escrowController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.body.error).toBe('Invalid escrow id');
     });
+
+    it('includes hoursUntilDeadline when a fundingDeadline is set', async () => {
+      const req = { params: { id: '1' } };
+      const res = createMockRes();
+      const fundingDeadline = new Date(Date.now() + 5 * 60 * 60 * 1000);
+      const escrow = { ...fixtures.escrows[0], fundingDeadline };
+      prismaMock.escrow.findUnique.mockResolvedValue(escrow);
+
+      await escrowController.getEscrow(req, res);
+
+      expect(res.body.hoursUntilDeadline).toBeGreaterThan(4.9);
+      expect(res.body.hoursUntilDeadline).toBeLessThanOrEqual(5);
+    });
+
+    it('reports hoursUntilDeadline: 0 once the deadline has passed', async () => {
+      const req = { params: { id: '1' } };
+      const res = createMockRes();
+      const escrow = {
+        ...fixtures.escrows[0],
+        fundingDeadline: new Date(Date.now() - 60 * 1000),
+      };
+      prismaMock.escrow.findUnique.mockResolvedValue(escrow);
+
+      await escrowController.getEscrow(req, res);
+
+      expect(res.body.hoursUntilDeadline).toBe(0);
+    });
   });
 
   describe('broadcastCreateEscrow', () => {
@@ -208,13 +262,92 @@ describe('escrowController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    it('returns 501 (not implemented)', async () => {
+    it('returns 200 with { hash, escrowId } on SUCCESS', async () => {
+      submitTransactionMock.mockResolvedValue({
+        hash: 'tx_abc',
+        status: 'SUCCESS',
+        returnValue: null,
+      });
       const req = { body: { signedXdr: 'AAAA...' } };
       const res = createMockRes();
 
       await escrowController.broadcastCreateEscrow(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(501);
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toMatchObject({ hash: 'tx_abc' });
+    });
+
+    it('returns 422 on Soroban FAILED status', async () => {
+      submitTransactionMock.mockResolvedValue({
+        hash: 'tx_fail',
+        status: 'FAILED',
+        errorResultXdr: 'AAAA',
+      });
+      const req = { body: { signedXdr: 'AAAA...' } };
+      const res = createMockRes();
+
+      await escrowController.broadcastCreateEscrow(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.body.sorobanStatus).toBe('FAILED');
+    });
+
+    it('returns 422 on TIMEOUT', async () => {
+      submitTransactionMock.mockResolvedValue({ hash: 'tx_timeout', status: 'TIMEOUT' });
+      const req = { body: { signedXdr: 'AAAA...' } };
+      const res = createMockRes();
+
+      await escrowController.broadcastCreateEscrow(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('accepts a future fundingDeadline and threads it into the upserted escrow', async () => {
+      submitTransactionMock.mockResolvedValue({
+        hash: 'tx_deadline',
+        status: 'SUCCESS',
+        returnValue: 'AAAAAA==', // truthy — decoded via the mocked scValToNative() => 42n
+      });
+      prismaMock.escrow.upsert.mockResolvedValue({});
+      const fundingDeadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const req = {
+        body: { signedXdr: 'AAAA...', fundingDeadline: fundingDeadline.toISOString() },
+      };
+      const res = createMockRes();
+
+      await escrowController.broadcastCreateEscrow(req, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.escrow.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ fundingDeadline }),
+        }),
+      );
+    });
+
+    it('rejects a fundingDeadline in the past', async () => {
+      const req = {
+        body: {
+          signedXdr: 'AAAA...',
+          fundingDeadline: new Date(Date.now() - 60 * 1000).toISOString(),
+        },
+      };
+      const res = createMockRes();
+
+      await escrowController.broadcastCreateEscrow(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.body.error).toBe('fundingDeadline must be in the future');
+    });
+
+    it('rejects an unparseable fundingDeadline', async () => {
+      const req = { body: { signedXdr: 'AAAA...', fundingDeadline: 'not-a-date' } };
+      const res = createMockRes();
+
+      await escrowController.broadcastCreateEscrow(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.body.error).toBe('fundingDeadline must be a valid date');
     });
   });
 
@@ -249,7 +382,10 @@ describe('escrowController', () => {
 
       await escrowController.getMilestone(req, res);
 
-      expect(res.json).toHaveBeenCalledWith(fixtures.milestones[0]);
+      expect(res.json).toHaveBeenCalledWith({
+        ...fixtures.milestones[0],
+        last_status_change: null,
+      });
     });
 
     it('returns 404 if milestone not found', async () => {
@@ -324,7 +460,7 @@ describe('escrowController — cache behaviour', () => {
       await escrowController.getEscrow(req, res);
 
       expect(prismaMock.escrow.findUnique).toHaveBeenCalled();
-      expect(res.json).toHaveBeenCalledWith(fixtures.escrows[0]);
+      expect(res.json).toHaveBeenCalledWith({ ...fixtures.escrows[0], hoursUntilDeadline: null });
     });
   });
 });

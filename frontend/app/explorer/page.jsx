@@ -1,24 +1,25 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import Spinner from '../../components/ui/Spinner';
 import EscrowCard from '../../components/escrow/EscrowCard';
 import SearchFilters from '../../components/explorer/SearchFilters';
-import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';
 import ErrorBoundary from '../../components/error/ErrorBoundary';
+import { useFilterState } from '../../hooks/useFilterState';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const PAGE_SIZE = 12;
+const SCROLL_KEY = 'explorer-scroll-y';
 
 const DEFAULT_FILTERS = {
-  statuses: [],
+  status: '',
   minAmount: '',
   maxAmount: '',
   dateFrom: '',
   dateTo: '',
-  sort: 'createdAt:desc',
+  sort: '',
 };
 
 function normaliseEscrow(e) {
@@ -32,121 +33,189 @@ function normaliseEscrow(e) {
       ? `${e.clientAddress.slice(0, 4)}…${e.clientAddress.slice(-4)}`
       : '—',
     role: 'client',
+    deadline: e.deadline || null,
+    assetSymbol: e.assetSymbol || 'USDC',
   };
 }
 
-function buildQuery({ search, filters, page, limit }) {
-  const params = new URLSearchParams();
-  params.set('page', String(page));
-  params.set('limit', String(limit));
-  if (search) params.set('search', search);
-  if (filters.statuses.length) params.set('status', filters.statuses.join(','));
-  if (filters.minAmount) params.set('minAmount', filters.minAmount);
-  if (filters.maxAmount) params.set('maxAmount', filters.maxAmount);
-  if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
-  if (filters.dateTo) params.set('dateTo', filters.dateTo);
-  const [sortBy, sortOrder] = filters.sort.split(':');
-  params.set('sortBy', sortBy);
-  params.set('sortOrder', sortOrder);
-  return params.toString();
-}
-
-function filtersFromUrl(sp) {
-  const statusParam = sp.get('status') || '';
-  return {
-    statuses: statusParam ? statusParam.split(',') : [],
-    minAmount: sp.get('minAmount') || '',
-    maxAmount: sp.get('maxAmount') || '',
-    dateFrom: sp.get('dateFrom') || '',
-    dateTo: sp.get('dateTo') || '',
-    sort: sp.get('sortBy')
-      ? `${sp.get('sortBy')}:${sp.get('sortOrder') || 'desc'}`
-      : 'createdAt:desc',
-  };
-}
-
-const PAGE_SIZE = 12;
-
-function ExplorerContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
-  const [filters, setFilters] = useState(() => filtersFromUrl(searchParams));
-  const [page, setPage] = useState(Number(searchParams.get('page') || 1));
-  const [showFilters, setShowFilters] = useState(false);
+function useInfiniteEscrows({ search, filters }) {
   const [escrows, setEscrows] = useState([]);
-  const [meta, setMeta] = useState({
-    total: 0,
-    totalPages: 0,
-    hasNextPage: false,
-    hasPreviousPage: false,
-  });
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+  const abortRef = useRef(null);
 
-  const debounceTimer = useRef(null);
-  useEffect(() => {
-    clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(debounceTimer.current);
-  }, [search]);
+  const buildUrl = useCallback(
+    (cur) => {
+      const params = new URLSearchParams();
+      params.set('limit', String(PAGE_SIZE));
+      if (search) params.set('search', search);
+      if (filters.status) params.set('status', filters.status);
+      if (filters.minAmount) params.set('minAmount', filters.minAmount);
+      if (filters.maxAmount) params.set('maxAmount', filters.maxAmount);
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) params.set('dateTo', filters.dateTo);
+      if (filters.sort) {
+        const [sortBy, sortOrder] = filters.sort.split(':');
+        params.set('sortBy', sortBy);
+        params.set('sortOrder', sortOrder || 'desc');
+      } else {
+        params.set('sortBy', 'createdAt');
+        params.set('sortOrder', 'desc');
+      }
+      if (cur) params.set('cursor', cur);
+      return `${API_BASE}/api/escrows?${params.toString()}`;
+    },
+    [search, filters],
+  );
 
+  // Reset and reload from scratch when filters/search change
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (debouncedSearch) params.set('search', debouncedSearch);
-    if (page > 1) params.set('page', String(page));
-    router.replace(`/explorer?${params.toString()}`, { scroll: false });
-  }, [debouncedSearch, page, router]);
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
 
-  useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
-    const qs = buildQuery({ search: debouncedSearch, filters, page, limit: PAGE_SIZE });
-    fetch(`${API_BASE}/api/escrows?${qs}`)
+    setEscrows([]);
+    setCursor(null);
+    setHasMore(true);
+
+    fetch(buildUrl(null), { signal: ctrl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`API error ${r.status}`);
         return r.json();
       })
-      .then(({ data, total, totalPages, hasNextPage, hasPreviousPage }) => {
-        if (cancelled) return;
+      .then(({ data, next_cursor, has_more, hasNextPage }) => {
+        const more = has_more ?? hasNextPage ?? false;
         setEscrows((data || []).map(normaliseEscrow));
-        setMeta({ total: total || 0, totalPages: totalPages || 0, hasNextPage, hasPreviousPage });
+        setCursor(next_cursor ?? null);
+        setHasMore(more);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (err.name !== 'AbortError') setError(err.message);
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedSearch, filters, page]);
+      .finally(() => setLoading(false));
 
-  const handleFilterChange = useCallback((key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    setPage(1);
+    return () => ctrl.abort();
+  }, [buildUrl]);
+
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore || loading) return;
+
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    setLoadingMore(true);
+    fetch(buildUrl(cursor), { signal: ctrl.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`API error ${r.status}`);
+        return r.json();
+      })
+      .then(({ data, next_cursor, has_more, hasNextPage }) => {
+        const more = has_more ?? hasNextPage ?? false;
+        setEscrows((prev) => [...prev, ...(data || []).map(normaliseEscrow)]);
+        setCursor(next_cursor ?? null);
+        setHasMore(more);
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') setError(err.message);
+      })
+      .finally(() => setLoadingMore(false));
+  }, [buildUrl, cursor, hasMore, loadingMore, loading]);
+
+  return { escrows, hasMore, loading, loadingMore, error, loadMore };
+}
+
+function ExplorerContent() {
+  const { filters, setFilter, setFilters, resetFilters } = useFilterState({
+    defaults: DEFAULT_FILTERS,
+    pageParam: 'page',
+  });
+
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+
+  const debounceTimer = useRef(null);
+  useEffect(() => {
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(debounceTimer.current);
+  }, [search]);
+
+  const { escrows, hasMore, loading, loadingMore, error, loadMore } = useInfiniteEscrows({
+    search: debouncedSearch,
+    filters,
+  });
+
+  // IntersectionObserver sentinel for auto-loading next page
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          loadMore();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, loadMore]);
+
+  // Restore scroll position when returning from detail page
+  useEffect(() => {
+    const savedY = sessionStorage.getItem(SCROLL_KEY);
+    if (savedY) {
+      window.scrollTo(0, Number(savedY));
+      sessionStorage.removeItem(SCROLL_KEY);
+    }
   }, []);
+
+  const handleEscrowClick = useCallback(() => {
+    sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+  }, []);
+
+  const handleFilterChange = useCallback(
+    (key, value) => {
+      if (key === 'statuses') {
+        setFilter('status', Array.isArray(value) ? value.join(',') : value);
+      } else {
+        setFilter(key, value);
+      }
+    },
+    [setFilter],
+  );
 
   const handleReset = useCallback(() => {
-    setFilters(DEFAULT_FILTERS);
+    resetFilters();
     setSearch('');
     setDebouncedSearch('');
-    setPage(1);
-  }, []);
+  }, [resetFilters]);
+
+  const filtersForPanel = {
+    statuses: filters.status ? filters.status.split(',') : [],
+    minAmount: filters.minAmount,
+    maxAmount: filters.maxAmount,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    sort: filters.sort || 'createdAt:desc',
+  };
 
   const activeFilterCount =
-    filters.statuses.length +
+    filtersForPanel.statuses.length +
     (filters.minAmount ? 1 : 0) +
     (filters.maxAmount ? 1 : 0) +
     (filters.dateFrom ? 1 : 0) +
     (filters.dateTo ? 1 : 0) +
-    (filters.sort !== 'createdAt:desc' ? 1 : 0);
+    (filters.sort && filters.sort !== 'createdAt:desc' ? 1 : 0);
 
   return (
     <div className="space-y-6">
@@ -157,38 +226,52 @@ function ExplorerContent() {
 
       <div className="flex gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
+          <label htmlFor="explorer-search" className="sr-only">Search escrows</label>
           <input
-            type="text"
+            id="explorer-search"
+            type="search"
             placeholder="Search by escrow ID or address..."
             className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-4 py-2.5 text-white"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search escrows by ID or address"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              aria-label="Clear search"
             >
-              <X size={14} />
+              <X size={14} aria-hidden="true" />
             </button>
           )}
         </div>
 
         <button
           onClick={() => setShowFilters((v) => !v)}
+          aria-expanded={showFilters}
+          aria-controls="explorer-filters"
           className="flex items-center gap-2 px-4 py-2.5 rounded-lg border bg-gray-900 border-gray-800 text-gray-300"
         >
-          <SlidersHorizontal size={15} />
+          <SlidersHorizontal size={15} aria-hidden="true" />
           Filters
-          {activeFilterCount > 0 && <span className="text-xs">{activeFilterCount}</span>}
+          {activeFilterCount > 0 && (
+            <span className="text-xs" aria-label={`${activeFilterCount} active filters`}>
+              {activeFilterCount}
+            </span>
+          )}
         </button>
       </div>
 
       <div className={`flex gap-6 ${showFilters ? 'items-start' : ''}`}>
         {showFilters && (
-          <div className="w-56 flex-shrink-0 card">
-            <SearchFilters filters={filters} onChange={handleFilterChange} onReset={handleReset} />
+          <div id="explorer-filters" className="w-56 flex-shrink-0 card">
+            <SearchFilters
+              filters={filtersForPanel}
+              onChange={handleFilterChange}
+              onReset={handleReset}
+            />
           </div>
         )}
 
@@ -199,7 +282,7 @@ function ExplorerContent() {
               <p className="text-sm">Loading escrows...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-16">
+            <div className="text-center py-16" role="alert">
               <p className="text-red-400 mb-3">Failed to load escrows</p>
               <p className="text-gray-500 text-sm">{error}</p>
             </div>
@@ -212,42 +295,37 @@ function ExplorerContent() {
               actionHref={activeFilterCount > 0 ? undefined : '/escrow/create'}
             />
           ) : (
-            <div
-              className={`grid gap-4 ${showFilters ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'}`}
-            >
-              {escrows.map((escrow) => (
-                <EscrowCard key={escrow.id} escrow={escrow} />
-              ))}
-            </div>
+            <>
+              <div
+                className={`grid gap-4 ${showFilters ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'}`}
+                onClick={handleEscrowClick}
+              >
+                {escrows.map((escrow) => (
+                  <EscrowCard key={escrow.id} escrow={escrow} />
+                ))}
+              </div>
+
+              {/* Sentinel element — triggers next page load when scrolled into view */}
+              <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+
+              {/* Loading more indicator */}
+              {loadingMore && (
+                <div className="flex items-center justify-center gap-3 py-8 text-gray-400">
+                  <Spinner size="sm" />
+                  <span className="text-sm">Loading more...</span>
+                </div>
+              )}
+
+              {/* End of list */}
+              {!hasMore && !loadingMore && escrows.length > 0 && (
+                <p className="text-center text-sm text-gray-500 py-8">
+                  All escrows loaded
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
-
-      {!loading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!meta.hasPreviousPage}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            <ChevronLeft size={14} />
-            Prev
-          </Button>
-          <span className="text-sm text-gray-400">
-            Page {page} of {meta.totalPages || 1}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!meta.hasNextPage}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-            <ChevronRight size={14} />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

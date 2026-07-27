@@ -121,6 +121,11 @@ export async function retryDatabaseOperation(operation, config = retryConfig) {
  * @param {import('@prisma/client').PrismaClient} prisma
  */
 export function attachRetryMiddleware(prisma) {
+  if (typeof prisma.$use !== 'function') {
+    log.debug({ message: 'db_retry_middleware_unavailable' });
+    return;
+  }
+
   prisma.$use(async (params, next) => {
     return retryDatabaseOperation(() => next(params));
   });

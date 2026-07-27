@@ -21,13 +21,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Button from '../../../components/ui/Button';
+import FeeEstimator from '../../../components/ui/FeeEstimator';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 import XLMAmountInput from '../../../components/ui/XLMAmountInput';
 import templatesData from '../../../data/templates.json';
 import { useToast } from '../../../contexts/ToastContext';
+import { useWallet } from '../../../hooks/useWallet';
+import {
+  buildCreateEscrowTx,
+  broadcastTransaction,
+  isValidStellarAddress,
+  computeTermsHash,
+} from '../../../lib/stellar';
 
 const STEPS = [
   { id: 1, label: 'Counterparty' },
@@ -67,9 +75,11 @@ function isPositiveAmount(value) {
 }
 
 export default function CreateEscrowPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const templateLibrary = templatesData.templates || [];
 
+  const { address, isConnected, signTx } = useWallet();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     freelancerAddress: '',
@@ -78,9 +88,11 @@ export default function CreateEscrowPage() {
     briefDescription: '',
     deadline: '',
     milestones: [{ ...DEFAULT_MILESTONE }],
+    termsDocument: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [termsHash, setTermsHash] = useState(null);
   const [templateNotice, setTemplateNotice] = useState('');
   const [appliedQueryTemplateId, setAppliedQueryTemplateId] = useState(null);
 
@@ -88,6 +100,20 @@ export default function CreateEscrowPage() {
   const [touched, setTouched] = useState({ totalAmount: false, briefDescription: false });
 
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (!formData.termsDocument) {
+      setTermsHash(null);
+      return;
+    }
+    let cancelled = false;
+    computeTermsHash(formData.termsDocument).then((hash) => {
+      if (!cancelled) setTermsHash(hash);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.termsDocument]);
 
   useEffect(() => {
     const templateId = searchParams.get('template');
@@ -117,14 +143,13 @@ export default function CreateEscrowPage() {
     setIsSubmitting(true);
     setError(null);
     try {
-      // 1. Build Soroban transaction
-      // 2. Sign with Freighter
-      // 3. Broadcast
-      // 4. Redirect
+      // termsHash is pre-computed by the useEffect above whenever termsDocument changes.
+      // Pass it to buildCreateEscrowWithTermsHashTx once Issue #33 wires up the full flow.
+      void termsHash;
       throw new Error('Not implemented — see Issue #33');
     } catch (err) {
-      setError(err.message);
-      showToast('Failed to create escrow', 'error');
+      const message = err.message || 'Failed to create escrow';
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -192,27 +217,32 @@ export default function CreateEscrowPage() {
       )}
 
       {/* Step Indicator */}
-      <div className="flex items-center gap-2">
-        {STEPS.map((step, i) => (
-          <div key={step.id} className="flex items-center gap-2">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
+      <nav aria-label="Progress">
+        <ol className="flex items-center gap-2">
+          {STEPS.map((step, i) => (
+            <li key={step.id} className="flex items-center gap-2">
+              <div
+                aria-current={currentStep === step.id ? 'step' : undefined}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
                 ${
                   currentStep >= step.id ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-500'
                 }`}
-            >
-              {step.id}
-            </div>
-            <span
-              className={`text-sm hidden sm:inline
+              >
+                <span aria-label={`Step ${step.id}: ${step.label}`}>{step.id}</span>
+              </div>
+              <span
+                className={`text-sm hidden sm:inline
                 ${currentStep >= step.id ? 'text-white' : 'text-gray-500'}`}
-            >
-              {step.label}
-            </span>
-            {i < STEPS.length - 1 && <div className="w-8 h-px bg-gray-700 mx-1" />}
-          </div>
-        ))}
-      </div>
+              >
+                {step.label}
+              </span>
+              {i < STEPS.length - 1 && (
+                <div className="w-8 h-px bg-gray-700 mx-1" aria-hidden="true" />
+              )}
+            </li>
+          ))}
+        </ol>
+      </nav>
 
       {/* Step Content */}
       <div className="card space-y-6">
@@ -224,8 +254,7 @@ export default function CreateEscrowPage() {
             amountError={amountError}
             descriptionError={descriptionError}
           />
-        )}
-        {currentStep === 2 && (
+        )}        {currentStep === 2 && (
           <StepMilestones
             formData={formData}
             onAdd={addMilestone}
@@ -233,7 +262,7 @@ export default function CreateEscrowPage() {
             onUpdate={updateMilestone}
           />
         )}
-        {currentStep === 3 && <StepReview formData={formData} />}
+        {currentStep === 3 && <StepReview formData={formData} termsHash={termsHash} />}
         {currentStep === 4 && (
           <StepSign onSubmit={handleSubmit} isSubmitting={isSubmitting} error={error} />
         )}
@@ -344,6 +373,27 @@ function StepCounterparty({ formData, setFormData, setTouched, amountError, desc
         )}
         {/* TODO (contributor): upload to IPFS and store hash */}
       </div>
+
+      <div>
+        <label htmlFor="terms-document" className="block text-sm text-gray-400 mb-1">
+          Terms Document
+        </label>
+        <textarea
+          id="terms-document"
+          rows={5}
+          placeholder="Paste the full text of your off-chain agreement here. A SHA-256 hash will be stored on-chain as a tamper-evident binding."
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
+                     text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none
+                     text-sm transition-colors"
+          value={formData.termsDocument}
+          onChange={(event) =>
+            setFormData((data) => ({ ...data, termsDocument: event.target.value }))
+          }
+        />
+        <p className="mt-1 text-xs text-gray-600">
+          The document text is never sent to any server — only the SHA-256 hash is stored on-chain.
+        </p>
+      </div>
     </div>
   );
 }
@@ -380,6 +430,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
           <input
             type="text"
             placeholder="Title (e.g. Initial Design Mockups)"
+            aria-label={`Milestone ${index + 1} title`}
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                        text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500"
             value={milestone.title}
@@ -388,6 +439,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
           <textarea
             rows={2}
             placeholder="Milestone description"
+            aria-label={`Milestone ${index + 1} description`}
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                        text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 resize-none"
             value={milestone.description}
@@ -397,6 +449,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
             <XLMAmountInput
               value={milestone.amount}
               placeholder="Amount"
+              aria-label={`Milestone ${index + 1} amount`}
               onChange={(event) => onUpdate(index, 'amount', event.target.value)}
               inputClassName="w-32"
               className="w-32"
@@ -423,7 +476,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
 /**
  * Step 3: Review summary before signing.
  */
-function StepReview({ formData }) {
+function StepReview({ formData, termsHash }) {
   const token = String(formData.tokenAddress || 'USDC').toUpperCase();
 
   return (
@@ -442,6 +495,17 @@ function StepReview({ formData }) {
         <p>
           Milestones: <span className="text-white">{formData.milestones.length}</span>
         </p>
+        {termsHash && (
+          <div>
+            <p className="mb-1">Terms Hash (SHA-256):</p>
+            <code className="block break-all text-xs text-indigo-300 bg-gray-900 rounded px-2 py-1 font-mono">
+              {termsHash}
+            </code>
+            <p className="mt-1 text-xs text-gray-600">
+              This hash will be stored immutably on-chain, binding the escrow to your terms document.
+            </p>
+          </div>
+        )}
       </div>
       <p className="text-xs text-gray-500">
         ⚠️ By proceeding, you authorize locking{' '}
@@ -466,6 +530,9 @@ function StepSign({ error }) {
         Clicking the button below will open your Freighter wallet to sign the transaction. Your
         funds will be locked on-chain once confirmed.
       </p>
+      <div className="mx-auto max-w-md">
+        <FeeEstimator className="mt-4" />
+      </div>
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
           {error}

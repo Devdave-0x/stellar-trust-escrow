@@ -7,6 +7,7 @@
 
 import { withTransaction } from '../lib/transaction.js';
 import prisma from '../lib/prisma.js';
+import { recordEscrowStateTransition } from '../lib/metrics.js';
 
 export async function fundEscrow(data) {
   return withTransaction(
@@ -38,6 +39,8 @@ export async function fundEscrow(data) {
         },
       });
 
+      recordEscrowStateTransition('null', 'Active');
+
       return escrow;
     },
     { isolationLevel: 'Serializable' },
@@ -60,6 +63,11 @@ export async function releaseMilestone({ escrowId, milestoneIndex, amount, calle
       throw Object.assign(new Error('Insufficient escrow balance'), { statusCode: 422 });
     }
 
+    const existingMilestone = await tx.milestone.findUniqueOrThrow({
+      where: { escrowId_milestoneIndex: { escrowId: BigInt(escrowId), milestoneIndex } },
+      select: { id: true, status: true },
+    });
+
     const [milestone, updatedEscrow] = await Promise.all([
       tx.milestone.update({
         where: { escrowId_milestoneIndex: { escrowId: BigInt(escrowId), milestoneIndex } },
@@ -81,7 +89,21 @@ export async function releaseMilestone({ escrowId, milestoneIndex, amount, calle
           performedAt: new Date(),
         },
       }),
+      tx.milestoneStatusHistory.create({
+        data: {
+          milestoneId: existingMilestone.id,
+          escrowId: BigInt(escrowId),
+          fromStatus: existingMilestone.status,
+          toStatus: 'Approved',
+          changedBy: callerAddress,
+          reason: 'Milestone released',
+        },
+      }),
     ]);
+
+    if (newBalance === 0n) {
+      recordEscrowStateTransition('Active', 'Completed');
+    }
 
     return { milestone, escrow: updatedEscrow };
   });
@@ -118,15 +140,38 @@ export async function raiseDispute({ escrowId, raisedByAddress, milestoneIndex }
       ];
 
       if (milestoneIndex !== undefined) {
+        const targetMilestone = await tx.milestone.findFirst({
+          where: { escrowId: BigInt(escrowId), milestoneIndex },
+          select: { id: true, status: true },
+        });
+
         ops.push(
           tx.milestone.updateMany({
             where: { escrowId: BigInt(escrowId), milestoneIndex },
             data: { status: 'Rejected' },
           }),
         );
+
+        if (targetMilestone) {
+          ops.push(
+            tx.milestoneStatusHistory.create({
+              data: {
+                milestoneId: targetMilestone.id,
+                escrowId: BigInt(escrowId),
+                fromStatus: targetMilestone.status,
+                toStatus: 'Rejected',
+                changedBy: raisedByAddress,
+                reason: 'Dispute raised',
+              },
+            }),
+          );
+        }
       }
 
       const [updatedEscrow, dispute] = await Promise.all(ops);
+
+      recordEscrowStateTransition('Active', 'Disputed');
+
       return { dispute, escrow: updatedEscrow };
     },
     { isolationLevel: 'Serializable' },
@@ -183,6 +228,8 @@ export async function resolveDispute({
           },
         }),
       ]);
+
+      recordEscrowStateTransition('Disputed', 'Completed');
 
       return { dispute, escrow: updatedEscrow };
     },

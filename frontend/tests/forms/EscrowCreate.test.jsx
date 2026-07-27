@@ -249,6 +249,30 @@ describe('Step 1 — Counterparty & Funds', () => {
       expect(screen.getByPlaceholderText(/Briefly describe/i)).toHaveValue('');
     });
   });
+
+  describe('Terms Document field', () => {
+    it('renders a terms document textarea', () => {
+      renderPage();
+      expect(screen.getByLabelText(/Terms Document/i)).toBeInTheDocument();
+    });
+
+    it('starts empty', () => {
+      renderPage();
+      expect(screen.getByLabelText(/Terms Document/i)).toHaveValue('');
+    });
+
+    it('accepts pasted terms text', () => {
+      renderPage();
+      const textarea = screen.getByLabelText(/Terms Document/i);
+      fireEvent.change(textarea, { target: { value: 'This agreement is entered into by both parties...' } });
+      expect(textarea).toHaveValue('This agreement is entered into by both parties...');
+    });
+
+    it('shows a privacy notice that the text stays local', () => {
+      renderPage();
+      expect(screen.getByText(/never sent to any server/i)).toBeInTheDocument();
+    });
+  });
 });
 
 // ── 3. Step 2 — Milestones ────────────────────────────────────────────────────
@@ -409,6 +433,12 @@ describe('Step 3 — Review', () => {
     renderPage();
     advanceSteps(2);
     expect(screen.getByText(/authorize locking/i)).toBeInTheDocument();
+  });
+
+  it('does not show terms hash row when no terms document is provided', () => {
+    renderPage();
+    advanceSteps(2);
+    expect(screen.queryByText(/Terms Hash/i)).not.toBeInTheDocument();
   });
 });
 

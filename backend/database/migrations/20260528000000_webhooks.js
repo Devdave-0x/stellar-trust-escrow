@@ -19,11 +19,18 @@ export async function up(prisma) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT fk_webhook_subscription_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-    );
+    )
+  `);
 
-    CREATE INDEX IF NOT EXISTS webhook_subscriptions_tenant_id_idx ON webhook_subscriptions(tenant_id);
-    CREATE INDEX IF NOT EXISTS webhook_subscriptions_created_by_idx ON webhook_subscriptions(created_by);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS webhook_subscriptions_tenant_id_idx ON webhook_subscriptions(tenant_id)
+  `);
 
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS webhook_subscriptions_created_by_idx ON webhook_subscriptions(created_by)
+  `);
+
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS webhook_deliveries (
       id TEXT PRIMARY KEY,
       subscription_id TEXT NOT NULL,
@@ -36,10 +43,15 @@ export async function up(prisma) {
       last_attempt_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT fk_webhook_delivery_subscription FOREIGN KEY (subscription_id) REFERENCES webhook_subscriptions(id) ON DELETE CASCADE
-    );
+    )
+  `);
 
-    CREATE INDEX IF NOT EXISTS webhook_deliveries_subscription_id_idx ON webhook_deliveries(subscription_id);
-    CREATE INDEX IF NOT EXISTS webhook_deliveries_event_type_idx ON webhook_deliveries(event_type);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_subscription_id_idx ON webhook_deliveries(subscription_id)
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_event_type_idx ON webhook_deliveries(event_type)
   `);
 }
 
@@ -47,8 +59,6 @@ export async function up(prisma) {
  * @param {import('@prisma/client').PrismaClient} prisma
  */
 export async function down(prisma) {
-  await prisma.$executeRawUnsafe(`
-    DROP TABLE IF EXISTS webhook_deliveries;
-    DROP TABLE IF EXISTS webhook_subscriptions;
-  `);
+  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS webhook_deliveries`);
+  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS webhook_subscriptions`);
 }

@@ -4,6 +4,10 @@ import { scheduledQueue } from '../queues/index.js';
 import { archiveCompletedEscrows } from '../services/escrowArchiveService.js';
 import { syncFromPrisma } from '../services/reputationSearchService.js';
 import { runGarbageCollector } from '../services/ipfsGarbageCollector.js';
+import { runDisputeEscalationJob } from '../services/disputeEscalationService.js';
+import { purgeScheduledDeletions } from '../services/accountDeletionService.js';
+import { purgeExpiredActivity } from '../services/userActivityService.js';
+import { cancelExpiredDraftEscrows } from './fundingDeadlineJob.js';
 
 // Daily cleanup at 2AM UTC
 cron.schedule(
@@ -38,6 +42,16 @@ cron.schedule(
   { timezone: 'UTC' },
 );
 
+// Hourly sweep: cancel Draft escrows past their funding deadline
+cron.schedule('0 * * * *', async () => {
+  try {
+    const { checked, cancelled } = await cancelExpiredDraftEscrows();
+    console.log(`[Scheduler] Funding deadline sweep: checked=${checked} cancelled=${cancelled}`);
+  } catch (err) {
+    console.error('[Scheduler] Funding deadline sweep failed:', err.message);
+  }
+});
+
 // Daily ES reputation sync at 3AM UTC
 cron.schedule(
   '0 3 * * *',
@@ -60,6 +74,43 @@ cron.schedule(
     } catch (err) {
       console.warn('[IPFSGC] Daily run failed:', err?.message || err);
     }
+  },
+  { timezone: 'UTC' },
+);
+
+// Dispute auto-escalation — every 30 minutes
+cron.schedule('*/30 * * * *', async () => {
+  console.log('[Scheduler] Running dispute auto-escalation check');
+  try {
+    const count = await runDisputeEscalationJob();
+    if (count > 0) {
+      console.log(`[Scheduler] Escalated ${count} dispute(s)`);
+    }
+  } catch (err) {
+    console.warn('[DisputeEscalation] Job failed:', err?.message || err);
+  }
+});
+
+// Daily activity log retention purge at 5AM UTC (90-day window)
+cron.schedule(
+  '0 5 * * *',
+  async () => {
+    console.log('[Scheduler] Purging activity log entries older than 90 days');
+    await purgeExpiredActivity().catch((err) =>
+      console.warn('[ActivityLog] Retention purge failed:', err.message),
+    );
+  },
+  { timezone: 'UTC' },
+);
+
+// Daily account deletion purge at 05:30 UTC
+cron.schedule(
+  '30 5 * * *',
+  async () => {
+    console.log('[Scheduler] Running account deletion purge');
+    await purgeScheduledDeletions().catch((err) =>
+      console.warn('[AccountDeletion] Purge failed:', err.message),
+    );
   },
   { timezone: 'UTC' },
 );

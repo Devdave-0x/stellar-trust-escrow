@@ -2,6 +2,7 @@ import express from 'express';
 import disputeController from '../controllers/disputeController.js';
 import { cacheResponse, invalidateOn, TTL } from '../middleware/cache.js';
 import authMiddleware from '../middleware/auth.js';
+import { requireMfa } from '../middleware/mfaAuth.js';
 import { handleUploadError } from '../middleware/fileUpload.js';
 import {
   validate,
@@ -37,6 +38,17 @@ router.get(
   disputeController.getDispute,
 );
 
+// ── Timeline ──────────────────────────────────────────────────────────────────
+
+router.get(
+  '/:id/timeline',
+  cacheResponse({
+    ttl: TTL.DETAIL,
+    tags: (req) => [`dispute:${req.params.id}`],
+  }),
+  disputeController.getTimeline,
+);
+
 // ── Evidence ──────────────────────────────────────────────────────────────────
 
 router.post(
@@ -60,6 +72,7 @@ router.get(
 
 router.post(
   '/:id/resolve/auto',
+  requireMfa,
   invalidateOn({
     tags: (req) => [`dispute:${req.params.id}`, `escrow:${req.params.id}`, 'disputes', 'escrows'],
   }),
@@ -85,6 +98,7 @@ router.post(
 
 router.patch(
   '/appeals/:appealId',
+  requireMfa,
   invalidateOn({ tags: ['disputes'] }),
   disputeController.patchAppeal,
 );

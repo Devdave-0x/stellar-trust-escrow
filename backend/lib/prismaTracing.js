@@ -11,13 +11,20 @@
 
 import { getTracer } from './tracing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
+import { createModuleLogger } from '../config/logger.js';
 
 const SLOW_QUERY_THRESHOLD_MS = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || '200');
+const log = createModuleLogger('lib.prismaTracing');
 
 /**
  * @param {import('@prisma/client').PrismaClient} prisma
  */
 export function attachPrismaTracing(prisma) {
+  if (typeof prisma.$use !== 'function') {
+    log.debug({ message: 'prisma_tracing_middleware_unavailable' });
+    return;
+  }
+
   prisma.$use(async (params, next) => {
     const tracer = getTracer('prisma');
     const spanName = `db.${params.model ?? 'unknown'}.${params.action ?? 'unknown'}`;

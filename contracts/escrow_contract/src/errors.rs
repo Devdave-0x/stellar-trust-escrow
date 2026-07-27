@@ -57,6 +57,41 @@ pub enum EcErr {
     E61 = 61,
     E62 = 62,
     E63 = 63,
+    E64 = 64,
+    E65 = 65,
+    E66 = 66,
+    OracleStaleFeed = 67,
+    OracleInvalidPrice = 68,
+    OraclePriceConversionFailed = 69,
+    E70 = 70,
+    E71 = 71,
+    E72 = 72,
+    E73 = 73,
+    E74 = 74,
+    /// Dispute record not found for this escrow (escrow is not disputed)
+    EscrowNotDisputed = 75,
+    /// Contract has not been initialized
+    NotInitialized = 76,
+    /// Platform treasury address has not been configured
+    TreasuryNotConfigured = 77,
+    /// Recipient address is on the platform-managed release blocklist
+    RecipientBlocked = 78,
+    /// Release amount is below the minimum dust threshold
+    AmountBelowDustThreshold = 79,
+    /// Milestone duration (deadline_ledger - current_ledger) is below MIN_MILESTONE_DURATION_LEDGERS
+    MilestoneTooShort = 80,
+    /// Batch request exceeded the maximum allowed number of escrow IDs
+    BatchTooLarge = 81,
+    /// Escrow already has the maximum number of arbiters assigned
+    TooManyArbiters = 82,
+    /// This nonce has already been used and cannot be replayed
+    NonceAlreadyUsed = 83,
+    /// Escrow participant list exceeds MAX_PARTICIPANTS.
+    TooManyParticipants = 84,
+    /// Milestone title exceeds the maximum allowed length (64 bytes).
+    MilestoneTitleTooLong = 85,
 }
 
-pub use self::EcErr as EscrowError;
+/// Backward-compatible alias — existing code imports `EscrowError`; the oracle
+/// refactor renamed the enum to `EcErr` without updating call sites.
+pub type EscrowError = EcErr;

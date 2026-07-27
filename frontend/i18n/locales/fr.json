@@ -12,8 +12,10 @@
     "title": "Dépôt",
     "status": {
       "active": "Actif",
-      "completed": "Terminé",
+      "releaseRequested": "Libération Demandée",
       "disputed": "En Litige",
+      "expired": "Expiré",
+      "completed": "Terminé",
       "cancelled": "Annulé"
     },
     "fields": {

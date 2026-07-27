@@ -172,6 +172,78 @@
           "legendFormat": "{{model}}"
         }
       ]
+    },
+    {
+      "id": 15,
+      "title": "Redis Memory Usage (bytes)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "redis_memory_usage_bytes",
+          "legendFormat": "Memory"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Redis Memory Usage (MB)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 32, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "redis_memory_usage_bytes / 1024 / 1024",
+          "legendFormat": "MB"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Escrow State Transitions (1h)",
+      "type": "timeseries",
+      "gridPos": { "x": 18, "y": 32, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(escrow_state_transitions_total[1h])) by (from_state, to_state)",
+          "legendFormat": "{{from_state}} → {{to_state}}"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Escrow Transitions by Type (1h)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 40, "w": 12, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(escrow_state_transitions_total[1h])) by (to_state)",
+          "legendFormat": "to {{to_state}}"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "Escrow Creation Rate (1h)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 40, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(escrow_state_transitions_total{from_state=\"null\",to_state=\"Active\"}[1h]))",
+          "legendFormat": "Created"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "title": "Escrow Completion Rate (1h)",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 40, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(escrow_state_transitions_total{to_state=\"Completed\"}[1h]))",
+          "legendFormat": "Completed"
+        }
+      ]
     }
   ]
 }

@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import CopyButton from '../ui/CopyButton';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -89,6 +90,7 @@ function TimelineItem({ escrow, address, isLast }) {
       <div className={`pb-6 flex-1 ${isLast ? '' : ''}`}>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-white">Escrow #{escrow.id.toString()}</span>
+          <CopyButton text={String(escrow.id)} label="Escrow ID" />
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color} bg-gray-800`}>
             <span aria-hidden="true">{cfg.icon}</span> {cfg.label}
           </span>

@@ -15,11 +15,11 @@
  * @param {{ isConnected, isConnecting, isFreighterInstalled, address, network, connect, disconnect, error }} wallet
  */
 
-import { useState } from 'react';
 import Button from './Button';
 import Spinner from './Spinner';
 import { truncateAddress } from '../../lib/truncateAddress';
 import { useI18n } from '../../i18n/index.jsx';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +33,7 @@ function StatusDot({ status }) {
   };
   return (
     <span
+      role="status"
       className={`inline-block w-2 h-2 rounded-full shrink-0 transition-colors duration-300 ${styles[status]}`}
       aria-label={`Wallet ${status}`}
     />
@@ -42,23 +43,13 @@ function StatusDot({ status }) {
 // ── Address Tooltip ───────────────────────────────────────────────────────────
 
 function AddressWithTooltip({ address }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* ignore */
-    }
-  };
+  const { copy, isCopied } = useCopyToClipboard();
 
   return (
     <div className="relative group">
       <button
         id="wallet-address-display"
-        onClick={handleCopy}
+        onClick={() => copy(address)}
         className="font-mono text-sm text-indigo-400 hover:text-indigo-300 transition-colors focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded px-1"
         aria-label="Copy wallet address"
         title="Click to copy"
@@ -76,7 +67,7 @@ function AddressWithTooltip({ address }) {
         <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
           <p className="text-xs text-gray-400 mb-1">Full address</p>
           <p className="font-mono text-xs text-white break-all">{address}</p>
-          <p className="text-xs text-gray-500 mt-1">{copied ? '✅ Copied!' : 'Click to copy'}</p>
+          <p className="text-xs text-gray-500 mt-1">{isCopied ? '✅ Copied!' : 'Click to copy'}</p>
           {/* Arrow */}
           <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-gray-800 border-l border-t border-gray-700" />
         </div>

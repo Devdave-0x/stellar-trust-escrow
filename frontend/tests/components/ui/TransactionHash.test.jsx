@@ -21,7 +21,7 @@ describe('TransactionHash', () => {
 
   it('renders copy button', () => {
     render(<TransactionHash hash={mockHash} />);
-    expect(screen.getByText('Copy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Copy/i })).toBeInTheDocument();
   });
 
   it('renders explorer link when explorerUrl is provided', () => {

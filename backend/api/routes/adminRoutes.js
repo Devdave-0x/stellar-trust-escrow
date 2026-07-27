@@ -8,16 +8,34 @@
 
 import express from 'express';
 const router = express.Router();
-import adminAuth from '../middleware/adminAuth.js';
+import adminAuth, { issueAdminToken, ADMIN_TOKEN_TTL } from '../middleware/adminAuth.js';
 import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
+import announcementController from '../controllers/announcementController.js';
 import { getAuditLog, rotateSecrets } from '../../lib/secrets.js';
 import cache from '../../lib/cache.js';
 
 // Apply admin authentication to all routes in this file
 router.use(adminAuth);
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/auth/login
+ * @desc   Exchange a valid admin API key (validated by adminAuth) for a
+ *         short-lived HMAC-signed admin session token. Subsequent requests
+ *         should send `Authorization: Bearer <token>` instead of the raw key.
+ */
+router.post('/auth/login', (req, res) => {
+  const token = issueAdminToken(req.admin.adminId);
+  res.json({
+    token,
+    tokenType: 'Bearer',
+    expiresIn: ADMIN_TOKEN_TTL,
+    adminId: req.admin.adminId,
+  });
+});
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
 /**
@@ -49,12 +67,27 @@ router.get('/users/:address', adminController.getUserDetail);
 router.post('/users/:address/suspend', requireMfa, adminController.suspendUser);
 
 /**
+ * @route  POST /api/admin/users/:address/unsuspend
+ * @desc   Lift a user suspension; restores status to active
+ * @body   { reason?: string }
+ * @security Requires MFA verification
+ */
+router.post('/users/:address/unsuspend', requireMfa, adminController.unsuspendUser);
+
+/**
  * @route  POST /api/admin/users/:address/ban
  * @desc   Permanently ban a user; logs action to admin audit log
  * @body   { reason: string }
  * @security Requires MFA verification
  */
 router.post('/users/:address/ban', requireMfa, adminController.banUser);
+
+/**
+ * @route  GET /api/admin/users/:address/login-history
+ * @desc   Full login history (including IP + user agent) for a single wallet address
+ * @query  page, limit
+ */
+router.get('/users/:address/login-history', adminController.getUserLoginHistory);
 
 // ── Disputes ───────────────────────────────────────────────────────────────────
 /**
@@ -116,18 +149,83 @@ router.patch('/rate-limits/:tier', requireMfa, adminController.updateRateLimit);
  */
 router.get('/rate-limits/usage/:userId', adminController.getUserRateLimitUsage);
 
+// ── Escrow Archive ─────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/escrows/archive
+ * @desc   Manually trigger archival of completed/cancelled escrows older than 90 days
+ * @security Requires MFA verification
+ */
+router.post('/escrows/archive', requireMfa, adminController.triggerEscrowArchive);
+
+// ── Stellar Monitor ────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/stellar/reconcile
+ * @desc   Trigger a manual Horizon reconciliation for monitored accounts
+ * @body   { accounts?: string[] }  — omit to reconcile all MONITOR_ACCOUNTS
+ */
+router.post('/stellar/reconcile', adminController.reconcileStellar);
+
 // ── Tenants ───────────────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/tenants
+ * @desc   Paginated tenant list
+ * @query  page, limit, search, plan, status
+ */
 router.get('/tenants', tenantController.listTenants);
 router.post('/tenants', tenantController.createTenant);
+/**
+ * @route  GET /api/admin/tenants/:tenantId
+ * @desc   Tenant detail: plan, limits, usage stats (escrow/user counts, API calls this month)
+ */
 router.get('/tenants/:tenantId', tenantController.getTenant);
+/**
+ * @route  PATCH /api/admin/tenants/:tenantId
+ * @desc   Update plan, maxUsers, maxEscrowsPerMonth (and other tenant fields)
+ */
 router.patch('/tenants/:tenantId', tenantController.updateTenant);
+/**
+ * @route  POST /api/admin/tenants/:tenantId/suspend
+ * @desc   Suspend a tenant; all of its users get 403 "Tenant suspended"
+ * @body   { reason: string }
+ */
+router.post('/tenants/:tenantId/suspend', requireMfa, tenantController.suspendTenant);
+/**
+ * @route  POST /api/admin/tenants/:tenantId/unsuspend
+ */
+router.post('/tenants/:tenantId/unsuspend', requireMfa, tenantController.unsuspendTenant);
 router.get('/tenants/:tenantId/metrics', tenantController.getTenantMetrics);
+
+// ── Announcements ──────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/announcements
+ * @desc   Create a broadcast announcement (target: all|tenant)
+ * @body   { title, body, target, tenantId?, startsAt?, endsAt, createdBy? }
+ */
+router.post('/announcements', announcementController.createAnnouncement);
+
+/**
+ * @route  PATCH /api/admin/announcements/:id
+ * @desc   Update an announcement
+ */
+router.patch('/announcements/:id', announcementController.updateAnnouncement);
+
+/**
+ * @route  DELETE /api/admin/announcements/:id
+ * @desc   Soft-delete an announcement
+ */
+router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
 // ── Feature Flags ─────────────────────────────────────────────────────────────
 router.get('/flags', featureFlagController.index);
 router.post('/flags', featureFlagController.create);
 router.patch('/flags/:key', featureFlagController.update);
 router.delete('/flags/:key', featureFlagController.destroy);
+
+// Canonical paths per issue #79 (GET /admin/feature-flags, PATCH /admin/feature-flags/:name)
+router.get('/feature-flags', featureFlagController.index);
+router.post('/feature-flags', featureFlagController.create);
+router.patch('/feature-flags/:name', featureFlagController.update);
+router.delete('/feature-flags/:name', featureFlagController.destroy);
 
 /**
  * @route  GET /api/admin/secrets/audit

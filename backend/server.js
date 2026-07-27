@@ -1,3 +1,4 @@
+import './lib/bigintJson.js';
 import { initTracing } from './lib/tracing.js';
 // Tracing and Sentry must be initialised before other imports so instrumentation patches apply.
 initTracing();
@@ -9,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { initSecrets } from './lib/secrets.js';
 import http from 'http';
 import compressionMiddleware from './middleware/compression.js';
-import cors from 'cors';
+import { corsMiddleware } from './middleware/cors.js';
 import express from 'express';
 import helmet from 'helmet';
 import { requestLogger } from './lib/logger.js';
@@ -22,13 +23,16 @@ import {
   REQUEST_SIZE_LIMIT,
 } from './middleware/validation.js';
 
+import { idempotencyMiddleware } from './api/middleware/idempotency.js';
 import docsRouter from './docs/index.js';
 import disputeRoutes from './api/routes/disputeRoutes.js';
 import searchRoutes from './api/routes/searchRoutes.js';
 import escrowRoutes from './api/routes/escrowRoutes.js';
+import apiKeyRoutes from './api/routes/apiKeyRoutes.js';
 import eventRoutes from './api/routes/eventRoutes.js';
 import kycRoutes from './api/routes/kycRoutes.js';
 import adminRoutes from './api/routes/adminRoutes.js';
+import adminEscrowRoutes from './api/routes/adminEscrowRoutes.js';
 import notificationRoutes from './api/routes/notificationRoutes.js';
 import paymentRoutes from './api/routes/paymentRoutes.js';
 import relayerRoutes from './api/routes/relayerRoutes.js';
@@ -40,6 +44,7 @@ import complianceRoutes from './api/routes/complianceRoutes.js';
 import incidentRoutes from './api/routes/incidentRoutes.js';
 import batchRoutes from './api/routes/batchRoutes.js';
 import webhookRoutes from './api/routes/webhookRoutes.js';
+import announcementRoutes from './api/routes/announcementRoutes.js';
 import tenantMiddleware from './api/middleware/tenant.js';
 import auditMiddleware from './api/middleware/audit.js';
 import { createWebSocketServer, pool } from './api/websocket/handlers.js';
@@ -51,7 +56,9 @@ import tenantRoutes from './api/routes/tenantRoutes.js';
 import wsHealthRoutes from './api/routes/wsHealth.js';
 import prisma, { startConnectionMonitoring } from './lib/prisma.js';
 import { errorsTotal } from './lib/metrics.js';
+import { TimeoutError } from './lib/timeout.js';
 import { leaderboardRateLimit } from './middleware/rateLimit.js';
+import metricsRoutes from './api/routes/metricsRoutes.js';
 import metricsMiddleware from './middleware/metricsMiddleware.js';
 import responseTime from './middleware/responseTime.js';
 import tracingMiddleware from './middleware/tracingMiddleware.js';
@@ -66,6 +73,7 @@ import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
+import chatRoutes from './api/routes/chatRoutes.js';
 
 // Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
@@ -99,12 +107,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', requestId);
   next();
 });
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-    credentials: true,
-  }),
-);
+app.use(corsMiddleware);
 app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
 app.use(cookieParser());
@@ -112,6 +115,8 @@ app.use(sanitizeInputs);
 app.use(csrfProtection);
 app.use('/uploads', express.static('uploads'));
 app.use(auditMiddleware);
+// Idempotency key enforcement for all POST and PATCH requests
+app.use(idempotencyMiddleware());
 
 // ── Sentry tracing handler — after body parsers, before routes ────────────────
 app.use(sentryTracingHandler);
@@ -121,6 +126,8 @@ app.use('/api', ...createGateway());
 
 // Leaderboard gets a tighter dedicated limit on top of the gateway limit
 app.use('/api/reputation/leaderboard', leaderboardRateLimit);
+
+app.use('/metrics', metricsRoutes);
 
 app.get('/health', async (_req, res) => {
   let dbStatus = 'ok';
@@ -190,6 +197,13 @@ app.use('/api', tenantMiddleware);
 app.use('/api/auth', authRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/escrows', escrowRoutes);
+app.use('/api/v1/escrows', escrowRoutes);
+app.use('/api/api-keys', apiKeyRoutes);
+app.use('/api/v1/api-keys', apiKeyRoutes);
+
+// Public share link resolver — no auth required
+import { resolveShareLink } from './api/controllers/shareLinkController.js';
+app.get('/api/share/:token', resolveShareLink);
 
 // ── API Documentation ─────────────────────────────────────────────────────────
 setupSwagger(app);
@@ -205,10 +219,17 @@ app.use('/api/relayer', relayerRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/admin/escrows', adminEscrowRoutes);
+app.use('/api/v1/admin/escrows', adminEscrowRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use('/api/batch', batchRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/admin/queues', queueDashboardRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/v1/announcements', announcementRoutes);
+app.use('/api/v1/users', userRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
 app.use('/api-docs', docsRouter);
@@ -234,6 +255,12 @@ app.use(sentryErrorHandler);
 // ── Generic error handler ─────────────────────────────────────────────────────
 
 app.use((err, req, res, _next) => {
+  if (err instanceof TimeoutError) {
+    return res.status(504).json({
+      error: { code: err.code, message: err.message },
+    });
+  }
+
   const statusCode = err.statusCode || 500;
 
   // Attach Sentry event ID to response so support can correlate reports
@@ -271,6 +298,22 @@ async function startServer() {
         startConnectionMonitoring(prisma);
         // Load secrets first — merges vault/env secrets into process.env
         await initSecrets();
+
+        // ── Stellar / Soroban env validation ───────────────────────────────
+        if (!process.env.SOROBAN_RPC_URL) {
+          throw new Error(
+            '[Config] SOROBAN_RPC_URL is not set. The indexer and broadcast endpoint require a Soroban RPC endpoint.',
+          );
+        }
+        if (
+          process.env.STELLAR_NETWORK === 'testnet' &&
+          process.env.NODE_ENV !== 'development' &&
+          process.env.NODE_ENV !== 'test'
+        ) {
+          throw new Error(
+            `[Config] STELLAR_NETWORK=testnet is not allowed in NODE_ENV=${process.env.NODE_ENV}. Set STELLAR_NETWORK=mainnet for production deployments.`,
+          );
+        }
         logger.info(
           { secretsBackend: process.env.SECRETS_BACKEND || 'env' },
           'Secrets backend loaded',

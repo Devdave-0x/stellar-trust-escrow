@@ -1,5 +1,12 @@
 require('@testing-library/jest-dom');
 const { configureAxe } = require('jest-axe');
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+
+// Polyfill Web Crypto API for jsdom (needed by computeTermsHash → crypto.subtle.digest)
+const { webcrypto } = require('crypto');
+Object.defineProperty(global, 'crypto', { value: webcrypto, configurable: true });
 
 // Mock window.matchMedia (not implemented in jsdom)
 Object.defineProperty(window, 'matchMedia', {

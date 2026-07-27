@@ -17,8 +17,10 @@
  */
 
 import { createClient } from 'redis';
+import { REDIS_TIMEOUT_MS } from '../lib/timeout.js';
 import { createModuleLogger } from '../config/logger.js';
 import { scopeCacheKey, scopeCacheTag } from '../lib/tenantContext.js';
+import { cacheHitsTotal, cacheMissesTotal, cacheHitRate, redisMemoryUsageBytes } from '../lib/metrics.js';
 
 const log = createModuleLogger('cacheService');
 
@@ -72,7 +74,7 @@ let redis = null;
 let redisReady = false;
 
 if (process.env.REDIS_URL) {
-  redis = createClient({ url: process.env.REDIS_URL });
+  redis = createClient({ url: process.env.REDIS_URL, commandTimeout: REDIS_TIMEOUT_MS });
   redis.on('ready', () => {
     redisReady = true;
     log.info({ message: 'redis_connected' });
@@ -82,6 +84,22 @@ if (process.env.REDIS_URL) {
     log.warn({ message: 'redis_error_fallback_memory', error: err.message });
   });
   redis.connect().catch((err) => log.warn({ message: 'redis_connect_failed', error: err.message }));
+
+  if (process.env.REDIS_MEMORY_METRICS_ENABLED !== 'false') {
+    const MEMORY_POLL_INTERVAL_MS = 30_000;
+    const memTimer = setInterval(async () => {
+      try {
+        const info = await redis.info('memory').catch(() => null);
+        if (info) {
+          const match = info.match(/used_memory:(\d+)/);
+          if (match) redisMemoryUsageBytes.set(parseInt(match[1], 10));
+        }
+      } catch (_err) {
+        // ignore memory polling errors
+      }
+    }, MEMORY_POLL_INTERVAL_MS);
+    if (typeof memTimer.unref === 'function') memTimer.unref();
+  }
 }
 
 // ── Redis tag helpers ─────────────────────────────────────────────────────────
@@ -108,22 +126,38 @@ async function redisTagDel(tag) {
 
 async function get(key) {
   const scopedKey = scopeCacheKey(key);
+  // Derive a prefix label for Prometheus (first path segment)
+  const keyPrefix = key.split(':')[0] || 'unknown';
 
   if (redisReady) {
     const raw = await redis.get(scopedKey).catch(() => null);
     if (raw !== null) {
       stats.hits++;
+      cacheHitsTotal.inc({ key_prefix: keyPrefix });
+      _updateHitRateGauge();
       return JSON.parse(raw);
     }
   } else {
     const val = mem.get(scopedKey);
     if (val !== null) {
       stats.hits++;
+      cacheHitsTotal.inc({ key_prefix: keyPrefix });
+      _updateHitRateGauge();
       return val;
     }
   }
   stats.misses++;
+  cacheMissesTotal.inc({ key_prefix: keyPrefix });
+  _updateHitRateGauge();
   return null;
+}
+
+/** Recompute and expose the rolling hit-rate gauge from running counters. */
+function _updateHitRateGauge() {
+  const total = stats.hits + stats.misses;
+  if (total > 0) {
+    cacheHitRate.set(parseFloat((stats.hits / total).toFixed(4)));
+  }
 }
 
 async function set(key, value, ttlSeconds = 60) {
@@ -174,11 +208,42 @@ async function invalidatePrefix(prefix) {
 
   stats.invalidations++;
   if (redisReady) {
-    const keys = await redis.keys(`${scopedPrefix}*`).catch(() => []);
-    if (keys.length) await redis.del(keys).catch(() => null);
+    // Use SCAN (cursor-based) instead of KEYS to avoid blocking Redis
+    let cursor = 0;
+    do {
+      const result = await redis
+        .scan(cursor, { MATCH: `${scopedPrefix}*`, COUNT: 100 })
+        .catch(() => ({ cursor: 0, keys: [] }));
+      cursor = result.cursor;
+      if (result.keys.length) await redis.del(result.keys).catch(() => null);
+    } while (cursor !== 0);
   }
   for (const key of mem.keys()) {
     if (key.startsWith(scopedPrefix)) mem.del(key);
+  }
+}
+
+/**
+ * Delete every cached entry belonging to a tenant without blocking Redis.
+ * Scans for `tenant:<slug>:*` keys using cursor-based SCAN iteration.
+ * Safe to call on tenant deletion or suspension.
+ *
+ * @param {string} slug  — tenant slug (e.g. "acme")
+ */
+async function flushTenant(slug) {
+  const prefix = `tenant:${slug}:`;
+  if (redisReady) {
+    let cursor = 0;
+    do {
+      const result = await redis
+        .scan(cursor, { MATCH: `${prefix}*`, COUNT: 100 })
+        .catch(() => ({ cursor: 0, keys: [] }));
+      cursor = result.cursor;
+      if (result.keys.length) await redis.del(result.keys).catch(() => null);
+    } while (cursor !== 0);
+  }
+  for (const key of mem.keys()) {
+    if (key.startsWith(prefix)) mem.del(key);
   }
 }
 
@@ -234,15 +299,25 @@ function size() {
   return redisReady ? null : mem.size();
 }
 
+/** Gracefully close the Redis connection (called during server shutdown). */
+async function close() {
+  if (redis && redisReady) {
+    await redis.quit().catch((err) => log.warn({ message: 'redis_quit_error', error: err.message }));
+    redisReady = false;
+  }
+}
+
 export default {
   get,
   set,
   setWithTags,
   invalidate,
   invalidatePrefix,
+  flushTenant,
   invalidateTag,
   invalidateTags,
   warm,
   analytics,
   size,
+  close,
 };

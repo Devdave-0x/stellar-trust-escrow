@@ -56,7 +56,6 @@ describe('dispute route validation', () => {
     expect(prismaMock.dispute.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ tenantId: 'tenant_default' }),
-        skip: 10,
         take: 10,
       }),
     );

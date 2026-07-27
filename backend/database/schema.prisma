@@ -28,30 +28,51 @@ datasource db {
 // ── Tenants ───────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id            String   @id @default(cuid())
-  slug          String   @unique
-  name          String
-  status        String   @default("active")
-  domains       String[] @default([])
-  branding      Json?
-  configuration Json?
-  metadata      Json?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id                 String    @id @default(cuid())
+  slug               String    @unique
+  name               String
+  status             String    @default("active")
+  domains            String[]  @default([])
+  branding           Json?
+  configuration      Json?
+  metadata           Json?
+  /// Subscription plan, e.g. "free" | "pro" | "enterprise". No enforced enum —
+  /// plans are configured operationally, not hardcoded into the schema.
+  plan               String    @default("free")
+  maxUsers           Int?      @map("max_users")
+  maxEscrowsPerMonth Int?      @map("max_escrows_per_month")
+  suspendedAt        DateTime? @map("suspended_at")
+  suspendReason      String?   @map("suspend_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  users             User[]
-  escrows           Escrow[]
-  milestones        Milestone[]
-  reputationRecords ReputationRecord[]
-  disputes          Dispute[]
-  disputeEvidence   DisputeEvidence[]
-  disputeAppeals    DisputeAppeal[]
-  userProfiles      UserProfile[]
-  contractEvents    ContractEvent[]
-  payments          Payment[]
-  kycVerifications  KycVerification[]
-  adminAuditLogs    AdminAuditLog[]
-  auditLogs         AuditLog[]
+  users                   User[]
+  escrows                 Escrow[]
+  milestones              Milestone[]
+  reputationRecords       ReputationRecord[]
+  reputationEvents        ReputationEvent[]
+  disputes                Dispute[]
+  disputeEvidence         DisputeEvidence[]
+  disputeAppeals          DisputeAppeal[]
+  userProfiles            UserProfile[]
+  contractEvents          ContractEvent[]
+  webhookSubscriptions    WebhookSubscription[]
+  payments                Payment[]
+  kycVerifications        KycVerification[]
+  adminAuditLogs          AdminAuditLog[]
+  auditLogs               AuditLog[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  apiKeys                 ApiKey[]
+  escrowMessages          EscrowMessage[]
+  announcements           Announcement[]
+  loginHistory            LoginHistory[]
+  loginLockouts           LoginLockout[]
+  EscrowNote              EscrowNote[]
+  ChatRoomKey             ChatRoomKey[]
+  ChatMessage             ChatMessage[]
+  onboardingChecklists    OnboardingChecklist[]
+  escrowTemplates         EscrowTemplate[]
 
   @@map("tenants")
 }
@@ -59,54 +80,66 @@ model Tenant {
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id           Int      @id @default(autoincrement())
-  tenantId     String   @map("tenant_id")
-  email        String   @unique
-  password     String
-  walletAddress String? @unique @map("wallet_address")
-  role         String   @default("user") // user | admin | superadmin
-  mfaEnabled   Boolean  @default(false) @map("mfa_enabled")
-  mfaEnforced  Boolean  @default(false) @map("mfa_enforced") // Force MFA for high-value operations
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                      Int       @id @default(autoincrement())
+  tenantId                String    @map("tenant_id")
+  email                   String    @unique
+  password                String
+  walletAddress           String?   @unique @map("wallet_address")
+  role                    String    @default("user") // user | admin | superadmin
+  mfaEnabled              Boolean   @default(false) @map("mfa_enabled")
+  mfaEnforced             Boolean   @default(false) @map("mfa_enforced")
+  notificationPreferences Json?     @map("notification_preferences")
+  emailVerified           Boolean   @default(false) @map("email_verified")
+  status                  String    @default("active") @map("status") // active | suspended | banned
+  suspendedAt             DateTime? @map("suspended_at")
+  suspendReason           String?   @map("suspend_reason")
+  deletionRequestedAt     DateTime? @map("deletion_requested_at")
+  deletedAt               DateTime? @map("deleted_at")
+  anonymisedAt            DateTime? @map("anonymised_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
-  refreshTokens RefreshToken[]
-  mfaMethods    MfaMethod[]
-  mfaAttempts   MfaAttempt[]
+  tenant                 Tenant                   @relation(fields: [tenantId], references: [id])
+  refreshTokens          RefreshToken[]
+  mfaMethods             MfaMethod[]
+  mfaAttempts            MfaAttempt[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  EmailVerificationToken EmailVerificationToken[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, email])
   @@index([walletAddress])
   @@index([role])
+  @@index([status])
   @@map("users")
 }
 
 // ── MFA Methods ───────────────────────────────────────────────────────────────
 
 model MfaMethod {
-  id            String    @id @default(cuid())
-  userId        Int       @map("user_id")
-  tenantId      String    @map("tenant_id")
-  type          MfaType   // TOTP | WEBAUTHN
-  name          String    // User-friendly name (e.g., "iPhone 15", "Authenticator App")
-  isActive      Boolean   @default(true) @map("is_active")
-  isPrimary     Boolean   @default(false) @map("is_primary")
-  
+  id        String  @id @default(cuid())
+  userId    Int     @map("user_id")
+  tenantId  String  @map("tenant_id")
+  type      MfaType // TOTP | WEBAUTHN
+  name      String // User-friendly name (e.g., "iPhone 15", "Authenticator App")
+  isActive  Boolean @default(true) @map("is_active")
+  isPrimary Boolean @default(false) @map("is_primary")
+
   // TOTP-specific fields
-  totpSecret    String?   @map("totp_secret") // Encrypted TOTP secret
+  totpSecret      String?  @map("totp_secret") // Encrypted TOTP secret
   totpBackupCodes String[] @default([]) @map("totp_backup_codes") // Encrypted backup codes
-  
+
   // WebAuthn-specific fields
-  credentialId  String?   @unique @map("credential_id") // Base64-encoded credential ID
-  publicKey     String?   @map("public_key") // Base64-encoded public key
-  counter       BigInt?   @default(0) // Signature counter for replay protection
-  transports    String[]  @default([]) // usb, nfc, ble, internal
-  aaguid        String?   // Authenticator AAGUID
-  
-  lastUsedAt    DateTime? @map("last_used_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  credentialId String?  @unique @map("credential_id") // Base64-encoded credential ID
+  publicKey    String?  @map("public_key") // Base64-encoded public key
+  counter      BigInt?  @default(0) // Signature counter for replay protection
+  transports   String[] @default([]) // usb, nfc, ble, internal
+  aaguid       String? // Authenticator AAGUID
+
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -120,15 +153,15 @@ model MfaMethod {
 // ── MFA Attempts (Brute-force Protection) ─────────────────────────────────────
 
 model MfaAttempt {
-  id          String   @id @default(cuid())
-  userId      Int      @map("user_id")
-  tenantId    String   @map("tenant_id")
-  methodType  MfaType  @map("method_type")
-  success     Boolean
-  ipAddress   String   @map("ip_address")
-  userAgent   String?  @map("user_agent")
-  failureReason String? @map("failure_reason")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  userId        Int      @map("user_id")
+  tenantId      String   @map("tenant_id")
+  methodType    MfaType  @map("method_type")
+  success       Boolean
+  ipAddress     String   @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -161,29 +194,84 @@ enum MfaType {
   WEBAUTHN
 }
 
+// ── Referrals ─────────────────────────────────────────────────────────────────
+
+/// Referrer/referred are Stellar wallet addresses (not hard FKs into `users`),
+/// mirroring UserProfile.address — most authenticated callers never get a
+/// `users` row, since this app authenticates by wallet signature.
+model Referral {
+  id              Int       @id @default(autoincrement())
+  tenantId        String    @map("tenant_id")
+  referrerAddress String    @map("referrer_address")
+  /// One referred address can only appear once — referred at most once
+  referredAddress String    @unique @map("referred_address")
+  codeUsed        String    @map("code_used")
+  rewardedAt      DateTime? @map("rewarded_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, referrerAddress])
+  @@map("referrals")
+}
+
 // ── Refresh Tokens ─────────────────────────────────────────────────────────────
 
 model RefreshToken {
-  id         String   @id @default(cuid())
-  userId     Int      @map("user_id")
-  tenantId   String   @map("tenant_id")
-  tokenHash  String   @unique @map("token_hash")
-  deviceInfo Json?    @map("device_info")
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  isActive   Boolean  @default(true) @map("is_active")
-  expiresAt  DateTime @map("expires_at")
+  id         String    @id @default(cuid())
+  userId     Int       @map("user_id")
+  tenantId   String    @map("tenant_id")
+  tokenHash  String    @unique @map("token_hash")
+  /// Token family — all rotations from the same login share a family_id.
+  /// Reuse detection revokes the entire family.
+  familyId   String?   @map("family_id")
+  /// Whether this token has already been consumed (rotated or used once).
+  used       Boolean   @default(false) @map("used")
+  deviceInfo Json?     @map("device_info")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  isActive   Boolean   @default(true) @map("is_active")
+  expiresAt  DateTime  @map("expires_at")
   lastUsedAt DateTime? @map("last_used_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, tenantId])
   @@index([tokenHash])
+  @@index([familyId])
   @@index([expiresAt])
   @@index([isActive])
   @@map("refresh_tokens")
+}
+
+// ── API Keys ─────────────────────────────────────────────────────────────────
+
+/// Programmatic API keys. Ownership mirrors UserSession/UserProfile — `userId`
+/// holds the Stellar wallet address (the authenticated principal), not a hard
+/// FK into `users`, since most authenticated callers never get a `users` row.
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  userId     String    @map("user_id")
+  name       String
+  /// First chars of the raw key, shown in UI so users can tell keys apart. Never the full secret.
+  keyPrefix  String    @map("key_prefix")
+  /// SHA-256 hash of the raw key. The raw key itself is never stored.
+  keyHash    String    @unique @map("key_hash")
+  /// CIDR strings (e.g. "203.0.113.0/24") or bare IPs the key may be used from. Empty = allow all.
+  allowedIps String[]  @default([]) @map("allowed_ips")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, userId])
+  @@index([keyHash])
+  @@map("api_keys")
 }
 
 // ── Escrows ───────────────────────────────────────────────────────────────────
@@ -202,15 +290,35 @@ model Escrow {
   remainingBalance  String       @map("remaining_balance")
   status            EscrowStatus
   briefHash         String       @map("brief_hash") // IPFS / content hash
+  /// App-level title/description, distinct from the on-chain briefHash. Used by
+  /// Draft escrows (clones) that haven't been broadcast on-chain yet.
+  title             String?
+  description       String?
+  /// Stellar wallet address of the user who owns this escrow record (e.g. via
+  /// clone), mirroring UserSession.userId — not a hard FK into `users`, since
+  /// most authenticated callers never get a `users` row.
+  ownerId           String?      @map("owner_id")
+  /// Soft-delete marker. Excluded from default list/detail queries; visible to
+  /// admins via ?include_deleted=true and restorable via the admin restore endpoint.
+  deletedAt         DateTime?    @map("deleted_at")
   deadline          DateTime?
+  /// Deadline by which a Draft escrow must be funded on-chain before it is auto-cancelled
+  fundingDeadline   DateTime?    @map("funding_deadline")
   createdAt         DateTime     @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
   /// Stellar ledger sequence when this escrow was created
   createdLedger     BigInt       @map("created_ledger")
+  /// Tenant-defined structured data (freelance/real-estate/product-specific fields).
+  /// Max 20 keys; values restricted to string/number/boolean — enforced in the API layer.
+  metadata          Json?
 
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
-  milestones Milestone[]
-  dispute    Dispute?
+  tenant       Tenant          @relation(fields: [tenantId], references: [id])
+  milestones   Milestone[]
+  dispute      Dispute?
+  messages     EscrowMessage[]
+  frozenAt     DateTime?       @map("frozen_at")
+  freezeReason String?         @map("freeze_reason")
+  adminNotes   EscrowNote[]
 
   @@index([tenantId])
   @@index([tenantId, clientAddress])
@@ -224,6 +332,8 @@ model Escrow {
   @@index([status])
   // Composite index for filtered + sorted list queries
   @@index([status, createdAt(sort: Desc)])
+  // Composite index for the hourly funding-deadline auto-cancel job
+  @@index([status, fundingDeadline])
   // Composite index for user profile / user escrows OR queries
   @@index([clientAddress, createdAt(sort: Desc)])
   @@index([freelancerAddress, createdAt(sort: Desc)])
@@ -234,7 +344,28 @@ model Escrow {
   @@index([clientAddress, status, createdAt(sort: Desc)])
   @@index([freelancerAddress, status, createdAt(sort: Desc)])
   @@index([createdAt])
+  @@index([ownerId])
+  @@index([deletedAt])
+  @@index([tenantId, deletedAt])
   @@map("escrows")
+}
+
+// ── Escrow Notes ───────────────────────────────────────────────────────────────
+
+model EscrowNote {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @map("tenant_id")
+  escrowId  BigInt   @map("escrow_id")
+  note      String   @db.Text
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  escrow Escrow @relation(fields: [escrowId], references: [id])
+
+  @@index([tenantId, escrowId])
+  @@index([escrowId])
+  @@map("escrow_notes")
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────
@@ -263,6 +394,28 @@ model Milestone {
   @@map("milestones")
 }
 
+/// Immutable, append-only record of every milestone status transition.
+/// Written by escrowService (release/dispute) and the escrow indexer
+/// (on-chain submission events) — never written to directly.
+model MilestoneStatusHistory {
+  id          BigInt   @id @default(autoincrement())
+  milestoneId Int      @map("milestone_id")
+  /// Denormalized for direct filtering/access-control without a join
+  escrowId    BigInt   @map("escrow_id")
+  /// Status before the transition (null when the milestone was first created)
+  fromStatus  String?  @map("from_status")
+  /// Status after the transition
+  toStatus    String   @map("to_status")
+  /// Stellar address (or 'system:indexer') of the actor who triggered the transition
+  changedBy   String   @map("changed_by")
+  reason      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([milestoneId, createdAt])
+  @@index([escrowId, createdAt])
+  @@map("milestone_status_history")
+}
+
 // ── Reputation ────────────────────────────────────────────────────────────────
 
 model ReputationRecord {
@@ -276,12 +429,40 @@ model ReputationRecord {
   lastUpdated      DateTime @map("last_updated")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant Tenant            @relation(fields: [tenantId], references: [id])
+  events ReputationEvent[]
 
   @@index([tenantId, address])
   @@index([tenantId, totalScore(sort: Desc)])
   @@index([totalScore(sort: Desc)])
   @@map("reputation_records")
+}
+
+// ── Reputation Events (Audit & Recalculation) ──────────────────────────────────
+
+enum ReputationEventType {
+  ESCROW_COMPLETED
+  DISPUTE_WON
+  DISPUTE_LOST
+  CANCELLATION
+}
+
+model ReputationEvent {
+  id         String              @id @default(cuid())
+  tenantId   String              @map("tenant_id")
+  address    String
+  eventType  ReputationEventType @map("event_type")
+  escrowId   BigInt?             @map("escrow_id")
+  scoreDelta Int                 @map("score_delta")
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  reputationRecord ReputationRecord @relation(fields: [address], references: [address])
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@unique([address, eventType, escrowId])
+  @@index([tenantId, address, createdAt(sort: Desc)])
+  @@index([address, eventType])
+  @@map("reputation_events")
 }
 
 // ── Disputes ─────────────────────────────────────────────────────────────────
@@ -305,6 +486,10 @@ model Dispute {
   resolutionType   String?   @map("resolution_type")
   /// Whether this dispute was auto-resolved
   autoResolved     Boolean   @default(false) @map("auto_resolved")
+  /// Timestamp of most recent escalation (NULL = never escalated)
+  escalatedAt      DateTime? @map("escalated_at")
+  /// How many times this dispute has been escalated
+  escalationCount  Int       @default(0) @map("escalation_count")
 
   tenant   Tenant            @relation(fields: [tenantId], references: [id])
   escrow   Escrow            @relation(fields: [escrowId], references: [id])
@@ -318,6 +503,11 @@ model Dispute {
   @@index([resolvedAt])
   // Composite index for listing disputes sorted by raisedAt with resolution filter
   @@index([resolvedAt, raisedAt(sort: Desc)])
+  // Covers the admin listDisputes query: filter by tenant + resolution status, sort by raisedAt.
+  // Without this, Postgres must seq-scan the entire tenant partition then sort.
+  @@index([tenantId, resolvedAt, raisedAt(sort: Desc)])
+  // Covers raisedBy filter + date sort within a tenant (dispute history per freelancer)
+  @@index([tenantId, raisedByAddress, raisedAt(sort: Desc)])
   @@map("disputes")
 }
 
@@ -393,7 +583,10 @@ model UserProfile {
   displayName String?  @map("display_name")
   bio         String?
   avatarUrl   String?  @map("avatar_url")
+  timezone    String? // IANA timezone identifier, e.g. "America/New_York"
   preferences Json?
+  /// Unique 8-char alphanumeric code used to refer new users
+  referralCode String? @unique @map("referral_code")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -455,7 +648,7 @@ model WebhookSubscription {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   deliveries WebhookDelivery[]
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([createdBy])
@@ -463,16 +656,16 @@ model WebhookSubscription {
 }
 
 model WebhookDelivery {
-  id             String   @id @default(cuid())
-  subscriptionId String   @map("subscription_id")
-  eventType      String   @map("event_type")
+  id             String    @id @default(cuid())
+  subscriptionId String    @map("subscription_id")
+  eventType      String    @map("event_type")
   payload        Json
-  status         String   @default("pending")
-  attempts       Int      @default(0)
-  responseCode   Int?     @map("response_code")
-  errorMessage   String?  @map("error_message")
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  responseCode   Int?      @map("response_code")
+  errorMessage   String?   @map("error_message")
   lastAttemptAt  DateTime? @map("last_attempt_at")
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
@@ -609,7 +802,53 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String            @id @default(cuid())
+  tenantId  String            @map("tenant_id")
+  userId    Int               @map("user_id")
+  event     NotificationEvent
+  data      Json
+  read      Boolean           @default(false)
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([userId, read, createdAt(sort: Desc)])
+  @@index([tenantId, userId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id          String   @id @default(cuid())
+  userId      Int      @unique @map("user_id")
+  tenantId    String   @map("tenant_id")
+  /// JSON map of NotificationEvent -> { email: bool, inApp: bool }
+  preferences Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, userId])
+  @@map("notification_preferences")
+}
+
+enum NotificationEvent {
+  escrow_funded
+  release_requested
+  dispute_raised
+  dispute_resolved
+  escrow_expiring
+  milestone_completed
+  escrow_status_changed
+}
+
 enum EscrowStatus {
+  Draft
   Active
   Completed
   Disputed
@@ -623,16 +862,63 @@ enum MilestoneStatus {
   Rejected
 }
 
+// ── Escrow Audit Log ──────────────────────────────────────────────────────────
+
+/// Immutable, append-only record of every escrow state transition.
+/// Rows are protected by PostgreSQL rules that block UPDATE and DELETE.
+/// Use the escrowAuditService helper — never write to this table directly.
+model EscrowAuditLog {
+  id        BigInt   @id @default(autoincrement())
+  escrowId  BigInt   @map("escrow_id")
+  tenantId  String   @map("tenant_id")
+  /// Stellar address of the actor who triggered the transition
+  actorId   String   @map("actor_id")
+  /// Client IP address at the time of the transition
+  actorIp   String?  @map("actor_ip")
+  /// Action that caused this transition (e.g. CREATE, FUND, RELEASE, RAISE_DISPUTE, CANCEL)
+  action    String
+  /// Escrow status before the transition (null for CREATE)
+  fromState String?  @map("from_state")
+  /// Escrow status after the transition
+  toState   String   @map("to_state")
+  /// Arbitrary JSON context (tx hash, milestone index, resolution details, etc.)
+  metadata  Json?
+  /// Immutable insert timestamp — never updated
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([escrowId, createdAt(sort: Desc)])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@map("escrow_audit_log")
+}
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+
+model Tag {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId, name])
+  @@map("tags")
+}
+
 // ── Feature Flags ─────────────────────────────────────────────────────────────
 
 model FeatureFlag {
   key         String   @id
+  tenantId    String?  @map("tenant_id") // null = global flag
   isEnabled   Boolean  @default(false) @map("is_enabled")
   percentage  Int      @default(0)
   targetUsers String[] @default([]) @map("target_users")
   description String   @default("")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@map("feature_flags")
 }
 
@@ -650,4 +936,420 @@ enum PaymentStatus {
   Completed
   Failed
   Refunded
+}
+
+// ── Chat (Encrypted Dispute Messaging) ───────────────────────────────────────
+// roomId convention: "dispute:<escrowId>"
+// encryptedKey: AES-256 session key wrapped with recipient's Stellar public key (ECIES).
+// The server stores but never decrypts — plaintext never touches the backend.
+
+/// Per-participant AES session key for a dispute chat room.
+/// @@unique([roomId, address]) allows key rotation via upsert.
+model ChatRoomKey {
+  id           String   @id @default(cuid())
+  roomId       String   @map("room_id")
+  address      String
+  /// AES-256 session key encrypted with recipient's Stellar public key (ECIES), base64-encoded
+  encryptedKey String   @map("encrypted_key") @db.Text
+  tenantId     String   @map("tenant_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([roomId, address])
+  @@index([roomId])
+  @@index([tenantId, roomId])
+  @@map("chat_room_keys")
+}
+
+/// Encrypted message in a dispute chat room.
+/// ciphertext/iv/tag: AES-256-GCM encrypted payload — server never decrypts.
+model ChatMessage {
+  id            String   @id @default(cuid())
+  roomId        String   @map("room_id")
+  senderAddress String   @map("sender_address")
+  /// AES-256-GCM ciphertext, base64-encoded
+  ciphertext    String   @db.Text
+  /// 12-byte GCM nonce, base64-encoded
+  iv            String   @db.Text
+  /// 16-byte GCM auth tag, base64-encoded
+  tag           String   @db.Text
+  tenantId      String   @map("tenant_id")
+  sentAt        DateTime @default(now()) @map("sent_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([roomId, sentAt])
+  @@index([tenantId, roomId])
+  @@map("chat_messages")
+}
+
+// ── Stellar Horizon Event Listener ─────────────────────────────────────────────
+
+/// Deduplication table for Horizon events using paging_token.
+/// Prevents duplicate database operations if the same event is streamed twice.
+model ProcessedEvent {
+  id              Int      @id @default(autoincrement())
+  pagingToken     String   @unique @map("paging_token") // Horizon's unique event ID
+  ledgerSequence  BigInt   @map("ledger_sequence")
+  transactionHash String   @map("transaction_hash")
+  eventIndex      Int      @map("event_index")
+  eventType       String   @map("event_type") // e.g., "EscrowCreated", "MilestoneApproved"
+  escrowId        BigInt?  @map("escrow_id")
+  eventData       Json     @map("event_data") // Full event payload for debugging
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([pagingToken])
+  @@index([ledgerSequence])
+  @@index([eventType])
+  @@index([escrowId])
+  @@index([createdAt])
+  @@map("processed_events")
+}
+
+/// System-wide configuration table for storing persistent state.
+/// Used by the Horizon listener to store cursor position and other runtime config.
+model SystemConfig {
+  key         String   @id // e.g., "horizon_cursor"
+  value       String   @db.Text // JSON-serializable value
+  description String?  @map("description")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([key])
+  @@map("system_config")
+}
+
+model EscrowApprovers {
+  id        String   @id @default(cuid())
+  escrowId  String   @unique @map("escrow_id")
+  approvers Json
+  threshold Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  approvalRecords MilestoneApprovalRecord[]
+
+  @@map("escrow_approvers")
+}
+
+model MilestoneApprovalRecord {
+  id          String   @id @default(cuid())
+  escrowId    String   @map("escrow_id")
+  milestoneId Int      @map("milestone_id")
+  approver    String
+  approvedAt  DateTime @map("approved_at")
+  txHash      String?  @map("tx_hash")
+  ledger      Int?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  escrowApprovers EscrowApprovers @relation(fields: [escrowId], references: [escrowId])
+
+  @@unique([escrowId, milestoneId, approver])
+  @@index([escrowId, milestoneId])
+  @@map("milestone_approval_records")
+}
+
+model InsuranceOptIn {
+  id             String    @id @default(cuid())
+  escrowId       String    @unique @map("escrow_id")
+  clientAddress  String    @map("client_address")
+  coverageAmount String    @map("coverage_amount")
+  premiumPaid    String    @map("premium_paid")
+  optedInAt      DateTime  @map("opted_in_at")
+  expiresAt      DateTime? @map("expires_at")
+  active         Boolean   @default(true)
+
+  @@index([clientAddress])
+  @@index([active])
+  @@map("insurance_opt_ins")
+}
+
+model InsuranceClaim {
+  id          String    @id @default(cuid())
+  claimId     Int       @unique @map("claim_id")
+  claimant    String
+  description String
+  amount      String
+  status      String    @default("Pending")
+  submittedAt DateTime  @map("submitted_at")
+  expiresAt   DateTime? @map("expires_at")
+  paidAt      DateTime? @map("paid_at")
+  txHash      String?   @map("tx_hash")
+  ledger      Int?
+
+  @@index([claimant])
+  @@index([status])
+  @@map("insurance_claims")
+}
+
+model InsuranceStake {
+  id        String   @id @default(cuid())
+  staker    String   @unique
+  amount    String
+  stakedAt  DateTime @map("staked_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("insurance_stakes")
+}
+
+model AnalyticsSnapshot {
+  id         String   @id @default(cuid())
+  snapshotAt DateTime @map("snapshot_at")
+  period     String // '5min' | 'hourly' | 'daily'
+  metric     String
+  value      Float
+  labels     Json?
+
+  @@index([metric, period, snapshotAt])
+  @@map("analytics_snapshots")
+}
+
+model EscrowOwnership {
+  id            String    @id @default(cuid())
+  escrowId      String    @unique @map("escrow_id")
+  currentOwner  String    @map("current_owner")
+  previousOwner String?   @map("previous_owner")
+  transferredAt DateTime? @map("transferred_at")
+  txHash        String?   @map("tx_hash")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([currentOwner])
+  @@map("escrow_ownership")
+}
+
+model OwnershipTransferLog {
+  id        String   @id @default(cuid())
+  escrowId  String   @map("escrow_id")
+  fromOwner String   @map("from_owner")
+  toOwner   String   @map("to_owner")
+  txHash    String   @map("tx_hash")
+  ledger    Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([escrowId])
+  @@index([fromOwner])
+  @@index([toOwner])
+  @@map("ownership_transfer_logs")
+}
+
+// ── Email Verification ────────────────────────────────────────────────────────
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    Int      @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+// ── Escrow Bookmarks ──────────────────────────────────────────────────────────
+
+model EscrowBookmark {
+  id          String   @id @default(cuid())
+  userAddress String   @map("user_address")
+  escrowId    BigInt   @map("escrow_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([userAddress, escrowId])
+  @@index([userAddress])
+  @@index([escrowId])
+  @@map("escrow_bookmarks")
+}
+
+// ── User Sessions ─────────────────────────────────────────────────────────────
+
+/// Tracks active login sessions per device so users can view and revoke them
+/// (e.g. "sign out everywhere else"). `userId` holds the Stellar wallet address —
+/// the authenticated principal for wallet-signature logins — mirroring
+/// UserProfile.address / ReputationRecord.address / EscrowBookmark.userAddress,
+/// rather than a hard FK into `users`, since most authenticated users never get
+/// a row in that table.
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  /// SHA-256 hash of the session's JWT `jti` — never the raw token.
+  tokenHash    String   @unique @map("token_hash")
+  deviceName   String?  @map("device_name")
+  ipAddress    String?  @map("ip_address")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, lastActiveAt(sort: Desc)])
+  @@map("user_sessions")
+}
+
+// ── Escrow Share Links ────────────────────────────────────────────────────────
+
+model EscrowShareLink {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  escrowId  BigInt    @map("escrow_id")
+  createdBy String    @map("created_by")
+  expiresAt DateTime? @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([token])
+  @@index([escrowId])
+  @@index([createdBy])
+  @@map("escrow_share_links")
+}
+
+// ── Escrow Messages ──────────────────────────────────────────────────────────
+
+/// senderAddress holds the Stellar wallet address — the authenticated principal
+/// for wallet-signature logins (see UserSession) — rather than a hard FK into
+/// `users`, since most authenticated users never get a row in that table.
+model EscrowMessage {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id")
+  escrowId      BigInt   @map("escrow_id")
+  senderAddress String   @map("sender_address")
+  body          String
+  /// Array of wallet addresses that have read this message
+  readBy        Json     @default("[]") @map("read_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  escrow Escrow @relation(fields: [escrowId], references: [id])
+
+  @@index([tenantId, escrowId, createdAt(sort: Desc)])
+  @@index([escrowId])
+  @@index([senderAddress])
+  @@map("escrow_messages")
+}
+
+// ── Announcements ─────────────────────────────────────────────────────────────
+
+enum AnnouncementTarget {
+  all
+  tenant
+}
+
+model Announcement {
+  id        Int                @id @default(autoincrement())
+  title     String
+  body      String
+  target    AnnouncementTarget @default(all)
+  /// Only set when target = tenant; null means every tenant (target = all)
+  tenantId  String?            @map("tenant_id")
+  startsAt  DateTime           @map("starts_at")
+  endsAt    DateTime           @map("ends_at")
+  createdBy String             @map("created_by")
+  deletedAt DateTime?          @map("deleted_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([target, tenantId, startsAt, endsAt])
+  @@index([deletedAt])
+  @@map("announcements")
+}
+
+// ── Login History ─────────────────────────────────────────────────────────────
+
+/// address holds the Stellar wallet address that a login was attempted for —
+/// same rationale as EscrowMessage.senderAddress / UserSession.userId — since
+/// most authenticated principals never get a row in `users`.
+model LoginHistory {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id")
+  address       String?  @map("address")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  success       Boolean
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, address, createdAt(sort: Desc)])
+  @@index([address, success, createdAt(sort: Desc)])
+  @@map("login_history")
+}
+
+/// Temporary lockout after 5 consecutive failed login attempts for an address.
+/// Mirrors MfaLockout, but keyed by wallet address rather than a `users` FK,
+/// since most authenticated principals never get a row in `users`.
+model LoginLockout {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  address     String
+  lockedUntil DateTime @map("locked_until")
+  reason      String   @default("Too many failed login attempts")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, address])
+  @@index([address, lockedUntil])
+  @@map("login_lockouts")
+}
+
+// ── Onboarding Checklist (#216) ───────────────────────────────────────────────
+
+enum OnboardingStep {
+  verify_email
+  connect_wallet
+  create_first_escrow
+  complete_profile
+  invite_counterparty
+}
+
+/// Tracks per-user onboarding progress. One row per (userAddress, tenantId, step).
+model OnboardingChecklist {
+  id          Int            @id @default(autoincrement())
+  userAddress String         @map("user_address")
+  tenantId    String         @map("tenant_id")
+  step        OnboardingStep
+  completedAt DateTime?      @map("completed_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([userAddress, tenantId, step])
+  @@index([userAddress, tenantId])
+  @@map("onboarding_checklists")
+}
+
+// ── System Configuration (#217) ──────────────────────────────────────────────
+
+/// Platform-wide configuration store. Each key has a type hint
+/// so the PATCH endpoint can validate values before persisting.
+model SystemConfig {
+  key         String   @id
+  value       String
+  type        String   @default("string")
+  description String?
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("system_configs")
+}
+
+// ── Escrow Templates (#219) ───────────────────────────────────────────────────
+
+/// Saved reusable escrow configurations per user.
+model EscrowTemplate {
+  id          Int      @id @default(autoincrement())
+  userAddress String   @map("user_address")
+  tenantId    String   @map("tenant_id")
+  name        String
+  config      Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([userAddress, tenantId])
+  @@map("escrow_templates")
 }

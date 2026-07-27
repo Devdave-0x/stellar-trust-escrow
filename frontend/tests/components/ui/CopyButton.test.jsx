@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import CopyButton from '../../../components/ui/CopyButton';
 
 describe('CopyButton', () => {
@@ -18,12 +18,12 @@ describe('CopyButton', () => {
 
   it('renders with default label', () => {
     render(<CopyButton text="test" />);
-    expect(screen.getByText('Copy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Copy/i })).toBeInTheDocument();
   });
 
   it('renders with custom label', () => {
     render(<CopyButton text="test" label="Hash" />);
-    expect(screen.getByText('Hash')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy Hash' })).toBeInTheDocument();
   });
 
   it('copies text to clipboard on click', async () => {
@@ -44,14 +44,14 @@ describe('CopyButton', () => {
 
   it('reverts to original label after feedback duration', async () => {
     navigator.clipboard.writeText.mockResolvedValue(undefined);
-    render(<CopyButton text="test" feedbackDuration={1000} />);
+    render(<CopyButton text="test" />);
     fireEvent.click(screen.getByRole('button'));
     await waitFor(() => {
       expect(screen.getByText('Copied!')).toBeInTheDocument();
     });
-    jest.advanceTimersByTime(1000);
+    act(() => { jest.advanceTimersByTime(2000); });
     await waitFor(() => {
-      expect(screen.getByText('Copy')).toBeInTheDocument();
+      expect(screen.queryByText('Copied!')).not.toBeInTheDocument();
     });
   });
 
