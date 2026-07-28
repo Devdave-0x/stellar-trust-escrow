@@ -861,6 +861,8 @@ pub enum DataKey {
     DisputeCooldownSecs,
     /// Monotonically increasing counter incremented on every upgrade — value: u32
     MigrationVersion,
+    /// Number of milestones currently in MS_PENDING state for an escrow — key: u64, value: u32
+    PendingMilestoneCount(u64),
 }
 
 /// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.
