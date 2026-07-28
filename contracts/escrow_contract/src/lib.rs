@@ -54,11 +54,14 @@
 
 mod admin_transfer_tests;
 mod arbiter_reputation_tests;
+mod arbiter_validation_tests;
 mod batch_add_milestones_cap_tests;
 mod batch_approve_release_e2e_tests;
 mod bridge;
 mod bridge_tests;
+mod creation_validation_tests;
 mod errors;
+mod escrow_template_tests;
 mod event_names;
 mod event_tests;
 mod events;
@@ -66,6 +69,7 @@ mod governance_escalation_tests;
 mod lock_time_enforcement_tests;
 mod max_escrow_amount_tests;
 mod meta_snapshot_tests;
+mod multisig_lifecycle_tests;
 mod multisig_threshold_tests;
 mod nft;
 mod nft_tests;
@@ -76,7 +80,9 @@ mod oracle_tests;
 mod partial_cancel_tests;
 mod pause_tests;
 mod self_escrow_tests;
+mod split_escrow_tests;
 mod timelock_enforcement_tests;
+mod token_whitelist_tests;
 mod transfer_client_tests;
 mod types;
 mod platform_fee;
@@ -137,6 +143,9 @@ pub const MAX_BUYER_SIGNERS: u32 = 10;
 /// signer is mandatory. Admins can override this with `set_high_value_threshold`.
 /// Set deliberately high so existing single-approver flows are unaffected.
 pub const DEFAULT_HIGH_VALUE_THRESHOLD: i128 = 1_000_000_000_000i128;
+/// Upper bound on a timelock duration (30 days, in seconds). Shared by
+/// `create_escrow` and `start_timelock` so both paths bound the value identically.
+pub const MAX_TIMELOCK_DURATION_SECONDS: u64 = 30 * 24 * 60 * 60;
 
 /// Automatic deadline extension when milestone submitted near deadline (7 days).
 pub const AUTO_DEADLINE_EXTENSION_SECONDS: u64 = 604_800;
@@ -682,18 +691,6 @@ impl ContractStorage {
     fn rent_expires_at(env: &Env, meta: &EscrowMeta) -> u64 {
         let covered_periods = (meta.rent_balance / Self::rent_due_per_period(env, meta)) as u64;
         meta.last_rent_collection_at + ((covered_periods + 1) * RENT_PERIOD_SECONDS)
-    }
-
-    /// Validates that a token is approved for use as an escrow token.
-    ///
-    /// For wrapped/bridged tokens, checks that they are registered and approved.
-    /// Native Stellar tokens bypass this check and are always accepted.
-    fn _validate_escrow_token(_env: &Env, _token: &Address) -> Result<(), EscrowError> {
-        // Native tokens are always valid; only validate if it's a contract
-        // In a real implementation, this would check a wrapped token registry.
-        // For now, we accept all tokens (native and wrapped).
-        // TODO: Implement wrapped token registry check with is_approved flag
-        Ok(())
     }
 
     fn charge_rent_reserve(
@@ -1667,7 +1664,7 @@ impl EscrowContract {
         arbiter: Option<Address>,
         deadline: Option<u64>,
         lock_time: Option<u64>,
-        _timelock: Option<Timelock>,
+        timelock: Option<Timelock>,
         multisig_config: MultisigConfig,
     ) -> Result<u64, EscrowError> {
         Self::create_escrow_internal(
@@ -1683,6 +1680,8 @@ impl EscrowContract {
             None,
             None,
             Some(multisig_config),
+            timelock,
+            true,
         )
     }
 
@@ -1711,6 +1710,8 @@ impl EscrowContract {
             Some(dispute_timeout_ledger),
             None,
             None,
+            None,
+            true,
         )
     }
 
@@ -1749,6 +1750,8 @@ impl EscrowContract {
             None,
             None,
             None,
+            None,
+            true,
         )?;
         events::emit_nft_gated_escrow_created(&env, escrow_id, &nft_contract, token_id);
         Ok(escrow_id)
@@ -1782,6 +1785,8 @@ impl EscrowContract {
             None,
             Some(buyer_signers),
             None,
+            None,
+            true,
         )
     }
 
@@ -1910,6 +1915,30 @@ impl EscrowContract {
         Ok(config.threshold > max_weight)
     }
 
+    /// Normalizes a caller-supplied timelock for storage at creation time.
+    ///
+    /// The duration is bounded exactly as `start_timelock` bounds it. `start_ledger`
+    /// is always taken from the current ledger rather than the caller's value —
+    /// otherwise a backdated start would make the timelock expire immediately and
+    /// the protection would be worthless.
+    fn normalize_creation_timelock(
+        env: &Env,
+        timelock: Option<Timelock>,
+    ) -> Result<OptionalTimelock, EscrowError> {
+        match timelock {
+            None => Ok(OptionalTimelock::None),
+            Some(tl) => {
+                if tl.duration_ledger == 0 || tl.duration_ledger > MAX_TIMELOCK_DURATION_SECONDS {
+                    return Err(EscrowError::E51);
+                }
+                Ok(OptionalTimelock::Some(Timelock {
+                    duration_ledger: tl.duration_ledger,
+                    start_ledger: env.ledger().timestamp(),
+                }))
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn create_escrow_internal(
         env: Env,
@@ -1924,9 +1953,16 @@ impl EscrowContract {
         dispute_timeout_ledger: Option<u32>,
         buyer_signers: Option<soroban_sdk::Vec<Address>>,
         multisig_config: Option<MultisigConfig>,
+        timelock: Option<Timelock>,
+        require_client_auth: bool,
     ) -> Result<u64, EscrowError> {
-        // Auth + validation before any storage I/O
-        client.require_auth();
+        // Auth + validation before any storage I/O.
+        // Internal callers that already authorized the client in this frame pass
+        // `false` — re-authorizing the same address in one frame fails with
+        // `Auth, ExistingValue`.
+        if require_client_auth {
+            client.require_auth();
+        }
         ContractStorage::require_initialized(&env)?;
         ContractStorage::require_not_paused(&env)?;
 
@@ -1946,9 +1982,12 @@ impl EscrowContract {
 
         Self::validate_escrow_inputs(&env, total_amount, deadline, lock_time)?;
 
+        // An all-zero brief hash binds no agreement document to the escrow.
         if brief_hash == BytesN::from_array(&env, &[0u8; 32]) {
-            // TODO: return Err(EscrowError::InvalidBriefHash);
+            return Err(EscrowError::InvalidBriefHash);
         }
+
+        let creation_timelock = Self::normalize_creation_timelock(&env, timelock)?;
 
         let now = env.ledger().timestamp();
 
@@ -2034,7 +2073,7 @@ impl EscrowContract {
                 deadline,
                 lock_time,
                 lock_time_extension: None,
-                timelock: OptionalTimelock::None,
+                timelock: creation_timelock,
                 dispute_timeout_ledger,
                 dispute_started_ledger: None,
                 brief_hash,
@@ -2091,8 +2130,9 @@ impl EscrowContract {
             return Err(EscrowError::E19);
         }
 
+        // An all-zero brief hash binds no agreement document to the escrow.
         if brief_hash == BytesN::from_array(&env, &[0u8; 32]) {
-            // TODO: return Err(EscrowError::InvalidBriefHash);
+            return Err(EscrowError::InvalidBriefHash);
         }
 
         let now = env.ledger().timestamp();
@@ -3491,9 +3531,15 @@ impl EscrowContract {
             return Err(EscrowError::E9);
         }
 
-        // Require joint consent from both parties
-        meta.client.require_auth();
-        meta.freelancer.require_auth();
+        // Require joint consent from both parties. The caller's frame is already
+        // authorized above, and re-authorizing the same address in one frame fails
+        // with `Auth, ExistingValue`, so only the other party is asked here.
+        if caller != meta.client {
+            meta.client.require_auth();
+        }
+        if caller != meta.freelancer {
+            meta.freelancer.require_auth();
+        }
 
         let unallocated = meta.remaining_balance - meta.allocated_amount;
         if split_amount <= 0 || split_amount >= unallocated {
@@ -3502,6 +3548,17 @@ impl EscrowContract {
 
         let child1_amount = split_amount;
         let child2_amount = unallocated - split_amount;
+
+        // Children inherit the parent's timelock duration so a split cannot be used
+        // to move funds into escrows that release immediately. The clock restarts at
+        // creation, so a child is never locked for less than the parent's remainder.
+        let inherited_timelock = match &meta.timelock {
+            OptionalTimelock::Some(tl) => Some(Timelock {
+                duration_ledger: tl.duration_ledger,
+                start_ledger: 0, // normalized to the current ledger on creation
+            }),
+            OptionalTimelock::None => None,
+        };
 
         // Create first child escrow
         // Children inherit the parent's approval policy — a split must not be a way
@@ -3529,6 +3586,8 @@ impl EscrowContract {
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
             inherited_multisig.clone(),
+            inherited_timelock.clone(),
+            false,
         )?;
 
         // Create second child escrow
@@ -3545,6 +3604,8 @@ impl EscrowContract {
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
             inherited_multisig,
+            inherited_timelock,
+            false,
         )?;
 
         // Note: Parent escrow remains active, only unallocated balance is split
@@ -3614,7 +3675,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
         ContractStorage::require_not_frozen(&env, escrow_id)?;
 
-        if duration_ledger == 0 || duration_ledger > 30 * 24 * 60 * 60 {
+        if duration_ledger == 0 || duration_ledger > MAX_TIMELOCK_DURATION_SECONDS {
             return Err(EscrowError::E51);
         }
 
@@ -4469,10 +4530,12 @@ impl EscrowContract {
             brief_hash,
             arbiter.clone(),
             deadline,
-            None, // lock_time
-            None, // dispute_timeout_ledger
-            None, // buyer_signers
-            None, // multisig_config
+            None,             // lock_time
+            None,             // dispute_timeout_ledger
+            None,             // buyer_signers
+            None,             // multisig_config
+            None,             // timelock
+            caller != client, // client auth already taken when caller is the client
         )?;
 
         // Add template milestones

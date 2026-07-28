@@ -83,6 +83,8 @@ pub enum EcErr {
     /// The escrow amount is at or above the high-value threshold, which requires a
     /// multisig policy needing more than one signer.
     MultisigRequiredForHighValue = 78,
+    /// The brief hash is all zeros, so no agreement document is bound to the escrow.
+    InvalidBriefHash = 79,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
