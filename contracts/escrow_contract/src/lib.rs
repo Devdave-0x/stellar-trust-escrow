@@ -1094,6 +1094,36 @@ impl ContractStorage {
             .persistent()
             .remove(&FeatDataKey::ExtensionRequest(escrow_id));
     }
+
+    // ── Last activity timestamp ───────────────────────────────────────────────
+
+    /// Records `now` as the last on-chain activity for `escrow_id`.
+    ///
+    /// Called at the end of every state-changing entry point so that
+    /// off-chain monitors can detect stale / inactive escrows without
+    /// replaying the full event log.  The key lives in persistent storage
+    /// and gets a standard TTL bump alongside the escrow meta.
+    fn set_last_activity_timestamp(env: &Env, escrow_id: u64, now: u64) {
+        let key = FeatDataKey::LastActivityTimestamp(escrow_id);
+        env.storage().persistent().set(&key, &now);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    /// Returns the last recorded activity timestamp for `escrow_id`, or 0
+    /// if the escrow has never been touched by a state-changing call (which
+    /// only happens for escrows created before this feature was deployed).
+    fn get_last_activity_timestamp(env: &Env, escrow_id: u64) -> u64 {
+        let key = FeatDataKey::LastActivityTimestamp(escrow_id);
+        let ts: u64 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(0_u64);
+        if ts > 0 {
+            Self::bump_persistent_ttl(env, &key);
+        }
+        ts
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1449,6 +1479,7 @@ impl EscrowContract {
             events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
             events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
 
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, now);
             ContractStorage::bump_instance_ttl(&env);
             Ok(())
         })
@@ -2185,6 +2216,7 @@ impl EscrowContract {
                 .set(&DataKey::ArbiterList(escrow_id), &arbiters);
         }
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, now);
         Ok(escrow_id)
     }
 
@@ -2821,6 +2853,7 @@ impl EscrowContract {
                 events::emit_funds_released(&env, escrow_id, &meta.freelancer, total_amount);
             }
 
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(total_amount)
         })
     }
@@ -2914,6 +2947,7 @@ impl EscrowContract {
             }
 
             ContractStorage::save_escrow_meta(&env, &meta);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(payout_amount)
         })
     }
@@ -3039,6 +3073,7 @@ impl EscrowContract {
                 },
             );
             events::emit_funds_released(&env, escrow_id, &meta.freelancer, total_released);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(processed_count)
         })
     }
@@ -3098,6 +3133,7 @@ impl EscrowContract {
             .ok_or(EscrowError::E20)?;
         ContractStorage::save_escrow_meta(&env, &meta);
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
         events::emit_milestone_submitted(&env, escrow_id, milestone_id, &caller);
         Ok(())
     }
@@ -3203,6 +3239,7 @@ impl EscrowContract {
             }
 
             events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, now);
             Ok(())
         })
     }
@@ -3476,6 +3513,7 @@ impl EscrowContract {
                 events::emit_timelock_released(&env, escrow_id, env.ledger().timestamp());
             }
 
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(())
         })
     }
@@ -3611,6 +3649,7 @@ impl EscrowContract {
                 (freelancer_payout, client_refund, fee_amount),
             );
             events::emit_escrow_cancelled(&env, escrow_id, client_refund);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(())
         })
     }
@@ -4204,6 +4243,7 @@ impl EscrowContract {
             }
         }
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
         Ok(())
     }
 
@@ -4360,6 +4400,11 @@ impl EscrowContract {
                 freelancer_payout,
             );
 
+            ContractStorage::set_last_activity_timestamp(
+                &env,
+                escrow_id,
+                env.ledger().timestamp(),
+            );
             Ok(())
         })
     }
@@ -4532,6 +4577,7 @@ impl EscrowContract {
             }
         }
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
         Ok(())
     }
 
