@@ -1,8 +1,10 @@
 import express from 'express';
 import webhookController from '../controllers/webhookController.js';
 import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
+import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
+router.use(authMiddleware);
 
 // Webhook subscriptions are write operations that provision persistent server
 // resources. A single authenticated user could otherwise flood the table with
