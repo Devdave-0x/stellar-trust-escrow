@@ -79,6 +79,9 @@ mod self_escrow_tests;
 mod timelock_enforcement_tests;
 mod transfer_client_tests;
 mod types;
+mod platform_fee;
+mod extension;
+mod auto_expiry;
 mod upgrade_tests;
 
 pub use errors::EscrowError;
@@ -3038,7 +3041,61 @@ impl EscrowContract {
         Ok(())
     }
 
-    /// Client rejects a submitted milestone.
+
+    // ── Platform fee collection (#95) ──────────────────────────────────────
+
+    /// Collect the platform fee for a completed or cancelled escrow.
+    /// Transfers the fee to the configured treasury address.
+    pub fn collect_escrow_fee(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<i128, EscrowError> {
+        platform_fee::collect_fee(&env, &caller, escrow_id)
+    }
+
+    // ── Escrow extension by mutual consent (#96) ───────────────────────────
+
+    /// Request or consent to a deadline extension. Both client and freelancer
+    /// must call with the same `new_deadline`. Returns `true` when applied.
+    pub fn consent_extend_deadline(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        new_deadline: u64,
+    ) -> Result<bool, EscrowError> {
+        extension::consent_extend(&env, &caller, escrow_id, new_deadline)
+    }
+
+    /// Check if there is a pending extension request for an escrow.
+    /// Returns the proposed new deadline, or 0 if no request exists.
+    pub fn get_pending_extension_deadline(
+        env: Env,
+        escrow_id: u64,
+    ) -> u64 {
+        extension::get_pending_extension(&env, escrow_id)
+            .map(|r| r.new_deadline)
+            .unwrap_or(0)
+    }
+
+    // ── Auto-expiry with refund (#98) ──────────────────────────────────────
+
+    /// Trigger auto-expiry on an escrow whose deadline has passed.
+    /// Refunds remaining balance to the client. Anyone may call this.
+    pub fn trigger_expiry(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<i128, EscrowError> {
+        auto_expiry::trigger_expiry(&env, &caller, escrow_id)
+    }
+
+    /// Check if an escrow has expired without triggering it.
+    pub fn is_expired(env: Env, escrow_id: u64) -> Result<bool, EscrowError> {
+        auto_expiry::is_expired(&env, escrow_id)
+    }
+
+        /// Client rejects a submitted milestone.
     ///
     /// # Gas notes
     /// - Loads only the single milestone entry.
