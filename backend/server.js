@@ -55,6 +55,12 @@ import healthRoutes from './api/routes/healthRoutes.js';
 import tenantRoutes from './api/routes/tenantRoutes.js';
 import wsHealthRoutes from './api/routes/wsHealth.js';
 import prisma, { startConnectionMonitoring } from './lib/prisma.js';
+import redis from './lib/redis.js';
+import {
+  trackInFlightRequests,
+  registerCleanup,
+  initGracefulShutdown,
+} from './lib/gracefulShutdown.js';
 import { errorsTotal } from './lib/metrics.js';
 import { TimeoutError } from './lib/timeout.js';
 import { leaderboardRateLimit } from './middleware/rateLimit.js';
@@ -74,6 +80,7 @@ import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
 import chatRoutes from './api/routes/chatRoutes.js';
+import systemRoutes from './api/routes/systemRoutes.js';
 
 // Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
@@ -107,6 +114,9 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', requestId);
   next();
 });
+// Reject new requests with 503 once shutdown has begun; otherwise track
+// the request as in-flight so shutdown can wait for it to finish.
+app.use(trackInFlightRequests);
 app.use(corsMiddleware);
 app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_SIZE_LIMIT }));
@@ -230,6 +240,7 @@ app.use('/admin/queues', queueDashboardRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/v1/announcements', announcementRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/system', systemRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
 app.use('/api-docs', docsRouter);
@@ -330,18 +341,29 @@ async function startServer() {
           const deadLetterWorker = createDeadLetterWorker();
           logger.info('[BullMQ] Event processing workers started');
 
-          const closeWorkers = async () => {
-            logger.info('[BullMQ] Shutting down workers...');
+          registerCleanup('bullmq-workers', async () => {
             await eventWorker.close();
             await deadLetterWorker.close();
-          };
-
-          process.once('SIGTERM', closeWorkers);
-          process.once('SIGINT', closeWorkers);
+          });
         } catch (error) {
           logger.error({ err: error }, '[BullMQ] Failed to start workers');
           Sentry.captureException(error, { tags: { component: 'bullmq-workers' } });
         }
+
+        registerCleanup('compliance-scheduler', async () => {
+          complianceService.stopScheduler();
+        });
+        registerCleanup('prisma', async () => {
+          await prisma.$disconnect();
+        });
+        registerCleanup('redis', async () => {
+          if (redis.status !== 'end') await redis.quit();
+        });
+
+        initGracefulShutdown({
+          server,
+          timeoutMs: parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '30000', 10),
+        });
 
         startIndexer().catch((err) => {
           logger.error({ err, component: 'indexer' }, 'Indexer failed to start');
