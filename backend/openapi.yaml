@@ -2498,16 +2498,16 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
 
-  /api/stellar-monitor/status:
+  /api/expiry/status:
     get:
-      tags: [Stellar Monitoring]
-      summary: Get monitoring service status
-      operationId: getStellarMonitorStatus
+      tags: [Escrows]
+      summary: Get expiry background job status
+      operationId: getExpiryStatus
       security:
         - BearerAuth: []
       responses:
         '200':
-          description: Monitoring status with transaction counts
+          description: Expiry job status
           content:
             application/json:
               schema:
@@ -2520,98 +2520,87 @@ components:
                         type: boolean
                       pollIntervalMs:
                         type: integer
-                      stuckThresholdMs:
+                      lastRunAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      processed:
                         type: integer
-                      totals:
-                        type: object
-                        properties:
-                          total:
-                            type: integer
-                          pending:
-                            type: integer
-                          confirmed:
-                            type: integer
-                          failed:
-                            type: integer
-                          timeout:
-                            type: integer
+                      succeeded:
+                        type: integer
+                      failed:
+                        type: integer
+                      durationMs:
+                        type: integer
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /api/stellar-monitor/transactions:
+  /api/expiry/run:
     post:
-      tags: [Stellar Monitoring]
-      summary: Register a transaction for monitoring
-      operationId: trackStellarTransaction
+      tags: [Escrows]
+      summary: Manually trigger a single expiry run
+      operationId: triggerExpiryRun
       security:
         - BearerAuth: []
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [txHash, fromAddress]
               properties:
-                txHash:
-                  type: string
-                  description: Stellar transaction hash
-                  example: abc123...
-                fromAddress:
-                  type: string
-                  description: Sender Stellar address
-                  example: GDKHX...QZ4
-                toAddress:
-                  type: string
-                  description: Recipient Stellar address
-                  nullable: true
-                amount:
-                  type: string
-                  description: Transaction amount
-                  nullable: true
-                memo:
-                  type: string
-                  description: Transaction memo
-                  nullable: true
-                escrowId:
-                  type: string
-                  description: Associated escrow ID
-                  nullable: true
+                batchSize:
+                  type: integer
+                  default: 50
+                  minimum: 1
+                  maximum: 500
+                  description: Maximum number of escrows to process in this run
       responses:
-        '201':
-          description: Transaction registered for monitoring
+        '200':
+          description: Expiry run results
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: '#/components/schemas/TransactionMonitorRecord'
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                    type: object
+                    properties:
+                      processed:
+                        type: integer
+                      succeeded:
+                        type: integer
+                      failed:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: string
+                      triggeredBy:
+                        type: string
+                      timestamp:
+                        type: string
+                        format: date-time
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /api/expiry/pending:
     get:
-      tags: [Stellar Monitoring]
-      summary: List monitored transactions
-      operationId: listMonitoredTransactions
+      tags: [Escrows]
+      summary: List escrows pending expiry
+      description: Returns Active escrows whose deadline has passed but have not yet been auto-expired.
+      operationId: listPendingExpirations
       security:
         - BearerAuth: []
       parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [PENDING, CONFIRMED, FAILED, TIMEOUT]
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Paginated transaction list
+          description: Paginated list of escrows pending expiry
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedTransactions'
+                $ref: '#/components/schemas/PaginatedEscrows'
         '401':
           $ref: '#/components/responses/Unauthorized'
 

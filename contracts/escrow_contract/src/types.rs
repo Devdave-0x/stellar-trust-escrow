@@ -754,4 +754,6 @@ pub enum DataKey {
     TrustedOracleKey,
     /// Absolute ledger timestamp after which funds may be released — key: u64 (escrow_id), value: u64
     TimelockReleaseTime(u64),
+    /// Escrow amount at or above which a multisig policy is mandatory — value: i128
+    HighValueThreshold,
 }

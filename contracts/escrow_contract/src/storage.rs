@@ -250,6 +250,9 @@ impl StorageManager {
                     rent_balance: 0,
                     last_rent_collection_at: v1_escrow.created_at,
                     dispute_start_ledger: None,
+                    // v1 had no multisig policy — threshold 0 keeps legacy approval.
+                    multisig_weights: soroban_sdk::Vec::new(env),
+                    multisig_threshold: 0,
                 };
 
                 // Store meta in v2 format using PackedDataKey

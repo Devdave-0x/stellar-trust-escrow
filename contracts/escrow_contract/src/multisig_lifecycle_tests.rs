@@ -286,7 +286,9 @@ mod multisig_lifecycle_tests {
         );
 
         for (i, expected_sym) in expected_syms.iter().enumerate() {
-            let actual = lifecycle_syms.get(i as u32).expect("event index out of range");
+            let actual = lifecycle_syms
+                .get(i as u32)
+                .expect("event index out of range");
             assert_eq!(
                 actual, *expected_sym,
                 "event at position {} does not match expected sequence",

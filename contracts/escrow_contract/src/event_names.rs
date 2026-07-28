@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! # Event Topic Name Constants
 //!
 //! Central registry of all `symbol_short!` event topic names used by the
@@ -100,3 +101,17 @@ pub const ADMIN_PROPOSED: Symbol = symbol_short!("adm_prop");
 pub const ADMIN_CHANGED: Symbol = symbol_short!("adm_chg");
 pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
 pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
+
+// ── Multi-asset (#101) ────────────────────────────────────────────────────
+pub const MULTI_ASSET_DEPOSITED: Symbol = symbol_short!("ma_dep");
+pub const MULTI_ASSET_RELEASED: Symbol = symbol_short!("ma_rel");
+
+// ── Validation (#102) ────────────────────────────────────────────────────
+pub const VALIDATION_REJECTED: Symbol = symbol_short!("val_rej");
+
+// ── RBAC (#100) ──────────────────────────────────────────────────────────
+pub const ROLE_ASSIGNED: Symbol = symbol_short!("role_asg");
+
+// ── Freeze/unfreeze (#99) ────────────────────────────────────────────────
+pub const ESCROW_FROZEN: Symbol = symbol_short!("esc_frz");
+pub const ESCROW_UNFROZEN: Symbol = symbol_short!("esc_unf");

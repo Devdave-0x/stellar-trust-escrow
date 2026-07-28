@@ -54,11 +54,14 @@
 
 mod admin_transfer_tests;
 mod arbiter_reputation_tests;
+mod arbiter_validation_tests;
 mod batch_add_milestones_cap_tests;
 mod batch_approve_release_e2e_tests;
 mod bridge;
 mod bridge_tests;
+mod creation_validation_tests;
 mod errors;
+mod escrow_template_tests;
 mod event_names;
 mod event_tests;
 mod events;
@@ -66,6 +69,8 @@ mod governance_escalation_tests;
 mod lock_time_enforcement_tests;
 mod max_escrow_amount_tests;
 mod meta_snapshot_tests;
+mod multisig_lifecycle_tests;
+mod multisig_threshold_tests;
 mod nft;
 mod nft_tests;
 mod oracle;
@@ -75,9 +80,14 @@ mod oracle_tests;
 mod partial_cancel_tests;
 mod pause_tests;
 mod self_escrow_tests;
+mod split_escrow_tests;
 mod timelock_enforcement_tests;
+mod token_whitelist_tests;
 mod transfer_client_tests;
 mod types;
+mod platform_fee;
+mod extension;
+mod auto_expiry;
 mod upgrade_tests;
 
 pub use errors::EscrowError;
@@ -128,6 +138,14 @@ const RENT_PER_ENTRY_PER_PERIOD: i128 = 1;
 pub const MAX_MILESTONES: u32 = 20;
 pub const MAX_STRING_LEN: u32 = 256;
 pub const MAX_BUYER_SIGNERS: u32 = 10;
+
+/// Escrow amount at or above which a multisig policy requiring more than one
+/// signer is mandatory. Admins can override this with `set_high_value_threshold`.
+/// Set deliberately high so existing single-approver flows are unaffected.
+pub const DEFAULT_HIGH_VALUE_THRESHOLD: i128 = 1_000_000_000_000i128;
+/// Upper bound on a timelock duration (30 days, in seconds). Shared by
+/// `create_escrow` and `start_timelock` so both paths bound the value identically.
+pub const MAX_TIMELOCK_DURATION_SECONDS: u64 = 30 * 24 * 60 * 60;
 
 /// Automatic deadline extension when milestone submitted near deadline (7 days).
 pub const AUTO_DEADLINE_EXTENSION_SECONDS: u64 = 604_800;
@@ -237,6 +255,12 @@ pub struct EscrowMeta {
     pub last_rent_collection_at: u64,
     /// Ledger timestamp when the dispute was raised. None if not disputed.
     pub dispute_start_ledger: Option<u64>,
+    /// Approval weight per entry in `buyer_signers`, same length and order.
+    /// Empty when no multisig policy is attached (legacy single-approver mode).
+    pub multisig_weights: soroban_sdk::Vec<u32>,
+    /// Total approval weight required to approve a milestone.
+    /// Zero disables multisig: any buyer signer may approve alone (legacy mode).
+    pub multisig_threshold: u32,
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -484,10 +508,11 @@ impl ContractStorage {
             dispute_timeout_ledger: meta.dispute_timeout_ledger,
             dispute_started_ledger: meta.dispute_started_ledger,
             brief_hash: meta.brief_hash,
-            // EscrowMeta uses buyer_signers for multisig; expose via EscrowState view fields
+            // EscrowMeta stores the approver set in buyer_signers alongside the
+            // per-signer weights and the threshold they must reach.
             multisig_approvers: meta.buyer_signers.clone(),
-            multisig_weights: Vec::new(env),
-            multisig_threshold: 0,
+            multisig_weights: meta.multisig_weights.clone(),
+            multisig_threshold: meta.multisig_threshold,
         })
     }
 
@@ -666,18 +691,6 @@ impl ContractStorage {
     fn rent_expires_at(env: &Env, meta: &EscrowMeta) -> u64 {
         let covered_periods = (meta.rent_balance / Self::rent_due_per_period(env, meta)) as u64;
         meta.last_rent_collection_at + ((covered_periods + 1) * RENT_PERIOD_SECONDS)
-    }
-
-    /// Validates that a token is approved for use as an escrow token.
-    ///
-    /// For wrapped/bridged tokens, checks that they are registered and approved.
-    /// Native Stellar tokens bypass this check and are always accepted.
-    fn _validate_escrow_token(_env: &Env, _token: &Address) -> Result<(), EscrowError> {
-        // Native tokens are always valid; only validate if it's a contract
-        // In a real implementation, this would check a wrapped token registry.
-        // For now, we accept all tokens (native and wrapped).
-        // TODO: Implement wrapped token registry check with is_approved flag
-        Ok(())
     }
 
     fn charge_rent_reserve(
@@ -1403,6 +1416,45 @@ impl EscrowContract {
     }
 
     /// Returns the current minimum arbiter reputation score threshold.
+    /// Sets the escrow amount at or above which a multisig policy requiring more
+    /// than one signer becomes mandatory. Admin-only.
+    ///
+    /// Returns `MultisigInvalidConfig` if `threshold` is not positive.
+    pub fn set_high_value_threshold(
+        env: Env,
+        caller: Address,
+        threshold: i128,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+        if threshold <= 0 {
+            return Err(EscrowError::MultisigInvalidConfig);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::HighValueThreshold, &threshold);
+        Ok(())
+    }
+
+    /// Returns the amount at or above which multisig is mandatory.
+    pub fn get_high_value_threshold(env: Env) -> i128 {
+        Self::high_value_threshold(&env)
+    }
+
+    /// Returns the total approval weight recorded so far for a submitted milestone,
+    /// alongside the threshold it must reach. Useful for "2 of 3 approved" displays.
+    pub fn get_multisig_progress(
+        env: Env,
+        escrow_id: u64,
+        milestone_id: u32,
+    ) -> Result<(u32, u32), EscrowError> {
+        ContractStorage::ensure_live_escrow(&env, escrow_id)?;
+        let meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+        let milestone = ContractStorage::load_milestone(&env, escrow_id, milestone_id)?;
+        let accrued = Self::accrued_approval_weight(&meta, &milestone)?;
+        Ok((accrued, meta.multisig_threshold))
+    }
+
     pub fn get_min_arbiter_reputation(env: Env) -> u64 {
         env.storage()
             .instance()
@@ -1612,8 +1664,8 @@ impl EscrowContract {
         arbiter: Option<Address>,
         deadline: Option<u64>,
         lock_time: Option<u64>,
-        _timelock: Option<Timelock>,
-        _multisig_config: MultisigConfig,
+        timelock: Option<Timelock>,
+        multisig_config: MultisigConfig,
     ) -> Result<u64, EscrowError> {
         Self::create_escrow_internal(
             env,
@@ -1627,6 +1679,9 @@ impl EscrowContract {
             lock_time,
             None,
             None,
+            Some(multisig_config),
+            timelock,
+            true,
         )
     }
 
@@ -1654,6 +1709,9 @@ impl EscrowContract {
             lock_time,
             Some(dispute_timeout_ledger),
             None,
+            None,
+            None,
+            true,
         )
     }
 
@@ -1691,6 +1749,9 @@ impl EscrowContract {
             lock_time,
             None,
             None,
+            None,
+            None,
+            true,
         )?;
         events::emit_nft_gated_escrow_created(&env, escrow_id, &nft_contract, token_id);
         Ok(escrow_id)
@@ -1709,7 +1770,7 @@ impl EscrowContract {
         buyer_signers: soroban_sdk::Vec<Address>,
     ) -> Result<u64, EscrowError> {
         if buyer_signers.len() > MAX_BUYER_SIGNERS {
-            // TODO: return Err(EscrowError::TooManyBuyerSigners);
+            return Err(EscrowError::MultisigTooManySigners);
         }
         Self::create_escrow_internal(
             env,
@@ -1723,6 +1784,9 @@ impl EscrowContract {
             lock_time,
             None,
             Some(buyer_signers),
+            None,
+            None,
+            true,
         )
     }
 
@@ -1759,6 +1823,123 @@ impl EscrowContract {
         Ok(())
     }
 
+    /// Returns the escrow amount at or above which a multisig policy is mandatory.
+    fn high_value_threshold(env: &Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::HighValueThreshold)
+            .unwrap_or(DEFAULT_HIGH_VALUE_THRESHOLD)
+    }
+
+    /// Looks up an approver's weight by address. `None` means the address is not
+    /// part of the policy at all.
+    fn approver_weight(meta: &EscrowMeta, who: &Address) -> Option<u32> {
+        for i in 0..meta.buyer_signers.len() {
+            if meta.buyer_signers.get(i).as_ref() == Some(who) {
+                return Some(meta.multisig_weights.get(i).unwrap_or(0));
+            }
+        }
+        None
+    }
+
+    /// Sums the weights of every signer that has already approved `milestone`.
+    fn accrued_approval_weight(
+        meta: &EscrowMeta,
+        milestone: &Milestone,
+    ) -> Result<u32, EscrowError> {
+        let mut total: u32 = 0;
+        for record in milestone.approvals.iter() {
+            let weight = Self::approver_weight(meta, &record.signer).unwrap_or(0);
+            total = total.checked_add(weight).ok_or(EscrowError::E20)?;
+        }
+        Ok(total)
+    }
+
+    /// Validates a multisig policy before it is attached to an escrow.
+    ///
+    /// A policy is rejected when it could never be satisfied or when it would
+    /// silently degrade to single-signer approval:
+    /// - more approvers than `MAX_BUYER_SIGNERS` (`MultisigTooManySigners`)
+    /// - `weights` length differs from `approvers` length (`MultisigInvalidConfig`)
+    /// - any zero weight, a duplicate approver, or a zero threshold (`MultisigInvalidConfig`)
+    /// - `threshold` above the total available weight, which would lock funds
+    ///   permanently (`MultisigInvalidConfig`)
+    ///
+    /// Returns `true` when the policy requires more than one signer, i.e. no single
+    /// approver's weight alone reaches the threshold.
+    fn validate_multisig_config(config: &MultisigConfig) -> Result<bool, EscrowError> {
+        if config.approvers.len() > MAX_BUYER_SIGNERS {
+            return Err(EscrowError::MultisigTooManySigners);
+        }
+        if config.weights.len() != config.approvers.len() {
+            return Err(EscrowError::MultisigInvalidConfig);
+        }
+        if config.threshold == 0 {
+            return Err(EscrowError::MultisigInvalidConfig);
+        }
+
+        let mut total_weight: u32 = 0;
+        let mut max_weight: u32 = 0;
+        for i in 0..config.approvers.len() {
+            let approver = config
+                .approvers
+                .get(i)
+                .ok_or(EscrowError::MultisigInvalidConfig)?;
+            // Duplicate approvers would let one address contribute weight twice.
+            for j in (i + 1)..config.approvers.len() {
+                if config.approvers.get(j).as_ref() == Some(&approver) {
+                    return Err(EscrowError::MultisigInvalidConfig);
+                }
+            }
+
+            let weight = config
+                .weights
+                .get(i)
+                .ok_or(EscrowError::MultisigInvalidConfig)?;
+            if weight == 0 {
+                return Err(EscrowError::MultisigInvalidConfig);
+            }
+            total_weight = total_weight
+                .checked_add(weight)
+                .ok_or(EscrowError::MultisigInvalidConfig)?;
+            if weight > max_weight {
+                max_weight = weight;
+            }
+        }
+
+        // An unreachable threshold would leave every milestone permanently unapprovable.
+        if config.threshold > total_weight {
+            return Err(EscrowError::MultisigInvalidConfig);
+        }
+
+        Ok(config.threshold > max_weight)
+    }
+
+    /// Normalizes a caller-supplied timelock for storage at creation time.
+    ///
+    /// The duration is bounded exactly as `start_timelock` bounds it. `start_ledger`
+    /// is always taken from the current ledger rather than the caller's value —
+    /// otherwise a backdated start would make the timelock expire immediately and
+    /// the protection would be worthless.
+    fn normalize_creation_timelock(
+        env: &Env,
+        timelock: Option<Timelock>,
+    ) -> Result<OptionalTimelock, EscrowError> {
+        match timelock {
+            None => Ok(OptionalTimelock::None),
+            Some(tl) => {
+                if tl.duration_ledger == 0 || tl.duration_ledger > MAX_TIMELOCK_DURATION_SECONDS {
+                    return Err(EscrowError::E51);
+                }
+                Ok(OptionalTimelock::Some(Timelock {
+                    duration_ledger: tl.duration_ledger,
+                    start_ledger: env.ledger().timestamp(),
+                }))
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn create_escrow_internal(
         env: Env,
         client: Address,
@@ -1771,9 +1952,17 @@ impl EscrowContract {
         lock_time: Option<u64>,
         dispute_timeout_ledger: Option<u32>,
         buyer_signers: Option<soroban_sdk::Vec<Address>>,
+        multisig_config: Option<MultisigConfig>,
+        timelock: Option<Timelock>,
+        require_client_auth: bool,
     ) -> Result<u64, EscrowError> {
-        // Auth + validation before any storage I/O
-        client.require_auth();
+        // Auth + validation before any storage I/O.
+        // Internal callers that already authorized the client in this frame pass
+        // `false` — re-authorizing the same address in one frame fails with
+        // `Auth, ExistingValue`.
+        if require_client_auth {
+            client.require_auth();
+        }
         ContractStorage::require_initialized(&env)?;
         ContractStorage::require_not_paused(&env)?;
 
@@ -1793,9 +1982,12 @@ impl EscrowContract {
 
         Self::validate_escrow_inputs(&env, total_amount, deadline, lock_time)?;
 
+        // An all-zero brief hash binds no agreement document to the escrow.
         if brief_hash == BytesN::from_array(&env, &[0u8; 32]) {
-            // TODO: return Err(EscrowError::InvalidBriefHash);
+            return Err(EscrowError::InvalidBriefHash);
         }
+
+        let creation_timelock = Self::normalize_creation_timelock(&env, timelock)?;
 
         let now = env.ledger().timestamp();
 
@@ -1824,12 +2016,30 @@ impl EscrowContract {
             }
         }
 
-        let buyer_signers = {
-            let mut signers = buyer_signers.unwrap_or_else(|| soroban_sdk::Vec::new(&env));
-            if !signers.contains(&client) {
-                signers.push_back(client.clone());
+        // Resolve the approval policy. When a multisig config is supplied it fully
+        // defines the approver set — the client is deliberately not auto-added, since
+        // an implicit client approver could meet the threshold alone and defeat it.
+        let high_value = total_amount >= Self::high_value_threshold(&env);
+        let (buyer_signers, multisig_weights, multisig_threshold) = match multisig_config {
+            Some(config) if config.threshold > 0 || !config.approvers.is_empty() => {
+                let requires_multiple_signers = Self::validate_multisig_config(&config)?;
+                if high_value && !requires_multiple_signers {
+                    return Err(EscrowError::MultisigRequiredForHighValue);
+                }
+                (config.approvers, config.weights, config.threshold)
             }
-            signers
+            _ => {
+                // Legacy mode: any listed buyer signer (or the client) approves alone,
+                // which is not an acceptable policy for a high-value escrow.
+                if high_value {
+                    return Err(EscrowError::MultisigRequiredForHighValue);
+                }
+                let mut signers = buyer_signers.unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+                if !signers.contains(&client) {
+                    signers.push_back(client.clone());
+                }
+                (signers, soroban_sdk::Vec::new(&env), 0_u32)
+            }
         };
         let escrow_id = ContractStorage::next_escrow_id(&env)?;
         let rent_reserve = ContractStorage::reserve_for_entries(1);
@@ -1863,13 +2073,15 @@ impl EscrowContract {
                 deadline,
                 lock_time,
                 lock_time_extension: None,
-                timelock: OptionalTimelock::None,
+                timelock: creation_timelock,
                 dispute_timeout_ledger,
                 dispute_started_ledger: None,
                 brief_hash,
                 rent_balance: rent_reserve,
                 last_rent_collection_at: now,
                 dispute_start_ledger: None,
+                multisig_weights,
+                multisig_threshold,
             },
         );
 
@@ -1918,8 +2130,9 @@ impl EscrowContract {
             return Err(EscrowError::E19);
         }
 
+        // An all-zero brief hash binds no agreement document to the escrow.
         if brief_hash == BytesN::from_array(&env, &[0u8; 32]) {
-            // TODO: return Err(EscrowError::InvalidBriefHash);
+            return Err(EscrowError::InvalidBriefHash);
         }
 
         let now = env.ledger().timestamp();
@@ -1950,6 +2163,7 @@ impl EscrowContract {
 
         let mut buyer_signers = soroban_sdk::Vec::new(&env);
         buyer_signers.push_back(client.clone());
+        let multisig_weights: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
 
         let mut meta = EscrowMeta {
             escrow_id,
@@ -1977,6 +2191,8 @@ impl EscrowContract {
             rent_balance: base_rent_reserve,
             last_rent_collection_at: now,
             dispute_start_ledger: None,
+            multisig_weights,
+            multisig_threshold: 0,
         };
         ContractStorage::charge_entry_rent(&env, &mut meta, &client, 1)?;
         ContractStorage::save_escrow_meta(&env, &meta);
@@ -2351,7 +2567,14 @@ impl EscrowContract {
             return Err(EscrowError::E9);
         }
         ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
-        if caller != meta.client && !meta.buyer_signers.contains(&caller) {
+
+        let multisig_active = meta.multisig_threshold > 0;
+        let caller_weight = match Self::approver_weight(&meta, &caller) {
+            Some(weight) => weight,
+            None if multisig_active => return Err(EscrowError::MultisigNotApprover),
+            None => 0,
+        };
+        if !multisig_active && caller != meta.client && !meta.buyer_signers.contains(&caller) {
             return Err(EscrowError::E3);
         }
 
@@ -2362,6 +2585,8 @@ impl EscrowContract {
         let mut total_amount: i128 = 0;
 
         // Pass 1: validate all milestones and accumulate total — no writes yet.
+        // Under multisig, only milestones whose threshold this signature completes
+        // count toward the batch payout; the rest just record a signature.
         for i in 0..milestone_ids.len() {
             let mid = milestone_ids.get(i).ok_or(EscrowError::E13)?;
             let m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
@@ -2369,6 +2594,19 @@ impl EscrowContract {
                 return Err(EscrowError::E14);
             }
             Self::require_dependency_satisfied(&env, escrow_id, &m)?;
+
+            if multisig_active {
+                if m.approvals.iter().any(|record| record.signer == caller) {
+                    return Err(EscrowError::MultisigDuplicateApproval);
+                }
+                let prospective = Self::accrued_approval_weight(&meta, &m)?
+                    .checked_add(caller_weight)
+                    .ok_or(EscrowError::E20)?;
+                if prospective < meta.multisig_threshold {
+                    continue;
+                }
+            }
+
             total_amount = total_amount.checked_add(m.amount).ok_or(EscrowError::E20)?;
         }
 
@@ -2376,6 +2614,29 @@ impl EscrowContract {
         for i in 0..milestone_ids.len() {
             let mid = milestone_ids.get(i).ok_or(EscrowError::E13)?;
             let mut m = ContractStorage::load_milestone(&env, escrow_id, mid)?;
+
+            if multisig_active {
+                m.approvals.push_back(ApprovalRecord {
+                    signer: caller.clone(),
+                    approved_at: now,
+                });
+                let accrued = Self::accrued_approval_weight(&meta, &m)?;
+                events::emit_multisig_approval_recorded(
+                    &env,
+                    escrow_id,
+                    mid,
+                    &caller,
+                    accrued,
+                    meta.multisig_threshold,
+                );
+
+                if accrued < meta.multisig_threshold {
+                    // Signature recorded; milestone stays Submitted and pays nothing.
+                    ContractStorage::save_milestone(&env, escrow_id, &m);
+                    continue;
+                }
+            }
+
             m.resolved_at = Some(now);
             m.status = if timelock_expired {
                 MS_RELEASED
@@ -2713,8 +2974,16 @@ impl EscrowContract {
         // Check if lock time has expired (legacy lock_time behaviour)
         ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
-        // Caller must be the client or one of the buyer signers
-        if caller != meta.client && !meta.buyer_signers.contains(&caller) {
+        let multisig_active = meta.multisig_threshold > 0;
+
+        // Caller must be the client or one of the buyer signers. Under an active
+        // multisig policy the client gets no implicit approval right — only the
+        // configured approvers count toward the threshold.
+        if multisig_active {
+            if Self::approver_weight(&meta, &caller).is_none() {
+                return Err(EscrowError::MultisigNotApprover);
+            }
+        } else if caller != meta.client && !meta.buyer_signers.contains(&caller) {
             return Err(EscrowError::E3);
         }
 
@@ -2727,6 +2996,41 @@ impl EscrowContract {
 
         let now = env.ledger().timestamp();
         let amount = milestone.amount;
+
+        // Under multisig, record this signature and stop unless the accumulated
+        // weight now reaches the threshold.
+        if multisig_active {
+            if milestone
+                .approvals
+                .iter()
+                .any(|record| record.signer == caller)
+            {
+                return Err(EscrowError::MultisigDuplicateApproval);
+            }
+
+            milestone.approvals.push_back(ApprovalRecord {
+                signer: caller.clone(),
+                approved_at: now,
+            });
+
+            let accrued = Self::accrued_approval_weight(&meta, &milestone)?;
+            events::emit_multisig_approval_recorded(
+                &env,
+                escrow_id,
+                milestone_id,
+                &caller,
+                accrued,
+                meta.multisig_threshold,
+            );
+
+            if accrued < meta.multisig_threshold {
+                // Not enough weight yet: persist the signature, leave the milestone
+                // Submitted, and release nothing.
+                ContractStorage::save_milestone(&env, escrow_id, &milestone);
+                ContractStorage::save_escrow_meta(&env, &meta);
+                return Ok(());
+            }
+        }
 
         milestone.status = MS_APPROVED;
         milestone.resolved_at = Some(now);
@@ -2777,7 +3081,61 @@ impl EscrowContract {
         Ok(())
     }
 
-    /// Client rejects a submitted milestone.
+
+    // ── Platform fee collection (#95) ──────────────────────────────────────
+
+    /// Collect the platform fee for a completed or cancelled escrow.
+    /// Transfers the fee to the configured treasury address.
+    pub fn collect_escrow_fee(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<i128, EscrowError> {
+        platform_fee::collect_fee(&env, &caller, escrow_id)
+    }
+
+    // ── Escrow extension by mutual consent (#96) ───────────────────────────
+
+    /// Request or consent to a deadline extension. Both client and freelancer
+    /// must call with the same `new_deadline`. Returns `true` when applied.
+    pub fn consent_extend_deadline(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        new_deadline: u64,
+    ) -> Result<bool, EscrowError> {
+        extension::consent_extend(&env, &caller, escrow_id, new_deadline)
+    }
+
+    /// Check if there is a pending extension request for an escrow.
+    /// Returns the proposed new deadline, or 0 if no request exists.
+    pub fn get_pending_extension_deadline(
+        env: Env,
+        escrow_id: u64,
+    ) -> u64 {
+        extension::get_pending_extension(&env, escrow_id)
+            .map(|r| r.new_deadline)
+            .unwrap_or(0)
+    }
+
+    // ── Auto-expiry with refund (#98) ──────────────────────────────────────
+
+    /// Trigger auto-expiry on an escrow whose deadline has passed.
+    /// Refunds remaining balance to the client. Anyone may call this.
+    pub fn trigger_expiry(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<i128, EscrowError> {
+        auto_expiry::trigger_expiry(&env, &caller, escrow_id)
+    }
+
+    /// Check if an escrow has expired without triggering it.
+    pub fn is_expired(env: Env, escrow_id: u64) -> Result<bool, EscrowError> {
+        auto_expiry::is_expired(&env, escrow_id)
+    }
+
+        /// Client rejects a submitted milestone.
     ///
     /// # Gas notes
     /// - Loads only the single milestone entry.
@@ -3173,9 +3531,15 @@ impl EscrowContract {
             return Err(EscrowError::E9);
         }
 
-        // Require joint consent from both parties
-        meta.client.require_auth();
-        meta.freelancer.require_auth();
+        // Require joint consent from both parties. The caller's frame is already
+        // authorized above, and re-authorizing the same address in one frame fails
+        // with `Auth, ExistingValue`, so only the other party is asked here.
+        if caller != meta.client {
+            meta.client.require_auth();
+        }
+        if caller != meta.freelancer {
+            meta.freelancer.require_auth();
+        }
 
         let unallocated = meta.remaining_balance - meta.allocated_amount;
         if split_amount <= 0 || split_amount >= unallocated {
@@ -3185,7 +3549,30 @@ impl EscrowContract {
         let child1_amount = split_amount;
         let child2_amount = unallocated - split_amount;
 
+        // Children inherit the parent's timelock duration so a split cannot be used
+        // to move funds into escrows that release immediately. The clock restarts at
+        // creation, so a child is never locked for less than the parent's remainder.
+        let inherited_timelock = match &meta.timelock {
+            OptionalTimelock::Some(tl) => Some(Timelock {
+                duration_ledger: tl.duration_ledger,
+                start_ledger: 0, // normalized to the current ledger on creation
+            }),
+            OptionalTimelock::None => None,
+        };
+
         // Create first child escrow
+        // Children inherit the parent's approval policy — a split must not be a way
+        // to move funds into escrows that approve on a single signature.
+        let inherited_multisig = if meta.multisig_threshold > 0 {
+            Some(MultisigConfig {
+                approvers: meta.buyer_signers.clone(),
+                weights: meta.multisig_weights.clone(),
+                threshold: meta.multisig_threshold,
+            })
+        } else {
+            None
+        };
+
         let child1_id = Self::create_escrow_internal(
             env.clone(),
             meta.client.clone(),
@@ -3198,6 +3585,9 @@ impl EscrowContract {
             meta.lock_time,
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
+            inherited_multisig.clone(),
+            inherited_timelock.clone(),
+            false,
         )?;
 
         // Create second child escrow
@@ -3213,6 +3603,9 @@ impl EscrowContract {
             meta.lock_time,
             meta.dispute_timeout_ledger,
             Some(meta.buyer_signers.clone()),
+            inherited_multisig,
+            inherited_timelock,
+            false,
         )?;
 
         // Note: Parent escrow remains active, only unallocated balance is split
@@ -3282,7 +3675,7 @@ impl EscrowContract {
         ContractStorage::require_not_paused(&env)?;
         ContractStorage::require_not_frozen(&env, escrow_id)?;
 
-        if duration_ledger == 0 || duration_ledger > 30 * 24 * 60 * 60 {
+        if duration_ledger == 0 || duration_ledger > MAX_TIMELOCK_DURATION_SECONDS {
             return Err(EscrowError::E51);
         }
 
@@ -4137,9 +4530,12 @@ impl EscrowContract {
             brief_hash,
             arbiter.clone(),
             deadline,
-            None, // lock_time
-            None, // dispute_timeout_ledger
-            None, // buyer_signers
+            None,             // lock_time
+            None,             // dispute_timeout_ledger
+            None,             // buyer_signers
+            None,             // multisig_config
+            None,             // timelock
+            caller != client, // client auth already taken when caller is the client
         )?;
 
         // Add template milestones

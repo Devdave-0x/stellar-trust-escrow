@@ -487,3 +487,59 @@ pub fn emit_timelock_release(
         (milestone_id, caller.clone(), amount),
     );
 }
+
+// ── Multi-asset events (#101) ─────────────────────────────────────────────
+
+/// Emitted when an additional asset is deposited into a multi-asset escrow.
+pub fn emit_multi_asset_deposited(env: &Env, escrow_id: u64, token: &Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("ma_dep"), escrow_id),
+        (token.clone(), amount),
+    );
+}
+
+/// Emitted when a specific asset is released from a multi-asset escrow.
+pub fn emit_multi_asset_released(env: &Env, escrow_id: u64, token: &Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("ma_rel"), escrow_id),
+        (token.clone(), amount),
+    );
+}
+
+// ── Freeze/unfreeze events (#99) ──────────────────────────────────────────
+
+/// Emitted when an escrow is frozen by the admin.
+pub fn emit_escrow_frozen(env: &Env, escrow_id: u64, caller: &Address) {
+    env.events().publish(
+        (symbol_short!("esc_frz"), escrow_id),
+        caller.clone(),
+    );
+}
+
+/// Emitted when an escrow is unfrozen by the admin.
+pub fn emit_escrow_unfrozen(env: &Env, escrow_id: u64, caller: &Address) {
+    env.events().publish(
+        (symbol_short!("esc_unf"), escrow_id),
+        caller.clone(),
+    );
+}
+
+// ── RBAC events (#100) ────────────────────────────────────────────────────
+
+/// Emitted when a role is assigned (e.g. arbiter assignment).
+pub fn emit_role_assigned(env: &Env, escrow_id: u64, address: &Address, role: &str) {
+    env.events().publish(
+        (symbol_short!("role_asg"), escrow_id),
+        (address.clone(), soroban_sdk::String::from_str(env, role)),
+    );
+}
+
+// ── Validation events (#102) ──────────────────────────────────────────────
+
+/// Emitted when input validation rejects a call (useful for off-chain monitoring).
+pub fn emit_validation_rejected(env: &Env, reason: &str) {
+    env.events().publish(
+        (symbol_short!("val_rej"),),
+        soroban_sdk::String::from_str(env, reason),
+    );
+}

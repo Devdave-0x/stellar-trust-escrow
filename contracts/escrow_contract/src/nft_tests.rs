@@ -55,7 +55,7 @@ mod nft_gated_tests {
 
         soroban_sdk::token::StellarAssetClient::new(&env, &token_addr).mint(&caller, &10_000);
 
-        let brief_hash = BytesN::from_array(&env, &[0u8; 32]);
+        let brief_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         Setup {
             env,

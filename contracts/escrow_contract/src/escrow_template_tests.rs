@@ -1,11 +1,13 @@
-#[cfg(test)]
-mod escrow_template_tests {
-    use crate::{EscrowContract, EscrowContractClient, EscrowError, EscrowTemplate, MilestoneTemplate};
+//! # Escrow template tests
+//!
+//! Restored against the current contract API.
 
-    use soroban_sdk::{
-        testutils::Address as _,
-        Address, BytesN, Env,
-    };
+#[cfg(test)]
+#[allow(clippy::module_inception)]
+mod escrow_template_tests {
+    use crate::{EscrowContract, EscrowContractClient, EscrowError, MilestoneTemplate};
+
+    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String};
 
     fn setup() -> (Env, Address, Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -31,24 +33,31 @@ mod escrow_template_tests {
 
         let mut milestones = soroban_sdk::Vec::new(&env);
         milestones.push_back(MilestoneTemplate {
-            title: "Design".into(),
+            title: String::from_str(&env, "Design"),
             description_hash: BytesN::from_array(&env, &[1u8; 32]),
             amount: 100,
         });
         milestones.push_back(MilestoneTemplate {
-            title: "Development".into(),
+            title: String::from_str(&env, "Development"),
             description_hash: BytesN::from_array(&env, &[2u8; 32]),
             amount: 200,
         });
 
-        let template_id = client.create_template(&creator, &"Web Dev Template".into(), &milestones);
+        let template_id = client.create_template(
+            &creator,
+            &String::from_str(&env, "Web Dev Template"),
+            &milestones,
+        );
 
         let template = client.get_template(&template_id);
         assert_eq!(template.id, template_id);
         assert_eq!(template.creator, creator);
-        assert_eq!(template.name, "Web Dev Template");
+        assert_eq!(template.name, String::from_str(&env, "Web Dev Template"));
         assert_eq!(template.milestones.len(), 2);
-        assert_eq!(template.milestones.get(0).unwrap().title, "Design");
+        assert_eq!(
+            template.milestones.get(0).unwrap().title,
+            String::from_str(&env, "Design")
+        );
         assert_eq!(template.milestones.get(1).unwrap().amount, 200);
     }
 
@@ -58,24 +67,28 @@ mod escrow_template_tests {
         let creator = Address::generate(&env);
         let escrow_client = Address::generate(&env);
         let freelancer = Address::generate(&env);
-        let token = register_token(&env, &admin, &escrow_client, 1000);
+        let token = register_token(&env, &admin, &escrow_client, 1_001_000);
 
         let mut milestones = soroban_sdk::Vec::new(&env);
         milestones.push_back(MilestoneTemplate {
-            title: "Phase 1".into(),
+            title: String::from_str(&env, "Phase 1"),
             description_hash: BytesN::from_array(&env, &[1u8; 32]),
             amount: 300,
         });
         milestones.push_back(MilestoneTemplate {
-            title: "Phase 2".into(),
+            title: String::from_str(&env, "Phase 2"),
             description_hash: BytesN::from_array(&env, &[2u8; 32]),
             amount: 400,
         });
 
-        let template_id = client.create_template(&creator, &"Test Template".into(), &milestones);
+        let template_id = client.create_template(
+            &creator,
+            &String::from_str(&env, "Test Template"),
+            &milestones,
+        );
 
         let total_amount = 700;
-        let brief_hash = BytesN::from_array(&env, &[0u8; 32]);
+        let brief_hash = BytesN::from_array(&env, &[9u8; 32]);
         let escrow_id = client.create_escrow_from_template(
             &escrow_client,
             &template_id,
@@ -95,20 +108,20 @@ mod escrow_template_tests {
 
         // Check milestones
         let milestone0 = client.get_milestone(&escrow_id, &0);
-        assert_eq!(milestone0.title, "Phase 1");
+        assert_eq!(milestone0.title, String::from_str(&env, "Phase 1"));
         assert_eq!(milestone0.amount, 300);
 
         let milestone1 = client.get_milestone(&escrow_id, &1);
-        assert_eq!(milestone1.title, "Phase 2");
+        assert_eq!(milestone1.title, String::from_str(&env, "Phase 2"));
         assert_eq!(milestone1.amount, 400);
     }
 
     #[test]
     fn test_invalid_template_id() {
-        let (env, _, _, client) = setup();
+        let (_env, _, _, client) = setup();
 
         let result = client.try_get_template(&999);
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap(), EscrowError::E8);
+        assert_eq!(result.err().unwrap(), Ok(EscrowError::E8));
     }
 }
