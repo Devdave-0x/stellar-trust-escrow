@@ -1,11 +1,21 @@
-#[cfg(test)]
-mod token_whitelist_tests {
-    use crate::{EscrowContract, EscrowContractClient, EscrowError};
+//! # Token whitelist tests
+//!
+//! Restored against the current contract API.
 
-    use soroban_sdk::{
-        testutils::Address as _,
-        Address, Env,
-    };
+#[cfg(test)]
+#[allow(clippy::module_inception)]
+mod token_whitelist_tests {
+    use crate::{EscrowContract, EscrowContractClient, EscrowError, MultisigConfig};
+
+    use soroban_sdk::{testutils::Address as _, Address, Env};
+
+    fn no_multisig(env: &Env) -> MultisigConfig {
+        MultisigConfig {
+            approvers: soroban_sdk::Vec::new(env),
+            weights: soroban_sdk::Vec::new(env),
+            threshold: 0,
+        }
+    }
 
     fn setup() -> (Env, Address, Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -66,10 +76,10 @@ mod token_whitelist_tests {
         let (env, admin, _, client) = setup();
         let client_addr = Address::generate(&env);
         let freelancer = Address::generate(&env);
-        let approved_token = register_token(&env, &admin, &client_addr, 1000);
-        let unapproved_token = register_token(&env, &admin, &client_addr, 1000);
+        let approved_token = register_token(&env, &admin, &client_addr, 1_001_000);
+        let unapproved_token = register_token(&env, &admin, &client_addr, 1_001_000);
         let amount = 100;
-        let brief_hash = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
+        let brief_hash = soroban_sdk::BytesN::from_array(&env, &[4u8; 32]);
 
         // Enable whitelist
         client.set_token_whitelist_enabled(&admin, &true);
@@ -87,8 +97,11 @@ mod token_whitelist_tests {
             &None::<Address>,
             &None::<u64>,
             &None::<u64>,
+            &None,
+            &no_multisig(&env),
         );
-        assert!(escrow_id > 0);
+        // Escrow IDs start at 0, so assert the escrow exists rather than that the id is positive.
+        assert_eq!(client.get_escrow_meta(&escrow_id).token, approved_token);
 
         // Create escrow with unapproved token should fail
         let result = client.try_create_escrow(
@@ -100,9 +113,11 @@ mod token_whitelist_tests {
             &None::<Address>,
             &None::<u64>,
             &None::<u64>,
+            &None,
+            &no_multisig(&env),
         );
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap(), EscrowError::E3);
+        assert_eq!(result.err().unwrap(), Ok(EscrowError::E3));
 
         // Disable whitelist
         client.set_token_whitelist_enabled(&admin, &false);
@@ -117,6 +132,8 @@ mod token_whitelist_tests {
             &None::<Address>,
             &None::<u64>,
             &None::<u64>,
+            &None,
+            &no_multisig(&env),
         );
         assert!(escrow_id2 > escrow_id);
     }
