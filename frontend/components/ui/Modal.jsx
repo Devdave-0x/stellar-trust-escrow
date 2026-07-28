@@ -15,8 +15,11 @@
  * @param {string}         [props.cancelLabel='Cancel'] — cancel button text
  * @param {string}         [props.confirmVariant='primary'] — confirm button variant
  *
+ * Keyboard behavior: focus moves into the dialog on open, Tab/Shift+Tab
+ * cycle within it (useFocusTrap), Escape closes it, and focus returns to
+ * the element that opened it on close.
+ *
  * TODO (contributor — easy, Issue #42):
- * - Add focus-trap so keyboard users can't tab outside the modal
  * - Add enter/exit animation (scale + fade)
  */
 
@@ -24,6 +27,7 @@
 
 import { useEffect } from 'react';
 import Button from './Button';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 const SIZE_CLASSES = {
   sm: 'max-w-sm',
@@ -43,6 +47,8 @@ export default function Modal({
   cancelLabel = 'Cancel',
   confirmVariant = 'primary',
 }) {
+  const trapRef = useFocusTrap(isOpen);
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -75,8 +81,10 @@ export default function Modal({
 
       {/* Panel */}
       <div
+        ref={trapRef}
+        tabIndex={-1}
         className={`relative w-full ${SIZE_CLASSES[size]} bg-gray-900 border border-gray-800
-                    rounded-2xl shadow-2xl p-6 space-y-4`}
+                    rounded-2xl shadow-2xl p-6 space-y-4 focus:outline-none`}
       >
         {/* Header */}
         <div className="flex items-start justify-between">
