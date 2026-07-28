@@ -41,7 +41,10 @@ async function recordLoginAttempt({ tenantId, address, req, success, failureReas
       data: {
         tenantId,
         address: address || null,
-        ipAddress: req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? null,
+        ipAddress:
+          req.headers['x-forwarded-for']?.split(',')[0]?.trim() ??
+          req.socket?.remoteAddress ??
+          null,
         userAgent: req.headers['user-agent'] || null,
         success,
         failureReason: failureReason || null,
@@ -170,7 +173,13 @@ export const verifySignatureAndLogin = async (req, res) => {
   if (tenantId) {
     const lockout = await getActiveLockout(tenantId, address);
     if (lockout) {
-      await recordLoginAttempt({ tenantId, address, req, success: false, failureReason: 'account_locked' });
+      await recordLoginAttempt({
+        tenantId,
+        address,
+        req,
+        success: false,
+        failureReason: 'account_locked',
+      });
       return res
         .status(423)
         .json({ error: 'Account locked due to too many failed attempts. Try again later.' });
@@ -242,8 +251,19 @@ export const refreshToken = async (req, res) => {
 
   try {
     const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
-    if (payload.jti && typeof sessionService?.revokeSessionByJti === 'function') {
-      await sessionService.revokeSessionByJti(payload.jti);
+
+    if (payload.jti) {
+      if (typeof sessionService?.isSessionValid === 'function') {
+        const valid = await sessionService.isSessionValid(payload.jti);
+        if (!valid) {
+          return res
+            .status(401)
+            .json({ error: 'Session revoked or expired. Please log in again.' });
+        }
+      }
+      if (typeof sessionService?.revokeSessionByJti === 'function') {
+        await sessionService.revokeSessionByJti(payload.jti);
+      }
     }
 
     const jti = await createSessionJti(payload.address, req);
