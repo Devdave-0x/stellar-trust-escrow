@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import Spinner from '../../components/ui/Spinner';
 import EscrowCard from '../../components/escrow/EscrowCard';
 import SearchFilters from '../../components/explorer/SearchFilters';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';
 import ErrorBoundary from '../../components/error/ErrorBoundary';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -83,6 +84,7 @@ function ExplorerContent() {
     hasPreviousPage: false,
   });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
   const debounceTimer = useRef(null);
@@ -98,13 +100,16 @@ function ExplorerContent() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set('search', debouncedSearch);
-    if (page > 1) params.set('page', String(page));
     router.replace(`/explorer?${params.toString()}`, { scroll: false });
-  }, [debouncedSearch, page, router]);
+  }, [debouncedSearch, router]);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (page === 1) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     setError(null);
     const qs = buildQuery({ search: debouncedSearch, filters, page, limit: PAGE_SIZE });
     fetch(`${API_BASE}/api/escrows?${qs}`)
@@ -114,19 +119,33 @@ function ExplorerContent() {
       })
       .then(({ data, total, totalPages, hasNextPage, hasPreviousPage }) => {
         if (cancelled) return;
-        setEscrows((data || []).map(normaliseEscrow));
+        const nextEscrows = (data || []).map(normaliseEscrow);
+        setEscrows((prev) => (page === 1 ? nextEscrows : [...prev, ...nextEscrows]));
         setMeta({ total: total || 0, totalPages: totalPages || 0, hasNextPage, hasPreviousPage });
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [debouncedSearch, filters, page]);
+
+  const handleLoadMore = useCallback(() => {
+    setPage((p) => p + 1);
+  }, []);
+
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: meta.hasNextPage,
+    isLoading: loading || loadingMore,
+    onLoadMore: handleLoadMore,
+  });
 
   const handleFilterChange = useCallback((key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -223,29 +242,28 @@ function ExplorerContent() {
         </div>
       </div>
 
-      {!loading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!meta.hasPreviousPage}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            <ChevronLeft size={14} />
-            Prev
-          </Button>
-          <span className="text-sm text-gray-400">
-            Page {page} of {meta.totalPages || 1}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!meta.hasNextPage}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-            <ChevronRight size={14} />
-          </Button>
+      {!loading && escrows.length > 0 && (
+        <div className="flex flex-col items-center gap-3 pt-2">
+          <p className="text-sm text-gray-400" role="status" aria-live="polite">
+            Showing {escrows.length} of {meta.total || escrows.length} escrows
+            {loadingMore ? ' — loading more…' : ''}
+          </p>
+
+          {/* Sentinel observed for automatic infinite-scroll loading. */}
+          {meta.hasNextPage && <div ref={sentinelRef} aria-hidden="true" className="h-1 w-full" />}
+
+          {loadingMore && (
+            <div className="flex items-center gap-2 text-gray-400">
+              <Spinner />
+              <span className="text-sm">Loading more escrows...</span>
+            </div>
+          )}
+
+          {meta.hasNextPage && !loadingMore && (
+            <Button variant="secondary" size="sm" onClick={handleLoadMore}>
+              Load more
+            </Button>
+          )}
         </div>
       )}
     </div>

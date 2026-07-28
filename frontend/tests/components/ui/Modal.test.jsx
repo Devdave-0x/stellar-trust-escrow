@@ -94,6 +94,35 @@ describe('Modal', () => {
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
   });
 
+  it('moves focus inside the dialog when opened (focus trap)', () => {
+    render(
+      <Modal isOpen={true} onClose={jest.fn()} title="Test">
+        <p>Content</p>
+      </Modal>,
+    );
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+  });
+
+  it('restores focus to the trigger element after closing', () => {
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { rerender } = render(
+      <Modal isOpen={true} onClose={jest.fn()} title="Test">
+        <p>Content</p>
+      </Modal>,
+    );
+    rerender(
+      <Modal isOpen={false} onClose={jest.fn()} title="Test">
+        <p>Content</p>
+      </Modal>,
+    );
+
+    expect(trigger).toHaveFocus();
+    document.body.removeChild(trigger);
+  });
+
   describe('Confirmation Modal', () => {
     it('does not show confirmation buttons when isConfirmation is false', () => {
       render(

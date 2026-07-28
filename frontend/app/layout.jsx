@@ -1,4 +1,5 @@
 import './globals.css';
+import SkipToContent from '../components/layout/SkipToContent';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import NavigationProgress from '../components/layout/NavigationProgress';
@@ -43,6 +44,7 @@ export default function RootLayout({ children }) {
               <CurrencyProvider>
                 <ToastProvider>
                   <TokenRefreshManager />
+                  <SkipToContent />
                   <Header />
                   <NavigationProgress />
                   <OfflineBanner />
