@@ -80,4 +80,40 @@ describe('CopyButton', () => {
       expect(button).toHaveAttribute('title', 'Copied!');
     });
   });
+
+  it('accepts a `value` prop as an alias for `text` (used by TransactionHistoryList)', async () => {
+    navigator.clipboard.writeText.mockResolvedValue(undefined);
+    render(<CopyButton value="wallet-address-value" />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('wallet-address-value');
+  });
+
+  it('announces the copy to screen readers via a polite live region', async () => {
+    navigator.clipboard.writeText.mockResolvedValue(undefined);
+    render(<CopyButton text="test" label="Wallet address" />);
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');
+    });
+  });
+
+  it('is reachable and activatable via keyboard (native button semantics)', async () => {
+    navigator.clipboard.writeText.mockResolvedValue(undefined);
+    render(<CopyButton text="keyboard-test" />);
+    const button = screen.getByRole('button');
+    button.focus();
+    expect(button).toHaveFocus();
+    fireEvent.click(button);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('keyboard-test');
+  });
+
+  it('falls back to execCommand copy when the async Clipboard API is unavailable', () => {
+    const originalClipboard = navigator.clipboard;
+    Object.assign(navigator, { clipboard: undefined });
+    document.execCommand = jest.fn().mockReturnValue(true);
+    render(<CopyButton text="legacy-copy" />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(document.execCommand).toHaveBeenCalledWith('copy');
+    Object.assign(navigator, { clipboard: originalClipboard });
+  });
 });
