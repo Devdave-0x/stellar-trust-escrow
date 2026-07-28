@@ -878,4 +878,9 @@ pub enum FeatDataKey {
     ActiveArbiters,
     /// Ledger sequence + timestamp recorded at escrow creation — key: u64, value: (u32, u64)
     EscrowCreationInfo(u64),
+    /// Ledger timestamp of the last on-chain state-changing action on an escrow.
+    /// Updated by every entry point that mutates escrow state so off-chain systems
+    /// can calculate inactivity without replaying the full event log.
+    /// key: u64 (escrow_id), value: u64 (Unix timestamp from env.ledger().timestamp())
+    LastActivityTimestamp(u64),
 }
