@@ -1,0 +1,8 @@
+{
+  "escrowList": {
+    "p95Ms": 40,
+    "maxP95Ms": 200,
+    "maxRegressionPct": 20,
+    "seedCount": 10000
+  }
+}
