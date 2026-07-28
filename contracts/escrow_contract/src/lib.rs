@@ -433,6 +433,34 @@ impl ContractStorage {
             .remove(&PackedDataKey::EscrowMeta(escrow_id));
     }
 
+    // ── Pending milestone count ───────────────────────────────────────────────
+
+    /// Returns the current number of milestones in `MS_PENDING` state for `escrow_id`.
+    fn get_pending_milestone_count(env: &Env, escrow_id: u64) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingMilestoneCount(escrow_id))
+            .unwrap_or(0u32)
+    }
+
+    /// Increments the pending milestone counter by 1.
+    fn increment_pending_milestone_count(env: &Env, escrow_id: u64) {
+        let key = DataKey::PendingMilestoneCount(escrow_id);
+        let count: u32 = env.storage().persistent().get(&key).unwrap_or(0u32);
+        let new_count = count.saturating_add(1);
+        env.storage().persistent().set(&key, &new_count);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    /// Decrements the pending milestone counter by 1 (saturating at 0).
+    fn decrement_pending_milestone_count(env: &Env, escrow_id: u64) {
+        let key = DataKey::PendingMilestoneCount(escrow_id);
+        let count: u32 = env.storage().persistent().get(&key).unwrap_or(0u32);
+        let new_count = count.saturating_sub(1);
+        env.storage().persistent().set(&key, &new_count);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
     fn load_fee_snapshot(env: &Env, escrow_id: u64) -> EscrowFeeSnapshot {
         env.storage()
             .persistent()
@@ -1370,6 +1398,8 @@ impl EscrowContract {
                 depends_on: None,
             },
         );
+        // Milestone starts as MS_PENDING — bump counter.
+        ContractStorage::increment_pending_milestone_count(&env, escrow_id);
         ContractStorage::save_escrow_meta(&env, &meta);
 
         events::emit_milestone_added(&env, escrow_id, milestone_id, amount);
@@ -1432,6 +1462,8 @@ impl EscrowContract {
                 .ok_or(EscrowError::E20)?;
             meta.approved_count = meta.approved_count.checked_add(1).ok_or(EscrowError::E20)?;
             meta.released_count = meta.released_count.checked_add(1).ok_or(EscrowError::E20)?;
+            // Oracle-triggered release resolves the milestone — leave the pending pool.
+            ContractStorage::decrement_pending_milestone_count(&env, escrow_id);
 
             if meta.released_count == meta.milestone_count && meta.milestone_count > 0 {
                 meta.status = EscrowStatus::Completed;
@@ -2471,6 +2503,8 @@ impl EscrowContract {
                 depends_on: None,
             },
         );
+        // Every newly created milestone starts as MS_PENDING — bump counter.
+        ContractStorage::increment_pending_milestone_count(env, escrow_id);
         ContractStorage::save_escrow_meta(env, &meta);
 
         events::emit_milestone_added(env, escrow_id, milestone_id, amount);
@@ -2723,6 +2757,13 @@ impl EscrowContract {
 
         meta.milestone_count = first_id + n;
         // Single meta write for all N milestones.
+        // All batch milestones start as MS_PENDING — bump count by n.
+        let existing_pending = ContractStorage::get_pending_milestone_count(&env, escrow_id);
+        env.storage().persistent().set(
+            &DataKey::PendingMilestoneCount(escrow_id),
+            &existing_pending.saturating_add(n),
+        );
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::PendingMilestoneCount(escrow_id));
         ContractStorage::save_escrow_meta(&env, &meta);
 
         Ok(first_id)
@@ -2795,6 +2836,8 @@ impl EscrowContract {
                     meta.released_count =
                         meta.released_count.checked_add(1).ok_or(EscrowError::E20)?;
                 }
+                // Milestone resolved — leave the pending approval pool.
+                ContractStorage::decrement_pending_milestone_count(&env, escrow_id);
                 events::emit_milestone_approved(&env, escrow_id, mid, m.amount);
             }
 
@@ -3143,6 +3186,8 @@ impl EscrowContract {
             milestone.status = MS_APPROVED;
             milestone.resolved_at = Some(now);
             meta.approved_count = meta.approved_count.checked_add(1).ok_or(EscrowError::E20)?;
+            // Milestone leaves the "pending approval" pool when approved.
+            ContractStorage::decrement_pending_milestone_count(&env, escrow_id);
 
             let release_timelock_secs: Option<u64> = env
                 .storage()
@@ -3240,6 +3285,8 @@ impl EscrowContract {
 
         // Decrement submitted_count on the already-loaded meta — single write.
         meta.submitted_count = meta.submitted_count.saturating_sub(1);
+        // Milestone rejected — leaves the pending approval pool.
+        ContractStorage::decrement_pending_milestone_count(&env, escrow_id);
         ContractStorage::save_escrow_meta(&env, &meta);
 
         events::emit_milestone_rejected(&env, escrow_id, milestone_id, &caller);
@@ -3327,6 +3374,8 @@ impl EscrowContract {
         ContractStorage::save_milestone(&env, escrow_id, &milestone);
 
         meta.submitted_count = meta.submitted_count.saturating_sub(1);
+        // Milestone rejected — leaves the pending approval pool.
+        ContractStorage::decrement_pending_milestone_count(&env, escrow_id);
         ContractStorage::save_escrow_meta(&env, &meta);
 
         events::emit_milestone_rejected_with_reason(
