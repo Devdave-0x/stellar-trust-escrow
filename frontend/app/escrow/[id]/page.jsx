@@ -26,6 +26,9 @@ import { useRelativeTime } from '../../../hooks/useRelativeTime';
 import { useWallet } from '../../../hooks/useWallet';
 import { useToast } from '../../../contexts/ToastContext';
 import MilestoneList from '../../../components/escrow/MilestoneList';
+import TransactionHistoryList, {
+  buildHistoryFromEscrow,
+} from '../../../components/escrow/TransactionHistoryList';
 import DisputeModal from '../../../components/escrow/DisputeModal';
 import CancelEscrowModal from '../../../components/escrow/CancelEscrowModal';
 import Badge from '../../../components/ui/Badge';
@@ -299,6 +302,14 @@ export default function EscrowDetailPage({ params }) {
           onSubmit={handleSubmitMilestone}
         />
       </section>
+
+      {/* Transaction History */}
+      <div className="card">
+        <TransactionHistoryList
+          history={buildHistoryFromEscrow(escrow)}
+          network={process.env.NEXT_PUBLIC_STELLAR_NETWORK}
+        />
+      </div>
 
       {/* Dispute Modal */}
       <DisputeModal 
