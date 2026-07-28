@@ -362,6 +362,29 @@ impl ContractStorage {
             .remove(&PackedDataKey::EscrowMeta(escrow_id));
     }
 
+    // ── Last activity timestamp ───────────────────────────────────────────────
+
+    /// Records `env.ledger().timestamp()` as the last activity time for `escrow_id`.
+    ///
+    /// Call this at the end of every state-changing entry point so off-chain
+    /// systems can detect stale escrows without fetching the full escrow state.
+    fn touch(env: &Env, escrow_id: u64) {
+        let key = DataKey::LastActivityTimestamp(escrow_id);
+        let now = env.ledger().timestamp();
+        env.storage().persistent().set(&key, &now);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    /// Returns the ledger timestamp of the last state-changing operation on
+    /// `escrow_id`, or 0 if the escrow has never been touched (should not
+    /// happen in practice because `create_escrow` calls `touch`).
+    fn get_last_activity_timestamp(env: &Env, escrow_id: u64) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::LastActivityTimestamp(escrow_id))
+            .unwrap_or(0u64)
+    }
+
     fn no_multisig(env: &Env) -> MultisigConfig {
         MultisigConfig {
             approvers: Vec::new(env),
@@ -2114,6 +2137,7 @@ impl EscrowContract {
         );
 
         events::emit_escrow_created(&env, escrow_id, &client, &freelancer, total_amount);
+        ContractStorage::touch(&env, escrow_id);
         Ok(escrow_id)
     }
 
@@ -2248,6 +2272,7 @@ impl EscrowContract {
             total_payments,
             start_time,
         );
+        ContractStorage::touch(&env, escrow_id);
         Ok(escrow_id)
     }
 

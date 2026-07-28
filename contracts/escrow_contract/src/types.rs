@@ -824,6 +824,8 @@ pub enum DataKey {
     MilestoneVotes(u64, u32),
     /// Approved arbiter registry — value: Map<Address, bool>
     ArbiterRegistry,
+    /// Ledger timestamp of the most recent state-changing operation on an escrow — key: u64, value: u64
+    LastActivityTimestamp(u64),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
