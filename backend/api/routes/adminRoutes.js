@@ -157,6 +157,15 @@ router.get('/rate-limits/usage/:userId', adminController.getUserRateLimitUsage);
  */
 router.post('/escrows/archive', requireMfa, adminController.triggerEscrowArchive);
 
+/**
+ * @route  PATCH /api/admin/escrows/bulk-status
+ * @desc   Bulk-update the status of up to 50 escrows; partial failures are
+ *         reported per-id and do not roll back successful updates
+ * @body   { escrow_ids: string[], status: string, reason?: string }
+ * @security Requires MFA verification
+ */
+router.patch('/escrows/bulk-status', requireMfa, adminController.bulkUpdateEscrowStatus);
+
 // ── Stellar Monitor ────────────────────────────────────────────────────────────
 /**
  * @route  POST /api/admin/stellar/reconcile

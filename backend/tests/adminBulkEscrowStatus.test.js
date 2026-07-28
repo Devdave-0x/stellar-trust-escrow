@@ -126,13 +126,66 @@ describe('adminController.bulkUpdateEscrowStatus', () => {
     expect(prismaMock.escrow.findFirst).not.toHaveBeenCalled();
   });
 
-  it('rejects an empty escrow_ids array', async () => {
+  it('returns 200 with zero updates for an empty escrow_ids array', async () => {
     const req = buildReq({ escrow_ids: [], status: 'Cancelled' });
     const res = createMockRes();
 
     await adminController.bulkUpdateEscrowStatus(req, res);
 
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ updated: 0, failed: [] });
+    expect(prismaMock.escrow.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-array escrow_ids value', async () => {
+    const req = buildReq({ escrow_ids: 'not-an-array', status: 'Cancelled' });
+    const res = createMockRes();
+
+    await adminController.bulkUpdateEscrowStatus(req, res);
+
     expect(res.statusCode).toBe(400);
+  });
+
+  it('reports every id as failed when all are invalid, and updates none', async () => {
+    prismaMock.escrow.findFirst.mockImplementation(async ({ where }) => {
+      if (where.id === 1n) return { id: 1n, status: 'Completed' }; // terminal, invalid transition
+      return null; // not found
+    });
+
+    const req = buildReq({ escrow_ids: ['1', '2'], status: 'Cancelled' });
+    const res = createMockRes();
+
+    await adminController.bulkUpdateEscrowStatus(req, res);
+
+    expect(res.body).toEqual({
+      updated: 0,
+      failed: [
+        { escrow_id: '1', reason: 'Invalid transition: Completed -> Cancelled' },
+        { escrow_id: '2', reason: 'Escrow not found' },
+      ],
+    });
+    expect(prismaMock.escrow.update).not.toHaveBeenCalled();
+  });
+
+  it('response shape matches { updated, failed: [{ escrow_id, reason }] } on mixed results', async () => {
+    prismaMock.escrow.findFirst.mockImplementation(async ({ where }) => {
+      if (where.id === 1n) return { id: 1n, status: 'Active' };
+      return null;
+    });
+
+    const req = buildReq({ escrow_ids: ['1', '2'], status: 'Cancelled' });
+    const res = createMockRes();
+
+    await adminController.bulkUpdateEscrowStatus(req, res);
+
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        updated: expect.any(Number),
+        failed: expect.arrayContaining([
+          expect.objectContaining({ escrow_id: expect.any(String), reason: expect.any(String) }),
+        ]),
+      }),
+    );
   });
 
   it('rejects an invalid target status', async () => {

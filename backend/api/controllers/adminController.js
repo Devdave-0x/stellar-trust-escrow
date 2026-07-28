@@ -438,8 +438,11 @@ const bulkUpdateEscrowStatus = async (req, res) => {
     const { escrow_ids: escrowIds, status, reason = '' } = req.body ?? {};
     const tenantId = req.tenant?.id;
 
-    if (!Array.isArray(escrowIds) || escrowIds.length === 0) {
-      return res.status(400).json({ error: 'escrow_ids must be a non-empty array' });
+    if (!Array.isArray(escrowIds)) {
+      return res.status(400).json({ error: 'escrow_ids must be an array' });
+    }
+    if (escrowIds.length === 0) {
+      return res.json({ updated: 0, failed: [] });
     }
     if (escrowIds.length > MAX_BULK_ESCROW_IDS) {
       return res
@@ -1017,4 +1020,5 @@ export default {
   getRateLimits,
   updateRateLimit,
   getUserRateLimitUsage,
+  bulkUpdateEscrowStatus,
 };
