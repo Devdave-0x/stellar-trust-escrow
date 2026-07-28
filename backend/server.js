@@ -65,9 +65,11 @@ import { createEventWorker, createDeadLetterWorker } from './services/eventWorke
 import { setupSwagger } from './api/docs/swagger.js';
 import { getBackupStatus } from './services/backupMonitor.js';
 import { syncFromPrisma, ensureIndex } from './services/reputationSearchService.js';
+import { startMonitor } from './services/stellarMonitorService.js';
 import { createGateway } from './gateway/index.js';
 import queueDashboardRoutes from './api/routes/queueDashboardRoutes.js';
 import chatRoutes from './api/routes/chatRoutes.js';
+import stellarMonitorRoutes from './api/routes/stellarMonitorRoutes.js';
 
 // Attach Prisma query instrumentation (metrics + traces)
 attachPrismaMetrics(prisma);
@@ -212,6 +214,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/batch', batchRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/stellar-monitor', stellarMonitorRoutes);
 app.use('/admin/queues', queueDashboardRoutes);
 app.use('/docs', docsRouter);
 // Alias — acceptance criteria requires /api-docs
@@ -325,6 +328,8 @@ async function startServer() {
           Sentry.captureException(err, { tags: { component: 'indexer' } });
         });
         startRpcMonitor();
+        startMonitor();
+        logger.info('[StellarMonitor] Transaction monitoring started');
 
         // Reputation ES sync — ensure index + initial sync on startup
         ensureIndex().then(() =>
