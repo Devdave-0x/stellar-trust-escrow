@@ -111,20 +111,24 @@ describe('ExplorerPage', () => {
     expect(await screen.findByText(/No escrows found/)).toBeInTheDocument();
   });
 
-  it('renders stats bar', async () => {
+  it('renders a live results count', async () => {
     render(<ExplorerPage />);
-    expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument();
+    expect(await screen.findByText(/Showing 4 of 4 escrows/)).toBeInTheDocument();
   });
 
-  it('renders pagination buttons', async () => {
+  it('renders a Load more control for infinite scroll fallback', async () => {
     render(<ExplorerPage />);
-    expect(await screen.findByRole('button', { name: /Prev/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Next/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Load more/i })).toBeInTheDocument();
   });
 
-  it('Prev button is disabled on first page', async () => {
+  it('appends the next page of results when Load more is clicked', async () => {
     render(<ExplorerPage />);
-    const prevBtn = await screen.findByRole('button', { name: /Prev/ });
-    expect(prevBtn).toBeDisabled();
+    await screen.findByText('Escrow #1');
+
+    fireEvent.click(await screen.findByRole('button', { name: /Load more/i }));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('escrow-card')).toHaveLength(8);
+    });
   });
 });
