@@ -140,6 +140,15 @@ pub const AUTO_DEADLINE_EXTENSION_SECONDS: u64 = 604_800;
 /// Minimum escrow amount in base token units.
 pub const MIN_ESCROW_AMOUNT: i128 = 1_i128;
 
+/// Number of ledger sequence increments that must pass between `propose_admin`
+/// and `accept_admin`.  At ~5–6 seconds per ledger on Stellar Mainnet this is
+/// roughly 8–10 minutes — long enough to detect and cancel an unauthorised
+/// proposal before it can be accepted, but short enough not to impede
+/// legitimate key-rotation workflows.
+///
+/// Value: 100 ledgers ≈ 8–10 minutes.
+pub const ADMIN_TRANSFER_TIMELOCK_LEDGERS: u32 = 100;
+
 /// Minimum reputation score required for an address to serve as an arbiter.
 /// This prevents sybil attacks where fresh addresses with zero reputation
 /// could be used to gain control over dispute resolution.

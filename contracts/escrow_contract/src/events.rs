@@ -357,6 +357,13 @@ pub fn emit_admin_changed(env: &Env, old_admin: &Address, new_admin: &Address) {
         .publish((ev::ADMIN_CHANGED,), (old_admin.clone(), new_admin.clone()));
 }
 
+pub fn emit_admin_proposal_cancelled(env: &Env, cancelled_by: &Address, cancelled_pending: &Address) {
+    env.events().publish(
+        (ev::ADMIN_PROPOSAL_CANCELLED,),
+        (cancelled_by.clone(), cancelled_pending.clone()),
+    );
+}
+
 pub fn emit_admin_transferred(env: &Env, old_admin: &Address, new_admin: &Address) {
     env.events().publish(
         (soroban_sdk::Symbol::new(env, "AdminTransferred"),),

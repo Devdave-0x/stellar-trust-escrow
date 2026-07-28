@@ -94,6 +94,8 @@ pub enum EcErr {
     BatchInvalidMilestone = 144,
     BatchUnauthorized = 145,
     BatchInvalid = 146,
+    /// Admin transfer proposal has a timelock that has not yet elapsed.
+    AdminTransferTimelockActive = 147,
 }
 
 #[contracterror(export = false)]
