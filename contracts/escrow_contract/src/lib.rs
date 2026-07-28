@@ -69,6 +69,7 @@ mod governance_escalation_tests;
 mod lock_time_enforcement_tests;
 mod max_escrow_amount_tests;
 mod meta_snapshot_tests;
+mod module_registration_tests;
 mod multisig_lifecycle_tests;
 mod multisig_threshold_tests;
 mod nft;
