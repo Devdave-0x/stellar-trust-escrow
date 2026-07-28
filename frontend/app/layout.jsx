@@ -13,6 +13,7 @@ import OfflineBanner from '../components/ui/OfflineBanner';
 import ServiceWorkerRegistrar from '../components/ui/ServiceWorkerRegistrar';
 import { AppStoreProvider } from '../store/app-store';
 import TokenRefreshManager from '../components/auth/TokenRefreshManager';
+import OnboardingTutorialManager from '../components/onboarding/OnboardingTutorialManager';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -58,6 +59,7 @@ export default function RootLayout({ children }) {
                   <PerformanceMonitor />
                   <BackToTop />
                   <ServiceWorkerRegistrar />
+                  <OnboardingTutorialManager />
                 </ToastProvider>
               </CurrencyProvider>
             </ThemeProvider>
