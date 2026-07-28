@@ -783,6 +783,10 @@ pub enum DataKey {
     TemplateCounter,
     /// Pending admin address during a two-step admin transfer — value: Address
     PendingAdmin,
+    /// Earliest ledger sequence at which the pending admin may call `accept_admin`.
+    /// Set by `propose_admin` to `current_ledger + ADMIN_TRANSFER_TIMELOCK_LEDGERS`.
+    /// Cleared (along with `PendingAdmin`) when the proposal is accepted or cancelled.
+    AdminTransferValidAfter,
     /// Escrow IDs indexed by participant address — key: Address, value: Vec<u64>
     EscrowsByParticipant(Address),
     /// Escrow IDs indexed by status — key: EscrowStatus, value: Vec<u64>

@@ -148,6 +148,11 @@ pub const MIN_ARBITER_REPUTATION_SCORE: u64 = 100;
 /// Threshold for high-value escrows that can be escalated to governance (1000 XLM in stroops).
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
 
+/// Number of ledgers the pending admin must wait after `propose_admin` before
+/// `accept_admin` is permitted.  At ~6 s/ledger this is roughly 24 hours,
+/// giving the current admin time to detect and cancel an unauthorised proposal.
+pub const ADMIN_TRANSFER_TIMELOCK_LEDGERS: u32 = 14_400;
+
 // ── Granular storage keys ─────────────────────────────────────────────────────
 // Separate keys for meta vs each milestone avoids deserialising the full
 // milestone list on every escrow-level operation.

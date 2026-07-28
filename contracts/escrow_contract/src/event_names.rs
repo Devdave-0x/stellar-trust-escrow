@@ -105,6 +105,10 @@ pub const NFT_GATED_ESCROW_CREATED: Symbol = symbol_short!("nft_esc");
 pub const ADMIN_INITIALIZED: Symbol = symbol_short!("adm_init");
 pub const ADMIN_PROPOSED: Symbol = symbol_short!("adm_prop");
 pub const ADMIN_CHANGED: Symbol = symbol_short!("adm_chg");
+/// Emitted when the pending admin successfully calls `accept_admin` after the timelock.
+pub const ADMIN_ACCEPTED: Symbol = symbol_short!("adm_acc");
+/// Emitted when the current admin calls `cancel_admin_proposal` to abort a pending transfer.
+pub const ADMIN_PROPOSAL_CANCELLED: Symbol = symbol_short!("adm_can");
 pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
 pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("unpaused");
 pub const EMERGENCY_WITHDRAWAL: Symbol = symbol_short!("emg_wth");

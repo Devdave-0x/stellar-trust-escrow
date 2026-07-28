@@ -357,6 +357,30 @@ pub fn emit_admin_changed(env: &Env, old_admin: &Address, new_admin: &Address) {
         .publish((ev::ADMIN_CHANGED,), (old_admin.clone(), new_admin.clone()));
 }
 
+/// Emitted when the pending admin successfully accepts the admin role after the timelock.
+///
+/// Topics: `(ADMIN_ACCEPTED,)`
+/// Data:   `new_admin: Address`
+pub fn emit_admin_accepted(env: &Env, new_admin: &Address) {
+    env.events()
+        .publish((ev::ADMIN_ACCEPTED,), new_admin.clone());
+}
+
+/// Emitted when the current admin cancels a pending admin proposal.
+///
+/// Topics: `(ADMIN_PROPOSAL_CANCELLED,)`
+/// Data:   `(cancelled_by: Address, cancelled_pending: Address)`
+pub fn emit_admin_proposal_cancelled(
+    env: &Env,
+    cancelled_by: &Address,
+    cancelled_pending: &Address,
+) {
+    env.events().publish(
+        (ev::ADMIN_PROPOSAL_CANCELLED,),
+        (cancelled_by.clone(), cancelled_pending.clone()),
+    );
+}
+
 pub fn emit_admin_transferred(env: &Env, old_admin: &Address, new_admin: &Address) {
     env.events().publish(
         (soroban_sdk::Symbol::new(env, "AdminTransferred"),),
