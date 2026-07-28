@@ -63,6 +63,8 @@ tags:
     description: Admin-only operations (requires x-admin-api-key)
   - name: Audit
     description: Audit log search and export (requires x-admin-api-key)
+  - name: Stellar Monitoring
+    description: Real-time Stellar transaction monitoring
   - name: Health
     description: Service health and metrics
 
@@ -2420,6 +2422,61 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    TransactionMonitorRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        txHash:
+          type: string
+        fromAddress:
+          type: string
+        toAddress:
+          type: string
+          nullable: true
+        amount:
+          type: string
+          nullable: true
+        memo:
+          type: string
+          nullable: true
+        escrowId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, FAILED, TIMEOUT]
+        ledger:
+          type: string
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        failedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PaginatedTransactions:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransactionMonitorRecord'
 
   responses:
     Unauthorized:
