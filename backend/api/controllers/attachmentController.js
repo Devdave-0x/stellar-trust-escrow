@@ -29,6 +29,12 @@ export const ENTITY_TYPES = ['escrow', 'milestone', 'dispute', 'note'];
 
 const DOWNLOAD_URL_TTL_SECONDS = 15 * 60;
 
+/** Strips path-traversal and other unsafe characters from an uploaded filename. */
+const sanitizeFilename = (filename) => {
+  if (!filename) return 'unknown';
+  return filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255) || 'unknown';
+};
+
 /**
  * POST /api/attachments
  * Multipart upload; stores the file in S3 and records metadata.
@@ -38,6 +44,9 @@ const uploadAttachment = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'A file is required.' });
+    }
+    if (req.file.size === 0) {
+      return res.status(422).json({ error: 'The uploaded file is empty.' });
     }
 
     const { entityType, entityId } = req.body;
@@ -50,7 +59,8 @@ const uploadAttachment = async (req, res) => {
       return res.status(400).json({ error: 'entityId is required.' });
     }
 
-    const key = `attachments/${entityType}/${entityId}/${crypto.randomUUID()}-${req.file.originalname}`;
+    const safeFilename = sanitizeFilename(req.file.originalname);
+    const key = `attachments/${entityType}/${entityId}/${crypto.randomUUID()}-${safeFilename}`;
 
     await s3Client.send(
       new PutObjectCommand({
@@ -65,7 +75,7 @@ const uploadAttachment = async (req, res) => {
       data: {
         entityType,
         entityId: String(entityId),
-        filename: req.file.originalname,
+        filename: safeFilename,
         mimeType: req.file.mimetype,
         sizeBytes: req.file.size,
         s3Key: key,
