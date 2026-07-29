@@ -642,3 +642,44 @@ pub fn emit_cooldown_elapsed(env: &Env, escrow_id: u64, cooldown_ended_at: u64) 
     env.events()
         .publish((ev::COOLDOWN_ELAPSED, escrow_id), cooldown_ended_at);
 }
+
+// ── Issue 2: Admin transfer timelock events ───────────────────────────────────
+
+/// Emitted by `propose_admin` (Issue 2 version with timelock expiry ledger).
+///
+/// Schema: topic=(ADMIN_TRANSFER_PROPOSED,), data=(current_admin, pending_admin, valid_after_ledger)
+pub fn emit_admin_transfer_proposed(
+    env: &Env,
+    current_admin: &Address,
+    pending_admin: &Address,
+    valid_after_ledger: u32,
+) {
+    env.events().publish(
+        (ev::ADMIN_TRANSFER_PROPOSED,),
+        (current_admin.clone(), pending_admin.clone(), valid_after_ledger),
+    );
+}
+
+/// Emitted by `accept_admin` once the timelock has elapsed and the transfer is complete.
+///
+/// Schema: topic=(ADMIN_TRANSFER_ACCEPTED,), data=(old_admin, new_admin)
+pub fn emit_admin_transfer_accepted(env: &Env, old_admin: &Address, new_admin: &Address) {
+    env.events().publish(
+        (ev::ADMIN_TRANSFER_ACCEPTED,),
+        (old_admin.clone(), new_admin.clone()),
+    );
+}
+
+/// Emitted by `cancel_admin_proposal` when the current admin cancels the pending transfer.
+///
+/// Schema: topic=(ADMIN_PROPOSAL_CANCELLED,), data=(admin, cancelled_pending_admin)
+pub fn emit_admin_proposal_cancelled(
+    env: &Env,
+    admin: &Address,
+    cancelled_pending_admin: &Address,
+) {
+    env.events().publish(
+        (ev::ADMIN_PROPOSAL_CANCELLED,),
+        (admin.clone(), cancelled_pending_admin.clone()),
+    );
+}
