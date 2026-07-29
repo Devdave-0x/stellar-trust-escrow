@@ -206,6 +206,13 @@ pub const CONTRACT_VERSION: &str = "0.1.0";
 /// Default dispute cooldown: 24 hours in seconds.
 pub const DEFAULT_DISPUTE_COOLDOWN_SECS: u64 = 86_400;
 
+/// Number of ledgers the pending-admin must wait before `accept_admin` is valid.
+///
+/// At ~6 seconds per ledger on Stellar, 60 ledgers ≈ 6 minutes.  This window
+/// gives the current admin time to call `cancel_admin_proposal` if the proposal
+/// was made without authorisation (e.g. compromised admin key).
+pub const TIMELOCK_LEDGERS: u32 = 60;
+
 /// Threshold for high-value escrows that can be escalated to governance (1000 XLM in stroops).
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
 

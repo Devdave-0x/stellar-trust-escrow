@@ -148,6 +148,7 @@ pub const ARBITRATION_FEE_PAID: Symbol = symbol_short!("arb_fee");
 
 pub const ADMIN_TRANSFERRED: Symbol = symbol_short!("adm_trf");
 pub const ADMIN_ACCEPTED: Symbol = symbol_short!("adm_acc");
+pub const ADMIN_PROPOSAL_CANCELLED: Symbol = symbol_short!("adm_canp");
 
 // ── Milestone title (canonical create_milestone entry point) ──────────────────
 
