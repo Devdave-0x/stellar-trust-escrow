@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAdminStore } from '../../../store/app-store';
 import { adminFetch } from '../../../store/admin';
 import EmptyState from '../../../components/ui/EmptyState';
+import Badge from '../../../components/ui/Badge';
 
 function ResolveModal({ dispute, onClose, onConfirm }) {
   const [clientAmount, setClientAmount] = useState('');
@@ -109,18 +110,6 @@ function ResolveModal({ dispute, onClose, onConfirm }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function StatusBadge({ resolved }) {
-  return resolved ? (
-    <span role="status" aria-label="Status: Resolved" className="badge-completed text-xs px-2 py-0.5 rounded-full">
-      Resolved
-    </span>
-  ) : (
-    <span role="status" aria-label="Status: Open" className="badge-disputed text-xs px-2 py-0.5 rounded-full">
-      Open
-    </span>
   );
 }
 
@@ -261,7 +250,9 @@ export default function AdminDisputesPage() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-white font-semibold">Dispute #{d.id}</span>
-                    <StatusBadge resolved={!!d.resolvedAt} />
+                    <Badge variant={d.resolvedAt ? 'success' : 'warning'} dot size="sm">
+                      {d.resolvedAt ? 'Resolved' : 'Open'}
+                    </Badge>
                   </div>
                   <p className="text-xs text-gray-500 mb-2">
                     Escrow:{' '}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../contexts/ToastContext';
+import Badge from '../../components/ui/Badge';
 import {
   ThumbsUp,
   ThumbsDown,
@@ -44,6 +45,15 @@ const PROPOSAL_STATUS_COLORS = {
   Queued: 'text-amber-400 bg-amber-500/10',
   Executed: 'text-emerald-400 bg-emerald-500/10',
   Cancelled: 'text-gray-400 bg-gray-500/10',
+};
+
+const PROPOSAL_STATUS_VARIANTS = {
+  Active: 'info',
+  Passed: 'success',
+  Defeated: 'error',
+  Queued: 'warning',
+  Executed: 'success',
+  Cancelled: 'neutral',
 };
 
 function CountdownTimer({ endTime, onTimeUp }) {
@@ -136,9 +146,9 @@ function ProposalCard({ proposal, onVote, onExpand, isExpanded, userVoting }) {
             <span className="px-2 py-1 rounded bg-gray-700 text-gray-300">
               {PROPOSAL_TYPES[proposal.proposal_type] || proposal.proposal_type}
             </span>
-            <span className={`px-2 py-1 rounded ${PROPOSAL_STATUS_COLORS[proposal.status]}`}>
+            <Badge variant={PROPOSAL_STATUS_VARIANTS[proposal.status] || 'neutral'} dot size="sm">
               {proposal.status}
-            </span>
+            </Badge>
             {proposal.status === 'Active' && (
               <div className="px-2 py-1 rounded bg-blue-500/10 text-blue-400">
                 <CountdownTimer

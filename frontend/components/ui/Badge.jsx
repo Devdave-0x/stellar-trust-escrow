@@ -1,91 +1,113 @@
-/**
- * Badge Component
- *
- * Displays a colored status pill for EscrowStatus and milestone states.
- *
- * @param {object} props
- * @param {string} [props.status] — EscrowStatus or MilestoneStatus value
- * @param {string} [props.variant] — alias for status (e.g. 'success' maps to green)
- * @param {'sm'|'md'} [props.size='md']
- * @param {React.ReactNode} [props.children] — label override (used when variant is passed)
- */
+'use client';
 
-// Escrow status colors per issue #42:
-//   Active → green, ReleaseRequested → amber, Disputed → red, Expired/Completed/Cancelled → gray
-const STATUS_STYLES = {
-  // Escrow statuses
-  Active: 'bg-green-500/20 text-green-400 border-green-500/30',
-  ReleaseRequested: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  Disputed: 'bg-red-500/20 text-red-400 border-red-500/30',
-  Expired: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
-  Completed: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
-  Cancelled: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
+import { cn } from '../../lib/utils';
 
-  // Milestone statuses
-  Pending: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
-  Submitted: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  Approved: 'bg-green-500/20 text-green-400 border-green-500/30',
-  Rejected: 'bg-red-500/20 text-red-400 border-red-500/30',
-
-  // Reputation badges
-  NEW: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
-  TRUSTED: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  VERIFIED: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-  EXPERT: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  ELITE: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-
-  // KYC statuses
-  Init: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  Processing: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  Declined: 'bg-red-500/20 text-red-400 border-red-500/30',
-
-  // Generic variants (used by accessibility tests and generic callers)
-  success: 'bg-green-500/20 text-green-400 border-green-500/30',
-  warning: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  danger: 'bg-red-500/20 text-red-400 border-red-500/30',
-  info: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  default: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
+const VARIANT_STYLES = {
+  success: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  warning: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  error: 'bg-red-500/15 text-red-300 border-red-500/30',
+  info: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+  neutral: 'bg-gray-700/60 text-gray-300 border-gray-600/60',
 };
 
-const ICONS = {
-  Active: '🔒',
-  ReleaseRequested: '⏳',
-  Disputed: '⚠️',
-  Expired: '⌛',
-  Completed: '✅',
-  Cancelled: '✕',
-  Pending: '○',
-  Submitted: '📤',
-  Approved: '✓',
-  Rejected: '✗',
-  TRUSTED: '🔵',
-  VERIFIED: '💜',
-  EXPERT: '⭐',
-  ELITE: '🏆',
-  Init: '🔄',
-  Processing: '⏳',
-  Declined: '❌',
+const DOT_STYLES = {
+  success: 'bg-emerald-400',
+  warning: 'bg-amber-400',
+  error: 'bg-red-400',
+  info: 'bg-blue-400',
+  neutral: 'bg-gray-400',
 };
 
-export default function Badge({ status, variant, size = 'md', children }) {
-  const key = status || variant;
-  const styles = STATUS_STYLES[key] || 'bg-gray-700 text-gray-400 border-gray-600';
-  const icon = ICONS[key] || '';
-  const sizeClass = size === 'sm' ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-1';
-  const label = children ?? key;
+const STATUS_VARIANTS = {
+  Active: 'success',
+  Completed: 'neutral',
+  Disputed: 'error',
+  Cancelled: 'neutral',
+  Pending: 'neutral',
+  Submitted: 'info',
+  Approved: 'success',
+  Rejected: 'error',
+  ReleaseRequested: 'warning',
+  Released: 'success',
+  Created: 'neutral',
+  Funded: 'info',
+  InProgress: 'info',
+  Resolved: 'success',
+  Init: 'info',
+  Processing: 'warning',
+  Declined: 'error',
+  NEW: 'neutral',
+  TRUSTED: 'info',
+  VERIFIED: 'info',
+  EXPERT: 'warning',
+  ELITE: 'success',
+  Passed: 'success',
+  Defeated: 'error',
+  Queued: 'warning',
+  Executed: 'success',
+  Open: 'warning',
+};
+
+const SIZE_STYLES = {
+  sm: 'text-[11px] px-2 py-0.5 gap-1.5',
+  md: 'text-xs px-2.5 py-1 gap-1.5',
+  lg: 'text-sm px-3 py-1.5 gap-2',
+};
+
+const DOT_SIZES = {
+  sm: 'h-1.5 w-1.5',
+  md: 'h-2 w-2',
+  lg: 'h-2.5 w-2.5',
+};
+
+function resolveVariant({ status, variant }) {
+  if (variant && VARIANT_STYLES[variant]) return variant;
+  if (status && STATUS_VARIANTS[status]) return STATUS_VARIANTS[status];
+  if (status && VARIANT_STYLES[status]) return status;
+  return variant && VARIANT_STYLES[variant] ? variant : 'neutral';
+}
+
+function resolveLabel({ children, status, variant }) {
+  if (children !== undefined && children !== null) return children;
+  if (status !== undefined && status !== null) return status;
+  return variant ?? 'Badge';
+}
+
+export default function Badge({
+  status,
+  variant,
+  size = 'md',
+  dot = false,
+  children,
+  className,
+}) {
+  const resolvedVariant = resolveVariant({ status, variant });
+  const label = resolveLabel({ children, status, variant });
+  const sizeStyles = SIZE_STYLES[size] ?? SIZE_STYLES.md;
+  const dotStyles = DOT_SIZES[size] ?? DOT_SIZES.md;
+  const ariaLabel =
+    typeof label === 'string' || typeof label === 'number' ? `Status: ${label}` : undefined;
 
   return (
     <span
       role="status"
-      aria-label={`Status: ${label}`}
-      className={`inline-flex items-center gap-1 font-medium border rounded-full ${sizeClass} ${styles}`}
-    >
-      {icon && (
-        <span aria-hidden="true" className="text-[10px]">
-          {icon}
-        </span>
+      aria-label={ariaLabel}
+      data-variant={resolvedVariant}
+      data-size={size}
+      className={cn(
+        'inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none',
+        sizeStyles,
+        VARIANT_STYLES[resolvedVariant],
+        className,
       )}
-      {label}
+    >
+      {dot && (
+        <span
+          aria-hidden="true"
+          className={cn('shrink-0 rounded-full', dotStyles, DOT_STYLES[resolvedVariant])}
+        />
+      )}
+      <span>{label}</span>
     </span>
   );
 }

@@ -1,106 +1,105 @@
 import Badge from './Badge';
 
-/**
- * The `Badge` component renders a colored status pill for escrow statuses,
- * milestone statuses, and reputation tiers. Each status maps to a distinct
- * color scheme so users can identify state at a glance.
- */
+const VARIANTS = [
+  { variant: 'success', label: 'Success' },
+  { variant: 'warning', label: 'Warning' },
+  { variant: 'error', label: 'Error' },
+  { variant: 'info', label: 'Info' },
+  { variant: 'neutral', label: 'Neutral' },
+];
+
 export default {
   title: 'UI/Badge',
   component: Badge,
   tags: ['autodocs'],
   argTypes: {
-    status: {
+    variant: {
       control: 'select',
-      options: [
-        // Escrow
-        'Active',
-        'Completed',
-        'Disputed',
-        'Cancelled',
-        // Milestone
-        'Pending',
-        'Submitted',
-        'Approved',
-        'Rejected',
-        // Reputation
-        'NEW',
-        'TRUSTED',
-        'VERIFIED',
-        'EXPERT',
-        'ELITE',
-      ],
-      description: 'The status value to display. Drives both color and icon.',
+      options: ['success', 'warning', 'error', 'info', 'neutral'],
+      description: 'Visual color variant of the badge',
+      table: { defaultValue: { summary: 'neutral' } },
     },
     size: {
       control: 'select',
-      options: ['sm', 'md'],
-      description: 'Size variant of the badge',
+      options: ['sm', 'md', 'lg'],
+      description: 'Badge size',
       table: { defaultValue: { summary: 'md' } },
+    },
+    dot: {
+      control: 'boolean',
+      description: 'Shows a colored indicator dot before the label',
+    },
+    children: {
+      control: 'text',
+      description: 'Badge label',
     },
   },
   args: {
-    status: 'Active',
+    variant: 'success',
     size: 'md',
+    dot: true,
+    children: 'Active',
   },
 };
 
-// ── Escrow Statuses ───────────────────────────────────────────────────────────
+export const Default = {};
 
-export const EscrowActive = { args: { status: 'Active' } };
-export const EscrowCompleted = { args: { status: 'Completed' } };
-export const EscrowDisputed = { args: { status: 'Disputed' } };
-export const EscrowCancelled = { args: { status: 'Cancelled' } };
+export const Success = {
+  args: { variant: 'success', children: 'Completed' },
+};
 
-// ── Milestone Statuses ────────────────────────────────────────────────────────
+export const Warning = {
+  args: { variant: 'warning', children: 'Pending review' },
+};
 
-export const MilestonePending = { args: { status: 'Pending' } };
-export const MilestoneSubmitted = { args: { status: 'Submitted' } };
-export const MilestoneApproved = { args: { status: 'Approved' } };
-export const MilestoneRejected = { args: { status: 'Rejected' } };
+export const Error = {
+  args: { variant: 'error', children: 'Disputed' },
+};
 
-// ── Reputation Tiers ──────────────────────────────────────────────────────────
+export const Info = {
+  args: { variant: 'info', children: 'Submitted' },
+};
 
-export const ReputationNew = { args: { status: 'NEW' } };
-export const ReputationTrusted = { args: { status: 'TRUSTED' } };
-export const ReputationVerified = { args: { status: 'VERIFIED' } };
-export const ReputationExpert = { args: { status: 'EXPERT' } };
-export const ReputationElite = { args: { status: 'ELITE' } };
+export const Neutral = {
+  args: { variant: 'neutral', children: 'Draft' },
+};
 
-// ── Sizes ─────────────────────────────────────────────────────────────────────
+export const Small = {
+  args: { size: 'sm', children: 'Small badge' },
+};
 
-export const SizeSmall = { args: { status: 'Active', size: 'sm' } };
-export const SizeMedium = { args: { status: 'Active', size: 'md' } };
+export const Medium = {
+  args: { size: 'md', children: 'Medium badge' },
+};
 
-// ── All Statuses Overview ─────────────────────────────────────────────────────
+export const Large = {
+  args: { size: 'lg', children: 'Large badge' },
+};
 
-export const AllEscrowStatuses = {
+export const WithDot = {
+  args: { variant: 'info', dot: true, children: 'Syncing' },
+};
+
+export const VariantMatrix = {
   render: () => (
-    <div className="flex flex-wrap gap-2">
-      {['Active', 'Completed', 'Disputed', 'Cancelled'].map((s) => (
-        <Badge key={s} status={s} />
+    <div className="flex flex-wrap gap-3">
+      {VARIANTS.map(({ variant, label }) => (
+        <Badge key={variant} variant={variant} dot>
+          {label}
+        </Badge>
       ))}
     </div>
   ),
   parameters: { controls: { disable: true } },
 };
 
-export const AllMilestoneStatuses = {
+export const SizeMatrix = {
   render: () => (
-    <div className="flex flex-wrap gap-2">
-      {['Pending', 'Submitted', 'Approved', 'Rejected'].map((s) => (
-        <Badge key={s} status={s} />
-      ))}
-    </div>
-  ),
-  parameters: { controls: { disable: true } },
-};
-
-export const AllReputationTiers = {
-  render: () => (
-    <div className="flex flex-wrap gap-2">
-      {['NEW', 'TRUSTED', 'VERIFIED', 'EXPERT', 'ELITE'].map((s) => (
-        <Badge key={s} status={s} />
+    <div className="flex flex-wrap items-center gap-3">
+      {(['sm', 'md', 'lg']).map((size) => (
+        <Badge key={size} variant="success" size={size} dot>
+          {size.toUpperCase()}
+        </Badge>
       ))}
     </div>
   ),
