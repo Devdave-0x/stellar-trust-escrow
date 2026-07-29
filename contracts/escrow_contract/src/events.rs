@@ -486,6 +486,24 @@ pub fn emit_admin_accepted(env: &Env, new_admin: &Address) {
     );
 }
 
+/// Emitted when the current admin cancels a pending admin proposal.
+///
+/// Schema: topic=(ADMIN_PROPOSAL_CANCELLED,), data=(admin, cancelled_pending_admin, timestamp)
+pub fn emit_admin_proposal_cancelled(
+    env: &Env,
+    admin: &Address,
+    cancelled_pending_admin: &Address,
+) {
+    env.events().publish(
+        (ev::ADMIN_PROPOSAL_CANCELLED,),
+        (
+            admin.clone(),
+            cancelled_pending_admin.clone(),
+            env.ledger().timestamp(),
+        ),
+    );
+}
+
 pub fn emit_max_milestones_set(env: &Env, new_max: u32) {
     env.events().publish((ev::MAX_MILESTONES_SET,), new_max);
 }

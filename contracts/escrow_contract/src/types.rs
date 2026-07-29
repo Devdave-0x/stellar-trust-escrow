@@ -883,4 +883,13 @@ pub enum FeatDataKey {
     /// can calculate inactivity without replaying the full event log.
     /// key: u64 (escrow_id), value: u64 (Unix timestamp from env.ledger().timestamp())
     LastActivityTimestamp(u64),
+    /// Ledger sequence number after which the pending admin transfer becomes valid.
+    ///
+    /// Stored alongside `DataKey::PendingAdmin` during a two-step admin transfer.
+    /// The accept call checks `env.ledger().sequence() >= this value` before
+    /// allowing the transfer to complete.  Cleared when the proposal is accepted
+    /// or cancelled.
+    ///
+    /// value: u32 (ledger sequence)
+    PendingAdminValidAfter,
 }
