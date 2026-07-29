@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAdminStore } from '../../../store/app-store';
 import { adminFetch } from '../../../store/admin';
+import CharCountTextarea from '../../../components/ui/CharCountTextarea';
 
 function truncate(str, len = 18) {
   if (!str) return '—';
@@ -24,12 +25,14 @@ function ActionModal({ user, action, onClose, onConfirm }) {
       <div className="card w-full max-w-md mx-4">
         <h3 className="text-lg font-semibold text-white mb-1 capitalize">{action} User</h3>
         <p className="text-sm text-gray-400 mb-4 break-all">{user.address}</p>
-        <textarea
+        <CharCountTextarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder={`Reason for ${action}…`}
           rows={3}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 mb-4 resize-none"
+          maxLength={500}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 resize-none"
+          wrapperClassName="mb-4"
         />
         <div className="flex gap-2 justify-end">
           <button

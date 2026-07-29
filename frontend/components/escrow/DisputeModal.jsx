@@ -25,6 +25,7 @@ import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../contexts/ToastContext';
 import { buildRaiseDisputeTx, broadcastTransaction } from '../../lib/stellar';
 import Modal from '../ui/Modal';
+import CharCountTextarea from '../ui/CharCountTextarea';
 
 export default function DisputeModal({ isOpen, onClose, escrowId, onSuccess }) {
   const [reason, setReason] = useState('');
@@ -89,10 +90,11 @@ export default function DisputeModal({ isOpen, onClose, escrowId, onSuccess }) {
           <label htmlFor="dispute-reason" className="block text-sm text-gray-400 mb-1">
             Reason for dispute <span className="text-gray-600">(recommended)</span>
           </label>
-          <textarea
+          <CharCountTextarea
             id="dispute-reason"
             rows={4}
             placeholder="Describe the issue clearly. This will be stored with the dispute record…"
+            maxLength={2000}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5
                        text-white text-sm placeholder-gray-500 resize-none
                        focus:outline-none focus:border-amber-500 focus-visible:ring-2 focus-visible:ring-amber-500"

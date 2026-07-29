@@ -19,6 +19,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Paperclip, Circle } from 'lucide-react';
+import CharCountTextarea from '../ui/CharCountTextarea';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -358,12 +359,13 @@ export default function DisputeChat({ escrowId, address, role, token }) {
           />
         </label>
 
-        <textarea
+        <CharCountTextarea
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Type a message… (Enter to send)"
           rows={1}
+          maxLength={1000}
           className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm
                      text-white placeholder-gray-500 resize-none focus:outline-none
                      focus:border-indigo-500 transition-colors max-h-32 overflow-y-auto"

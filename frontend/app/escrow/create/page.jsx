@@ -23,6 +23,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Button from '../../../components/ui/Button';
+import CharCountTextarea from '../../../components/ui/CharCountTextarea';
 import FeeEstimator from '../../../components/ui/FeeEstimator';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
@@ -350,10 +351,11 @@ function StepCounterparty({ formData, setFormData, setTouched, amountError, desc
         <label htmlFor="brief-description" className="block text-sm text-gray-400 mb-1">
           Project Brief <span className="text-gray-600">(optional)</span>
         </label>
-        <textarea
+        <CharCountTextarea
           id="brief-description"
           rows={3}
           placeholder="Briefly describe the project scope and deliverables…"
+          maxLength={2000}
           className={`w-full bg-gray-800 border rounded-lg px-4 py-2.5
                      text-white placeholder-gray-500 focus:outline-none resize-none transition-colors
                      ${descriptionError ? 'border-red-500 focus:border-red-400' : 'border-gray-700 focus:border-indigo-500'}`}
@@ -378,10 +380,11 @@ function StepCounterparty({ formData, setFormData, setTouched, amountError, desc
         <label htmlFor="terms-document" className="block text-sm text-gray-400 mb-1">
           Terms Document
         </label>
-        <textarea
+        <CharCountTextarea
           id="terms-document"
           rows={5}
           placeholder="Paste the full text of your off-chain agreement here. A SHA-256 hash will be stored on-chain as a tamper-evident binding."
+          maxLength={50000}
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
                      text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none
                      text-sm transition-colors"
@@ -436,10 +439,11 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
             value={milestone.title}
             onChange={(event) => onUpdate(index, 'title', event.target.value)}
           />
-          <textarea
+          <CharCountTextarea
             rows={2}
             placeholder="Milestone description"
             aria-label={`Milestone ${index + 1} description`}
+            maxLength={1000}
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                        text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 resize-none"
             value={milestone.description}
