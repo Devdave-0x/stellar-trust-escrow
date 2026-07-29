@@ -25,11 +25,20 @@ const upload = multer({
   },
 });
 
-/** Wraps multer so upload errors (size/type) return a clean 400 JSON response. */
+/** Wraps multer so upload errors return the appropriate status: 413 for oversized
+ * files, 422 for a disallowed MIME type, 400 for anything else multer rejects. */
 function handleUpload(req, res, next) {
   upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    next();
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res
+          .status(413)
+          .json({ error: `File size exceeds ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB limit` });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    return res.status(422).json({ error: err.message });
   });
 }
 
