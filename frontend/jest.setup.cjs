@@ -58,6 +58,16 @@ if (typeof HTMLCanvasElement !== 'undefined') {
   }));
 }
 
+// Mock ResizeObserver (not implemented in jsdom) — recharts' ResponsiveContainer
+// constructs one on mount and throws without it.
+if (typeof global.ResizeObserver === 'undefined') {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 if (typeof global.fetch === 'undefined') {
   global.fetch = jest.fn(async () => ({
     ok: true,
