@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import CharCountTextarea from '../ui/CharCountTextarea';
 
 export default function ProfileForm({ initialData = {}, address }) {
   const router = useRouter();
@@ -136,11 +137,12 @@ export default function ProfileForm({ initialData = {}, address }) {
       {/* Bio */}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-2">Bio</label>
-        <textarea
+        <CharCountTextarea
           name="bio"
           value={formData.bio}
           onChange={handleInputChange}
           rows={4}
+          maxLength={500}
           className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
           placeholder="Tell us about yourself..."
         />
@@ -149,11 +151,12 @@ export default function ProfileForm({ initialData = {}, address }) {
       {/* Preferences JSON */}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-2">Preferences (JSON)</label>
-        <textarea
+        <CharCountTextarea
           name="preferences"
           value={formData.preferences}
           onChange={handleInputChange}
           rows={4}
+          maxLength={10000}
           className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
         />
         <p className="mt-1 text-xs text-gray-500">

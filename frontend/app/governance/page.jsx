@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../contexts/ToastContext';
 import Badge from '../../components/ui/Badge';
+import CharCountTextarea from '../../components/ui/CharCountTextarea';
 import {
   ThumbsUp,
   ThumbsDown,
@@ -343,10 +344,11 @@ function ProposalForm({ onSubmit, isSubmitting }) {
         <label htmlFor="description" className="block text-sm font-semibold text-gray-300 mb-2">
           Description
         </label>
-        <textarea
+        <CharCountTextarea
           id="description"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          maxLength={2000}
           className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-vertical"
           placeholder="Proposal details"
           rows="3"
