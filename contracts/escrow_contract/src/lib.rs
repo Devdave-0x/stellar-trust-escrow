@@ -209,6 +209,12 @@ pub const DEFAULT_DISPUTE_COOLDOWN_SECS: u64 = 86_400;
 /// Threshold for high-value escrows that can be escalated to governance (1000 XLM in stroops).
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
 
+/// Timelock delay for admin transfer: approximately 48 hours at ~5 s/ledger.
+///
+/// 48 h × 3600 s/h ÷ 5 s/ledger = 34 560 ledgers.
+/// This gives the current admin time to detect and cancel an unauthorised transfer.
+pub const ADMIN_TRANSFER_TIMELOCK_LEDGERS: u32 = 34_560;
+
 // ── Granular storage keys ─────────────────────────────────────────────────────
 // Separate keys for meta vs each milestone avoids deserialising the full
 // milestone list on every escrow-level operation.
@@ -4966,30 +4972,44 @@ impl EscrowContract {
         Ok(admin)
     }
 
-    /// Step 1 of two-step admin transfer: propose a new admin.
+    /// Step 1 of two-step admin transfer: propose a new admin with a timelock.
     ///
     /// Only the current admin may call this. Stores `new_admin` under
-    /// `DataKey::PendingAdmin`. The transfer is not complete until the
-    /// proposed admin calls `accept_admin`.
+    /// `DataKey::PendingAdmin` and records `current_ledger + ADMIN_TRANSFER_TIMELOCK_LEDGERS`
+    /// as the earliest ledger at which `accept_admin` can succeed.
+    ///
+    /// The transfer is not complete until the proposed admin calls `accept_admin`
+    /// **after** the timelock has elapsed. The current admin may call
+    /// `cancel_admin_proposal` at any time to abort the transfer.
     pub fn propose_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_admin(&env, &caller)?;
 
+        let valid_after_ledger = env
+            .ledger()
+            .sequence()
+            .saturating_add(ADMIN_TRANSFER_TIMELOCK_LEDGERS);
+
         env.storage()
             .instance()
             .set(&DataKey::PendingAdmin, &new_admin);
+        env.storage()
+            .instance()
+            .set(&FeatDataKey::AdminTransferValidAfterLedger, &valid_after_ledger);
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_proposed(&env, &caller, &new_admin);
         events::emit_admin_transferred(&env, &caller, &new_admin);
+        events::emit_admin_transfer_proposed(&env, &caller, &new_admin, valid_after_ledger);
         Ok(())
     }
 
     /// Step 2 of two-step admin transfer: accept the pending admin role.
     ///
-    /// Only the address stored as `DataKey::PendingAdmin` may call this.
+    /// Only the address stored as `DataKey::PendingAdmin` may call this,
+    /// **and** only after the ledger sequence recorded at proposal time has passed.
     /// On success, `DataKey::Admin` is updated to the caller and
-    /// `DataKey::PendingAdmin` is cleared.
+    /// `DataKey::PendingAdmin` / `FeatDataKey::AdminTransferValidAfterLedger` are cleared.
     pub fn accept_admin(env: Env, caller: Address) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_initialized(&env)?;
@@ -5004,6 +5024,16 @@ impl EscrowContract {
             return Err(EscrowError::E3);
         }
 
+        // Enforce timelock: accept_admin is only callable after valid_after_ledger.
+        let valid_after_ledger: u32 = env
+            .storage()
+            .instance()
+            .get(&FeatDataKey::AdminTransferValidAfterLedger)
+            .unwrap_or(0_u32);
+        if env.ledger().sequence() <= valid_after_ledger {
+            return Err(EscrowError::E46);
+        }
+
         let old_admin: Address = env
             .storage()
             .instance()
@@ -5012,10 +5042,39 @@ impl EscrowContract {
 
         env.storage().instance().set(&DataKey::Admin, &caller);
         env.storage().instance().remove(&DataKey::PendingAdmin);
+        env.storage()
+            .instance()
+            .remove(&FeatDataKey::AdminTransferValidAfterLedger);
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_changed(&env, &old_admin, &caller);
         events::emit_admin_accepted(&env, &caller);
+        events::emit_admin_transfer_accepted(&env, &old_admin, &caller);
+        Ok(())
+    }
+
+    /// Cancel a pending admin transfer proposal.
+    ///
+    /// Only the **current** admin may call this. Clears `DataKey::PendingAdmin`
+    /// and `FeatDataKey::AdminTransferValidAfterLedger` so no transfer can proceed.
+    /// Returns `EscrowError::E3` if there is no pending proposal to cancel.
+    pub fn cancel_admin_proposal(env: Env, caller: Address) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(EscrowError::E3)?;
+
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        env.storage()
+            .instance()
+            .remove(&FeatDataKey::AdminTransferValidAfterLedger);
+        ContractStorage::bump_instance_ttl(&env);
+
+        events::emit_admin_proposal_cancelled(&env, &caller, &pending);
         Ok(())
     }
 
