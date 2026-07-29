@@ -282,13 +282,6 @@ export default function FileDropZone({
     [processFiles],
   );
 
-  const onKeyDown = useCallback((e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      inputRef.current?.click();
-    }
-  }, []);
-
   const activeCount = files.filter((f) => !f.cancelled).length;
   const isFull = activeCount >= maxFiles;
 
@@ -306,82 +299,91 @@ export default function FileDropZone({
         }
       `}</style>
 
-      {/* Drop zone */}
+      {/*
+        Drop zone. The drag target is a plain wrapper and the activator is a real
+        <button>, so the control is a single tab stop with native Enter/Space
+        handling and no interactive element nested inside another (WCAG 4.1.2).
+        The file input is a sibling of the button for the same reason.
+      */}
       <div
-        id={dropZoneId}
-        role="button"
-        tabIndex={isFull ? -1 : 0}
-        aria-label={
-          isFull
-            ? `File upload zone — maximum ${maxFiles} files reached`
-            : `Drag and drop files here, or press Enter to open file picker. Accepted: ${Object.values(acceptedTypes).join(', ')}. Max size: ${formatBytes(maxSizeBytes)}.`
-        }
-        aria-disabled={isFull}
         onDragOver={isFull ? undefined : onDragOver}
         onDragLeave={onDragLeave}
         onDrop={isFull ? undefined : onDrop}
-        onClick={isFull ? undefined : () => inputRef.current?.click()}
-        onKeyDown={isFull ? undefined : onKeyDown}
-        className={`
-          relative flex flex-col items-center justify-center gap-4
-          border-2 border-dashed rounded-2xl p-10 cursor-pointer
-          transition-all duration-250 select-none
-          focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-950
-          ${isFull ? 'opacity-40 cursor-not-allowed' : ''}
-        `}
-        style={{
-          background: isDragging ? 'rgba(99,102,241,0.08)' : 'rgba(255,255,255,0.02)',
-          borderColor: isDragging ? '#6366f1' : 'rgba(255,255,255,0.12)',
-          animation: isDragging ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
-          boxShadow: isDragging
-            ? '0 0 20px rgba(99,102,241,0.4), inset 0 0 20px rgba(99,102,241,0.05)'
-            : 'none',
-          transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
-        }}
       >
-        {/* Upload icon */}
-        <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300"
+        <button
+          type="button"
+          id={dropZoneId}
+          disabled={isFull}
+          aria-label={
+            isFull
+              ? `File upload zone — maximum ${maxFiles} files reached`
+              : `Drag and drop files here, or press Enter to open file picker. Accepted: ${Object.values(acceptedTypes).join(', ')}. Max size: ${formatBytes(maxSizeBytes)}.`
+          }
+          onClick={() => inputRef.current?.click()}
+          className={`
+            relative flex w-full flex-col items-center justify-center gap-4
+            border-2 border-dashed rounded-2xl p-10 cursor-pointer
+            transition-all duration-250 select-none
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-950
+            ${isFull ? 'opacity-40 cursor-not-allowed' : ''}
+          `}
           style={{
-            background: isDragging ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)',
-            boxShadow: isDragging ? '0 0 16px rgba(99,102,241,0.5)' : 'none',
+            background: isDragging ? 'rgba(99,102,241,0.08)' : 'rgba(127,127,127,0.04)',
+            borderColor: isDragging ? '#6366f1' : 'rgba(127,127,127,0.35)',
+            animation: isDragging ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
+            boxShadow: isDragging
+              ? '0 0 20px rgba(99,102,241,0.4), inset 0 0 20px rgba(99,102,241,0.05)'
+              : 'none',
+            transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
           }}
         >
-          <Upload
-            size={24}
-            className="transition-colors duration-300"
-            style={{ color: isDragging ? '#818cf8' : '#6b7280' }}
-            aria-hidden="true"
-          />
-        </div>
-
-        <div className="text-center space-y-1">
-          <p className="text-sm font-medium" style={{ color: isDragging ? '#a5b4fc' : '#d1d5db' }}>
-            {isDragging ? 'Release to upload' : 'Drag & drop files here'}
-          </p>
-          <p className="text-xs text-gray-500">
-            or <span className="text-indigo-400 underline underline-offset-2">browse files</span>
-          </p>
-          <p className="text-[11px] text-gray-600 mt-1">
-            {Object.values(acceptedTypes).join(', ')} · max {formatBytes(maxSizeBytes)} · up to{' '}
-            {maxFiles} files
-          </p>
-        </div>
-
-        {/* File count indicator */}
-        {activeCount > 0 && (
-          <div
-            className="absolute top-3 right-3 text-[10px] font-medium px-2 py-0.5 rounded-full"
+          {/* Upload icon */}
+          <span
+            className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300"
             style={{
-              background: 'rgba(99,102,241,0.2)',
-              color: '#a5b4fc',
-              border: '1px solid rgba(99,102,241,0.3)',
+              background: isDragging ? 'rgba(99,102,241,0.2)' : 'rgba(127,127,127,0.1)',
+              boxShadow: isDragging ? '0 0 16px rgba(99,102,241,0.5)' : 'none',
             }}
-            aria-hidden="true"
           >
-            {activeCount}/{maxFiles}
-          </div>
-        )}
+            <Upload
+              size={24}
+              className="transition-colors duration-300"
+              style={{ color: isDragging ? '#4f46e5' : 'currentColor' }}
+              aria-hidden="true"
+            />
+          </span>
+
+          <span className="text-center space-y-1 block">
+            <span className="block text-sm font-medium text-gray-800 dark:text-gray-200">
+              {isDragging ? 'Release to upload' : 'Drag & drop files here'}
+            </span>
+            <span className="block text-xs text-gray-600 dark:text-gray-400">
+              or{' '}
+              <span className="text-indigo-700 dark:text-indigo-300 underline underline-offset-2">
+                browse files
+              </span>
+            </span>
+            <span className="block text-[11px] text-gray-600 dark:text-gray-400 mt-1">
+              {Object.values(acceptedTypes).join(', ')} · max {formatBytes(maxSizeBytes)} · up to{' '}
+              {maxFiles} files
+            </span>
+          </span>
+
+          {/* File count indicator */}
+          {activeCount > 0 && (
+            <span
+              className="absolute top-3 right-3 text-[10px] font-medium px-2 py-0.5 rounded-full"
+              style={{
+                background: 'rgba(99,102,241,0.2)',
+                color: 'currentColor',
+                border: '1px solid rgba(99,102,241,0.3)',
+              }}
+              aria-hidden="true"
+            >
+              {activeCount}/{maxFiles}
+            </span>
+          )}
+        </button>
 
         <input
           ref={inputRef}

@@ -25,14 +25,14 @@ import Link from 'next/link';
 import Badge from '../ui/Badge';
 import TruncatedAddress from '../ui/TruncatedAddress';
 import CurrencyAmount from '../ui/CurrencyAmount';
-import CopyButton from '../ui/CopyButton';
+// CopyButton is a named export, not a default one — importing it as default
+// made this component crash whenever an escrow had a transaction hash.
+import { CopyButton } from '../ui/CopyButton';
 import EscrowCardSkeleton from '../ui/EscrowCardSkeleton';
 import { useI18n } from '../../i18n/index.jsx';
-import { useRef } from 'react';
 
 export default function EscrowCard({ escrow, isLoading = false }) {
   const { t } = useI18n();
-  const cardRef = useRef(null);
   if (isLoading) return <EscrowCardSkeleton />;
   const { id, title, status, totalAmount, milestoneProgress, counterparty, role, transactionHash } =
     escrow;
@@ -40,31 +40,28 @@ export default function EscrowCard({ escrow, isLoading = false }) {
   const [done, total] = milestoneProgress?.split(' / ').map(Number) ?? [0, 0];
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
 
-  const handleKeyDown = (event) => {
-    // Activate on Enter or Space key
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      cardRef.current?.click();
-    }
-  };
-
+  /*
+    The whole card is clickable, but the card itself is not the control: the
+    heading holds a real <Link> whose ::after is stretched over the card. That
+    keeps native link semantics and a single tab stop while letting the copy
+    and address buttons inside the card stay independently reachable — a link
+    with role="button" wrapping other controls violated WCAG 4.1.2.
+  */
   return (
-    <Link
-      href={`/escrow/${id}`}
-      ref={cardRef}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      className="card block hover:border-gray-700 transition-colors group focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-950"
-      role="button"
-      aria-label={`View details for escrow: ${title}`}
-    >
+    <article className="card relative block transition-colors hover:border-gray-300 dark:hover:border-gray-700 group focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2 focus-within:ring-offset-white dark:focus-within:ring-offset-gray-950">
       {/* Header Row */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
-          <h3 className="text-white font-semibold truncate group-hover:text-indigo-400 transition-colors">
-            {title}
+          <h3 className="text-gray-900 dark:text-white font-semibold truncate group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors">
+            <Link
+              href={`/escrow/${id}`}
+              aria-label={`View details for escrow: ${title}`}
+              className="after:absolute after:inset-0 after:rounded-xl after:content-[''] focus:outline-none"
+            >
+              {title}
+            </Link>
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="relative z-10 w-fit text-xs text-gray-600 dark:text-gray-400 mt-0.5">
             {role === 'client' ? 'Freelancer:' : 'Client:'}{' '}
             <TruncatedAddress address={counterparty} />
             {role === 'client'
@@ -81,11 +78,19 @@ export default function EscrowCard({ escrow, isLoading = false }) {
 
       {/* Milestone Progress Bar */}
       <div>
-        <div className="flex justify-between text-xs text-gray-500 mb-1">
+        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
           <span>{t('escrow.fields.milestones')}</span>
           <span>{milestoneProgress}</span>
         </div>
-        <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden shadow-inner">
+        <div
+          className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner"
+          role="progressbar"
+          aria-label={`Milestone progress for ${title}`}
+          aria-valuenow={progressPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuetext={`${milestoneProgress ?? `${progressPct}%`} milestones complete`}
+        >
           <div
             className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${progressPct}%` }}
@@ -95,30 +100,33 @@ export default function EscrowCard({ escrow, isLoading = false }) {
 
       {/* Transaction Hash */}
       {transactionHash && (
-        <div className="mt-3 pt-3 border-t border-gray-800">
+        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-gray-500">TX:</span>
-            <span className="text-xs font-mono text-gray-400 truncate">
+            <span className="text-xs text-gray-600 dark:text-gray-400">TX:</span>
+            <span className="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
               {transactionHash.slice(0, 16)}...
             </span>
-            <div onClick={(e) => e.preventDefault()}>
-              <CopyButton text={transactionHash} label="Copy" />
-            </div>
+            {/* Raised above the card link's stretched ::after so it stays clickable. */}
+            <span className="relative z-10">
+              <CopyButton value={transactionHash} label="transaction hash" />
+            </span>
           </div>
         </div>
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-800">
-        <span className="text-xs text-gray-600">#{id}</span>
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+        <span className="text-xs text-gray-600 dark:text-gray-400">#{id}</span>
         <span
           className={`text-xs font-medium ${
-            role === 'client' ? 'text-blue-400' : 'text-emerald-400'
+            role === 'client'
+              ? 'text-blue-700 dark:text-blue-400'
+              : 'text-emerald-700 dark:text-emerald-400'
           }`}
         >
           You are {role === 'client' ? t('escrow.fields.client') : t('escrow.fields.freelancer')}
         </span>
       </div>
-    </Link>
+    </article>
   );
 }

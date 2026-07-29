@@ -88,75 +88,110 @@ export default function ProfileForm({ initialData = {}, address }) {
     }
   };
 
+  // Every control is explicitly bound to its <label> via htmlFor/id rather than
+  // relying on a placeholder for its accessible name (WCAG 1.3.1 / 4.1.2).
+  const fieldClass =
+    'w-full rounded-xl px-4 py-3 border bg-white border-gray-300 text-gray-900 placeholder-gray-500 ' +
+    'dark:bg-slate-800/50 dark:border-slate-700 dark:text-white dark:placeholder-gray-400 ' +
+    'focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl">
+        <div
+          role="alert"
+          className="bg-red-50 border border-red-300 text-red-800 dark:bg-red-500/10 dark:border-red-500/50 dark:text-red-300 p-4 rounded-xl"
+        >
           {error}
         </div>
       )}
 
       {/* Avatar */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">Profile Picture</label>
+        <label
+          htmlFor="profile-avatar"
+          className="block text-sm font-medium text-gray-800 dark:text-gray-300 mb-2"
+        >
+          Profile Picture
+        </label>
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-700">
+          <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden border border-gray-300 dark:border-slate-700">
             {initialData.avatarUrl ? (
               <img
                 src={initialData.avatarUrl}
-                alt="Avatar"
+                alt="Your current profile picture"
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-gray-500 text-sm">No img</span>
+              <span className="text-gray-600 dark:text-gray-400 text-sm">No img</span>
             )}
           </div>
           <input
+            id="profile-avatar"
             type="file"
             accept="image/*"
             onChange={handleFileChange}
-            className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-600/20 file:text-indigo-400 hover:file:bg-indigo-600/30"
+            className="text-sm text-gray-700 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-800 hover:file:bg-indigo-200 dark:file:bg-indigo-600/20 dark:file:text-indigo-300 dark:hover:file:bg-indigo-600/30"
           />
         </div>
       </div>
 
       {/* Display Name */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">Display Name</label>
+        <label
+          htmlFor="profile-display-name"
+          className="block text-sm font-medium text-gray-800 dark:text-gray-300 mb-2"
+        >
+          Display Name
+        </label>
         <input
+          id="profile-display-name"
           type="text"
           name="displayName"
           value={formData.displayName}
           onChange={handleInputChange}
-          className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+          className={fieldClass}
           placeholder="e.g. Satoshi Nakamoto"
         />
       </div>
 
       {/* Bio */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">Bio</label>
+        <label
+          htmlFor="profile-bio"
+          className="block text-sm font-medium text-gray-800 dark:text-gray-300 mb-2"
+        >
+          Bio
+        </label>
         <textarea
+          id="profile-bio"
           name="bio"
           value={formData.bio}
           onChange={handleInputChange}
           rows={4}
-          className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+          className={fieldClass}
           placeholder="Tell us about yourself..."
         />
       </div>
 
       {/* Preferences JSON */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">Preferences (JSON)</label>
+        <label
+          htmlFor="profile-preferences"
+          className="block text-sm font-medium text-gray-800 dark:text-gray-300 mb-2"
+        >
+          Preferences (JSON)
+        </label>
         <textarea
+          id="profile-preferences"
           name="preferences"
           value={formData.preferences}
           onChange={handleInputChange}
           rows={4}
-          className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+          aria-describedby="profile-preferences-hint"
+          className={`${fieldClass} font-mono text-sm`}
         />
-        <p className="mt-1 text-xs text-gray-500">
+        <p id="profile-preferences-hint" className="mt-1 text-xs text-gray-600 dark:text-gray-400">
           Edit notification settings and layout preferences here in valid JSON format.
         </p>
       </div>

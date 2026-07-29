@@ -33,6 +33,22 @@
     transition-timing-function: ease;
   }
 
+  /*
+    Honour the OS "reduce motion" setting. Transitions and animations are
+    decorative here, so they collapse to a near-instant change rather than
+    being removed outright, which keeps state changes perceivable.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
   body {
     @apply antialiased bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100;
   }
@@ -60,10 +76,10 @@
     width: 6px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-gray-900;
+    @apply bg-gray-200 dark:bg-gray-900;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-700 rounded-full;
+    @apply bg-gray-400 dark:bg-gray-700 rounded-full;
   }
 }
 
@@ -73,16 +89,37 @@
     @apply bg-gray-100 border border-gray-200 rounded-xl p-6 dark:bg-gray-900 dark:border-gray-800
            transition-[transform,box-shadow] duration-200 ease-out
            hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20
-           focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2 focus-within:ring-offset-gray-950;
+           focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2
+           focus-within:ring-offset-white dark:focus-within:ring-offset-gray-950;
   }
 
-  /* High-contrast focus indicators for accessibility */
+  /*
+    High-contrast focus indicators. The ring offset has to follow the theme,
+    otherwise the dark offset ring sat on the light page background and ate the
+    visible focus indicator in light mode (WCAG 2.4.7).
+  */
   button:focus-visible,
   a:focus-visible,
   input:focus-visible,
   textarea:focus-visible,
-  select:focus-visible {
-    @apply outline-none ring-2 ring-indigo-500 ring-offset-2 ring-offset-gray-950;
+  select:focus-visible,
+  [tabindex]:not([tabindex='-1']):focus-visible {
+    @apply outline-none ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
+  }
+
+  /*
+    Windows high-contrast / forced-colours mode strips the ring utilities, so
+    fall back to a real outline there.
+  */
+  @media (forced-colors: active) {
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible {
+      outline: 3px solid Highlight;
+      outline-offset: 2px;
+    }
   }
 
   /* Visually hidden content for screen readers */
@@ -98,18 +135,22 @@
     border-width: 0;
   }
 
-  /* Status badge styles — TODO (contributor): ensure these match EscrowStatus enum */
+  /*
+    Status badge styles — TODO (contributor): ensure these match EscrowStatus enum
+    The 20%-tint background resolves to a pale colour in light mode, so the text
+    tone has to darken with it to hold 4.5:1 (WCAG 1.4.3).
+  */
   .badge-active {
-    @apply bg-indigo-500/20 text-indigo-400 border border-indigo-500/30;
+    @apply bg-indigo-500/20 text-indigo-800 border border-indigo-500/30 dark:text-indigo-300;
   }
   .badge-completed {
-    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+    @apply bg-emerald-500/20 text-emerald-800 border border-emerald-500/30 dark:text-emerald-300;
   }
   .badge-disputed {
-    @apply bg-amber-500/20 text-amber-400 border border-amber-500/30;
+    @apply bg-amber-500/20 text-amber-800 border border-amber-500/30 dark:text-amber-300;
   }
   .badge-cancelled {
-    @apply bg-red-500/20 text-red-400 border border-red-500/30;
+    @apply bg-red-500/20 text-red-800 border border-red-500/30 dark:text-red-300;
   }
 }
 

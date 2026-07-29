@@ -9,11 +9,19 @@
 import Link from 'next/link';
 import { cn } from '../../lib/utils';
 
+// Each non-primary variant pairs light-mode and dark-mode tones: the original
+// values only cleared 4.5:1 against a dark surface (WCAG 1.4.3).
 const variantClasses = {
-  primary: 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500',
-  secondary: 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700',
-  danger: 'bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-800',
-  ghost: 'bg-transparent hover:bg-gray-800 text-gray-400 border border-transparent',
+  primary: 'bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-600',
+  secondary:
+    'bg-gray-200 hover:bg-gray-300 text-gray-900 border border-gray-300 ' +
+    'dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 dark:border-gray-700',
+  danger:
+    'bg-red-100 hover:bg-red-200 text-red-900 border border-red-300 ' +
+    'dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-200 dark:border-red-800',
+  ghost:
+    'bg-transparent hover:bg-gray-200 text-gray-800 border border-transparent ' +
+    'dark:hover:bg-gray-800 dark:text-gray-200',
 };
 
 const sizeClasses = {

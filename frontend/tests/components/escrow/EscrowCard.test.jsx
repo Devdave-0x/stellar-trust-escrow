@@ -46,9 +46,48 @@ describe('EscrowCard', () => {
 
   it('links to the escrow detail page', () => {
     renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
-    expect(screen.getByRole('button', { name: /view details for escrow/i })).toHaveAttribute(
+    // The card navigates, so it must expose link semantics — it was previously
+    // an <a role="button">, which misreported itself to assistive tech.
+    expect(screen.getByRole('link', { name: /view details for escrow/i })).toHaveAttribute(
       'href',
       '/escrow/1',
+    );
+  });
+
+  // ── Accessibility ──────────────────────────────────────────────────────────
+
+  it('does not expose the navigating card as a button', () => {
+    renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
+    expect(screen.queryByRole('button', { name: /view details for escrow/i })).toBeNull();
+  });
+
+  it('keeps the copy control outside the card link so it stays operable', () => {
+    renderWithAppProviders(
+      <EscrowCard escrow={{ ...baseEscrow, transactionHash: 'abcdef0123456789abcdef' }} />,
+    );
+
+    const cardLink = screen.getByRole('link', { name: /view details for escrow/i });
+    const copyButton = screen.getByRole('button', { name: /copy transaction hash/i });
+
+    expect(cardLink.contains(copyButton)).toBe(false);
+  });
+
+  it('exposes milestone progress as a labelled progressbar', () => {
+    renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
+
+    const bar = screen.getByRole('progressbar', { name: /milestone progress/i });
+    expect(bar).toHaveAttribute('aria-valuenow', '50');
+    expect(bar).toHaveAttribute('aria-valuemin', '0');
+    expect(bar).toHaveAttribute('aria-valuemax', '100');
+  });
+
+  it('titles the card with a heading that wraps the card link', () => {
+    renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
+
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('Logo Design Project');
+    expect(heading).toContainElement(
+      screen.getByRole('link', { name: /view details for escrow/i }),
     );
   });
 
