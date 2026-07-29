@@ -3,8 +3,9 @@
 /**
  * Admin Dashboard — Main Overview Page
  *
- * Shows platform statistics: total escrows, users, open disputes.
- * Links to sub-sections: users, disputes, audit logs, settings.
+ * Leads with the platform's headline metrics (a KPI row, hero figure first),
+ * then two charts derived from the same `/api/admin/stats` payload, then the
+ * links into the sub-sections.
  *
  * Access uses the shared frontend store, which persists the admin API key
  * for subsequent sessions and injects it into the `x-admin-api-key` header.
@@ -12,30 +13,87 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import {
+  AlertTriangle,
+  ClipboardList,
+  Flag,
+  RefreshCw,
+  Scale,
+  Settings,
+  ShieldCheck,
+  TerminalSquare,
+  Users,
+} from 'lucide-react';
 import { useAdminStore } from '../../store/app-store';
 import { buildAdminHeaders } from '../../store/admin';
+import MetricCard from '../../components/admin/MetricCard';
+import EscrowStatusChart from '../../components/admin/EscrowStatusChart';
+import DisputeResolutionChart from '../../components/admin/DisputeResolutionChart';
+import {
+  deriveMetrics,
+  formatCount,
+  formatPercent,
+  useChartTheme,
+} from '../../components/admin/chartTheme';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-function StatCard({ label, value, sub, icon, color }) {
+const NAV_ITEMS = [
+  {
+    href: '/admin/users',
+    label: 'User Management',
+    Icon: Users,
+    desc: 'View, suspend, or ban users',
+  },
+  {
+    href: '/admin/disputes',
+    label: 'Dispute Resolution',
+    Icon: Scale,
+    desc: 'Review and resolve open disputes',
+  },
+  {
+    href: '/admin/audit-logs',
+    label: 'Audit Logs',
+    Icon: ClipboardList,
+    desc: 'Full log of all admin actions',
+  },
+  {
+    href: '/admin/settings',
+    label: 'Platform Settings',
+    Icon: Settings,
+    desc: 'Manage fees and configuration',
+  },
+  {
+    href: '/admin/flags',
+    label: 'Feature Flags',
+    Icon: Flag,
+    desc: 'Roll features out gradually',
+  },
+  {
+    href: '/admin/console',
+    label: 'Operations Console',
+    Icon: TerminalSquare,
+    desc: 'Cache, secrets, and archival tools',
+  },
+];
+
+function MetricSkeleton() {
   return (
-    <div className={`card flex items-start gap-4`}>
-      <div className={`text-3xl ${color}`}>{icon}</div>
-      <div>
-        <p className="text-sm text-gray-400 uppercase tracking-wider">{label}</p>
-        <p className="text-3xl font-bold text-white mt-1">{value ?? '—'}</p>
-        {sub && <p className="text-xs text-gray-500 mt-1">{sub}</p>}
-      </div>
+    <div className="card flex flex-col gap-2" aria-hidden="true">
+      <div className="h-3 w-24 animate-pulse rounded bg-gray-300 dark:bg-gray-700" />
+      <div className="h-8 w-16 animate-pulse rounded bg-gray-300 dark:bg-gray-700" />
     </div>
   );
 }
 
 export default function AdminDashboard() {
   const { apiKey, setApiKey, clearApiKey } = useAdminStore();
+  const theme = useChartTheme();
   const [inputKey, setInputKey] = useState('');
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
     setInputKey(apiKey);
@@ -53,6 +111,7 @@ export default function AdminDashboard() {
         throw new Error(data.error || 'Failed to fetch stats');
       }
       setStats(await res.json());
+      setLastUpdated(new Date());
     } catch (err) {
       setError(err.message);
       setStats(null);
@@ -71,146 +130,246 @@ export default function AdminDashboard() {
     if (apiKey) fetchStats(apiKey);
   }, [apiKey, fetchStats]);
 
-  const navItems = [
-    {
-      href: '/admin/users',
-      label: 'User Management',
-      icon: '👥',
-      desc: 'View, suspend, or ban users',
-    },
-    {
-      href: '/admin/disputes',
-      label: 'Dispute Resolution',
-      icon: '⚖️',
-      desc: 'Review and resolve open disputes',
-    },
-    {
-      href: '/admin/audit-logs',
-      label: 'Audit Logs',
-      icon: '📋',
-      desc: 'Full log of all admin actions',
-    },
-    {
-      href: '/admin/settings',
-      label: 'Platform Settings',
-      icon: '⚙️',
-      desc: 'Manage fees and configuration',
-    },
-  ];
+  const metrics = deriveMetrics(stats);
+  // A refetch that already has data holds the previous render at reduced
+  // opacity — no skeleton flash, no layout jump.
+  const refreshing = loading && stats !== null;
+  const firstLoad = loading && stats === null;
+
+  const loadedSummary = [
+    `${formatCount(metrics.total)} escrows`,
+    `${formatCount(metrics.users)} users`,
+    `${formatCount(metrics.open)} open disputes`,
+  ].join(', ');
+  const statusMessage = loading
+    ? 'Loading platform statistics'
+    : stats
+      ? `Platform statistics updated. ${loadedSummary}.`
+      : '';
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-2xl">🛡️</span>
-          <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-3">
+            <ShieldCheck
+              aria-hidden="true"
+              className="h-7 w-7 text-indigo-600 dark:text-indigo-400"
+            />
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">Admin Dashboard</h1>
+          </div>
+          <p className="text-gray-600 dark:text-gray-400">
+            Platform management for StellarTrustEscrow administrators.
+          </p>
         </div>
-        <p className="text-gray-400">Platform management for StellarTrustEscrow administrators.</p>
+
+        {/* `aria-disabled` rather than `disabled` on Refresh: a disabled button
+            drops keyboard focus to the body mid-refresh. This keeps focus put. */}
+        {apiKey && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!loading) fetchStats(apiKey);
+            }}
+            aria-disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={`h-4 w-4 ${loading ? 'animate-spin motion-reduce:animate-none' : ''}`}
+            />
+            Refresh
+          </button>
+        )}
       </div>
 
       {/* API Key Login */}
       {!apiKey && (
-        <div className="card max-w-md mx-auto">
-          <h2 className="text-lg font-semibold text-white mb-4">Admin Authentication</h2>
+        <div className="card mx-auto max-w-md">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-50">
+            Admin Authentication
+          </h2>
           <form onSubmit={handleLogin} className="flex flex-col gap-3">
+            <label
+              htmlFor="admin-api-key"
+              className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Admin API key
+            </label>
             <input
               type="password"
               id="admin-api-key"
+              name="admin-api-key"
+              autoComplete="off"
               value={inputKey}
               onChange={(e) => setInputKey(e.target.value)}
               placeholder="Enter admin API key"
-              className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
               required
             />
             <button
               type="submit"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 rounded-lg transition-colors"
+              className="rounded-lg bg-indigo-600 py-2 font-semibold text-white transition-colors hover:bg-indigo-500"
             >
               Authenticate
             </button>
           </form>
-          {error && <p className="text-red-400 text-sm mt-3">⚠️ {error}</p>}
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">
+              {error}
+            </p>
+          )}
         </div>
       )}
 
       {/* Authenticated view */}
       {apiKey && (
         <>
-          {/* API Key bar */}
-          <div className="flex items-center justify-between mb-6 bg-gray-900 border border-gray-800 rounded-lg px-4 py-2">
-            <span className="text-sm text-gray-400">
-              Authenticated as <span className="text-green-400 font-medium">Administrator</span>
+          <div className="mb-6 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-100 px-4 py-2 dark:border-gray-800 dark:bg-gray-900">
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              Authenticated as{' '}
+              <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                Administrator
+              </span>
             </span>
             <button
+              type="button"
               onClick={() => {
                 clearApiKey();
                 setInputKey('');
                 setStats(null);
+                setLastUpdated(null);
               }}
-              className="text-xs text-red-400 hover:text-red-300 transition-colors"
+              className="text-xs text-red-700 transition-colors hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
             >
               Sign out
             </button>
           </div>
 
           {error && (
-            <div className="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 mb-6 text-red-400 text-sm">
-              ⚠️ {error}
+            <div
+              role="alert"
+              className="mb-6 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300"
+            >
+              <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* Stats grid */}
-          {loading ? (
-            <div className="text-gray-400 text-center py-12">Loading statistics…</div>
-          ) : (
-            stats && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                <StatCard
-                  label="Total Escrows"
-                  value={stats.escrows?.total}
-                  icon="📦"
-                  color="text-indigo-400"
-                  sub={`${stats.escrows?.active} active · ${stats.escrows?.completed} completed`}
-                />
-                <StatCard
-                  label="Registered Users"
-                  value={stats.users?.total}
-                  icon="👤"
-                  color="text-emerald-400"
-                />
-                <StatCard
-                  label="Disputed Escrows"
-                  value={stats.escrows?.disputed}
-                  icon="⚠️"
-                  color="text-amber-400"
-                  sub={`${stats.disputes?.open} open · ${stats.disputes?.resolved} resolved`}
-                />
+          {/* Politely announce load state without stealing focus. */}
+          <p className="sr-only" role="status" aria-live="polite">
+            {statusMessage}
+          </p>
+
+          <section aria-labelledby="platform-metrics-heading" className="mb-8">
+            <h2
+              id="platform-metrics-heading"
+              className="mb-3 text-lg font-semibold text-gray-900 dark:text-gray-50"
+            >
+              Platform metrics
+            </h2>
+
+            {firstLoad ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  // eslint-disable-next-line react/no-array-index-key
+                  <MetricSkeleton key={i} />
+                ))}
               </div>
-            )
+            ) : (
+              stats && (
+                <div
+                  className={`grid grid-cols-1 gap-4 transition-opacity duration-200 motion-reduce:transition-none sm:grid-cols-2 lg:grid-cols-4 ${
+                    refreshing ? 'opacity-50' : ''
+                  }`}
+                >
+                  <MetricCard
+                    hero
+                    label="Total escrows"
+                    value={formatCount(metrics.total)}
+                    sub={
+                      `${formatCount(metrics.active)} active · ` +
+                      `${formatCount(metrics.completed)} completed`
+                    }
+                    accent={theme.series.active}
+                  />
+                  <MetricCard
+                    label="Registered users"
+                    value={formatCount(metrics.users)}
+                    sub="Addresses with a reputation record"
+                  />
+                  <MetricCard
+                    label="Open disputes"
+                    value={formatCount(metrics.open)}
+                    sub={`${formatCount(metrics.resolved)} resolved to date`}
+                    accent={theme.series.disputed}
+                  />
+                  <MetricCard
+                    label="Completion rate"
+                    value={formatPercent(metrics.completionRate)}
+                    sub={
+                      metrics.total > 0
+                        ? `${formatCount(metrics.completed)} of ` +
+                          `${formatCount(metrics.total)} escrows`
+                        : 'No escrows yet'
+                    }
+                    accent={theme.series.completed}
+                  />
+                </div>
+              )
+            )}
+
+            {lastUpdated && (
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-500">
+                Last updated{' '}
+                <time dateTime={lastUpdated.toISOString()}>
+                  {lastUpdated.toLocaleTimeString('en-US')}
+                </time>
+              </p>
+            )}
+          </section>
+
+          {stats && (
+            <section aria-labelledby="platform-charts-heading" className="mb-8">
+              <h2 id="platform-charts-heading" className="sr-only">
+                Escrow and dispute charts
+              </h2>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <EscrowStatusChart metrics={metrics} busy={refreshing} />
+                <DisputeResolutionChart metrics={metrics} busy={refreshing} />
+              </div>
+            </section>
           )}
 
-          {/* Nav cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="card group hover:border-indigo-500/50 hover:bg-gray-800/60 transition-all duration-200 flex items-center gap-4 no-underline"
-              >
-                <span className="text-3xl">{item.icon}</span>
-                <div>
-                  <p className="text-white font-semibold group-hover:text-indigo-300 transition-colors">
-                    {item.label}
-                  </p>
-                  <p className="text-sm text-gray-500">{item.desc}</p>
-                </div>
-                <span className="ml-auto text-gray-600 group-hover:text-indigo-400 transition-colors">
-                  →
-                </span>
-              </Link>
-            ))}
-          </div>
+          <nav aria-labelledby="admin-sections-heading">
+            <h2
+              id="admin-sections-heading"
+              className="mb-3 text-lg font-semibold text-gray-900 dark:text-gray-50"
+            >
+              Admin sections
+            </h2>
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {NAV_ITEMS.map(({ href, label, Icon, desc }) => (
+                <li key={href}>
+                  <Link
+                    href={href}
+                    className="card group flex h-full items-center gap-4 no-underline transition-all duration-200 hover:border-indigo-500/50"
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className="h-6 w-6 shrink-0 text-indigo-600 dark:text-indigo-400"
+                    />
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 transition-colors group-hover:text-indigo-700 dark:text-gray-50 dark:group-hover:text-indigo-300">
+                        {label}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{desc}</p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
         </>
       )}
     </div>
