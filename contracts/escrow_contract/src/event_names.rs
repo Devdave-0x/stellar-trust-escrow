@@ -118,6 +118,7 @@ pub const PENDING_RELEASE_EXECUTED: Symbol = symbol_short!("pend_rel");
 // ── Platform fee ──────────────────────────────────────────────────────────────
 
 pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");
+pub const PLATFORM_FEE_INITIALISED: Symbol = symbol_short!("fee_init");
 
 // ── Deadline extension ────────────────────────────────────────────────────────
 

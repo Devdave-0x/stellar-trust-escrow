@@ -90,6 +90,10 @@ pub enum EcErr {
     TooManyParticipants = 84,
     /// Milestone title exceeds the maximum allowed length (64 bytes).
     MilestoneTitleTooLong = 85,
+    /// A milestone with this ID already exists in the escrow's milestone map.
+    DuplicateMilestoneId = 86,
+    /// The computed creation nonce for this escrow has already been used.
+    CreationNonceAlreadyUsed = 87,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
