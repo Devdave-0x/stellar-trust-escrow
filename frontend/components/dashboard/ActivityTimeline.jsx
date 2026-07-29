@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import Badge from '../ui/Badge';
 import CopyButton from '../ui/CopyButton';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -17,15 +18,15 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 function statusConfig(status) {
   switch (status) {
     case 'Active':
-      return { icon: '🔒', color: 'text-indigo-400', dot: 'bg-indigo-500', label: 'Active' };
+      return { variant: 'success', dot: 'bg-emerald-500', label: 'Active' };
     case 'Completed':
-      return { icon: '✅', color: 'text-emerald-400', dot: 'bg-emerald-500', label: 'Completed' };
+      return { variant: 'neutral', dot: 'bg-gray-500', label: 'Completed' };
     case 'Disputed':
-      return { icon: '⚠️', color: 'text-amber-400', dot: 'bg-amber-500', label: 'Disputed' };
+      return { variant: 'error', dot: 'bg-red-500', label: 'Disputed' };
     case 'Cancelled':
-      return { icon: '❌', color: 'text-red-400', dot: 'bg-red-500', label: 'Cancelled' };
+      return { variant: 'neutral', dot: 'bg-gray-500', label: 'Cancelled' };
     default:
-      return { icon: '📦', color: 'text-gray-400', dot: 'bg-gray-500', label: status };
+      return { variant: 'neutral', dot: 'bg-gray-500', label: status };
   }
 }
 
@@ -91,9 +92,9 @@ function TimelineItem({ escrow, address, isLast }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-white">Escrow #{escrow.id.toString()}</span>
           <CopyButton text={String(escrow.id)} label="Escrow ID" />
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color} bg-gray-800`}>
-            <span aria-hidden="true">{cfg.icon}</span> {cfg.label}
-          </span>
+          <Badge variant={cfg.variant} dot size="sm">
+            {cfg.label}
+          </Badge>
           <span className="text-xs text-gray-500 ml-auto" aria-live="polite">
             {timeAgo(escrow.updatedAt)}
           </span>
