@@ -18,10 +18,19 @@ use crate::event_names as ev;
 
 /// Emitted when the admin changes the platform fee rate.
 ///
-/// Schema: topic=(PLATFORM_FEE_UPDATED,), data=(old_bps, new_bps)
+/// Schema: topic=(PLATFORM_FEE_UPDATED,), data=(old_bps, new_bps, updated_at)
 pub fn emit_platform_fee_updated(env: &Env, old_bps: u32, new_bps: u32) {
+    let updated_at: u64 = env.ledger().timestamp();
     env.events()
-        .publish((ev::PLATFORM_FEE_UPDATED,), (old_bps, new_bps));
+        .publish((ev::PLATFORM_FEE_UPDATED,), (old_bps, new_bps, updated_at));
+}
+
+/// Emitted once during contract initialisation with the initial fee rate.
+///
+/// Schema: topic=(PLATFORM_FEE_INITIALISED,), data=(initial_bps,)
+pub fn emit_platform_fee_initialised(env: &Env, initial_bps: u32) {
+    env.events()
+        .publish((ev::PLATFORM_FEE_INITIALISED,), (initial_bps,));
 }
 
 /// Emitted by the canonical `create_milestone` entry point, carrying the

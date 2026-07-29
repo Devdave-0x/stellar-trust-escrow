@@ -339,6 +339,7 @@ impl ContractStorage {
         StorageManager::init_version(env);
         Self::bump_instance_ttl(env);
         events::emit_admin_initialized(env, admin);
+        events::emit_platform_fee_initialised(env, 0_u32);
         Ok(())
     }
 
@@ -499,6 +500,12 @@ impl ContractStorage {
         let key = PackedDataKey::Milestone(escrow_id, milestone.id);
         env.storage().persistent().set(&key, milestone);
         Self::bump_persistent_ttl(env, &key);
+    }
+
+    fn has_milestone(env: &Env, escrow_id: u64, milestone_id: u32) -> bool {
+        env.storage()
+            .persistent()
+            .has(&PackedDataKey::Milestone(escrow_id, milestone_id))
     }
 
     fn remove_milestone(env: &Env, escrow_id: u64, milestone_id: u32) {
@@ -1764,7 +1771,7 @@ impl EscrowContract {
         env.storage().instance().get(&DataKey::PlatformTreasury)
     }
 
-    /// Sets a flat platform fee in basis points (max 1000 = 10%). Admin only.
+    /// Sets a flat platform fee in basis points (max 500 = 5%). Admin only.
     pub fn set_platform_fee_bps(
         env: Env,
         caller: Address,
@@ -1772,7 +1779,7 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         ContractStorage::require_admin(&env, &caller)?;
         caller.require_auth();
-        if fee_bps > 1_000 {
+        if fee_bps > 500 {
             return Err(EscrowError::E19);
         }
         let old_bps: u32 = env
@@ -1784,9 +1791,7 @@ impl EscrowContract {
             .instance()
             .set(&DataKey::PlatformFeeBps, &fee_bps);
         ContractStorage::bump_instance_ttl(&env);
-        if old_bps != fee_bps {
-            events::emit_platform_fee_updated(&env, old_bps, fee_bps);
-        }
+        events::emit_platform_fee_updated(&env, old_bps, fee_bps);
         Ok(())
     }
 
@@ -2131,6 +2136,35 @@ impl EscrowContract {
         let arbiter_for_cap = arbiter.clone();
 
         let escrow_id = ContractStorage::next_escrow_id(&env)?;
+
+        // ── Creation nonce ────────────────────────────────────────────────────
+        // Derive a per-escrow nonce from the creator address bytes and the
+        // current ledger sequence so that a replayed create_escrow call with
+        // identical parameters is rejected rather than silently duplicated.
+        let ledger_seq_bytes = env.ledger().sequence().to_be_bytes();
+        let mut nonce_input = soroban_sdk::Bytes::new(&env);
+        nonce_input.append(&client.to_xdr(&env));
+        nonce_input.append(&soroban_sdk::Bytes::from_array(&env, &ledger_seq_bytes));
+        let creation_nonce: BytesN<32> = env.crypto().sha256(&nonce_input).into();
+
+        if env
+            .storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::UsedCreationNonce(creation_nonce.clone()))
+            .unwrap_or(false)
+        {
+            return Err(EscrowError::CreationNonceAlreadyUsed);
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::UsedCreationNonce(creation_nonce.clone()), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::EscrowCreationNonce(escrow_id), &creation_nonce);
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::UsedCreationNonce(creation_nonce.clone()));
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::EscrowCreationNonce(escrow_id));
+        // ─────────────────────────────────────────────────────────────────────
+
         let rent_reserve = ContractStorage::reserve_for_entries(1);
 
         // Transfer tokens — single cross-contract call
@@ -2485,6 +2519,12 @@ impl EscrowContract {
             .ok_or(EscrowError::E16)?;
         meta.allocated_amount = next_allocated;
         ContractStorage::charge_entry_rent(env, &mut meta, caller, 1)?;
+
+        // Guard: reject if a milestone already occupies this slot (prevents
+        // silent data corruption if milestone_count ever drifts out of sync).
+        if ContractStorage::has_milestone(env, escrow_id, milestone_id) {
+            return Err(EscrowError::DuplicateMilestoneId);
+        }
 
         ContractStorage::save_milestone(
             env,
