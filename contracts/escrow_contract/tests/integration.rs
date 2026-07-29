@@ -396,3 +396,139 @@ fn test_reject_and_resubmit_milestone() {
     let ms2 = t.client.get_milestone(&escrow_id, &m0);
     assert_eq!(ms2.status, MS_SUBMITTED);
 }
+
+// ── Test 9: Batch milestone lifecycle ─────────────────────────────────────────
+//
+// Exercises the batched counterparts of add/approve together in one escrow:
+// `batch_add_milestones` → individual `submit_milestone` calls →
+// `batch_approve_milestones`. No timelock is configured, so the batch
+// approval itself performs the single batched release and completes the
+// escrow (`batch_release_funds` is the separate admin-only path for when a
+// timelock defers release past the approval step — see
+// `batch_approve_release_e2e_tests`).
+
+#[test]
+fn test_batch_add_approve_release_full_lifecycle() {
+    let t = setup();
+    let client_addr = Address::generate(&t.env);
+    let freelancer = Address::generate(&t.env);
+
+    let amounts = [150_i128, 250_i128, 100_i128];
+    let total: i128 = amounts.iter().sum();
+    mint_for_escrow(
+        &t.env,
+        &t.admin,
+        &t.token_id,
+        &client_addr,
+        total,
+        amounts.len() as i128,
+    );
+
+    let escrow_id = t.client.create_escrow(
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &total,
+        &hash(&t.env, 70),
+        &None,
+        &None,
+        &None,
+        &None,
+        &no_multisig(&t.env),
+    );
+
+    let mut titles: soroban_sdk::Vec<String> = soroban_sdk::Vec::new(&t.env);
+    let mut description_hashes: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&t.env);
+    let mut amounts_vec: soroban_sdk::Vec<i128> = soroban_sdk::Vec::new(&t.env);
+    for (i, &amt) in amounts.iter().enumerate() {
+        titles.push_back(String::from_str(&t.env, "Batch milestone"));
+        description_hashes.push_back(hash(&t.env, 71 + i as u8));
+        amounts_vec.push_back(amt);
+    }
+
+    let first_id = t
+        .client
+        .batch_add_milestones(&client_addr, &escrow_id, &titles, &description_hashes, &amounts_vec);
+
+    let mut milestone_ids: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&t.env);
+    for i in 0..amounts.len() as u32 {
+        milestone_ids.push_back(first_id + i);
+    }
+
+    for i in 0..milestone_ids.len() {
+        t.client
+            .submit_milestone(&freelancer, &escrow_id, &milestone_ids.get(i).unwrap());
+    }
+
+    let released = t
+        .client
+        .batch_approve_milestones(&client_addr, &escrow_id, &milestone_ids);
+    assert_eq!(
+        released, total,
+        "batch_approve_milestones must release the full total immediately (no timelock configured)"
+    );
+
+    let state = t.client.get_escrow(&escrow_id);
+    assert_eq!(state.status, EscrowStatus::Completed);
+    assert_eq!(state.remaining_balance, 0);
+    assert_eq!(balance(&t.env, &t.token_id, &freelancer), total);
+}
+
+// ── Test 10: Additional buyer-signer approval lifecycle ───────────────────────
+//
+// `create_escrow_with_buyer_signers` grants approval rights to addresses
+// beyond the client. With no explicit multisig threshold configured (the
+// default), any listed buyer signer — not just the client — can approve a
+// milestone and trigger release end-to-end.
+
+#[test]
+fn test_additional_buyer_signer_can_approve_and_release() {
+    let t = setup();
+    let client_addr = Address::generate(&t.env);
+    let freelancer = Address::generate(&t.env);
+    let co_signer_a = Address::generate(&t.env);
+    let co_signer_b = Address::generate(&t.env);
+
+    let total = 500_i128;
+    mint_for_escrow(&t.env, &t.admin, &t.token_id, &client_addr, total, 1);
+
+    let mut extra_signers: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&t.env);
+    extra_signers.push_back(co_signer_a.clone());
+    extra_signers.push_back(co_signer_b.clone());
+
+    let escrow_id = t.client.create_escrow_with_buyer_signers(
+        &client_addr,
+        &freelancer,
+        &t.token_id,
+        &total,
+        &hash(&t.env, 80),
+        &None,
+        &None,
+        &None,
+        &extra_signers,
+    );
+
+    let state = t.client.get_escrow(&escrow_id);
+    assert!(state.buyer_signers.contains(&client_addr));
+    assert!(state.buyer_signers.contains(&co_signer_a));
+    assert!(state.buyer_signers.contains(&co_signer_b));
+
+    let m0 = t.client.add_milestone(
+        &client_addr,
+        &escrow_id,
+        &String::from_str(&t.env, "Milestone"),
+        &hash(&t.env, 81),
+        &total,
+    );
+    t.client.submit_milestone(&freelancer, &escrow_id, &m0);
+
+    // No multisig threshold was configured on this escrow (the default
+    // `MultisigConfig` from `create_escrow_with_buyer_signers` has
+    // threshold 0), so a non-client buyer signer's approval alone releases
+    // funds immediately — verifying the plain buyer_signers path end-to-end.
+    t.client.approve_milestone(&co_signer_a, &escrow_id, &m0);
+
+    let final_state = t.client.get_escrow(&escrow_id);
+    assert_eq!(final_state.status, EscrowStatus::Completed);
+    assert_eq!(balance(&t.env, &t.token_id, &freelancer), total);
+}
