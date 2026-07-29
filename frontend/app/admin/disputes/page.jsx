@@ -12,6 +12,7 @@ import { useAdminStore } from '../../../store/app-store';
 import { adminFetch } from '../../../store/admin';
 import EmptyState from '../../../components/ui/EmptyState';
 import Badge from '../../../components/ui/Badge';
+import CharCountTextarea from '../../../components/ui/CharCountTextarea';
 
 function ResolveModal({ dispute, onClose, onConfirm }) {
   const [clientAmount, setClientAmount] = useState('');
@@ -81,13 +82,15 @@ function ResolveModal({ dispute, onClose, onConfirm }) {
         <label htmlFor={`resolve-notes-${dispute.id}`} className="sr-only">
           Resolution notes
         </label>
-        <textarea
+        <CharCountTextarea
           id={`resolve-notes-${dispute.id}`}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Resolution notes (optional)…"
           rows={2}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500 mb-4 resize-none"
+          maxLength={2000}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none"
+          wrapperClassName="mb-4"
         />
 
         <div className="flex gap-2 justify-end">

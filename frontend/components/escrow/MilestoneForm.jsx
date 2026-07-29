@@ -18,6 +18,7 @@
 'use client';
 
 import { useState } from 'react';
+import CharCountTextarea from '../ui/CharCountTextarea';
 
 export default function MilestoneForm({
   initialValues = {},
@@ -90,13 +91,14 @@ export default function MilestoneForm({
         <label htmlFor="milestone-description" className="block text-sm font-medium text-white mb-1">
           Description
         </label>
-        <textarea
+        <CharCountTextarea
           id="milestone-description"
           rows={3}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Describe what will be delivered for this milestone…"
           disabled={loading}
+          maxLength={1000}
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
                      text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500
                      resize-none transition-colors disabled:opacity-50"
