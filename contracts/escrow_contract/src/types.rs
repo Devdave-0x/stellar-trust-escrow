@@ -883,4 +883,27 @@ pub enum FeatDataKey {
     /// can calculate inactivity without replaying the full event log.
     /// key: u64 (escrow_id), value: u64 (Unix timestamp from env.ledger().timestamp())
     LastActivityTimestamp(u64),
+
+    // ── Issue 1: Pending milestone counts ────────────────────────────────────
+
+    /// Number of milestones in Pending state per escrow — key: u64, value: u32
+    ///
+    /// Incremented by `add_milestone` / `create_milestone` (new milestones start Pending).
+    /// Decremented by `approve_milestone` and `reject_milestone` (both transition out of Pending).
+    PendingMilestoneCount(u64),
+
+    // ── Issue 2: Admin transfer timelock ─────────────────────────────────────
+
+    /// The ledger sequence number after which `accept_admin` becomes callable.
+    /// Set by `propose_admin`; cleared on `accept_admin` or `cancel_admin_proposal`.
+    /// value: u32
+    AdminTransferValidAfterLedger,
+
+    // ── Issue 3: Dispute counters ─────────────────────────────────────────────
+
+    /// Cumulative count of all `raise_dispute` calls across every escrow — value: u32
+    TotalDisputeCount,
+
+    /// Per-escrow count of `raise_dispute` calls — key: u64 (escrow_id), value: u32
+    DisputeCountByEscrow(u64),
 }
