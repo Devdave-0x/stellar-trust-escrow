@@ -68,58 +68,60 @@ pub fn collect_fee(
         return Err(EscrowError::E9);
     }
 
-    // Check if fee already collected
-    let mut snapshot: EscrowFeeSnapshot = env
-        .storage()
-        .persistent()
-        .get(&DataKey::PlatformFeeSnapshot(escrow_id))
-        .unwrap_or(EscrowFeeSnapshot {
-            fee_bps: 0,
-            fee_amount: 0,
-            collected: false,
-        });
+    ContractStorage::with_reentrancy_guard(env, || {
+        // Check if fee already collected
+        let mut snapshot: EscrowFeeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PlatformFeeSnapshot(escrow_id))
+            .unwrap_or(EscrowFeeSnapshot {
+                fee_bps: 0,
+                fee_amount: 0,
+                collected: false,
+            });
 
-    if snapshot.collected {
-        return Err(EscrowError::E9);
-    }
+        if snapshot.collected {
+            return Err(EscrowError::E9);
+        }
 
-    // Calculate fee if not pre-computed
-    if snapshot.fee_amount == 0 {
-        let (bps, amount) = calculate_fee(env, meta.total_amount);
-        snapshot.fee_bps = bps;
-        snapshot.fee_amount = amount;
-    }
+        // Calculate fee if not pre-computed
+        if snapshot.fee_amount == 0 {
+            let (bps, amount) = calculate_fee(env, meta.total_amount);
+            snapshot.fee_bps = bps;
+            snapshot.fee_amount = amount;
+        }
 
-    if snapshot.fee_amount == 0 {
+        if snapshot.fee_amount == 0 {
+            snapshot.collected = true;
+            env.storage()
+                .persistent()
+                .set(&DataKey::PlatformFeeSnapshot(escrow_id), &snapshot);
+            return Ok(0);
+        }
+
+        // Get treasury
+        let treasury: soroban_sdk::Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlatformTreasury)
+            .ok_or(EscrowError::E2)?;
+
+        // Transfer fee to treasury
+        token::Client::new(env, &meta.token).transfer(
+            &env.current_contract_address(),
+            &treasury,
+            &snapshot.fee_amount,
+        );
+
         snapshot.collected = true;
         env.storage()
             .persistent()
             .set(&DataKey::PlatformFeeSnapshot(escrow_id), &snapshot);
-        return Ok(0);
-    }
 
-    // Get treasury
-    let treasury: soroban_sdk::Address = env
-        .storage()
-        .instance()
-        .get(&DataKey::PlatformTreasury)
-        .ok_or(EscrowError::E2)?;
+        events::emit_referral_payout(env, escrow_id, &treasury, snapshot.fee_amount);
 
-    // Transfer fee to treasury
-    token::Client::new(env, &meta.token).transfer(
-        &env.current_contract_address(),
-        &treasury,
-        &snapshot.fee_amount,
-    );
-
-    snapshot.collected = true;
-    env.storage()
-        .persistent()
-        .set(&DataKey::PlatformFeeSnapshot(escrow_id), &snapshot);
-
-    events::emit_referral_payout(env, escrow_id, &treasury, snapshot.fee_amount);
-
-    Ok(snapshot.fee_amount)
+        Ok(snapshot.fee_amount)
+    })
 }
 
 #[cfg(test)]
