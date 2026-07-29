@@ -861,6 +861,10 @@ pub enum DataKey {
     DisputeCooldownSecs,
     /// Monotonically increasing counter incremented on every upgrade — value: u32
     MigrationVersion,
+    /// Used creation nonces — key: BytesN<32>, value: bool
+    UsedCreationNonce(BytesN<32>),
+    /// Creation nonce stored per escrow for retrieval — key: u64, value: BytesN<32>
+    EscrowCreationNonce(u64),
 }
 
 /// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.
