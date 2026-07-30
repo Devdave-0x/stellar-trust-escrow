@@ -87,7 +87,7 @@ mod contract_version_tests {
         let attacker = Address::generate(&env);
 
         let result = client.try_upgrade(&attacker, &wasm_hash(&env, 3));
-        assert!(result.is_err(), "non-admin upgrade must be rejected");
+        assert_eq!(result, Err(Ok(EscrowError::E87)));
 
         let info = client.get_contract_version();
         assert_eq!(

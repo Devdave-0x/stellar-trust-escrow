@@ -53,6 +53,8 @@
 #![allow(clippy::too_many_arguments)]
 
 mod admin_transfer_tests;
+mod arbiter_allowlist;
+mod arbiter_allowlist_tests;
 mod arbiter_reputation_tests;
 mod arbiter_validation_tests;
 mod batch_add_milestones_cap_tests;
@@ -61,6 +63,8 @@ mod bridge;
 mod bridge_tests;
 mod contract_version_tests;
 mod creation_validation_tests;
+mod dispute_evidence;
+mod dispute_evidence_tests;
 mod errors;
 mod escrow_template_tests;
 mod event_names;
@@ -2091,6 +2095,13 @@ meta.released_count = meta.released_count.checked_add(1).ok_or(EscrowError::E20)
                 && arbiter_reputation.total_score < min_reputation
             {
                 return Err(EscrowError::E3);
+            }
+        }
+
+        // Validate arbiter is on the allowlist if specified
+        if let Some(ref arbiter_addr) = arbiter {
+            if !crate::arbiter_allowlist::is_arbiter_allowed(&env, arbiter_addr.clone()) {
+                return Err(EscrowError::E90);
             }
         }
 
@@ -4170,7 +4181,7 @@ meta.status = EscrowStatus::Disputed;
                 .remaining_balance
                 .checked_sub(client_amount)
                 .ok_or(EscrowError::E20)?;
-            let (client_payout, freelancer_payout, _) =
+            let (client_payout, freelancer_payout, _collected_fee) =
                 Self::settle_completion_fee_from_split_payout(
                     &env,
                     escrow_id,
@@ -4178,6 +4189,27 @@ meta.status = EscrowStatus::Disputed;
                     client_amount,
                     freelancer_amount,
                 )?;
+
+            if meta.arbiter_fee_bps > 0 {
+                if let Some(ref arbiter_addr) = meta.arbiter {
+                    let arbiter_fee = meta
+                        .total_amount
+                        .checked_mul(i128::from(meta.arbiter_fee_bps))
+                        .ok_or(EscrowError::E20)?
+                        / 10_000;
+                    let platform_fee = _collected_fee;
+                    if arbiter_fee.checked_add(platform_fee).ok_or(EscrowError::E20)?
+                        > meta.total_amount
+                    {
+                        return Err(EscrowError::E89);
+                    }
+                    if arbiter_fee > 0 {
+                        let token = token::Client::new(&env, &meta.token);
+                        let contract_addr = env.current_contract_address();
+                        token.transfer(&contract_addr, arbiter_addr, &arbiter_fee);
+                    }
+                }
+            }
 
             let token = token::Client::new(&env, &meta.token);
             let contract_addr = env.current_contract_address();
@@ -4238,6 +4270,14 @@ meta.status = EscrowStatus::Disputed;
                 ContractStorage::require_admin(&env, &caller)?;
             }
 
+            if is_arbiter {
+                if let Some(ref arbiter_addr) = meta.arbiter {
+                    if !crate::arbiter_allowlist::is_arbiter_allowed(&env, arbiter_addr.clone()) {
+                        return Err(EscrowError::E90);
+                    }
+                }
+            }
+
             if meta.status != EscrowStatus::Disputed {
                 return Err(EscrowError::E10);
             }
@@ -4245,7 +4285,7 @@ meta.status = EscrowStatus::Disputed;
                 return Err(EscrowError::E20);
             }
 
-            let (client_payout, freelancer_payout, _) =
+            let (client_payout, freelancer_payout, _collected_fee) =
                 Self::settle_completion_fee_from_split_payout(
                     &env,
                     escrow_id,
@@ -4253,6 +4293,27 @@ meta.status = EscrowStatus::Disputed;
                     client_amount,
                     freelancer_amount,
                 )?;
+
+            if meta.arbiter_fee_bps > 0 {
+                if let Some(ref arbiter_addr) = meta.arbiter {
+                    let arbiter_fee = meta
+                        .total_amount
+                        .checked_mul(i128::from(meta.arbiter_fee_bps))
+                        .ok_or(EscrowError::E20)?
+                        / 10_000;
+                    let platform_fee = _collected_fee;
+                    if arbiter_fee.checked_add(platform_fee).ok_or(EscrowError::E20)?
+                        > meta.total_amount
+                    {
+                        return Err(EscrowError::E89);
+                    }
+                    if arbiter_fee > 0 {
+                        let token = token::Client::new(&env, &meta.token);
+                        let contract_addr = env.current_contract_address();
+                        token.transfer(&contract_addr, arbiter_addr, &arbiter_fee);
+                    }
+                }
+            }
 
             let token = token::Client::new(&env, &meta.token);
             let contract_addr = env.current_contract_address();
@@ -4468,6 +4529,22 @@ if client_payout > 0 {
             let client_amount = (total * i128::from(payload.client_bps)) / 10_000;
             let freelancer_amount = total - client_amount;
 
+            // Collect arbiter fee if configured
+            if meta.arbiter_fee_bps > 0 {
+                if let Some(ref arbiter_addr) = meta.arbiter {
+                    let arbiter_fee = meta
+                        .total_amount
+                        .checked_mul(i128::from(meta.arbiter_fee_bps))
+                        .ok_or(EscrowError::E20)?
+                        / 10_000;
+                    if arbiter_fee > 0 {
+                        let token = token::Client::new(&env, &meta.token);
+                        let contract_addr = env.current_contract_address();
+                        token.transfer(&contract_addr, arbiter_addr, &arbiter_fee);
+                    }
+                }
+            }
+
             let token = token::Client::new(&env, &meta.token);
             let contract_addr = env.current_contract_address();
 
@@ -4541,9 +4618,17 @@ meta.remaining_balance = 0;
         env: Env,
         caller: Address,
         new_wasm_hash: BytesN<32>,
-    ) -> Result<(), EscrowError> {
+    ) -> Result<u32, EscrowError> {
         caller.require_auth();
-        ContractStorage::require_admin(&env, &caller)?;
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(EscrowError::E2)?;
+        if caller != admin {
+            return Err(EscrowError::E87);
+        }
 
         // Run storage migration before upgrading contract code
         // This ensures data is in the correct format for the new version
@@ -4572,7 +4657,7 @@ meta.remaining_balance = 0;
         events::emit_contract_version_upgraded(&env, old_version, version_info.version);
 
         env.deployer().update_current_contract_wasm(new_wasm_hash);
-        Ok(())
+        Ok(version_info.version)
     }
 
     /// Returns the current contract code version and upgrade history metadata.
@@ -4583,6 +4668,151 @@ meta.remaining_balance = 0;
             .persistent()
             .get(&DataKey::ContractVersion)
             .ok_or(EscrowError::E2)
+    }
+
+    // ── Dispute Evidence ──────────────────────────────────────────────
+
+    /// Add evidence hash to a disputed escrow.
+    ///
+    /// The caller must be the client or freelancer of the escrow.
+    /// The escrow must be in Disputed status.
+    pub fn add_evidence(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        evidence_hash: BytesN<32>,
+        description: String,
+    ) -> Result<u32, EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+
+        if meta.status != EscrowStatus::Disputed {
+            return Err(EscrowError::E82);
+        }
+
+        if caller != meta.client && caller != meta.freelancer {
+            return Err(EscrowError::E83);
+        }
+
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        if evidence_hash == zero_hash {
+            return Err(EscrowError::E80);
+        }
+
+        let desc_len = description.len();
+        if desc_len == 0 {
+            return Err(EscrowError::E80);
+        }
+        if desc_len > MAX_STRING_LEN as usize {
+            return Err(EscrowError::E81);
+        }
+
+        let mut evidences: Vec<DisputeEvidence> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::DisputeEvidences(escrow_id))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let evidence = DisputeEvidence {
+            escrow_id,
+            submitted_by: caller.clone(),
+            evidence_hash,
+            submitted_at: env.ledger().timestamp(),
+            description,
+        };
+
+        evidences.push_back(evidence);
+        env.storage()
+            .persistent()
+            .set(&DataKey::DisputeEvidences(escrow_id), &evidences);
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::DisputeEvidences(escrow_id));
+
+        Ok(evidences.len())
+    }
+
+    /// Get all evidence entries for a disputed escrow.
+    pub fn get_evidence(env: Env, escrow_id: u64) -> Result<Vec<DisputeEvidence>, EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+
+        let evidences: Vec<DisputeEvidence> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::DisputeEvidences(escrow_id))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        Ok(evidences)
+    }
+
+    // ── Arbiter Allowlist ──────────────────────────────────────────────
+
+    /// Add an arbiter address to the allowlist. Admin only.
+    pub fn add_to_arbiter_allowlist(
+        env: Env,
+        caller: Address,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        let key = DataKey::ArbiterAllowlist(arbiter.clone());
+        if env.storage().persistent().has(&key) {
+            return Err(EscrowError::E91);
+        }
+
+        env.storage().persistent().set(&key, &true);
+        ContractStorage::bump_persistent_ttl(&env, &key);
+        Ok(())
+    }
+
+    /// Remove an arbiter address from the allowlist. Admin only.
+    pub fn remove_from_arbiter_allowlist(
+        env: Env,
+        caller: Address,
+        arbiter: Address,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        let key = DataKey::ArbiterAllowlist(arbiter.clone());
+        if !env.storage().persistent().has(&key) {
+            return Err(EscrowError::E92);
+        }
+
+        env.storage().persistent().remove(&key);
+        Ok(())
+    }
+
+    /// Check if an arbiter address is on the allowlist.
+    pub fn is_arbiter_allowed(env: Env, arbiter: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::ArbiterAllowlist(arbiter))
+            .unwrap_or(false)
+    }
+
+    // ── Arbiter Fee Configuration ──────────────────────────────────────
+
+    /// Set the arbiter fee basis points for an escrow. Admin only.
+    /// Must be between 0 and 10000 inclusive.
+    pub fn set_arbiter_fee_bps(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        fee_bps: u32,
+    ) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        if fee_bps > 10_000 {
+            return Err(EscrowError::E88);
+        }
+
+        let mut meta = ContractStorage::load_escrow_meta(&env, escrow_id)?;
+        meta.arbiter_fee_bps = fee_bps;
+        ContractStorage::save_escrow_meta(&env, &meta);
+        Ok(())
     }
 
     // ── Emergency Pause ──────────────────────────────────────────────────────
@@ -5504,6 +5734,14 @@ meta.status = EscrowStatus::Cancelled;
             let is_arbiter = meta.arbiter.as_ref().is_some_and(|a| *a == caller);
             if !is_arbiter {
                 ContractStorage::require_admin(&env, &caller)?;
+            }
+
+            if is_arbiter {
+                if let Some(ref arbiter_addr) = meta.arbiter {
+                    if !crate::arbiter_allowlist::is_arbiter_allowed(&env, arbiter_addr.clone()) {
+                        return Err(EscrowError::E90);
+                    }
+                }
             }
 
             if !slash_record.disputed {
