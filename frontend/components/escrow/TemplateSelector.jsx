@@ -215,68 +215,81 @@ export default function TemplateSelector({
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-4">
         <div className="space-y-3 max-h-[440px] overflow-y-auto pr-1">
           {filteredTemplates.length === 0 && (
-            <div className="rounded-xl border border-dashed border-gray-700 p-4 text-sm text-gray-500">
+            <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-4 text-sm text-gray-600 dark:text-gray-400">
               No templates in this category yet.
             </div>
           )}
 
-          {filteredTemplates.map((template) => {
-            const isSelected = selectedTemplateId === template.id;
-            const isFavorite = favoriteIds.includes(template.id);
+          {/*
+            Each row is a list item, not a control. The template name is a real
+            <button> whose ::after is stretched across the row so the whole card
+            stays clickable, which keeps the favourite toggle a sibling control
+            rather than a button nested inside another button (WCAG 4.1.2).
+          */}
+          <ul className="space-y-3" aria-label="Available templates">
+            {filteredTemplates.map((template) => {
+              const isSelected = selectedTemplateId === template.id;
+              const isFavorite = favoriteIds.includes(template.id);
 
-            return (
-              <div
-                key={template.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`Select template: ${template.name}`}
-                onClick={() => setSelectedTemplateId(template.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    setSelectedTemplateId(template.id);
-                  }
-                }}
-                className={`w-full text-left rounded-xl border p-4 transition-colors cursor-pointer ${
-                  isSelected
-                    ? 'border-indigo-500/50 bg-indigo-500/10'
-                    : 'border-gray-800 bg-gray-900 hover:border-gray-700'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-white">{template.name}</p>
-                    <p className="text-xs text-gray-400">{template.description}</p>
+              return (
+                <li
+                  key={template.id}
+                  className={`relative w-full text-left rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-indigo-500 ${
+                    isSelected
+                      ? 'border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10'
+                      : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        <button
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => setSelectedTemplateId(template.id)}
+                          className="text-left after:absolute after:inset-0 after:rounded-xl after:content-[''] focus:outline-none"
+                        >
+                          {template.name}
+                        </button>
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {template.description}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={
+                        isFavorite
+                          ? `Remove ${template.name} from favorites`
+                          : `Save ${template.name} as favorite`
+                      }
+                      aria-pressed={isFavorite}
+                      onClick={() => toggleFavorite(template.id)}
+                      className={`relative z-10 text-lg leading-none transition-colors ${
+                        isFavorite
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-300'
+                      }`}
+                    >
+                      <span aria-hidden="true">★</span>
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    aria-label={isFavorite ? 'Remove from favorites' : 'Save as favorite'}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleFavorite(template.id);
-                    }}
-                    className={`text-lg leading-none transition-colors ${
-                      isFavorite ? 'text-amber-400' : 'text-gray-600 hover:text-amber-300'
-                    }`}
-                  >
-                    ★
-                  </button>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <span className="px-2 py-1 rounded-full bg-gray-800 text-gray-300 border border-gray-700">
-                    {template.category}
-                  </span>
-                  <span className="px-2 py-1 rounded-full bg-gray-800 text-gray-300 border border-gray-700">
-                    {template.milestones.length} milestones
-                  </span>
-                  <span className="px-2 py-1 rounded-full bg-gray-800 text-gray-300 border border-gray-700">
-                    {template.totalAmount || '—'}{' '}
-                    {String(template.tokenAddress || 'USDC').toUpperCase()}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">
+                      {template.category}
+                    </span>
+                    <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">
+                      {template.milestones.length} milestones
+                    </span>
+                    <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">
+                      {template.totalAmount || '—'}{' '}
+                      {String(template.tokenAddress || 'USDC').toUpperCase()}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">

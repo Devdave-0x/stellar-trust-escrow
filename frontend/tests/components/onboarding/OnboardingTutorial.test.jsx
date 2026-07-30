@@ -23,10 +23,13 @@ describe('OnboardingTutorial', () => {
     expect(dialog).toHaveAttribute('aria-describedby', 'onboarding-body');
   });
 
-  it('shows a step indicator with tablist role', () => {
+  it('shows a step indicator announced through a live region', () => {
     render(<OnboardingTutorial isOpen={true} onClose={jest.fn()} />);
-    expect(screen.getByRole('tablist', { name: 'Onboarding progress' })).toBeInTheDocument();
-    expect(screen.getByText(`Step 1 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument();
+    // The dots used to be role="tab" inside a role="tablist", but they are not
+    // focusable and control no tabpanel, so that ARIA was invalid. They are now
+    // decorative and the step counter carries the information instead.
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(`Step 1 of ${ONBOARDING_STEPS.length}`);
   });
 
   it('advances to the next step when Next is clicked', () => {

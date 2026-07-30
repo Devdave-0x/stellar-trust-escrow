@@ -52,14 +52,16 @@ function FileTypeIcon({ mimeType }) {
 }
 
 /** Animated progress bar for an individual file item. */
-function ProgressBar({ value }) {
+function ProgressBar({ value, label }) {
   return (
     <div
-      className="h-1 bg-gray-700 rounded-full overflow-hidden mt-1.5"
+      className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mt-1.5"
       role="progressbar"
+      aria-label={label}
       aria-valuenow={Math.round(value)}
       aria-valuemin={0}
       aria-valuemax={100}
+      aria-valuetext={`${Math.round(value)}%`}
     >
       <div
         className="h-full bg-indigo-500 rounded-full transition-all duration-200 ease-out"
@@ -204,13 +206,6 @@ export default function MultiUploader({ onUpload, maxFiles = 10, maxTotalMB = 50
     setIsDragging(false);
     processFiles([...e.dataTransfer.files]);
   };
-  const onKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      inputRef.current?.click();
-    }
-  };
-
   // ── Drag-and-drop (reorder) ─────────────────────────────────────────────────
 
   const onItemDragStart = (e, id) => {
@@ -241,53 +236,75 @@ export default function MultiUploader({ onUpload, maxFiles = 10, maxTotalMB = 50
     setDragOverId(null);
   };
 
+  // ── Keyboard reorder ────────────────────────────────────────────────────────
+  // Pointer dragging is not an accessible reordering mechanism on its own
+  // (WCAG 2.1.1), so each row also exposes explicit move controls.
+
+  const moveFile = (id, delta) => {
+    setFiles((prev) => {
+      const from = prev.findIndex((f) => f.id === id);
+      const to = from + delta;
+      if (from === -1 || to < 0 || to >= prev.length) return prev;
+      const arr = [...prev];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      return arr;
+    });
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const atLimit = files.length >= maxFiles;
 
   return (
     <section className="space-y-4" aria-label="Multi-file evidence uploader">
-      {/* ── Drop zone ── */}
+      {/*
+        ── Drop zone ──
+        The drag target is a plain wrapper and the activator is a real <button>,
+        so Enter/Space work natively and no interactive element is nested inside
+        another (WCAG 4.1.2). The file input is a sibling of the button.
+      */}
       <div
-        role="button"
-        tabIndex={atLimit ? -1 : 0}
-        aria-label={
-          atLimit
-            ? `File limit reached (${maxFiles})`
-            : 'Drop files here or press Enter to open file picker'
-        }
-        aria-disabled={atLimit}
         onDragOver={atLimit ? undefined : onDragOver}
         onDragLeave={onDragLeave}
         onDrop={atLimit ? undefined : onDrop}
-        onClick={atLimit ? undefined : () => inputRef.current?.click()}
-        onKeyDown={atLimit ? undefined : onKeyDown}
-        className={cn(
-          'relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 cursor-pointer',
-          'transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
-          isDragging
-            ? 'border-indigo-500 bg-indigo-500/10 scale-[1.015]'
-            : 'border-gray-700 bg-gray-900/50 hover:border-indigo-600 hover:bg-gray-900',
-          atLimit && 'opacity-40 cursor-not-allowed pointer-events-none',
-        )}
       >
-        <Upload
-          size={30}
+        <button
+          type="button"
+          disabled={atLimit}
+          aria-label={
+            atLimit ? `File limit reached (${maxFiles})` : 'Drop files here or click to browse'
+          }
+          onClick={() => inputRef.current?.click()}
           className={cn(
-            'transition-colors duration-200',
-            isDragging ? 'text-indigo-400' : 'text-gray-500',
+            'relative flex w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 cursor-pointer',
+            'transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+            isDragging
+              ? 'border-indigo-500 bg-indigo-500/10 scale-[1.015]'
+              : 'border-gray-300 bg-gray-50 hover:border-indigo-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900/50 dark:hover:bg-gray-900',
+            atLimit && 'opacity-40 cursor-not-allowed',
           )}
-          aria-hidden="true"
-        />
-        <div className="text-center select-none">
-          <p className="text-sm font-medium text-gray-200">
-            {isDragging ? 'Release to add files' : 'Drag & drop files, or click to browse'}
-          </p>
-          <p className="mt-1 text-xs text-gray-500">
-            {Object.values(acceptedTypes).join(', ')} · max 10 MB each · up to {maxFiles} files ·{' '}
-            {maxTotalMB} MB total
-          </p>
-        </div>
+        >
+          <Upload
+            size={30}
+            className={cn(
+              'transition-colors duration-200',
+              isDragging
+                ? 'text-indigo-600 dark:text-indigo-400'
+                : 'text-gray-600 dark:text-gray-400',
+            )}
+            aria-hidden="true"
+          />
+          <span className="text-center select-none block">
+            <span className="block text-sm font-medium text-gray-800 dark:text-gray-200">
+              {isDragging ? 'Release to add files' : 'Drag & drop files, or click to browse'}
+            </span>
+            <span className="mt-1 block text-xs text-gray-600 dark:text-gray-400">
+              {Object.values(acceptedTypes).join(', ')} · max 10 MB each · up to {maxFiles} files ·{' '}
+              {maxTotalMB} MB total
+            </span>
+          </span>
+        </button>
 
         <input
           ref={inputRef}
@@ -322,7 +339,7 @@ export default function MultiUploader({ onUpload, maxFiles = 10, maxTotalMB = 50
       {/* ── File grid ── */}
       {files.length > 0 && (
         <ul className="grid gap-2 sm:grid-cols-1" aria-label="Queued files" aria-live="polite">
-          {files.map((file) => (
+          {files.map((file, fileIndex) => (
             <li
               key={file.id}
               draggable
@@ -340,12 +357,32 @@ export default function MultiUploader({ onUpload, maxFiles = 10, maxTotalMB = 50
             >
               {/* Row 1: icon + name + size + status controls */}
               <div className="flex items-center gap-2">
-                {/* Drag handle */}
+                {/* Drag handle + keyboard-operable equivalent */}
                 <GripVertical
                   size={14}
-                  className="text-gray-600 cursor-grab active:cursor-grabbing shrink-0"
+                  className="text-gray-500 cursor-grab active:cursor-grabbing shrink-0"
                   aria-hidden="true"
                 />
+                <span className="flex shrink-0 flex-col">
+                  <button
+                    type="button"
+                    onClick={() => moveFile(file.id, -1)}
+                    disabled={fileIndex === 0}
+                    aria-label={`Move ${file.name} up`}
+                    className="rounded text-[9px] leading-none text-gray-500 hover:text-indigo-400 disabled:opacity-30 dark:text-gray-400"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveFile(file.id, 1)}
+                    disabled={fileIndex === files.length - 1}
+                    aria-label={`Move ${file.name} down`}
+                    className="rounded text-[9px] leading-none text-gray-500 hover:text-indigo-400 disabled:opacity-30 dark:text-gray-400"
+                  >
+                    ▼
+                  </button>
+                </span>
 
                 <FileTypeIcon mimeType={file.type} />
 
@@ -359,21 +396,24 @@ export default function MultiUploader({ onUpload, maxFiles = 10, maxTotalMB = 50
                 {file.status === 'uploading' && (
                   <Loader2
                     size={14}
-                    className="text-indigo-400 animate-spin shrink-0"
+                    role="img"
+                    className="text-indigo-600 dark:text-indigo-400 animate-spin shrink-0"
                     aria-label="Uploading"
                   />
                 )}
                 {file.status === 'done' && (
                   <CheckCircle2
                     size={14}
-                    className="text-emerald-400 shrink-0"
+                    role="img"
+                    className="text-emerald-600 dark:text-emerald-400 shrink-0"
                     aria-label="Upload complete"
                   />
                 )}
                 {(file.status === 'error' || file.status === 'cancelled') && (
                   <AlertCircle
                     size={14}
-                    className="text-red-400 shrink-0"
+                    role="img"
+                    className="text-red-600 dark:text-red-400 shrink-0"
                     aria-label={file.status}
                   />
                 )}
@@ -413,7 +453,9 @@ export default function MultiUploader({ onUpload, maxFiles = 10, maxTotalMB = 50
               </div>
 
               {/* Progress bar */}
-              {file.status === 'uploading' && <ProgressBar value={file.progress} />}
+              {file.status === 'uploading' && (
+                <ProgressBar value={file.progress} label={`Upload progress for ${file.name}`} />
+              )}
 
               {/* Validation error */}
               {file.error && (

@@ -189,17 +189,16 @@ export default function OnboardingTutorial({ isOpen, onClose, steps = ONBOARDING
           {step.body}
         </p>
 
-        <div
-          className="mt-4 flex items-center justify-center gap-1.5"
-          role="tablist"
-          aria-label="Onboarding progress"
-        >
+        {/*
+          Decorative progress dots. They were previously role="tab" inside a
+          role="tablist", but they are not focusable and control no tab panels,
+          so the ARIA was invalid. The visible "Step N of M" live region below
+          carries the same information for assistive tech.
+        */}
+        <div className="mt-4 flex items-center justify-center gap-1.5" aria-hidden="true">
           {steps.map((s, i) => (
             <span
               key={s.id}
-              role="tab"
-              aria-selected={i === stepIndex}
-              aria-label={`Step ${i + 1}: ${s.title}`}
               className={cn(
                 'h-1.5 w-6 rounded-full transition-colors',
                 i === stepIndex
@@ -210,7 +209,11 @@ export default function OnboardingTutorial({ isOpen, onClose, steps = ONBOARDING
           ))}
         </div>
 
-        <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500" aria-live="polite">
+        <p
+          className="mt-2 text-center text-xs text-gray-600 dark:text-gray-400"
+          role="status"
+          aria-live="polite"
+        >
           Step {stepIndex + 1} of {steps.length}
         </p>
 
