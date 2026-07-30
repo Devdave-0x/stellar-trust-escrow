@@ -5,7 +5,13 @@ mod dispute_evidence_tests {
 
     use crate::{DisputeEvidence, EscrowContract, EscrowContractClient, EscrowStatus};
 
-    fn setup() -> (Env, Address, Address, Address, EscrowContractClient<'static>) {
+    fn setup() -> (
+        Env,
+        Address,
+        Address,
+        Address,
+        EscrowContractClient<'static>,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -27,7 +33,9 @@ mod dispute_evidence_tests {
         freelancer: &Address,
         contract: &EscrowContractClient,
     ) -> u64 {
-        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let token = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         let brief = BytesN::from_array(env, &[1u8; 32]);
 
         let escrow_id = contract.create_escrow(
@@ -50,7 +58,9 @@ mod dispute_evidence_tests {
     #[test]
     fn test_add_evidence_requires_disputed_status() {
         let (env, admin, client, freelancer, contract) = setup();
-        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let token = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         let brief = BytesN::from_array(&env, &[1u8; 32]);
 
         let escrow_id = contract.create_escrow(
@@ -82,7 +92,8 @@ mod dispute_evidence_tests {
         let evidence_hash = BytesN::from_array(&env, &[2u8; 32]);
         let description = String::from_str(&env, "test evidence");
 
-        let result = contract.try_add_evidence(&third_party, &escrow_id, &evidence_hash, &description);
+        let result =
+            contract.try_add_evidence(&third_party, &escrow_id, &evidence_hash, &description);
         assert!(result.is_err());
     }
 
@@ -154,7 +165,9 @@ mod dispute_evidence_tests {
     #[test]
     fn test_get_evidence_empty() {
         let (env, admin, client, freelancer, contract) = setup();
-        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let token = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         let brief = BytesN::from_array(&env, &[1u8; 32]);
 
         let escrow_id = contract.create_escrow(

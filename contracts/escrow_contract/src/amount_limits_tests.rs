@@ -4,7 +4,8 @@ mod amount_limits_tests {
     use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowError, MultisigConfig, MAX_ESCROW_AMOUNT, MIN_ESCROW_AMOUNT,
+        EscrowContract, EscrowContractClient, EscrowError, MultisigConfig, MAX_ESCROW_AMOUNT,
+        MIN_ESCROW_AMOUNT,
     };
 
     fn setup() -> (
@@ -125,7 +126,11 @@ mod amount_limits_tests {
             &None,
             &no_multisig(&env),
         );
-        assert!(result.is_ok(), "MIN_ESCROW_AMOUNT should be accepted, got {:?}", result);
+        assert!(
+            result.is_ok(),
+            "MIN_ESCROW_AMOUNT should be accepted, got {:?}",
+            result
+        );
     }
 
     #[test]

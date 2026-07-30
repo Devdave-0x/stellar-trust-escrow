@@ -184,7 +184,8 @@ mod reentrancy_guard_tests {
         ids.push_back(m0);
 
         engage_lock(&t);
-        t.client.batch_approve_milestones(&client_addr, &escrow_id, &ids);
+        t.client
+            .batch_approve_milestones(&client_addr, &escrow_id, &ids);
     }
 
     /// The lock is scoped to a single guarded call: releasing it (as
@@ -261,7 +262,9 @@ mod reentrancy_guard_tests {
             "freelancer must be paid exactly once"
         );
 
-        let replay = t.client.try_approve_milestone(&client_addr, &escrow_id, &m0);
+        let replay = t
+            .client
+            .try_approve_milestone(&client_addr, &escrow_id, &m0);
         assert!(
             replay.is_err(),
             "approving an already-released milestone again must fail"
@@ -300,7 +303,8 @@ mod reentrancy_guard_tests {
         // leaves the milestone Approved with no immediate transfer. This is a
         // separate mechanism from the `TimelockReleaseTime` configured below,
         // which is what `release_with_timelock` actually enforces.
-        t.client.start_timelock(&client_addr, &escrow_id, &100_000_u64);
+        t.client
+            .start_timelock(&client_addr, &escrow_id, &100_000_u64);
         t.client.set_timelock(&client_addr, &escrow_id, &1_001_u64);
 
         let m0 = t.client.add_milestone(
