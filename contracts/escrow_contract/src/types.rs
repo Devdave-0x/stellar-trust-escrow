@@ -758,6 +758,26 @@ pub enum DataKey {
     HighValueThreshold,
     /// Contract code version metadata — value: ContractVersionInfo (persistent storage)
     ContractVersion,
+    /// Dispute evidence entries by escrow ID — key: u64, value: Vec<DisputeEvidence>
+    DisputeEvidences(u64),
+    /// Arbiter allowlist entry — key: Address, value: bool
+    ArbiterAllowlist(Address),
+}
+
+/// On-chain evidence submitted during a dispute.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeEvidence {
+    /// The escrow this evidence belongs to.
+    pub escrow_id: u64,
+    /// Address of the party who submitted the evidence.
+    pub submitted_by: Address,
+    /// The hash of the evidence document (IPFS or similar).
+    pub evidence_hash: BytesN<32>,
+    /// Ledger timestamp when the evidence was submitted.
+    pub submitted_at: u64,
+    /// Human-readable description of the evidence.
+    pub description: String,
 }
 
 /// Tracks the contract *code* version (distinct from `storage::STORAGE_VERSION`,

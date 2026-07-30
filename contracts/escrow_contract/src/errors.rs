@@ -83,6 +83,25 @@ pub enum EcErr {
     /// The escrow amount is at or above the high-value threshold, which requires a
     /// multisig policy needing more than one signer.
     MultisigRequiredForHighValue = 78,
+    E80 = 80,
+    /// Description string exceeds MAX_STRING_LEN.
+    E81 = 81,
+    /// Escrow is not in Disputed status.
+    E82 = 82,
+    /// Caller is not a party (client or freelancer) to this escrow.
+    E83 = 83,
+    /// Upgrade not authorized.
+    E87 = 87,
+    /// Invalid arbiter fee basis points (must be <= 10000).
+    E88 = 88,
+    /// Arbiter fee exceeds total fee allowance.
+    E89 = 89,
+    /// Arbiter address is not on the allowlist.
+    E90 = 90,
+    /// Arbiter address is already on the allowlist.
+    E91 = 91,
+    /// Arbiter address not found on allowlist.
+    E92 = 92,
     /// The brief hash is all zeros, so no agreement document is bound to the escrow.
     InvalidBriefHash = 79,
 }
