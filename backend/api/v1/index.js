@@ -2,6 +2,7 @@ import express from 'express';
 import { versioning } from '../middleware/version.js';
 
 import disputeRoutes from '../routes/disputeRoutes.js';
+import disputeCategoryRoutes from '../routes/disputeCategoryRoutes.js';
 import escrowRoutes from '../routes/escrowRoutes.js';
 import eventRoutes from '../routes/eventRoutes.js';
 import kycRoutes from '../routes/kycRoutes.js';
@@ -21,6 +22,7 @@ router.use('/escrows', escrowRoutes);
 router.use('/users', userRoutes);
 router.use('/reputation', reputationRoutes);
 router.use('/disputes', disputeRoutes);
+router.use('/dispute-categories', disputeCategoryRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/events', eventRoutes);
 router.use('/kyc', kycRoutes);

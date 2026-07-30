@@ -490,9 +490,14 @@ model Dispute {
   escalatedAt      DateTime? @map("escalated_at")
   /// How many times this dispute has been escalated
   escalationCount  Int       @default(0) @map("escalation_count")
+  /// Dispute category used for routing and analytics
+  categoryId       Int?      @map("category_id")
+  /// Arbiter pool assigned from the category default at creation time
+  arbiterPoolId    String?   @map("arbiter_pool_id")
 
   tenant   Tenant            @relation(fields: [tenantId], references: [id])
   escrow   Escrow            @relation(fields: [escrowId], references: [id])
+  category DisputeCategory?  @relation(fields: [categoryId], references: [id])
   evidence DisputeEvidence[]
   appeals  DisputeAppeal[]
 
@@ -508,7 +513,23 @@ model Dispute {
   @@index([tenantId, resolvedAt, raisedAt(sort: Desc)])
   // Covers raisedBy filter + date sort within a tenant (dispute history per freelancer)
   @@index([tenantId, raisedByAddress, raisedAt(sort: Desc)])
+  @@index([categoryId])
   @@map("disputes")
+}
+
+model DisputeCategory {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @unique
+  description          String?
+  /// Arbiter pool disputes in this category are routed to by default
+  defaultArbiterPoolId String?  @map("default_arbiter_pool_id")
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  disputes Dispute[]
+
+  @@map("dispute_categories")
 }
 
 model DisputeEvidence {
