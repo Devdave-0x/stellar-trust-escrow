@@ -51,15 +51,20 @@ echo "   ✅ Deployed!"
 echo "   Contract address: $CONTRACT_ADDRESS"
 echo ""
 
-# Step 3: Initialize (TODO — contributor)
-# echo "⚙️  Initializing contract…"
-# soroban contract invoke \
-#   --id "$CONTRACT_ADDRESS" \
-#   --source "$KEY" \
-#   --network "$NETWORK" \
-#   -- initialize \
-#   --admin "$(soroban keys address $KEY)"
-# echo "   ✅ Initialized"
+# Step 3: Initialize
+ADMIN_ADDRESS="$(soroban keys address "$KEY" 2>/dev/null || true)"
+if [[ -z "$ADMIN_ADDRESS" ]]; then
+  echo "⚠️  Unable to resolve admin address from key '$KEY'; skipping initialization"
+else
+  echo "⚙️  Initializing contract…"
+  soroban contract invoke \
+    --id "$CONTRACT_ADDRESS" \
+    --source "$KEY" \
+    --network "$NETWORK" \
+    -- initialize \
+    --admin "$ADMIN_ADDRESS"
+  echo "   ✅ Initialized"
+fi
 
 echo "==========================================="
 echo "✅ Deployment complete!"
