@@ -12,7 +12,7 @@
  * @param {number}   [props.maxFiles=5]
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Upload, FileText, Image, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ACCEPTED_TYPES = {
@@ -39,7 +39,32 @@ function FileIcon({ type }) {
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({ files, index, onClose, onPrev, onNext }) {
+  const closeButtonRef = useRef(null);
   const file = files[index];
+
+  // Escape closes the dialog and arrows walk the gallery, so the preview is
+  // fully operable without a pointer (WCAG 2.1.1) and is not a keyboard trap
+  // (WCAG 2.1.2).
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      } else if (event.key === 'ArrowLeft') {
+        onPrev();
+      } else if (event.key === 'ArrowRight') {
+        onNext();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose, onPrev, onNext]);
+
+  // Move focus into the dialog so keyboard users land on the close control.
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
   if (!file) return null;
 
   const isImage = file.type.startsWith('image/');
@@ -51,21 +76,21 @@ function Lightbox({ files, index, onClose, onPrev, onNext }) {
       role="dialog"
       aria-modal="true"
       aria-label={`Preview: ${file.name}`}
-      onClick={onClose}
     >
-      <div
-        className="relative max-w-3xl w-full bg-gray-900 border border-gray-700 rounded-2xl overflow-hidden shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {/* Click-outside-to-close affordance; Escape covers the keyboard path. */}
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+
+      <div className="relative max-w-3xl w-full bg-gray-900 border border-gray-700 rounded-2xl overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
           <span className="text-sm text-white font-medium truncate">{file.name}</span>
           <button
+            ref={closeButtonRef}
             onClick={onClose}
-            className="text-gray-500 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+            className="text-gray-300 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
             aria-label="Close preview"
           >
-            <X size={16} />
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -192,52 +217,47 @@ export default function EvidenceUploader({ onUpload, maxFiles = 5 }) {
     processFiles([...e.dataTransfer.files]);
   };
 
-  // ── Keyboard activation of drop zone ─────────────────────────────────────
-
-  const onKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      inputRef.current?.click();
-    }
-  };
+  const atLimit = files.length >= maxFiles;
 
   return (
     <div className="space-y-4">
-      {/* Drop zone */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Upload evidence files. Press Enter or Space to open file picker."
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={onKeyDown}
-        className={`
-          relative flex flex-col items-center justify-center gap-3
-          border-2 border-dashed rounded-2xl p-8 cursor-pointer
-          transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500
-          ${
-            isDragging
-              ? 'border-indigo-500 bg-indigo-500/10 scale-[1.01]'
-              : 'border-gray-700 bg-gray-900/50 hover:border-gray-600 hover:bg-gray-900'
-          }
-          ${files.length >= maxFiles ? 'opacity-50 pointer-events-none' : ''}
-        `}
-      >
-        <Upload
-          size={28}
-          className={`transition-colors ${isDragging ? 'text-indigo-400' : 'text-gray-500'}`}
-          aria-hidden="true"
-        />
-        <div className="text-center">
-          <p className="text-sm text-gray-300 font-medium">
-            {isDragging ? 'Drop files here' : 'Drag & drop or click to upload'}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            PDF, PNG, JPG, TXT · max {formatBytes(MAX_SIZE_BYTES)} each · up to {maxFiles} files
-          </p>
-        </div>
+      {/*
+        Drop zone. The drag target is a plain wrapper and the activator is a real
+        <button>, so Enter/Space work natively and no interactive element is
+        nested inside another (WCAG 4.1.2). The file input is a sibling.
+      */}
+      <div onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+        <button
+          type="button"
+          disabled={atLimit}
+          aria-label="Upload evidence files"
+          onClick={() => inputRef.current?.click()}
+          className={`
+            relative flex w-full flex-col items-center justify-center gap-3
+            border-2 border-dashed rounded-2xl p-8 cursor-pointer
+            transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500
+            ${
+              isDragging
+                ? 'border-indigo-500 bg-indigo-500/10 scale-[1.01]'
+                : 'border-gray-300 bg-gray-50 hover:border-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900/50 dark:hover:border-gray-600 dark:hover:bg-gray-900'
+            }
+            ${atLimit ? 'opacity-50 cursor-not-allowed' : ''}
+          `}
+        >
+          <Upload
+            size={28}
+            className={`transition-colors ${isDragging ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400'}`}
+            aria-hidden="true"
+          />
+          <span className="text-center block">
+            <span className="block text-sm text-gray-800 dark:text-gray-300 font-medium">
+              {isDragging ? 'Drop files here' : 'Drag & drop or click to upload'}
+            </span>
+            <span className="block text-xs text-gray-600 dark:text-gray-400 mt-1">
+              PDF, PNG, JPG, TXT · max {formatBytes(MAX_SIZE_BYTES)} each · up to {maxFiles} files
+            </span>
+          </span>
+        </button>
         <input
           ref={inputRef}
           type="file"

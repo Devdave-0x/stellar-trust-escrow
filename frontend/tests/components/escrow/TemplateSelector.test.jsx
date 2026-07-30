@@ -95,9 +95,85 @@ describe('TemplateSelector', () => {
       />,
     );
 
-    fireEvent.click(screen.getAllByLabelText('Save as favorite')[0]);
+    fireEvent.click(screen.getAllByLabelText(/save .* as favorite/i)[0]);
 
     const favorites = JSON.parse(localStorage.getItem('escrow_template_favorites_v1'));
     expect(favorites).toContain(templatesData.templates[0].id);
+  });
+
+  // ── Accessibility ──────────────────────────────────────────────────────────
+
+  it('exposes each template as a selectable button rather than a div', () => {
+    render(
+      <TemplateSelector
+        baseTemplates={templatesData.templates}
+        formData={FORM_DATA}
+        onApplyTemplate={jest.fn()}
+      />,
+    );
+
+    const first = templatesData.templates[0];
+    const selector = screen.getByRole('button', { name: first.name });
+    expect(selector).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('selects a template from the keyboard and moves aria-pressed with it', () => {
+    render(
+      <TemplateSelector
+        baseTemplates={templatesData.templates}
+        formData={FORM_DATA}
+        onApplyTemplate={jest.fn()}
+      />,
+    );
+
+    const second = templatesData.templates[1];
+    const target = screen.getByRole('button', { name: second.name });
+
+    target.focus();
+    expect(target).toHaveFocus();
+    // A real <button> activates on Enter natively, which fireEvent.click models.
+    fireEvent.click(target);
+
+    expect(target).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: templatesData.templates[0].name })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('keeps the favourite toggle reachable as its own control', () => {
+    render(
+      <TemplateSelector
+        baseTemplates={templatesData.templates}
+        formData={FORM_DATA}
+        onApplyTemplate={jest.fn()}
+      />,
+    );
+
+    const first = templatesData.templates[0];
+    const favorite = screen.getByRole('button', { name: `Save ${first.name} as favorite` });
+    expect(favorite).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(favorite);
+
+    expect(
+      screen.getByRole('button', { name: `Remove ${first.name} from favorites` }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not nest the favourite control inside the selector control', () => {
+    render(
+      <TemplateSelector
+        baseTemplates={templatesData.templates}
+        formData={FORM_DATA}
+        onApplyTemplate={jest.fn()}
+      />,
+    );
+
+    const first = templatesData.templates[0];
+    const selector = screen.getByRole('button', { name: first.name });
+    const favorite = screen.getByRole('button', { name: `Save ${first.name} as favorite` });
+
+    expect(selector.contains(favorite)).toBe(false);
   });
 });

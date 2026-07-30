@@ -152,18 +152,30 @@ export default function DataExport({ address }) {
 
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Select File</label>
+            <label
+              htmlFor="data-import-file"
+              className="block text-xs text-gray-700 dark:text-gray-300 mb-1"
+            >
+              Select File
+            </label>
             <input
+              id="data-import-file"
               type="file"
               accept=".json"
               onChange={handleFileChange}
-              className="w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
+              className="w-full text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Import Mode</label>
+            <label
+              htmlFor="data-import-mode"
+              className="block text-xs text-gray-700 dark:text-gray-300 mb-1"
+            >
+              Import Mode
+            </label>
             <select
+              id="data-import-mode"
               value={importMode}
               onChange={(e) => setImportMode(e.target.value)}
               className="input w-full text-sm"
@@ -183,15 +195,21 @@ export default function DataExport({ address }) {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages — announced, not just shown (WCAG 4.1.3) */}
       {message && (
-        <div className="p-3 bg-green-900/30 border border-green-700 rounded-lg text-green-400 text-sm">
+        <div
+          role="status"
+          className="p-3 bg-green-50 border border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300 rounded-lg text-sm"
+        >
           {message}
         </div>
       )}
 
       {error && (
-        <div className="p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-400 text-sm">
+        <div
+          role="alert"
+          className="p-3 bg-red-50 border border-red-300 text-red-800 dark:bg-red-900/30 dark:border-red-700 dark:text-red-300 rounded-lg text-sm"
+        >
           {error}
         </div>
       )}

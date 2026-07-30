@@ -104,6 +104,12 @@ pub enum EcErr {
     E92 = 92,
     /// The brief hash is all zeros, so no agreement document is bound to the escrow.
     InvalidBriefHash = 79,
+    /// Escrow amount is below the minimum allowed threshold.
+    E84 = 84,
+    /// Escrow amount exceeds the maximum allowed threshold.
+    E85 = 85,
+    /// Slippage tolerance has been exceeded; the release is rejected.
+    E86 = 86,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
