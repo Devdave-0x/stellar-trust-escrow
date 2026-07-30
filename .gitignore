@@ -103,3 +103,4 @@ update-issues-drips.js
 update_all_drips_issues.sh
 /pr_body.md
 /pr_body.txt
+/test-artifacts/

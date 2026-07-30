@@ -166,10 +166,19 @@ pub const MIN_ARBITER_REPUTATION_SCORE: u64 = 100;
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
 
 /// Contract code version assigned on first deploy. Distinct from
-/// `storage::STORAGE_VERSION`, which tracks the persistent data layout —
+/// `storage::STORAGE_VERSION`, which tracks the persistent data layout â€”
 /// this tracks the deployed contract *code* itself and is incremented once
 /// per successful `upgrade()` call. See `ContractVersionInfo`.
 pub const INITIAL_CONTRACT_VERSION: u32 = 1;
+
+/// Minimum number of ledgers a dispute must remain open before it can be resolved.
+/// This cooldown gives involved parties time to prepare their case and prevents
+/// rushed or malicious immediate resolution.
+pub const DISPUTE_COOLDOWN_LEDGERS: u32 = 100;
+
+/// Maximum allowed disputable ledgers after dispute_start_ledger before a
+/// dispute is considered stale and can be force-resolved by governance.
+pub const DISPUTE_MAX_LEDGERS: u32 = 500;
 
 // ── Granular storage keys ─────────────────────────────────────────────────────
 // Separate keys for meta vs each milestone avoids deserialising the full
@@ -1011,6 +1020,29 @@ pub struct EscrowContract;
 impl EscrowContract {
     // ── Initialization ────────────────────────────────────────────────────────
 
+    /// Initialize the escrow contract with the deployer as admin.
+    ///
+    /// This is the one-time setup function for the contract. It must be
+    /// called exactly once during deployment; subsequent calls will fail
+    /// with `EscrowError::E1` (AlreadyInitialized).
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban contract environment
+    /// * `admin` - The address that becomes the contract admin and
+    ///   platform treasury. This address will have full control over
+    ///   `set_admin_multisig`, `freeze_escrow`, and all admin-only
+    ///   operations.
+    ///
+    /// # Effects
+    /// - Sets the admin and platform treasury to `admin`
+    /// - Configures a default 1-of-1 multisig (admin as sole signer)
+    /// - Initializes the escrow counter to 0
+    /// - Stores the contract code version as `INITIAL_CONTRACT_VERSION`
+    /// - Emits an `admin_initialized` event
+    ///
+    /// # Panics
+    /// Panics with `EscrowError::E1` if the contract has already been
+    /// initialized.
     pub fn initialize(env: Env, admin: Address) -> Result<(), EscrowError> {
         ContractStorage::initialize(&env, &admin)
     }
@@ -4080,6 +4112,14 @@ impl EscrowContract {
             }
             if client_amount + freelancer_amount != meta.remaining_balance {
                 return Err(EscrowError::E20);
+            }
+            if let Some(disputed_at) = meta.dispute_start_ledger {
+                let current_ledger = env.ledger().sequence();
+                if current_ledger < disputed_at + DISPUTE_COOLDOWN_LEDGERS as u64 {
+                    return Err(EscrowError::E64);
+                }
+            } else {
+                return Err(EscrowError::E10);
             }
 
             let (client_payout, freelancer_payout, _) =

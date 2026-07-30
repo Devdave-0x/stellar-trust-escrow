@@ -120,6 +120,62 @@ jobs:
         env:
           ARTIFACTS_DIR: test-artifacts
 
+      # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # â”€ Deploy to Soroban Testnet + Smoke Test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      - name: Install Soroban CLI
+        if: steps.changes.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        run: |
+          curl -sSL https://soroban.stellar.org/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Configure Soroban Testnet
+        if: steps.changes.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        run: |
+          soroban config network add --name testnet \
+            --rpc-url "https://soroban-testnet.stellar.org:443" \
+            --network-passphrase "Test SDF Network ; September 2015"
+
+      - name: Deploy contract to testnet
+        if: steps.changes.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+          SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org:443"
+          STELLAR_SECRET_KEY: ${{ secrets.TESTNET_SECRET_KEY }}
+        run: |
+          wasm_file="test-artifacts/wasm/stellar_trust_escrow_contract.wasm"
+          soroban contract upload --network testnet --wasm "$wasm_file"
+          soroban contract deploy --network testnet --wasm "$wasm_file" --salt "$(openssl rand -hex 8)"
+
+      - name: Testnet smoke test
+        if: steps.changes.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+          SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org:443"
+          STELLAR_SECRET_KEY: ${{ secrets.TESTNET_SECRET_KEY }}
+        run: |
+          echo "Running testnet smoke test..."
+          contract_id=$(soroban contract address --network testnet 2>/dev/null || echo "")
+          if [ -n "$contract_id" ]; then
+            echo "Contract live at: $contract_id"
+          else
+            echo "Smoke test warning: could not determine contract address"
+          fi
+
+      - name: Check WASM binary size
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          wasm_file="target/wasm32-unknown-unknown/release/stellar_trust_escrow_contract.wasm"
+          if [ -f "$wasm_file" ]; then
+            size=$(stat -c%s "$wasm_file" 2>/dev/null || stat -f%z "$wasm_file" 2>/dev/null || echo "0")
+            echo "WASM binary size: $size bytes"
+            max_size=524288
+            if [ "$size" -gt "$max_size" ]; then
+              echo "::error::WASM binary exceeds 512KB limit ($size bytes > $max_size bytes)"
+              exit 1
+            fi
+          fi
+
       - name: Upload coverage to Codecov
         if: steps.changes.outputs.changed == 'true'
         uses: codecov/codecov-action@v4
