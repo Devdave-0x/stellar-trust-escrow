@@ -14,6 +14,7 @@ import adminController from '../controllers/adminController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
 import announcementController from '../controllers/announcementController.js';
+import disputeCategoryController from '../controllers/disputeCategoryController.js';
 import { getAuditLog, rotateSecrets } from '../../lib/secrets.js';
 import cache from '../../lib/cache.js';
 
@@ -223,6 +224,32 @@ router.patch('/announcements/:id', announcementController.updateAnnouncement);
  * @desc   Soft-delete an announcement
  */
 router.delete('/announcements/:id', announcementController.deleteAnnouncement);
+
+// ── Dispute Categories ────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/dispute-categories
+ * @desc   List all dispute categories, including inactive ones
+ */
+router.get('/dispute-categories', disputeCategoryController.adminListCategories);
+
+/**
+ * @route  POST /api/admin/dispute-categories
+ * @desc   Create a dispute category
+ * @body   { name, description?, defaultArbiterPoolId? }
+ */
+router.post('/dispute-categories', disputeCategoryController.createCategory);
+
+/**
+ * @route  PATCH /api/admin/dispute-categories/:id
+ * @desc   Update a dispute category
+ */
+router.patch('/dispute-categories/:id', disputeCategoryController.updateCategory);
+
+/**
+ * @route  DELETE /api/admin/dispute-categories/:id
+ * @desc   Delete a category, or deactivate it when disputes still reference it
+ */
+router.delete('/dispute-categories/:id', disputeCategoryController.deleteCategory);
 
 // ── Feature Flags ─────────────────────────────────────────────────────────────
 router.get('/flags', featureFlagController.index);
