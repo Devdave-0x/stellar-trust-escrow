@@ -85,6 +85,22 @@ pub enum EcErr {
     MultisigRequiredForHighValue = 78,
     /// The brief hash is all zeros, so no agreement document is bound to the escrow.
     InvalidBriefHash = 79,
+    EvidenceHashEmpty = 80,
+    EvidenceDescriptionTooLong = 81,
+    EscrowNotInDisputedState = 82,
+    CallerNotAParty = 83,
+    FeeBpsExceedsMaximum = 84,
+    FeeBpsExceedsRemaining = 85,
+    UpgradeNotAuthorized = 86,
+    CrossContractCallFailed = 87,
+    DexNotConfigured = 88,
+    InvalidSwapParameters = 89,
+    ArbiterNotOnAllowlist = 90,
+    ArbiterAlreadyOnAllowlist = 91,
+    ArbiterNotFoundOnAllowlist = 92,
+    TermsHashEmpty = 93,
+    ClientAlreadyAcceptedTerms = 94,
+    ClientHasNotAcceptedTerms = 95,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle

@@ -253,6 +253,7 @@ impl StorageManager {
                     // v1 had no multisig policy — threshold 0 keeps legacy approval.
                     multisig_weights: soroban_sdk::Vec::new(env),
                     multisig_threshold: 0,
+                    terms_hash: None,
                 };
 
                 // Store meta in v2 format using PackedDataKey

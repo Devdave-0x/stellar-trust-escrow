@@ -49,6 +49,7 @@ mod transfer_client_tests {
             &None,
             &None,
             &no_multisig(env),
+            &None,
         )
     }
 

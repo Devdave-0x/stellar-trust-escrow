@@ -63,6 +63,7 @@ mod split_escrow_tests {
             &None,
             &None,
             &no_multisig(env),
+            &None,
         );
         contract.add_milestone(
             client_addr,

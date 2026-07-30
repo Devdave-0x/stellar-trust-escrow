@@ -84,6 +84,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let events = contract_events(&env, &contract_id);
@@ -122,6 +123,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let milestone_id = client.add_milestone(
@@ -165,6 +167,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,
@@ -210,6 +213,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,
@@ -271,6 +275,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,
@@ -315,6 +320,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         client.cancel_escrow(&client_addr, &escrow_id);
 
@@ -349,6 +355,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,
@@ -392,6 +399,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,
@@ -505,6 +513,7 @@ mod event_tests {
             &Some(lock_time),
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,
@@ -546,6 +555,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let mid = client.add_milestone(
@@ -610,6 +620,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let mid = client.add_milestone(
@@ -649,6 +660,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let reason = String::from_str(&env, "No longer needed");
         client.request_cancellation(&client_addr, &escrow_id, &reason);
@@ -686,6 +698,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         client.request_cancellation(&client_addr, &escrow_id, &String::from_str(&env, "Done"));
 
@@ -727,6 +740,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,
@@ -770,6 +784,7 @@ mod event_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let mid = client.add_milestone(
             &client_addr,

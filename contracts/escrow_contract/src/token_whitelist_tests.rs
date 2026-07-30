@@ -99,6 +99,7 @@ mod token_whitelist_tests {
             &None::<u64>,
             &None,
             &no_multisig(&env),
+            &None,
         );
         // Escrow IDs start at 0, so assert the escrow exists rather than that the id is positive.
         assert_eq!(client.get_escrow_meta(&escrow_id).token, approved_token);
@@ -115,6 +116,7 @@ mod token_whitelist_tests {
             &None::<u64>,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(result.is_err());
         assert_eq!(result.err().unwrap(), Ok(EscrowError::E3));
@@ -134,6 +136,7 @@ mod token_whitelist_tests {
             &None::<u64>,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(escrow_id2 > escrow_id);
     }

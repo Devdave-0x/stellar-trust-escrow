@@ -9,8 +9,8 @@
 mod gas_profiling {
     extern crate std;
     use std::println;
-    use crate::{EscrowContract, EscrowContractClient};
-    use soroban_sdk::{testutils::Address as _, token, BytesN, Env, String};
+    use crate::{EscrowContract, EscrowContractClient, MultisigConfig};
+    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, Vec as SorobanVec};
 
     fn setup() -> (Env, soroban_sdk::Address, soroban_sdk::Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -20,6 +20,14 @@ mod gas_profiling {
         let client = EscrowContractClient::new(&env, &contract_id);
         client.initialize(&admin);
         (env, admin, contract_id, client)
+    }
+
+    fn no_multisig(env: &Env) -> MultisigConfig {
+        MultisigConfig {
+            approvers: SorobanVec::new(env),
+            weights: SorobanVec::new(env),
+            threshold: 0,
+        }
     }
 
     fn make_escrow(
@@ -40,6 +48,9 @@ mod gas_profiling {
             &BytesN::from_array(env, &[1; 32]),
             &None,
             &None,
+            &None,
+            &None,
+            &no_multisig(env),
             &None,
         );
         (escrow_client, freelancer, escrow_id)
@@ -83,6 +94,9 @@ mod gas_profiling {
             &BytesN::from_array(&env, &[2; 32]),
             &None,
             &None,
+            &None,
+            &None,
+            &no_multisig(&env),
             &None,
         );
         print("create_escrow", env.budget().cpu_instruction_cost(), env.budget().memory_bytes_cost());
@@ -441,6 +455,9 @@ mod gas_profiling {
             &BytesN::from_array(&env, &[9; 32]),
             &None,
             &None,
+            &None,
+            &None,
+            &no_multisig(&env),
             &None,
         );
 

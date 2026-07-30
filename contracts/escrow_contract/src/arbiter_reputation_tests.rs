@@ -69,6 +69,7 @@ mod arbiter_reputation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(
             result.is_ok(),
@@ -105,6 +106,7 @@ mod arbiter_reputation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(
             result.is_err(),
@@ -133,6 +135,7 @@ mod arbiter_reputation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(result.is_ok(), "Should allow escrow without arbiter");
     }
@@ -179,6 +182,7 @@ mod arbiter_reputation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(result1.is_ok(), "Should pass with default threshold");
 
@@ -199,6 +203,7 @@ mod arbiter_reputation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(result2.is_err(), "Should fail after threshold increase");
     }

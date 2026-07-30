@@ -166,6 +166,7 @@ mod upgrade_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         contract.create_escrow(
             &client_addr,
@@ -178,6 +179,7 @@ mod upgrade_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         assert_eq!(
@@ -215,6 +217,7 @@ mod upgrade_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let pre = contract.get_escrow(&escrow_id);
@@ -257,6 +260,7 @@ mod upgrade_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let title = String::from_str(&env, "Design phase");
@@ -324,6 +328,7 @@ mod upgrade_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let m_id = contract.add_milestone(
             &client_addr,
@@ -370,6 +375,7 @@ mod upgrade_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         contract.raise_dispute(&client_addr, &escrow_id, &None);
@@ -414,6 +420,7 @@ mod upgrade_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Upload two distinct WASM blobs to simulate v1 → v2 → rollback to v1.
@@ -457,6 +464,7 @@ mod upgrade_tests {
                 &None,
                 &None,
                 &no_multisig(&env),
+            &None,
             );
         }
         assert_eq!(contract.escrow_count(), 3u64);
