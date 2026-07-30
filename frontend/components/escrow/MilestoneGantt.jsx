@@ -108,6 +108,7 @@ function Tooltip({ milestone, x, y, visible }) {
 
 export default function MilestoneGantt({ milestones = [], startDate, endDate, className = '' }) {
   const [tooltip, setTooltip] = useState({ visible: false, milestone: null, x: 0, y: 0 });
+  const [focusedIndex, setFocusedIndex] = useState(null);
   const containerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(600);
 
@@ -176,7 +177,7 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
 
   if (milestones.length === 0) {
     return (
-      <div className={`card text-center py-10 text-gray-500 ${className}`}>
+      <div className={`card text-center py-10 text-gray-700 dark:text-gray-300 ${className}`}>
         <p>No milestones to display</p>
       </div>
     );
@@ -188,7 +189,9 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
         {/* Labels column */}
         <div className="flex-shrink-0" style={{ width: LABEL_WIDTH }}>
           <div style={{ height: HEADER_HEIGHT }} className="flex items-end pb-2">
-            <span className="text-xs text-gray-500 font-medium px-2">Milestone</span>
+            <span className="text-xs text-gray-700 dark:text-gray-300 font-medium px-2">
+              Milestone
+            </span>
           </div>
           {milestones.map((m, i) => {
             const colors = STATUS_COLORS[m.status] ?? STATUS_COLORS.Pending;
@@ -202,7 +205,7 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
                   className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{ backgroundColor: colors.fill }}
                 />
-                <span className="text-xs text-gray-300 truncate" title={m.title}>
+                <span className="text-xs text-gray-800 dark:text-gray-200 truncate" title={m.title}>
                   {m.title}
                 </span>
               </div>
@@ -212,7 +215,18 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
 
         {/* Chart area */}
         <div className="flex-1 relative">
-          <svg width={chartWidth} height={svgHeight} aria-label="Milestone Gantt chart" role="img">
+          {/*
+            role="group", not role="img": an img is a leaf node and must not
+            contain focusable children, but the milestone bars are keyboard
+            reachable buttons (WCAG 4.1.2).
+          */}
+          <svg
+            width={chartWidth}
+            height={svgHeight}
+            role="group"
+            aria-label="Milestone Gantt chart"
+            className="text-gray-700 dark:text-gray-300"
+          >
             {/* Grid lines + tick labels */}
             {ticks.map(({ day, label }) => {
               const x = (day / totalDays) * chartWidth;
@@ -284,8 +298,8 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
                     });
                   }}
                   onMouseLeave={() => setTooltip((t) => ({ ...t, visible: false }))}
-                  onFocus={(e) => {
-                    const rect = containerRef.current?.getBoundingClientRect();
+                  onFocus={() => {
+                    setFocusedIndex(i);
                     setTooltip({
                       visible: true,
                       milestone: m,
@@ -293,7 +307,10 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
                       y: y,
                     });
                   }}
-                  onBlur={() => setTooltip((t) => ({ ...t, visible: false }))}
+                  onBlur={() => {
+                    setFocusedIndex(null);
+                    setTooltip((t) => ({ ...t, visible: false }));
+                  }}
                   style={{ cursor: 'pointer', outline: 'none' }}
                 >
                   {/* Background bar */}
@@ -310,19 +327,38 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
                       opacity="0.85"
                     />
                   )}
-                  {/* Label inside bar */}
-                  {width > 40 && (
-                    <text
-                      x={x + 6}
-                      y={y + 4 + barH / 2 + 4}
-                      fontSize="10"
-                      fill="white"
-                      opacity="0.9"
+                  {/*
+                    Focus indicator. The default outline is suppressed because a
+                    UA outline around an SVG <g> is unreliable, so the ring is
+                    drawn explicitly to keep focus visible (WCAG 2.4.7).
+                  */}
+                  {focusedIndex === i && (
+                    <rect
+                      x={x - 3}
+                      y={y + 1}
+                      width={width + 6}
+                      height={barH + 6}
+                      rx="6"
+                      fill="none"
+                      stroke="#6366f1"
+                      strokeWidth="2"
                       style={{ pointerEvents: 'none' }}
-                    >
-                      {completion}%
-                    </text>
+                    />
                   )}
+                  {/*
+                    Completion label sits beside the bar rather than on top of
+                    it: the lighter status fills could not carry white text at
+                    4.5:1 (WCAG 1.4.3).
+                  */}
+                  <text
+                    x={x + width + 5}
+                    y={y + 4 + barH / 2 + 4}
+                    fontSize="10"
+                    fill="currentColor"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {completion}%
+                  </text>
                 </g>
               );
             })}
@@ -336,7 +372,10 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
       {/* Legend */}
       <div className="flex flex-wrap gap-3 mt-3 px-2">
         {Object.entries(STATUS_COLORS).map(([status, colors]) => (
-          <span key={status} className="flex items-center gap-1.5 text-xs text-gray-400">
+          <span
+            key={status}
+            className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300"
+          >
             <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: colors.fill }} />
             {status}
           </span>
