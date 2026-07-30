@@ -42,11 +42,6 @@ pub enum EscrowStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Compact bitflag type for milestone lifecycle state.
-///
-/// Use the `MS_*` constants below instead of constructing raw values.
-/// A single bit is set at any given time; the bitflag layout allows
-/// cheap membership tests (`status & MS_TERMINAL != 0`) without
-/// deserialising a tagged-union enum.
 pub type MilestoneStatus = u32;
 
 /// Milestone defined but work not yet started/submitted.
@@ -73,20 +68,15 @@ pub enum PriceDirection {
 }
 
 /// A price-based release condition attached to a milestone.
-/// The oracle is queried at trigger time; funds release if the condition is met.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PriceCondition {
-    /// The asset whose USD price is checked.
     pub asset: Address,
-    /// Target price in USD with `oracle::PRICE_DECIMALS` decimal places.
     pub target_price_usd: i128,
-    /// Whether the current price must be above or below the target.
     pub direction: PriceDirection,
 }
 
-/// Optional price condition wrapper — mirrors `OptionalTimelock` to work around
-/// Soroban's lack of `Option<CustomContractType>` support in `#[contracttype]`.
+/// Optional price condition wrapper.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OptionalPriceCondition {
@@ -111,14 +101,6 @@ impl From<OptionalPriceCondition> for Option<PriceCondition> {
         }
     }
 }
-
-/// Mask of all terminal states (no further transitions expected).
-#[allow(dead_code)]
-pub const MS_TERMINAL: MilestoneStatus = MS_RELEASED | MS_DISPUTED;
-
-/// Mask of states that block escrow cancellation.
-#[allow(dead_code)]
-pub const MS_BLOCKS_CANCEL: MilestoneStatus = MS_SUBMITTED | MS_APPROVED;
 
 /// Timelock metadata for protecting buyers: no release until expiry.
 #[contracttype]
@@ -677,6 +659,22 @@ pub enum ProposalPayload {
 // STORAGE KEYS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Record of an escrow status transition for audit/history purposes.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StateHistoryEntry {
+    /// The escrow this entry belongs to.
+    pub escrow_id: u64,
+    /// The status before the transition.
+    pub from_status: EscrowStatus,
+    /// The status after the transition.
+    pub to_status: EscrowStatus,
+    /// Ledger timestamp when the transition occurred.
+    pub timestamp: u64,
+    /// Address of the caller who triggered the transition.
+    pub caller: Address,
+}
+
 /// Contract storage keys.
 ///
 /// All persistent state lives under one of these keys.
@@ -758,6 +756,8 @@ pub enum DataKey {
     HighValueThreshold,
     /// Contract code version metadata — value: ContractVersionInfo (persistent storage)
     ContractVersion,
+    /// Per-escrow state transition history — key: u64, value: Vec<StateHistoryEntry>
+    StateHistory(u64),
 }
 
 /// Tracks the contract *code* version (distinct from `storage::STORAGE_VERSION`,
