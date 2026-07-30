@@ -756,4 +756,24 @@ pub enum DataKey {
     TimelockReleaseTime(u64),
     /// Escrow amount at or above which a multisig policy is mandatory — value: i128
     HighValueThreshold,
+    /// Contract code version metadata — value: ContractVersionInfo (persistent storage)
+    ContractVersion,
+}
+
+/// Tracks the contract *code* version (distinct from `storage::STORAGE_VERSION`,
+/// which tracks the data layout). Stored in persistent storage so the history
+/// survives across upgrades and instance-storage TTL expiry.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractVersionInfo {
+    /// Current contract code version, starting at 1 and incremented by one on
+    /// every successful `upgrade()` call.
+    pub version: u32,
+    /// Ledger timestamp when the contract was first initialized.
+    pub deployed_at: u64,
+    /// Ledger timestamp of the most recent successful upgrade.
+    /// Equal to `deployed_at` if the contract has never been upgraded.
+    pub last_upgraded_at: u64,
+    /// Total number of successful upgrades applied since deployment.
+    pub upgrade_count: u32,
 }

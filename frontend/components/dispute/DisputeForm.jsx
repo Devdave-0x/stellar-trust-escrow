@@ -14,11 +14,14 @@
  * @param {Function}  [props.onSuccess]   — called with { disputeId } on success
  * @param {Function}  [props.onCancel]
  * @param {string}    [props.className]
+ * @param {string}    [props.originalTerms]  — terms as originally agreed, for the terms diff
+ * @param {string}    [props.proposedTerms]  — terms as amended/disputed, for the terms diff
  */
 
 import { useState, useCallback } from 'react';
 import { AlertTriangle, ChevronRight, Loader2 } from 'lucide-react';
 import FileDropZone from '../ui/FileDropZone';
+import TermsDiff from './TermsDiff';
 import { useToast } from '../../contexts/ToastContext';
 
 const DISPUTE_REASONS = [
@@ -32,7 +35,14 @@ const DISPUTE_REASONS = [
 
 const MAX_DESCRIPTION = 2000;
 
-export default function DisputeForm({ escrowId, onSuccess, onCancel, className = '' }) {
+export default function DisputeForm({
+  escrowId,
+  onSuccess,
+  onCancel,
+  className = '',
+  originalTerms,
+  proposedTerms,
+}) {
   const [reason, setReason]           = useState('');
   const [description, setDescription] = useState('');
   const [files, setFiles]             = useState([]);
@@ -103,6 +113,11 @@ export default function DisputeForm({ escrowId, onSuccess, onCancel, className =
           Both parties will be notified.
         </p>
       </div>
+
+      {/* Terms diff — only shown when both versions of the terms are supplied */}
+      {originalTerms && proposedTerms && (
+        <TermsDiff before={originalTerms} after={proposedTerms} />
+      )}
 
       {/* Reason */}
       <fieldset>

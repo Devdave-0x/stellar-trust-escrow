@@ -43,11 +43,73 @@ const READ_MANY_ACTIONS = new Set([
   'deleteMany',
 ]);
 
-function mergeTenantWhere(where, tenantId) {
+// Single-record write/delete operations addressed by a unique `where` clause.
+// Without tenant-scoping these too, a caller holding another tenant's record ID
+// (guessed, leaked, or from a stale reference) could update or delete it directly,
+// bypassing the isolation this extension exists to enforce.
+const WHERE_SCOPED_SINGLE_ACTIONS = new Set(['update', 'delete']);
+
+// Exported for direct unit testing — see tests/prismaTenantScope.test.js.
+// `where` may need to keep a unique identifying field (e.g. `id`) at the top
+// level: Prisma's extended-where-unique validation for findUnique/update/delete
+// requires it there, not nested only inside `AND`.
+export function mergeTenantWhere(where, tenantId) {
   if (!tenantId) return where;
   if (!where || Object.keys(where).length === 0) return { tenantId };
   if (where.tenantId === tenantId) return where;
-  return { AND: [where, { tenantId }] };
+
+  const { AND, ...rest } = where;
+  const extraAnd = Array.isArray(AND) ? AND : AND ? [AND] : [];
+  return { ...rest, AND: [...extraAnd, { tenantId }] };
+}
+
+/**
+ * The tenant-scoping query interceptor shared by every model's `$allOperations`.
+ * Exported so tests can exercise the exact scoping decisions without needing a
+ * real Prisma client — the `@prisma/client` jest mock stubs `$extends` as a
+ * no-op, so this logic is otherwise never invoked under test.
+ */
+export async function applyTenantScope({ model, operation, args, query }) {
+  const tenantId = getCurrentTenantId();
+
+  if (!tenantId || isTenantScopeBypassed() || !TENANT_SCOPED_MODELS.has(model)) {
+    return query(args);
+  }
+
+  args ??= {};
+
+  if (
+    READ_MANY_ACTIONS.has(operation) ||
+    operation === 'findUnique' ||
+    operation === 'findUniqueOrThrow' ||
+    WHERE_SCOPED_SINGLE_ACTIONS.has(operation) ||
+    operation === 'upsert'
+  ) {
+    args.where = mergeTenantWhere(args.where, tenantId);
+  }
+
+  if (operation === 'create') {
+    args.data = {
+      ...args.data,
+      tenantId: args.data?.tenantId ?? tenantId ?? DEFAULT_TENANT_ID,
+    };
+  }
+
+  if (operation === 'createMany' && Array.isArray(args.data)) {
+    args.data = args.data.map((entry) => ({
+      ...entry,
+      tenantId: entry.tenantId ?? tenantId ?? DEFAULT_TENANT_ID,
+    }));
+  }
+
+  if (operation === 'upsert') {
+    args.create = {
+      ...args.create,
+      tenantId: args.create?.tenantId ?? tenantId ?? DEFAULT_TENANT_ID,
+    };
+  }
+
+  return query(args);
 }
 
 function createPrismaClient() {
@@ -71,52 +133,7 @@ function createPrismaClient() {
   return base.$extends({
     query: {
       $allModels: {
-        async $allOperations({ model, operation, args, query }) {
-          const tenantId = getCurrentTenantId();
-
-          if (!tenantId || isTenantScopeBypassed() || !TENANT_SCOPED_MODELS.has(model)) {
-            return query(args);
-          }
-
-          args ??= {};
-
-          if (READ_MANY_ACTIONS.has(operation)) {
-            args.where = mergeTenantWhere(args.where, tenantId);
-          }
-
-          if (operation === 'findUnique') {
-            // $extends doesn't allow changing operation name, so we use findFirst
-            // by passing the where clause — Prisma handles this transparently
-            args.where = mergeTenantWhere(args.where, tenantId);
-          }
-
-          if (operation === 'findUniqueOrThrow') {
-            args.where = mergeTenantWhere(args.where, tenantId);
-          }
-
-          if (operation === 'create') {
-            args.data = {
-              ...args.data,
-              tenantId: args.data?.tenantId ?? tenantId ?? DEFAULT_TENANT_ID,
-            };
-          }
-
-          if (operation === 'createMany' && Array.isArray(args.data)) {
-            args.data = args.data.map((entry) => ({
-              ...entry,
-              tenantId: entry.tenantId ?? tenantId ?? DEFAULT_TENANT_ID,
-            }));
-          }
-
-          if (operation === 'upsert') {
-            args.create = {
-              ...args.create,
-              tenantId: args.create?.tenantId ?? tenantId ?? DEFAULT_TENANT_ID,
-            };
-          }
-
-          return query(args);
-        },
+        $allOperations: applyTenantScope,
       },
     },
   });

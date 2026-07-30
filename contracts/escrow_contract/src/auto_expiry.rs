@@ -29,39 +29,41 @@ pub fn trigger_expiry(
     caller.require_auth();
     ContractStorage::require_not_paused(env)?;
 
-    let mut meta = ContractStorage::load_escrow_meta(env, escrow_id)?;
+    ContractStorage::with_reentrancy_guard(env, || {
+        let mut meta = ContractStorage::load_escrow_meta(env, escrow_id)?;
 
-    // Only active escrows can expire
-    if meta.status != EscrowStatus::Active {
-        return Err(EscrowError::E9);
-    }
+        // Only active escrows can expire
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
 
-    // Must have a deadline
-    let deadline = meta.deadline.ok_or(EscrowError::E3)?;
+        // Must have a deadline
+        let deadline = meta.deadline.ok_or(EscrowError::E3)?;
 
-    // Deadline must have passed
-    let now = env.ledger().timestamp();
-    if now <= deadline {
-        return Err(EscrowError::E3);
-    }
+        // Deadline must have passed
+        let now = env.ledger().timestamp();
+        if now <= deadline {
+            return Err(EscrowError::E3);
+        }
 
-    // Refund remaining balance to client
-    let refund_amount = meta.remaining_balance;
-    if refund_amount > 0 {
-        token::Client::new(env, &meta.token).transfer(
-            &env.current_contract_address(),
-            &meta.client,
-            &refund_amount,
-        );
-    }
+        // Refund remaining balance to client
+        let refund_amount = meta.remaining_balance;
+        if refund_amount > 0 {
+            token::Client::new(env, &meta.token).transfer(
+                &env.current_contract_address(),
+                &meta.client,
+                &refund_amount,
+            );
+        }
 
-    meta.remaining_balance = 0;
-    meta.status = EscrowStatus::Cancelled;
-    ContractStorage::save_escrow_meta(env, &meta);
+        meta.remaining_balance = 0;
+        meta.status = EscrowStatus::Cancelled;
+        ContractStorage::save_escrow_meta(env, &meta);
 
-    events::emit_escrow_cancelled(env, escrow_id, refund_amount);
+        events::emit_escrow_cancelled(env, escrow_id, refund_amount);
 
-    Ok(refund_amount)
+        Ok(refund_amount)
+    })
 }
 
 /// Check if an escrow is expired (deadline passed) without triggering it.

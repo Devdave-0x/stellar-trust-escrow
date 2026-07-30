@@ -243,6 +243,13 @@ pub fn emit_contract_unpaused(env: &Env, admin: &Address) {
         .publish((ev::CONTRACT_UNPAUSED,), admin.clone());
 }
 
+pub fn emit_contract_version_upgraded(env: &Env, old_version: u32, new_version: u32) {
+    env.events().publish(
+        (ev::CONTRACT_VERSION_UPGRADED,),
+        (old_version, new_version),
+    );
+}
+
 pub fn emit_cancellation_executed(
     env: &Env,
     escrow_id: u64,

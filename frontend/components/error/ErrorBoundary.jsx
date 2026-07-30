@@ -57,9 +57,16 @@ class ErrorBoundary extends Component {
 
   renderFallback() {
     return (
-      <div className="min-h-[400px] flex items-center justify-center p-8">
+      <div
+        role="alert"
+        aria-live="assertive"
+        className="min-h-[400px] flex items-center justify-center p-8"
+      >
         <div className="text-center space-y-6 max-w-md mx-auto">
-          <div className="w-20 h-20 bg-red-500/10 border-2 border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <div
+            aria-hidden="true"
+            className="w-20 h-20 bg-red-500/10 border-2 border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6"
+          >
             <span className="text-3xl">⚠️</span>
           </div>
           <div className="space-y-3">
@@ -78,7 +85,7 @@ class ErrorBoundary extends Component {
             )}
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button onClick={this.handleRetry} className="w-full sm:w-auto">
+            <Button onClick={this.handleRetry} className="w-full sm:w-auto" aria-label="Retry the failed action">
               Try Again
             </Button>
             <Button variant="secondary" href="/" asChild className="w-full sm:w-auto">

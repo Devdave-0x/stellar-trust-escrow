@@ -119,4 +119,44 @@ describe('EscrowCard', () => {
     const bar = container.querySelector('[style*="width"]');
     expect(bar).toHaveStyle({ width: '0%' });
   });
+
+  it('shows a disputed warning banner when status is Disputed', () => {
+    renderWithAppProviders(<EscrowCard escrow={{ ...baseEscrow, status: 'Disputed' }} />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/disputed/i);
+  });
+
+  it('does not show a disputed banner for non-disputed statuses', () => {
+    renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows time remaining when a future deadline is provided', () => {
+    const deadline = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    renderWithAppProviders(<EscrowCard escrow={{ ...baseEscrow, deadline }} />);
+    expect(screen.getByText(/left/i)).toBeInTheDocument();
+  });
+
+  it('shows "Deadline passed" when the deadline is in the past', () => {
+    const deadline = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    renderWithAppProviders(<EscrowCard escrow={{ ...baseEscrow, deadline }} />);
+    expect(screen.getByText('Deadline passed')).toBeInTheDocument();
+  });
+
+  it('does not render a time-remaining row when no deadline is set', () => {
+    renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
+    expect(screen.queryByText(/left/i)).not.toBeInTheDocument();
+  });
+
+  it('exposes a control to copy the escrow ID', () => {
+    renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
+    expect(screen.getByRole('button', { name: /copy escrow id/i })).toBeInTheDocument();
+  });
+
+  it('renders the milestone progress bar with correct ARIA attributes', () => {
+    renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
+    const bar = screen.getByRole('progressbar');
+    expect(bar).toHaveAttribute('aria-valuenow', '50');
+    expect(bar).toHaveAttribute('aria-valuemin', '0');
+    expect(bar).toHaveAttribute('aria-valuemax', '100');
+  });
 });
