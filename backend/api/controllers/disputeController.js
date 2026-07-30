@@ -116,6 +116,57 @@ const listDisputes = async (req, res) => {
   }
 };
 
+const createDispute = async (req, res) => {
+  try {
+    const { escrowId, categoryId } = req.body || {};
+
+    if (escrowId === undefined || escrowId === null || !/^[0-9]+$/.test(String(escrowId))) {
+      return respond.error(res, 400, 'VALIDATION_ERROR', 'escrowId must be a numeric string');
+    }
+
+    const parsedCategoryId = Number.parseInt(categoryId, 10);
+    if (!Number.isInteger(parsedCategoryId)) {
+      return respond.error(res, 400, 'VALIDATION_ERROR', 'categoryId is required');
+    }
+
+    const category = await prisma.disputeCategory.findFirst({
+      where: { id: parsedCategoryId, active: true },
+      select: { id: true, defaultArbiterPoolId: true },
+    });
+    if (!category) {
+      return respond.error(res, 400, 'VALIDATION_ERROR', 'categoryId is not a valid category');
+    }
+
+    const existing = await prisma.dispute.findFirst({
+      where: { escrowId: BigInt(escrowId), tenantId: req.tenant.id },
+      select: { id: true },
+    });
+    if (existing) {
+      return respond.error(res, 409, 'CONFLICT', 'A dispute already exists for this escrow');
+    }
+
+    const dispute = await prisma.dispute.create({
+      data: {
+        tenantId: req.tenant.id,
+        escrowId: BigInt(escrowId),
+        raisedByAddress: req.user?.address,
+        raisedAt: new Date(),
+        categoryId: category.id,
+        // Routed to the category's pool at creation time so later category
+        // edits do not re-route disputes that are already in flight.
+        arbiterPoolId: category.defaultArbiterPoolId,
+      },
+    });
+
+    return respond.success(res, { ...dispute, escrowId: dispute.escrowId.toString() }, {
+      created: true,
+    });
+  } catch (error) {
+    console.error('Error creating dispute:', error);
+    return respond.error(res, 500, 'INTERNAL_ERROR', 'Failed to create dispute');
+  }
+};
+
 const getDispute = async (req, res) => {
   try {
     const { escrowId } = req.params;
@@ -626,6 +677,7 @@ function generateResolutionRecommendation(dispute, evidence) {
 
 export default {
   listDisputes,
+  createDispute,
   getDispute,
   postEvidence,
   listEvidence,
