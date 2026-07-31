@@ -98,6 +98,7 @@ mod bridge_tests {
             &None,
             &None,
             &multisig,
+            &None,
         );
         assert!(result.is_err());
     }
@@ -199,6 +200,7 @@ mod bridge_tests {
             &None,
             &None,
             &multisig,
+            &None,
         );
         assert!(matches!(result, Err(Ok(EscrowError::E54))));
     }
@@ -260,6 +262,7 @@ mod bridge_tests {
             &None,
             &None,
             &multisig,
+            &None,
         );
         assert!(matches!(result, Err(Ok(EscrowError::E54))));
 
@@ -298,6 +301,7 @@ mod bridge_tests {
             &None,
             &None,
             &multisig,
+            &None,
         );
         assert!(result.is_ok());
     }

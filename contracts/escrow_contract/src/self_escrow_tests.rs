@@ -47,6 +47,7 @@ mod self_escrow_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(
             matches!(result, Err(Ok(EscrowError::E3))),

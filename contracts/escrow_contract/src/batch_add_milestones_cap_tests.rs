@@ -51,6 +51,7 @@ mod batch_add_milestones_cap_tests {
             &None,
             &None,
             &no_multisig(env),
+            &None,
         );
         (escrow_client, escrow_id)
     }

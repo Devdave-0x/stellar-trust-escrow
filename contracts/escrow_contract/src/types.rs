@@ -777,3 +777,51 @@ pub struct ContractVersionInfo {
     /// Total number of successful upgrades applied since deployment.
     pub upgrade_count: u32,
 }
+
+/// Records a client's acceptance of off-chain terms bound to an escrow.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TermsAcceptance {
+    /// Escrow ID this acceptance belongs to.
+    pub escrow_id: u64,
+    /// Address of the client who accepted the terms.
+    pub client: Address,
+    /// SHA-256 hash of the terms document accepted off-chain.
+    pub terms_hash: BytesN<32>,
+    /// Whether the client has accepted the terms.
+    pub accepted: bool,
+    /// Ledger timestamp when terms were accepted. `None` if not yet accepted.
+    pub accepted_at: Option<u64>,
+}
+
+/// Configuration for a Stellar DEX integration for cross-contract asset swaps.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DexConfig {
+    /// Address of the DEX (e.g., Soroswap, Stellar DEX) contract.
+    pub dex_contract_id: Address,
+    /// Supported trading pairs as (token_in, token_out).
+    pub supported_pairs: soroban_sdk::Vec<(Address, Address)>,
+}
+
+/// A recorded DEX swap intent or result.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DexSwapRecord {
+    /// Escrow ID this swap is associated with.
+    pub escrow_id: u64,
+    /// Token being swapped from.
+    pub token_in: Address,
+    /// Token being swapped to.
+    pub token_out: Address,
+    /// Amount swapped from.
+    pub amount_in: i128,
+    /// Minimum amount expected out.
+    pub min_amount_out: i128,
+    /// Actual amount received out.
+    pub amount_out: Option<i128>,
+    /// Ledger timestamp when the swap was initiated.
+    pub swapped_at: Option<u64>,
+    /// Whether the swap was successful.
+    pub success: bool,
+}

@@ -173,6 +173,7 @@ mod property_invariant_tests {
                 &None,
                 &None,
                 &no_multisig(&t.env),
+                &None,
             );
 
             let mut milestone_ids: StdVec<u32> = StdVec::new();
@@ -245,6 +246,7 @@ mod property_invariant_tests {
                 &None,
                 &None,
                 &no_multisig(&t.env),
+                &None,
             );
 
             for (i, amount) in amounts.iter().enumerate() {

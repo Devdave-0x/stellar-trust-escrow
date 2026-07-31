@@ -90,6 +90,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             multisig,
+            &None,
         )
     }
 
@@ -143,6 +144,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &bad,
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigInvalidConfig)));
     }
@@ -164,6 +166,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &config(&env, &[(&client_addr, 1), (&signer_b, 1)], 0),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigInvalidConfig)));
     }
@@ -187,6 +190,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &config(&env, &[(&client_addr, 1), (&signer_b, 1)], 3),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigInvalidConfig)));
     }
@@ -208,6 +212,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &config(&env, &[(&client_addr, 1), (&signer_b, 0)], 1),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigInvalidConfig)));
     }
@@ -229,6 +234,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &config(&env, &[(&client_addr, 1), (&client_addr, 1)], 2),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigInvalidConfig)));
     }
@@ -261,6 +267,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &oversized,
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigTooManySigners)));
     }
@@ -284,6 +291,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &config(&env, &[(&client_addr, 5)], 5),
+            &None,
         );
         assert!(result.is_ok(), "expected Ok, got {result:?}");
     }
@@ -309,6 +317,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &config(&env, &[(&client_addr, 1), (&signer_b, 3)], 3),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigRequiredForHighValue)));
     }
@@ -331,6 +340,7 @@ mod multisig_threshold_tests {
             &None,
             &None,
             &config(&env, &[(&client_addr, 1), (&signer_b, 1)], 2),
+            &None,
         );
         assert!(result.is_ok(), "expected Ok, got {result:?}");
     }

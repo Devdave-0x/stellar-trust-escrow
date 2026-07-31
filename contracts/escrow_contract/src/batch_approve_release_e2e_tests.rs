@@ -78,6 +78,7 @@ mod batch_approve_release_e2e_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Start a timelock with a long duration so it is NOT expired during

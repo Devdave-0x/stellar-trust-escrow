@@ -84,6 +84,7 @@ mod creation_validation_tests {
             &None,
             timelock,
             &no_multisig(env),
+            &None,
         )
     }
 
@@ -246,6 +247,7 @@ mod creation_validation_tests {
                 start_ledger: 0,
             }),
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::E51)));
     }
@@ -269,6 +271,7 @@ mod creation_validation_tests {
                 start_ledger: 0,
             }),
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::E51)));
     }
@@ -325,6 +328,7 @@ mod creation_validation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::InvalidBriefHash)));
     }
@@ -355,6 +359,7 @@ mod creation_validation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(result.is_ok(), "expected Ok, got {result:?}");
     }

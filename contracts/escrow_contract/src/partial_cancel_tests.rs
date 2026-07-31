@@ -79,6 +79,7 @@ mod partial_cancel_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Add milestones totaling 6,000 tokens (leaving 4,000 unallocated)
@@ -139,6 +140,7 @@ mod partial_cancel_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Add milestones totaling exactly 10,000 tokens (no unallocated)
@@ -180,6 +182,7 @@ mod partial_cancel_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Try to partial cancel as freelancer (should fail)
@@ -211,6 +214,7 @@ mod partial_cancel_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Cancel the escrow first
@@ -242,6 +246,7 @@ mod partial_cancel_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Partial cancel - should refund entire balance

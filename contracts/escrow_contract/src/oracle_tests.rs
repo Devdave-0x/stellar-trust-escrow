@@ -79,6 +79,7 @@ mod oracle_triggered_tests {
                 weights: soroban_sdk::Vec::new(&env),
                 threshold: 0,
             },
+            &None,
         );
 
         let asset = Address::generate(&env);
