@@ -544,3 +544,27 @@ pub fn emit_validation_rejected(env: &Env, reason: &str) {
         soroban_sdk::String::from_str(env, reason),
     );
 }
+
+// ── Terms acceptance (#121) ──────────────────────────────────────────────
+
+/// Emitted when the client accepts the off-chain terms for an escrow.
+pub fn emit_terms_accepted(env: &Env, escrow_id: u64, client: &Address) {
+    env.events()
+        .publish((ev::TERMS_ACCEPTED, escrow_id), client.clone());
+}
+
+// ── DEX swap (#123) ──────────────────────────────────────────────────────
+
+/// Emitted when a simulated DEX swap is recorded for an escrow.
+pub fn emit_dex_swap(
+    env: &Env,
+    escrow_id: u64,
+    token_in: &Address,
+    token_out: &Address,
+    amount_in: i128,
+) {
+    env.events().publish(
+        (ev::DEX_SWAP, escrow_id),
+        (token_in.clone(), token_out.clone(), amount_in),
+    );
+}

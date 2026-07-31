@@ -110,6 +110,7 @@ mod reentrancy_guard_tests {
             &None,
             &None,
             &no_multisig(&t.env),
+            &None,
         );
         let m0 = t.client.add_milestone(
             &client_addr,
@@ -145,6 +146,7 @@ mod reentrancy_guard_tests {
             &None,
             &None,
             &no_multisig(&t.env),
+            &None,
         );
 
         engage_lock(&t);
@@ -170,6 +172,7 @@ mod reentrancy_guard_tests {
             &None,
             &None,
             &no_multisig(&t.env),
+            &None,
         );
         let m0 = t.client.add_milestone(
             &client_addr,
@@ -209,6 +212,7 @@ mod reentrancy_guard_tests {
             &None,
             &None,
             &no_multisig(&t.env),
+            &None,
         );
 
         // Engage and release the lock without ever calling a guarded entry
@@ -245,6 +249,7 @@ mod reentrancy_guard_tests {
             &None,
             &None,
             &no_multisig(&t.env),
+            &None,
         );
         let m0 = t.client.add_milestone(
             &client_addr,
@@ -298,6 +303,7 @@ mod reentrancy_guard_tests {
             &None,
             &None,
             &no_multisig(&t.env),
+            &None,
         );
         // Start a long-duration timelock (`meta.timelock`) so approve_milestone
         // leaves the milestone Approved with no immediate transfer. This is a

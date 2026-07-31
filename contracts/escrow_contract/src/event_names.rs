@@ -116,3 +116,9 @@ pub const ROLE_ASSIGNED: Symbol = symbol_short!("role_asg");
 // ── Freeze/unfreeze (#99) ────────────────────────────────────────────────
 pub const ESCROW_FROZEN: Symbol = symbol_short!("esc_frz");
 pub const ESCROW_UNFROZEN: Symbol = symbol_short!("esc_unf");
+
+// ── Terms acceptance (#121) ──────────────────────────────────────────────
+pub const TERMS_ACCEPTED: Symbol = symbol_short!("terms_acc");
+
+// ── DEX swap (#123) ──────────────────────────────────────────────────────
+pub const DEX_SWAP: Symbol = symbol_short!("dex_swap");

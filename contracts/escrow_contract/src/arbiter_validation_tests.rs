@@ -48,6 +48,7 @@ mod arbiter_validation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(matches!(result, Err(Ok(EscrowError::E3))));
     }
@@ -71,6 +72,7 @@ mod arbiter_validation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(matches!(result, Err(Ok(EscrowError::E3))));
     }
@@ -94,6 +96,7 @@ mod arbiter_validation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert!(result.is_ok());
     }

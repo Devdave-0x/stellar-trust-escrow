@@ -60,6 +60,7 @@ mod meta_snapshot_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let state = client.get_escrow(&escrow_id);
@@ -134,6 +135,7 @@ mod meta_snapshot_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.cancel_escrow(&client_addr2, &escrow_id2);

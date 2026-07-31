@@ -59,6 +59,7 @@ mod timelock_enforcement_tests {
             &None,
             &None,
             &no_multisig(env),
+            &None,
         );
 
         client.start_timelock(&client_addr, &escrow_id, &duration);
@@ -169,6 +170,7 @@ mod timelock_enforcement_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.start_timelock(&client_addr, &escrow_id, &3_600_u64);

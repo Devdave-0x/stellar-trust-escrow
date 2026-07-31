@@ -94,6 +94,7 @@ mod max_escrow_amount_tests {
             &None,
             &None,
             &multisig_2of2(&env, &client_addr, &cosigner),
+            &None,
         );
         assert!(
             result.is_ok(),
@@ -119,6 +120,7 @@ mod max_escrow_amount_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::MultisigRequiredForHighValue)));
     }
@@ -141,6 +143,7 @@ mod max_escrow_amount_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::E19)));
     }
@@ -162,6 +165,7 @@ mod max_escrow_amount_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(result, Err(Ok(EscrowError::E19)));
     }

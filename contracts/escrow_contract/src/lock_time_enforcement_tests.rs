@@ -69,6 +69,7 @@ mod lock_time_enforcement_tests {
             &Some(lock_time),
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Start a long timelock so approve_milestone keeps the milestone in
@@ -129,6 +130,7 @@ mod lock_time_enforcement_tests {
             &Some(lock_time),
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.start_timelock(&client_addr, &escrow_id, &100_000_u64);

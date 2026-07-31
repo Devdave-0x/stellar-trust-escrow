@@ -78,6 +78,7 @@ mod pause_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         assert!(
@@ -104,6 +105,7 @@ mod pause_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.pause(&admin);
@@ -140,6 +142,7 @@ mod pause_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let mid = client.add_milestone(
@@ -192,6 +195,7 @@ mod pause_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.pause(&admin);

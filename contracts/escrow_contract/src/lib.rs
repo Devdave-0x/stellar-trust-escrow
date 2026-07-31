@@ -102,6 +102,13 @@ mod timelock_enforcement_tests;
 mod token_whitelist_tests;
 mod transfer_client_tests;
 mod types;
+mod platform_fee;
+mod extension;
+mod auto_expiry;
+mod simulation;
+mod simulation_tests;
+mod terms_hash;
+mod terms_hash_tests;
 mod upgrade_tests;
 
 pub use errors::EscrowError;
@@ -175,10 +182,19 @@ pub const MIN_ARBITER_REPUTATION_SCORE: u64 = 100;
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
 
 /// Contract code version assigned on first deploy. Distinct from
-/// `storage::STORAGE_VERSION`, which tracks the persistent data layout —
+/// `storage::STORAGE_VERSION`, which tracks the persistent data layout â€”
 /// this tracks the deployed contract *code* itself and is incremented once
 /// per successful `upgrade()` call. See `ContractVersionInfo`.
 pub const INITIAL_CONTRACT_VERSION: u32 = 1;
+
+/// Minimum number of ledgers a dispute must remain open before it can be resolved.
+/// This cooldown gives involved parties time to prepare their case and prevents
+/// rushed or malicious immediate resolution.
+pub const DISPUTE_COOLDOWN_LEDGERS: u32 = 100;
+
+/// Maximum allowed disputable ledgers after dispute_start_ledger before a
+/// dispute is considered stale and can be force-resolved by governance.
+pub const DISPUTE_MAX_LEDGERS: u32 = 500;
 
 // ── Granular storage keys ─────────────────────────────────────────────────────
 // Separate keys for meta vs each milestone avoids deserialising the full
@@ -1055,6 +1071,29 @@ pub struct EscrowContract;
 impl EscrowContract {
     // ── Initialization ────────────────────────────────────────────────────────
 
+    /// Initialize the escrow contract with the deployer as admin.
+    ///
+    /// This is the one-time setup function for the contract. It must be
+    /// called exactly once during deployment; subsequent calls will fail
+    /// with `EscrowError::E1` (AlreadyInitialized).
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban contract environment
+    /// * `admin` - The address that becomes the contract admin and
+    ///   platform treasury. This address will have full control over
+    ///   `set_admin_multisig`, `freeze_escrow`, and all admin-only
+    ///   operations.
+    ///
+    /// # Effects
+    /// - Sets the admin and platform treasury to `admin`
+    /// - Configures a default 1-of-1 multisig (admin as sole signer)
+    /// - Initializes the escrow counter to 0
+    /// - Stores the contract code version as `INITIAL_CONTRACT_VERSION`
+    /// - Emits an `admin_initialized` event
+    ///
+    /// # Panics
+    /// Panics with `EscrowError::E1` if the contract has already been
+    /// initialized.
     pub fn initialize(env: Env, admin: Address) -> Result<(), EscrowError> {
         if !env.storage().instance().has(&DataKey::Admin) {
             admin.require_auth();
@@ -1776,6 +1815,7 @@ impl EscrowContract {
         lock_time: Option<u64>,
         timelock: Option<Timelock>,
         multisig_config: MultisigConfig,
+        terms_hash: Option<BytesN<32>>,
     ) -> Result<u64, EscrowError> {
         Self::create_escrow_internal(
             env,
@@ -1791,6 +1831,7 @@ impl EscrowContract {
             None,
             Some(multisig_config),
             timelock,
+            terms_hash,
             true,
         )
     }
@@ -1818,6 +1859,7 @@ impl EscrowContract {
             deadline,
             lock_time,
             Some(dispute_timeout_ledger),
+            None,
             None,
             None,
             None,
@@ -1861,6 +1903,7 @@ impl EscrowContract {
             None,
             None,
             None,
+            None,
             true,
         )?;
         events::emit_nft_gated_escrow_created(&env, escrow_id, &nft_contract, token_id);
@@ -1894,6 +1937,7 @@ impl EscrowContract {
             lock_time,
             None,
             Some(buyer_signers),
+            None,
             None,
             None,
             true,
@@ -2068,6 +2112,7 @@ impl EscrowContract {
         buyer_signers: Option<soroban_sdk::Vec<Address>>,
         multisig_config: Option<MultisigConfig>,
         timelock: Option<Timelock>,
+        terms_hash: Option<BytesN<32>>,
         require_client_auth: bool,
     ) -> Result<u64, EscrowError> {
         // Auth + validation before any storage I/O.
@@ -2099,6 +2144,12 @@ impl EscrowContract {
         // An all-zero brief hash binds no agreement document to the escrow.
         if brief_hash == BytesN::from_array(&env, &[0u8; 32]) {
             return Err(EscrowError::InvalidBriefHash);
+        }
+
+        if let Some(ref th) = terms_hash {
+            if *th == BytesN::from_array(&env, &[0u8; 32]) {
+                return Err(EscrowError::TermsHashEmpty);
+            }
         }
 
         let creation_timelock = Self::normalize_creation_timelock(&env, timelock)?;
@@ -3531,6 +3582,15 @@ impl EscrowContract {
 
             ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
+            if let Some(ref _th) = meta.terms_hash {
+                let acceptance = env.storage().persistent()
+                    .get(&DataKey::TermsAcceptance(escrow_id))
+                    .ok_or(EscrowError::ClientHasNotAcceptedTerms)?;
+                if !acceptance.accepted {
+                    return Err(EscrowError::ClientHasNotAcceptedTerms);
+                }
+            }
+
             let amount = milestone.amount;
             let completes_escrow =
                 meta.released_count + 1 == meta.milestone_count && meta.milestone_count > 0;
@@ -3629,6 +3689,152 @@ impl EscrowContract {
 
         events::emit_client_role_transferred(&env, escrow_id, &old_client, &new_client);
         Ok(())
+    }
+
+    /// Records the client's acceptance of off-chain terms bound to this escrow.
+    ///
+    /// Requires:
+    /// - Escrow exists
+    /// - Caller is the client
+    /// - Escrow is Active
+    /// - Terms hash was set during creation
+    /// - Client has not already accepted
+    pub fn accept_terms(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+        caller.require_auth();
+        ContractStorage::require_not_paused(&env)?;
+
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        if caller != meta.client {
+            return Err(EscrowError::E5);
+        }
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+        let terms_hash = meta.terms_hash.ok_or(EscrowError::TermsHashEmpty)?;
+
+        let key = DataKey::TermsAcceptance(escrow_id);
+        let mut acceptance: TermsAcceptance = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(TermsAcceptance {
+                escrow_id,
+                client: meta.client.clone(),
+                terms_hash,
+                accepted: false,
+                accepted_at: None,
+            });
+        if acceptance.accepted {
+            return Err(EscrowError::ClientAlreadyAcceptedTerms);
+        }
+
+        acceptance.accepted = true;
+        acceptance.accepted_at = Some(env.ledger().timestamp());
+        env.storage().persistent().set(&key, &acceptance);
+        ContractStorage::bump_persistent_ttl(&env, &key);
+
+        events::emit_terms_accepted(&env, escrow_id, &caller);
+        Ok(())
+    }
+
+    /// View function: returns true if the client has accepted the terms
+    /// bound to this escrow.
+    pub fn check_terms_accepted(env: Env, escrow_id: u64) -> Result<bool, EscrowError> {
+        ContractStorage::require_initialized(&env)?;
+        let meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        if meta.terms_hash.is_none() {
+            return Ok(false);
+        }
+        let acceptance = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TermsAcceptance(escrow_id))
+            .ok_or(EscrowError::ClientHasNotAcceptedTerms)?;
+        Ok(acceptance.accepted)
+    }
+
+    /// Simulated cross-contract call to a Stellar DEX for asset swaps.
+    ///
+    /// Requires:
+    /// - Caller is the client
+    /// - Escrow is Active
+    /// - DEX is configured
+    /// - Swap parameters are valid
+    ///
+    /// Records the swap intent in escrow state. Actual cross-contract calls
+    /// require WASM imports; this function simulates the flow for the exercise.
+    pub fn swap_asset_via_dex(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        token_in: Address,
+        token_out: Address,
+        amount_in: i128,
+        min_amount_out: i128,
+    ) -> Result<DexSwapRecord, EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_initialized(&env)?;
+        ContractStorage::require_not_paused(&env)?;
+        ContractStorage::require_not_frozen(&env, escrow_id)?;
+
+        let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+        if caller != meta.client {
+            return Err(EscrowError::E5);
+        }
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
+
+        let dex_config: DexConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::DexConfig)
+            .ok_or(EscrowError::DexNotConfigured)?;
+
+        let pair_found = dex_config.supported_pairs.iter().any(|(a, b)| {
+            *a == token_in && *b == token_out
+        });
+        if !pair_found {
+            return Err(EscrowError::InvalidSwapParameters);
+        }
+
+        if amount_in <= 0 || min_amount_out <= 0 {
+            return Err(EscrowError::InvalidSwapParameters);
+        }
+        if amount_in > meta.remaining_balance {
+            return Err(EscrowError::InvalidSwapParameters);
+        }
+
+        let now = env.ledger().timestamp();
+        let record = DexSwapRecord {
+            escrow_id,
+            token_in,
+            token_out,
+            amount_in,
+            min_amount_out,
+            amount_out: Some(amount_in),
+            swapped_at: Some(now),
+            success: true,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::DexSwapRecord(escrow_id), &record);
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::DexSwapRecord(escrow_id));
+
+        meta.remaining_balance = meta
+            .remaining_balance
+            .checked_sub(amount_in)
+            .ok_or(EscrowError::E20)?;
+        ContractStorage::save_escrow_meta(&env, &meta);
+
+        events::emit_dex_swap(&env, escrow_id, &token_in, &token_out, amount_in);
+        Ok(record)
     }
 
     /// Cancels an escrow and returns remaining funds to the client.
@@ -4308,6 +4514,14 @@ impl EscrowContract {
             }
             if client_amount + freelancer_amount != meta.remaining_balance {
                 return Err(EscrowError::E20);
+            }
+            if let Some(disputed_at) = meta.dispute_start_ledger {
+                let current_ledger = env.ledger().sequence();
+                if current_ledger < disputed_at + DISPUTE_COOLDOWN_LEDGERS as u64 {
+                    return Err(EscrowError::E64);
+                }
+            } else {
+                return Err(EscrowError::E10);
             }
 
             let (client_payout, freelancer_payout, _collected_fee) =
@@ -6124,6 +6338,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Freeze with insufficient signers should fail
@@ -6205,6 +6420,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let a = client.add_milestone(
@@ -6274,6 +6490,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let a = client.add_milestone(
@@ -6368,6 +6585,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let a = client.add_milestone(
@@ -6664,6 +6882,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(rejected.unwrap_err().unwrap(), EscrowError::E19);
 
@@ -6678,6 +6897,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         assert_eq!(
             client.get_escrow(&accepted_id).total_amount,
@@ -6740,6 +6960,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         assert_eq!(escrow_id, 0);
@@ -6790,6 +7011,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let milestone_id = client.add_milestone(
@@ -6849,6 +7071,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let mid = client.add_milestone(
@@ -6908,6 +7131,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.cancel_escrow(&escrow_client, &escrow_id);
@@ -6964,6 +7188,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let m0 = client.add_milestone(
@@ -7022,6 +7247,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         advance(&env, 3 * RENT_PERIOD_SECONDS);
@@ -7072,6 +7298,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let milestone_id = client.add_milestone(
             &escrow_client,
@@ -7130,6 +7357,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let topped_up = client.top_up_rent(&escrow_client, &escrow_id, &5_u64);
@@ -7182,6 +7410,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.request_cancellation(
@@ -7255,6 +7484,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // ── Add a milestone for the full amount ───────────────────────────────
@@ -7386,6 +7616,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(env),
+            &None,
         );
         (escrow_client, freelancer, token_id, escrow_id)
     }
@@ -7831,6 +8062,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(env),
+            &None,
         );
         let milestone_id = client.add_milestone(
             &escrow_client,
@@ -7999,6 +8231,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         let mid = client.add_milestone(
@@ -8271,6 +8504,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
         let milestone_id = client.add_milestone(
             &escrow_client,
@@ -8476,6 +8710,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.raise_dispute(&escrow_client, &escrow_id, &None);
@@ -8528,6 +8763,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.raise_dispute(&escrow_client, &escrow_id, &None);
@@ -8570,6 +8806,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.raise_dispute(&escrow_client, &escrow_id, &None);
@@ -8614,6 +8851,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.raise_dispute(&escrow_client, &escrow_id, &None);
@@ -8658,6 +8896,7 @@ mod tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         client.raise_dispute(&escrow_client, &escrow_id, &None);

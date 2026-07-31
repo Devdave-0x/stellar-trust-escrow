@@ -74,6 +74,7 @@ mod governance_escalation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Try to escalate (should fail because not disputed)
@@ -106,6 +107,7 @@ mod governance_escalation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Raise dispute
@@ -145,6 +147,7 @@ mod governance_escalation_tests {
             &None,
             &None,
             &no_multisig(&env),
+            &None,
         );
 
         // Raise dispute
