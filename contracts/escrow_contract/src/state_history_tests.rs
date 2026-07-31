@@ -4,8 +4,8 @@ mod state_history_tests {
     use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Vec};
 
     use crate::{
-        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig, StateHistoryEntry,
-        MAX_ESCROW_AMOUNT, MIN_ESCROW_AMOUNT,
+        EscrowContract, EscrowContractClient, EscrowError, EscrowStatus, MultisigConfig,
+        StateHistoryEntry, MAX_ESCROW_AMOUNT, MIN_ESCROW_AMOUNT,
     };
 
     fn setup() -> (

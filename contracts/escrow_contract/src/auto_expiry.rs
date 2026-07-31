@@ -7,7 +7,7 @@
 //!
 //! Closes #98
 
-use soroban_sdk::{token, Env, Address};
+use soroban_sdk::{token, Address, Env};
 
 use crate::errors::EscrowError;
 use crate::events;
@@ -21,11 +21,7 @@ use crate::ContractStorage;
 /// All remaining funds are refunded to the client (depositor).
 ///
 /// Returns the refunded amount.
-pub fn trigger_expiry(
-    env: &Env,
-    caller: &Address,
-    escrow_id: u64,
-) -> Result<i128, EscrowError> {
+pub fn trigger_expiry(env: &Env, caller: &Address, escrow_id: u64) -> Result<i128, EscrowError> {
     caller.require_auth();
     ContractStorage::require_not_paused(env)?;
 

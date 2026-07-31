@@ -244,10 +244,8 @@ pub fn emit_contract_unpaused(env: &Env, admin: &Address) {
 }
 
 pub fn emit_contract_version_upgraded(env: &Env, old_version: u32, new_version: u32) {
-    env.events().publish(
-        (ev::CONTRACT_VERSION_UPGRADED,),
-        (old_version, new_version),
-    );
+    env.events()
+        .publish((ev::CONTRACT_VERSION_UPGRADED,), (old_version, new_version));
 }
 
 pub fn emit_cancellation_executed(
@@ -517,18 +515,14 @@ pub fn emit_multi_asset_released(env: &Env, escrow_id: u64, token: &Address, amo
 
 /// Emitted when an escrow is frozen by the admin.
 pub fn emit_escrow_frozen(env: &Env, escrow_id: u64, caller: &Address) {
-    env.events().publish(
-        (symbol_short!("esc_frz"), escrow_id),
-        caller.clone(),
-    );
+    env.events()
+        .publish((symbol_short!("esc_frz"), escrow_id), caller.clone());
 }
 
 /// Emitted when an escrow is unfrozen by the admin.
 pub fn emit_escrow_unfrozen(env: &Env, escrow_id: u64, caller: &Address) {
-    env.events().publish(
-        (symbol_short!("esc_unf"), escrow_id),
-        caller.clone(),
-    );
+    env.events()
+        .publish((symbol_short!("esc_unf"), escrow_id), caller.clone());
 }
 
 // ── RBAC events (#100) ────────────────────────────────────────────────────

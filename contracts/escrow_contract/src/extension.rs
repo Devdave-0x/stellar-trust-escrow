@@ -6,7 +6,7 @@
 //!
 //! Closes #96
 
-use soroban_sdk::{contracttype, Env, Address};
+use soroban_sdk::{contracttype, Address, Env};
 
 use crate::errors::EscrowError;
 use crate::events;
@@ -75,16 +75,16 @@ pub fn consent_extend(
     }
 
     let key = ExtensionKey::Pending(escrow_id);
-    let mut request: ExtensionRequest = env
-        .storage()
-        .temporary()
-        .get(&key)
-        .unwrap_or(ExtensionRequest {
-            new_deadline,
-            client_consented: false,
-            freelancer_consented: false,
-            requested_at: now,
-        });
+    let mut request: ExtensionRequest =
+        env.storage()
+            .temporary()
+            .get(&key)
+            .unwrap_or(ExtensionRequest {
+                new_deadline,
+                client_consented: false,
+                freelancer_consented: false,
+                requested_at: now,
+            });
 
     // If the proposed deadline differs, reset consents
     if request.new_deadline != new_deadline {

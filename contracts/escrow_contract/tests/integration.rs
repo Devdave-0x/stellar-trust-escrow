@@ -446,9 +446,13 @@ fn test_batch_add_approve_release_full_lifecycle() {
         amounts_vec.push_back(amt);
     }
 
-    let first_id = t
-        .client
-        .batch_add_milestones(&client_addr, &escrow_id, &titles, &description_hashes, &amounts_vec);
+    let first_id = t.client.batch_add_milestones(
+        &client_addr,
+        &escrow_id,
+        &titles,
+        &description_hashes,
+        &amounts_vec,
+    );
 
     let mut milestone_ids: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&t.env);
     for i in 0..amounts.len() as u32 {

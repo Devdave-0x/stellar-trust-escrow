@@ -11,8 +11,8 @@ use soroban_sdk::{token, Env};
 use crate::errors::EscrowError;
 use crate::events;
 use crate::types::{EscrowFeeSnapshot, EscrowStatus};
-use crate::DataKey;
 use crate::ContractStorage;
+use crate::DataKey;
 
 /// Calculate the fee amount for an escrow based on configured tiers.
 pub fn calculate_fee(env: &Env, total_amount: i128) -> (u32, i128) {
@@ -54,14 +54,13 @@ pub fn collect_fee(
     let meta = ContractStorage::load_escrow_meta(env, escrow_id)?;
 
     // Only admin or client may collect fees
-    ContractStorage::require_admin(env, caller)
-        .or_else(|_| {
-            if caller == &meta.client {
-                Ok(())
-            } else {
-                Err(EscrowError::E3)
-            }
-        })?;
+    ContractStorage::require_admin(env, caller).or_else(|_| {
+        if caller == &meta.client {
+            Ok(())
+        } else {
+            Err(EscrowError::E3)
+        }
+    })?;
 
     // Only collect from completed or cancelled escrows
     if meta.status != EscrowStatus::Completed && meta.status != EscrowStatus::Cancelled {

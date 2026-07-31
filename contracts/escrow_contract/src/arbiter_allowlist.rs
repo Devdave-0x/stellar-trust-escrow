@@ -4,7 +4,11 @@ use crate::errors::EscrowError;
 use crate::types::DataKey;
 use crate::ContractStorage;
 
-pub fn add_to_arbiter_allowlist(env: Env, caller: Address, arbiter: Address) -> Result<(), EscrowError> {
+pub fn add_to_arbiter_allowlist(
+    env: Env,
+    caller: Address,
+    arbiter: Address,
+) -> Result<(), EscrowError> {
     caller.require_auth();
     ContractStorage::require_admin(&env, &caller)?;
 
@@ -18,7 +22,11 @@ pub fn add_to_arbiter_allowlist(env: Env, caller: Address, arbiter: Address) -> 
     Ok(())
 }
 
-pub fn remove_from_arbiter_allowlist(env: Env, caller: Address, arbiter: Address) -> Result<(), EscrowError> {
+pub fn remove_from_arbiter_allowlist(
+    env: Env,
+    caller: Address,
+    arbiter: Address,
+) -> Result<(), EscrowError> {
     caller.require_auth();
     ContractStorage::require_admin(&env, &caller)?;
 
