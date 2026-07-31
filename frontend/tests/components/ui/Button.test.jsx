@@ -43,14 +43,16 @@ describe('Button', () => {
   });
 
   it('applies variant classes', () => {
+    // Each variant now carries a light-mode tone plus a dark: counterpart; the
+    // single dark-only tone did not reach 4.5:1 on a light surface.
     const { rerender } = render(<Button variant="danger">Danger</Button>);
-    expect(screen.getByRole('button')).toHaveClass('text-red-400');
+    expect(screen.getByRole('button')).toHaveClass('text-red-900', 'dark:text-red-200');
 
     rerender(<Button variant="secondary">Secondary</Button>);
-    expect(screen.getByRole('button')).toHaveClass('text-gray-300');
+    expect(screen.getByRole('button')).toHaveClass('text-gray-900', 'dark:text-gray-200');
 
     rerender(<Button variant="ghost">Ghost</Button>);
-    expect(screen.getByRole('button')).toHaveClass('text-gray-400');
+    expect(screen.getByRole('button')).toHaveClass('text-gray-800', 'dark:text-gray-200');
   });
 
   it('applies size classes', () => {

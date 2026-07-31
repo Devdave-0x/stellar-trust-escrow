@@ -93,22 +93,21 @@ mod upgrade_tests {
 
     /// Only the admin may trigger an upgrade; any other caller must be rejected.
     #[test]
-    #[ignore = "requires initialize + upgrade — Issues #1, #17"]
     fn test_upgrade_requires_admin_auth() {
         let (env, admin, client_addr, _freelancer, contract) = setup_initialized();
         let wasm_hash = upload_dummy_wasm(&env);
 
-        // Non-admin must fail.
+        // Non-admin must fail with E87.
         let result = contract.try_upgrade(&client_addr, &wasm_hash);
         assert!(result.is_err(), "upgrade by non-admin must return an error");
 
-        // Admin must succeed.
-        contract.upgrade(&admin, &wasm_hash);
+        // Admin must succeed and return the new version.
+        let new_version = contract.upgrade(&admin, &wasm_hash);
+        assert_eq!(new_version, Ok(2));
     }
 
     /// Calling upgrade before initialize must return NotInitialized.
     #[test]
-    #[ignore = "requires upgrade — Issue #17"]
     fn test_upgrade_before_initialize_fails() {
         let env = Env::default();
         env.mock_all_auths();
@@ -127,14 +126,13 @@ mod upgrade_tests {
 
     /// Upgrade must not reset the admin address stored in contract state.
     #[test]
-    #[ignore = "requires initialize + upgrade — Issues #1, #17"]
     fn test_upgrade_preserves_admin_key() {
         let (env, admin, _client_addr, _freelancer, contract) = setup_initialized();
         let wasm_hash = upload_dummy_wasm(&env);
 
         contract.upgrade(&admin, &wasm_hash);
 
-        // A non-admin upgrade attempt post-upgrade must still fail,
+        // A non-admin upgrade attempt post-upgrade must still fail with E87,
         // proving the admin key was not wiped during the upgrade.
         let impostor = Address::generate(&env);
         let result = contract.try_upgrade(&impostor, &wasm_hash);
@@ -150,7 +148,6 @@ mod upgrade_tests {
 
     /// Escrow counter must survive an upgrade.
     #[test]
-    #[ignore = "requires initialize + create_escrow + upgrade — Issues #1, #2, #17"]
     fn test_upgrade_preserves_escrow_counter() {
         let (env, admin, client_addr, freelancer, contract) = setup_initialized();
         let token = register_token(&env, &admin, &client_addr, 1_000_000);
@@ -200,7 +197,6 @@ mod upgrade_tests {
 
     /// All fields of an EscrowState must be identical after an upgrade.
     #[test]
-    #[ignore = "requires initialize + create_escrow + upgrade — Issues #1, #2, #17"]
     fn test_upgrade_preserves_escrow_state() {
         let (env, admin, client_addr, freelancer, contract) = setup_initialized();
         let token = register_token(&env, &admin, &client_addr, 1_000_000);
@@ -244,7 +240,6 @@ mod upgrade_tests {
 
     /// Milestones attached to an escrow must survive an upgrade intact.
     #[test]
-    #[ignore = "requires initialize + create_escrow + add_milestone + upgrade — Issues #1, #2, #3, #17"]
     fn test_upgrade_preserves_milestones() {
         let (env, admin, client_addr, freelancer, contract) = setup_initialized();
         let token = register_token(&env, &admin, &client_addr, 1_000_000);
@@ -284,7 +279,6 @@ mod upgrade_tests {
 
     /// Reputation records must survive an upgrade.
     #[test]
-    #[ignore = "requires initialize + update_reputation + upgrade — Issues #1, #11, #17"]
     fn test_upgrade_preserves_reputation() {
         let (env, admin, client_addr, _freelancer, contract) = setup_initialized();
 
@@ -312,7 +306,6 @@ mod upgrade_tests {
 
     /// An upgrade mid-lifecycle must not block the remaining workflow.
     #[test]
-    #[ignore = "requires full lifecycle + upgrade — Issues #1-#7, #17"]
     fn test_upgrade_mid_lifecycle_escrow_continues() {
         let (env, admin, client_addr, freelancer, contract) = setup_initialized();
         let token = register_token(&env, &admin, &client_addr, 1_000_000);
@@ -358,7 +351,6 @@ mod upgrade_tests {
 
     /// Disputed escrow state must survive an upgrade; resolution must still work.
     #[test]
-    #[ignore = "requires dispute flow + upgrade — Issues #1-#10, #17"]
     fn test_upgrade_preserves_disputed_escrow() {
         let (env, admin, client_addr, freelancer, contract) = setup_initialized();
         let token = register_token(&env, &admin, &client_addr, 1_000_000);
@@ -404,7 +396,6 @@ mod upgrade_tests {
 
     /// Rollback: re-applying the original WASM hash must keep all storage intact.
     #[test]
-    #[ignore = "requires initialize + create_escrow + upgrade — Issues #1, #2, #17"]
     fn test_rollback_preserves_state() {
         let (env, admin, client_addr, freelancer, contract) = setup_initialized();
         let token = register_token(&env, &admin, &client_addr, 500_000);
@@ -447,7 +438,6 @@ mod upgrade_tests {
 
     /// Multiple sequential upgrades must not corrupt accumulated state.
     #[test]
-    #[ignore = "requires initialize + create_escrow + upgrade — Issues #1, #2, #17"]
     fn test_multiple_sequential_upgrades_preserve_state() {
         let (env, admin, client_addr, freelancer, contract) = setup_initialized();
         let token = register_token(&env, &admin, &client_addr, 3_000_000);

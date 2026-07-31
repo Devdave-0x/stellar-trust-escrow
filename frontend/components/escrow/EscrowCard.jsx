@@ -21,10 +21,11 @@ import Link from 'next/link';
 import { AlertTriangle, Clock } from 'lucide-react';
 import Badge from '../ui/Badge';
 import CurrencyAmount from '../ui/CurrencyAmount';
-import CopyButton from '../ui/CopyButton';
+// CopyButton is a named export, not a default one — importing it as default
+// made this component crash whenever an escrow had a transaction hash.
+import { CopyButton } from '../ui/CopyButton';
 import EscrowCardSkeleton from '../ui/EscrowCardSkeleton';
 import { useI18n } from '../../i18n/index.jsx';
-import { useRef } from 'react';
 
 function getTimeRemaining(deadline) {
   if (!deadline) return null;
@@ -39,7 +40,6 @@ function getTimeRemaining(deadline) {
 
 export default function EscrowCard({ escrow, isLoading = false }) {
   const { t } = useI18n();
-  const cardRef = useRef(null);
   if (isLoading) return <EscrowCardSkeleton />;
   const {
     id,
@@ -111,7 +111,7 @@ export default function EscrowCard({ escrow, isLoading = false }) {
 
       {/* Milestone Progress Bar */}
       <div>
-        <div className="flex justify-between text-xs text-gray-500 mb-1">
+        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
           <span>{t('escrow.fields.milestones')}</span>
           <span>{milestoneProgress}</span>
         </div>
@@ -169,6 +169,6 @@ export default function EscrowCard({ escrow, isLoading = false }) {
           You are {role === 'client' ? t('escrow.fields.client') : t('escrow.fields.freelancer')}
         </span>
       </div>
-    </Link>
+    </article>
   );
 }

@@ -46,4 +46,24 @@ describe('Header', () => {
     fireEvent.click(badge);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
+
+  // ── Accessibility ──────────────────────────────────────────────────────────
+
+  it('gives the desktop nav landmark a distinguishing name', () => {
+    renderHeader();
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
+  });
+
+  it('names both nav landmarks distinctly once the mobile menu is open', () => {
+    renderHeader();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation menu' }));
+
+    // Two same-type landmarks on one page must be told apart by name.
+    const navNames = screen.getAllByRole('navigation').map((nav) => nav.getAttribute('aria-label'));
+
+    expect(navNames).toContain('Main');
+    expect(navNames).toContain('Mobile');
+    expect(new Set(navNames).size).toBe(navNames.length);
+  });
 });

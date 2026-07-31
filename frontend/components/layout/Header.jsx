@@ -47,13 +47,13 @@ export default function Header() {
             <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
               S
             </div>
-            <span className="font-bold text-white hidden sm:inline">
-              StellarTrust<span className="text-indigo-400">Escrow</span>
+            <span className="font-bold text-gray-900 dark:text-white hidden sm:inline">
+              StellarTrust<span className="text-indigo-700 dark:text-indigo-400">Escrow</span>
             </span>
           </Link>
 
-          {/* Nav Links */}
-          <nav className="hidden md:flex items-center gap-6">
+          {/* Nav Links — labelled so the two <nav> landmarks are distinguishable */}
+          <nav aria-label="Main" className="hidden md:flex items-center gap-6">
             <Link
               href="/dashboard"
               className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm transition-colors"
@@ -85,7 +85,7 @@ export default function Header() {
 
             {/* Hamburger — mobile only */}
             <button
-              className="md:hidden text-gray-400 hover:text-white p-1 rounded transition-colors"
+              className="md:hidden text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white p-1 rounded transition-colors"
               aria-label="Open navigation menu"
               aria-expanded={isMobileMenuOpen}
               onClick={() => setIsMobileMenuOpen(true)}
@@ -97,6 +97,7 @@ export default function Header() {
                 viewBox="0 0 24 24"
                 stroke="currentColor"
                 strokeWidth={2}
+                aria-hidden="true"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
@@ -106,7 +107,10 @@ export default function Header() {
 
         {/* Mobile Nav */}
         {isMobileMenuOpen && (
-          <nav className="md:hidden py-4 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-4">
+          <nav
+            aria-label="Mobile"
+            className="md:hidden py-4 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-4"
+          >
             <Link
               href="/dashboard"
               className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors px-2"

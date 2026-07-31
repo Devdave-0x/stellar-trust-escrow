@@ -83,24 +83,33 @@ pub enum EcErr {
     /// The escrow amount is at or above the high-value threshold, which requires a
     /// multisig policy needing more than one signer.
     MultisigRequiredForHighValue = 78,
+    E80 = 80,
+    /// Description string exceeds MAX_STRING_LEN.
+    E81 = 81,
+    /// Escrow is not in Disputed status.
+    E82 = 82,
+    /// Caller is not a party (client or freelancer) to this escrow.
+    E83 = 83,
+    /// Upgrade not authorized.
+    E87 = 87,
+    /// Invalid arbiter fee basis points (must be <= 10000).
+    E88 = 88,
+    /// Arbiter fee exceeds total fee allowance.
+    E89 = 89,
+    /// Arbiter address is not on the allowlist.
+    E90 = 90,
+    /// Arbiter address is already on the allowlist.
+    E91 = 91,
+    /// Arbiter address not found on allowlist.
+    E92 = 92,
     /// The brief hash is all zeros, so no agreement document is bound to the escrow.
     InvalidBriefHash = 79,
-    EvidenceHashEmpty = 80,
-    EvidenceDescriptionTooLong = 81,
-    EscrowNotInDisputedState = 82,
-    CallerNotAParty = 83,
-    FeeBpsExceedsMaximum = 84,
-    FeeBpsExceedsRemaining = 85,
-    UpgradeNotAuthorized = 86,
-    CrossContractCallFailed = 87,
-    DexNotConfigured = 88,
-    InvalidSwapParameters = 89,
-    ArbiterNotOnAllowlist = 90,
-    ArbiterAlreadyOnAllowlist = 91,
-    ArbiterNotFoundOnAllowlist = 92,
-    TermsHashEmpty = 93,
-    ClientAlreadyAcceptedTerms = 94,
-    ClientHasNotAcceptedTerms = 95,
+    /// Escrow amount is below the minimum allowed threshold.
+    E84 = 84,
+    /// Escrow amount exceeds the maximum allowed threshold.
+    E85 = 85,
+    /// Slippage tolerance has been exceeded; the release is rejected.
+    E86 = 86,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle

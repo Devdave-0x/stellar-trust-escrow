@@ -138,8 +138,10 @@ describe('MultiUploader', () => {
     await act(async () => {
       fireEvent.change(input, { target: { files: [makeFile()] } });
     });
+    // The zone is a real <button>, so the limit is expressed with the native
+    // disabled state rather than aria-disabled.
     const zone = screen.getByRole('button', { name: /file limit reached/i });
-    expect(zone).toHaveAttribute('aria-disabled', 'true');
+    expect(zone).toBeDisabled();
   });
 
   it('shows total size exceeded warning', async () => {
@@ -161,21 +163,85 @@ describe('MultiUploader', () => {
     expect(screen.getByText('Release to add files')).toBeInTheDocument();
   });
 
-  it('activates file picker on Enter key', () => {
+  // ── Accessibility ──────────────────────────────────────────────────────────
+
+  it('exposes the drop zone as a native button, not a div with role=button', () => {
     render(<MultiUploader />);
     const zone = screen.getByRole('button', { name: /drop files here/i });
-    const input = document.querySelector('input[type="file"]');
-    const clickSpy = jest.spyOn(input, 'click');
-    fireEvent.keyDown(zone, { key: 'Enter' });
-    expect(clickSpy).toHaveBeenCalled();
+    expect(zone.tagName).toBe('BUTTON');
+    expect(zone).toHaveAttribute('type', 'button');
   });
 
-  it('activates file picker on Space key', () => {
+  it('keeps the file input outside the drop-zone button', () => {
+    // A focusable input nested inside a button is a nested-interactive
+    // violation (WCAG 4.1.2).
     render(<MultiUploader />);
     const zone = screen.getByRole('button', { name: /drop files here/i });
     const input = document.querySelector('input[type="file"]');
-    const clickSpy = jest.spyOn(input, 'click');
-    fireEvent.keyDown(zone, { key: ' ' });
-    expect(clickSpy).toHaveBeenCalled();
+    expect(zone.contains(input)).toBe(false);
+  });
+
+  it('reaches the drop zone by keyboard and opens the picker on activation', async () => {
+    jest.useRealTimers();
+    const user = userEvent.setup();
+    render(<MultiUploader />);
+
+    const zone = screen.getByRole('button', { name: /drop files here/i });
+    const input = document.querySelector('input[type="file"]');
+    const clickSpy = jest.spyOn(input, 'click').mockImplementation(() => {});
+
+    await user.tab();
+    expect(zone).toHaveFocus();
+
+    // A native button activates on both Enter and Space.
+    await user.keyboard('{Enter}');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    await user.keyboard(' ');
+    expect(clickSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('labels each per-file progress bar', async () => {
+    render(<MultiUploader />);
+    const input = document.querySelector('input[type="file"]');
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [makeFile('claim.pdf')] } });
+    });
+
+    expect(
+      screen.getByRole('progressbar', { name: 'Upload progress for claim.pdf' }),
+    ).toBeInTheDocument();
+  });
+
+  it('reorders the queue from the keyboard as well as by dragging', async () => {
+    render(<MultiUploader />);
+    const input = document.querySelector('input[type="file"]');
+    await act(async () => {
+      fireEvent.change(input, {
+        target: { files: [makeFile('first.pdf'), makeFile('second.pdf')] },
+      });
+    });
+
+    const names = () => screen.getAllByTitle(/\.pdf$/).map((el) => el.textContent);
+
+    expect(names()).toEqual(['first.pdf', 'second.pdf']);
+
+    fireEvent.click(screen.getByLabelText('Move second.pdf up'));
+
+    expect(names()).toEqual(['second.pdf', 'first.pdf']);
+  });
+
+  it('disables the move controls at the ends of the queue', async () => {
+    render(<MultiUploader />);
+    const input = document.querySelector('input[type="file"]');
+    await act(async () => {
+      fireEvent.change(input, {
+        target: { files: [makeFile('a.pdf'), makeFile('b.pdf')] },
+      });
+    });
+
+    expect(screen.getByLabelText('Move a.pdf up')).toBeDisabled();
+    expect(screen.getByLabelText('Move b.pdf down')).toBeDisabled();
+    expect(screen.getByLabelText('Move a.pdf down')).toBeEnabled();
   });
 });
