@@ -11,7 +11,7 @@ const NETWORK_PASSPHRASE =
 export async function signWithFreighter(unsignedXdr: string): Promise<string> {
   if (typeof window === 'undefined') throw new Error('Freighter signing must run in browser');
 
-  const anyWindow = window as Window & { freighterApi?: { signTransaction: (xdr: string, opts: Record<string, string>) => Promise<string> }; freighter?: { signTransaction: (xdr: string, opts: Record<string, string>) => Promise<string> }; };
+  const anyWindow = window as Window & typeof globalThis & { freighterApi?: unknown; freighter?: unknown };
   const freighter = anyWindow.freighterApi || anyWindow.freighter;
   if (!freighter) throw new Error('Freighter not found. Install the Freighter browser extension.');
 
@@ -36,7 +36,7 @@ export async function signWithFreighter(unsignedXdr: string): Promise<string> {
 
     throw new Error('Unsupported Freighter API shape.');
   } catch (err: unknown) {
-    throw new Error(`Freighter signing failed: ${(err as Error)?.message || String(err)}`);
+    throw new Error(`Freighter signing failed: ${(err as { message?: string })?.message || String(err)}`);
   }
 }
 
