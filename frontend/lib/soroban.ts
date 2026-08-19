@@ -11,7 +11,13 @@ const NETWORK_PASSPHRASE =
 export async function signWithFreighter(unsignedXdr: string): Promise<string> {
   if (typeof window === 'undefined') throw new Error('Freighter signing must run in browser');
 
-  const anyWindow = window as Window & typeof globalThis & { freighterApi?: unknown; freighter?: unknown };
+  type FreighterResult = { signedTransaction?: string; transaction?: string } | string;
+  type FreighterAPI = {
+    signTransaction?: (xdr: string, passphrase: string) => Promise<FreighterResult>;
+    sign?: (opts: { transactionXdr: string; networkPassphrase: string }) => Promise<FreighterResult>;
+  };
+  type FreighterWindow = Window & { freighterApi?: FreighterAPI; freighter?: FreighterAPI };
+  const anyWindow = window as FreighterWindow;
   const freighter = anyWindow.freighterApi || anyWindow.freighter;
   if (!freighter) throw new Error('Freighter not found. Install the Freighter browser extension.');
 
@@ -19,19 +25,18 @@ export async function signWithFreighter(unsignedXdr: string): Promise<string> {
   try {
     // Newer API: freighterApi.signTransaction(transactionXdr, networkPassphrase)
     if (typeof freighter.signTransaction === 'function') {
-      const result = await freighter.signTransaction(unsignedXdr, { networkPassphrase: NETWORK_PASSPHRASE });
-      // Some implementations return { signedTransaction } or { signature, transaction }
-      if ((result as unknown as Record<string, unknown>)['signedTransaction']) return (result as unknown as Record<string, unknown>)['signedTransaction'] as string;
-      if ((result as unknown as Record<string, unknown>)['transaction']) return (result as unknown as Record<string, unknown>)['transaction'] as string;
+      const result = await freighter.signTransaction(unsignedXdr, NETWORK_PASSPHRASE);
       if (typeof result === 'string') return result;
+      if (result.signedTransaction) return result.signedTransaction;
+      if (result.transaction) return result.transaction;
     }
 
     // Older API shape: freighter.sign({ transactionXdr, networkPassphrase })
-    if (typeof (freighter as unknown as Record<string, unknown>)['sign'] === 'function') {
-      const r = await (freighter as unknown as { sign: (opts: Record<string, string>) => Promise<Record<string, string>> }).sign({ transactionXdr: unsignedXdr, networkPassphrase: NETWORK_PASSPHRASE });
-      if (r['signedTransaction']) return r['signedTransaction'];
-      if (r['transaction']) return r['transaction'];
+    if (typeof freighter.sign === 'function') {
+      const r = await freighter.sign({ transactionXdr: unsignedXdr, networkPassphrase: NETWORK_PASSPHRASE });
       if (typeof r === 'string') return r;
+      if (r.signedTransaction) return r.signedTransaction;
+      if (r.transaction) return r.transaction;
     }
 
     throw new Error('Unsupported Freighter API shape.');
@@ -42,14 +47,16 @@ export async function signWithFreighter(unsignedXdr: string): Promise<string> {
 
 export async function buildSignAndBroadcastCreateEscrow(params: unknown) {
   // Build unsigned XDR using existing helper
-  const unsigned = await (stellar as unknown as Record<string, (p: unknown) => Promise<string>>)['buildCreateEscrowTx'](params);
+  const stellarModule = stellar as unknown as Record<string, (arg: unknown) => Promise<string>>;
+  const unsigned = await stellarModule.buildCreateEscrowTx(params);
   const signed = await signWithFreighter(unsigned);
   // Broadcast via frontend helper which posts to backend
-  return (stellar as unknown as Record<string, (p: unknown) => Promise<unknown>>)['broadcastTransaction'](signed);
+  return stellarModule.broadcastTransaction(signed);
 }
 
 export async function signAndBroadcast(signedXdr: string) {
-  return (stellar as unknown as Record<string, (p: unknown) => Promise<unknown>>)['broadcastTransaction'](signedXdr);
+  const stellarModule = stellar as unknown as Record<string, (arg: unknown) => Promise<unknown>>;
+  return stellarModule.broadcastTransaction(signedXdr);
 }
 
 export default {
