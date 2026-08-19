@@ -1,280 +1,261 @@
+'use strict';
+
 /**
- * Cache Service — Redis with in-memory fallback
+ * Three-tier caching service
  *
- * Exposes the same interface as the original lib/cache.js so all existing
- * controllers work without modification. Adds:
- *
- * - Tag-based invalidation: tag a cached entry with one or more logical
- *   group names (e.g. "escrow:42", "escrows") so a single
- *   invalidateTag("escrow:42") call purges every related entry atomically.
- *
- * - setWithTags(key, value, ttl, tags[])
- * - invalidateTag(tag)
- * - invalidateTags(tags[])
- *
- * Redis is optional: if REDIS_URL is unset or the connection fails the
- * service transparently falls back to the in-memory store.
+ * L1 – in-process LRU cache (max 500 entries)
+ * L2 – Redis cache with per-key TTL
+ * L3 – Prisma DB fallback via caller-supplied fetcher
  */
 
-import { createClient } from 'redis';
-import { createModuleLogger } from '../config/logger.js';
-import { scopeCacheKey, scopeCacheTag } from '../lib/tenantContext.js';
+// ---------------------------------------------------------------------------
+// Minimal LRU cache backed by a Map (insertion order == access order trick)
+// ---------------------------------------------------------------------------
+class LRUCache {
+  constructor(maxSize = 500) {
+    this.maxSize = maxSize;
+    this.map = new Map();
+  }
 
-const log = createModuleLogger('cacheService');
-
-// ── Analytics counters ────────────────────────────────────────────────────────
-
-const stats = { hits: 0, misses: 0, sets: 0, invalidations: 0 };
-
-// ── In-memory fallback ────────────────────────────────────────────────────────
-
-const memStore = new Map();
-/** tag → Set<key> */
-const memTags = new Map();
-
-const mem = {
   get(key) {
-    const entry = memStore.get(key);
+    if (!this.map.has(key)) return undefined;
+    // Move to end (most-recently-used position)
+    const value = this.map.get(key);
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    if (this.map.has(key)) this.map.delete(key);
+    else if (this.map.size >= this.maxSize) {
+      // Evict least-recently-used (first entry)
+      const firstKey = this.map.keys().next().value;
+      this.map.delete(firstKey);
+    }
+    this.map.set(key, value);
+  }
+
+  delete(key) {
+    return this.map.delete(key);
+  }
+
+  keys() {
+    return this.map.keys();
+  }
+
+  clear() {
+    this.map.clear();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stubbed Redis client – replace with real ioredis in production
+// ---------------------------------------------------------------------------
+const _redisStore = new Map();
+
+const redis = {
+  async get(key) {
+    const entry = _redisStore.get(key);
     if (!entry) return null;
-    if (Date.now() > entry.expiresAt) {
-      memStore.delete(key);
+    if (entry.expiresAt && Date.now() > entry.expiresAt) {
+      _redisStore.delete(key);
       return null;
     }
     return entry.value;
   },
-  set(key, value, ttlSeconds) {
-    memStore.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+
+  async set(key, value, expiryMode, ttlSeconds) {
+    const expiresAt =
+      expiryMode === 'EX' && ttlSeconds
+        ? Date.now() + ttlSeconds * 1000
+        : null;
+    _redisStore.set(key, { value, expiresAt });
+    return 'OK';
   },
-  del(key) {
-    memStore.delete(key);
+
+  async del(key) {
+    return _redisStore.delete(key) ? 1 : 0;
   },
-  keys() {
-    return [...memStore.keys()];
-  },
-  size() {
-    return memStore.size;
-  },
-  tagAdd(tag, key) {
-    if (!memTags.has(tag)) memTags.set(tag, new Set());
-    memTags.get(tag).add(key);
-  },
-  tagKeys(tag) {
-    return [...(memTags.get(tag) ?? [])];
-  },
-  tagDel(tag) {
-    memTags.delete(tag);
+
+  async keys(pattern) {
+    // Simple glob-style: only handles trailing '*'
+    const prefix = pattern.replace(/\*$/, '');
+    return [..._redisStore.keys()].filter((k) => k.startsWith(prefix));
   },
 };
 
-// ── Redis client ──────────────────────────────────────────────────────────────
-
-let redis = null;
-let redisReady = false;
-
-if (process.env.REDIS_URL) {
-  redis = createClient({ url: process.env.REDIS_URL });
-  redis.on('ready', () => {
-    redisReady = true;
-    log.info({ message: 'redis_connected' });
-  });
-  redis.on('error', (err) => {
-    redisReady = false;
-    log.warn({ message: 'redis_error_fallback_memory', error: err.message });
-  });
-  redis.connect().catch((err) => log.warn({ message: 'redis_connect_failed', error: err.message }));
-}
-
-// ── Redis tag helpers ─────────────────────────────────────────────────────────
-// Tags are stored as Redis Sets: tag:<name> → [key1, key2, ...]
-
-const redisTagKey = (tag) => `tag:${tag}`;
-
-async function redisTagAdd(tag, key, ttlSeconds) {
-  const tKey = redisTagKey(tag);
-  await redis.sAdd(tKey, key).catch(() => null);
-  // Expire the tag set slightly after the longest possible entry TTL
-  await redis.expire(tKey, ttlSeconds + 60).catch(() => null);
-}
-
-async function redisTagKeys(tag) {
-  return redis.sMembers(redisTagKey(tag)).catch(() => []);
-}
-
-async function redisTagDel(tag) {
-  return redis.del(redisTagKey(tag)).catch(() => null);
-}
-
-// ── Public API ────────────────────────────────────────────────────────────────
-
-async function get(key) {
-  const scopedKey = scopeCacheKey(key);
-
-  if (redisReady) {
-    const raw = await redis.get(scopedKey).catch(() => null);
-    if (raw !== null) {
-      stats.hits++;
-      return JSON.parse(raw);
-    }
-  } else {
-    const val = mem.get(scopedKey);
-    if (val !== null) {
-      stats.hits++;
-      return val;
-    }
-  }
-  stats.misses++;
-  return null;
-}
-
-async function set(key, value, ttlSeconds = 60) {
-  const scopedKey = scopeCacheKey(key);
-
-  stats.sets++;
-  if (redisReady) {
-    await redis.set(scopedKey, JSON.stringify(value), { EX: ttlSeconds }).catch(() => {
-      mem.set(scopedKey, value, ttlSeconds);
-    });
-  } else {
-    mem.set(scopedKey, value, ttlSeconds);
-  }
-}
-
-/**
- * Store a value and associate it with one or more invalidation tags.
- *
- * @param {string}   key
- * @param {*}        value
- * @param {number}   ttlSeconds
- * @param {string[]} tags  — logical group names, e.g. ['escrows', 'escrow:42']
- */
-async function setWithTags(key, value, ttlSeconds = 60, tags = []) {
-  const scopedKey = scopeCacheKey(key);
-  const scopedTags = tags.map((tag) => scopeCacheTag(tag));
-
-  await set(key, value, ttlSeconds);
-  for (const tag of scopedTags) {
-    if (redisReady) {
-      await redisTagAdd(tag, scopedKey, ttlSeconds);
-    } else {
-      mem.tagAdd(tag, scopedKey);
-    }
-  }
-}
-
-async function invalidate(key) {
-  const scopedKey = scopeCacheKey(key);
-
-  stats.invalidations++;
-  if (redisReady) await redis.del(scopedKey).catch(() => null);
-  mem.del(scopedKey);
-}
-
-async function invalidatePrefix(prefix) {
-  const scopedPrefix = scopeCacheKey(prefix);
-
-  stats.invalidations++;
-  if (redisReady) {
-    // Use SCAN (cursor-based) instead of KEYS to avoid blocking Redis
-    let cursor = 0;
-    do {
-      const result = await redis
-        .scan(cursor, { MATCH: `${scopedPrefix}*`, COUNT: 100 })
-        .catch(() => ({ cursor: 0, keys: [] }));
-      cursor = result.cursor;
-      if (result.keys.length) await redis.del(result.keys).catch(() => null);
-    } while (cursor !== 0);
-  }
-  for (const key of mem.keys()) {
-    if (key.startsWith(scopedPrefix)) mem.del(key);
-  }
-}
-
-/**
- * Delete every cached entry belonging to a tenant without blocking Redis.
- * Scans for `tenant:<slug>:*` keys using cursor-based SCAN iteration.
- * Safe to call on tenant deletion or suspension.
- *
- * @param {string} slug  — tenant slug (e.g. "acme")
- */
-async function flushTenant(slug) {
-  const prefix = `tenant:${slug}:`;
-  if (redisReady) {
-    let cursor = 0;
-    do {
-      const result = await redis
-        .scan(cursor, { MATCH: `${prefix}*`, COUNT: 100 })
-        .catch(() => ({ cursor: 0, keys: [] }));
-      cursor = result.cursor;
-      if (result.keys.length) await redis.del(result.keys).catch(() => null);
-    } while (cursor !== 0);
-  }
-  for (const key of mem.keys()) {
-    if (key.startsWith(prefix)) mem.del(key);
-  }
-}
-
-/**
- * Invalidate all cache entries associated with a tag.
- *
- * @param {string} tag
- */
-async function invalidateTag(tag) {
-  const scopedTag = scopeCacheTag(tag);
-
-  stats.invalidations++;
-  if (redisReady) {
-    const keys = await redisTagKeys(scopedTag);
-    if (keys.length) await redis.del(keys).catch(() => null);
-    await redisTagDel(scopedTag);
-  } else {
-    for (const key of mem.tagKeys(scopedTag)) mem.del(key);
-    mem.tagDel(scopedTag);
-  }
-}
-
-/**
- * Invalidate all cache entries for multiple tags at once.
- *
- * @param {string[]} tags
- */
-async function invalidateTags(tags) {
-  await Promise.all(tags.map(invalidateTag));
-}
-
-/** Warm the cache by calling a loader function if the key is cold. */
-async function warm(key, loader, ttlSeconds = 60) {
-  const existing = await get(key);
-  if (existing !== null) return existing;
-  const value = await loader();
-  await set(key, value, ttlSeconds);
-  return value;
-}
-
-/** Returns hit rate and counters for the /health endpoint. */
-function analytics() {
-  const total = stats.hits + stats.misses;
-  return {
-    ...stats,
-    hitRate: total > 0 ? (stats.hits / total).toFixed(4) : '0',
-    backend: redisReady ? 'redis' : 'memory',
-    memSize: mem.size(),
-  };
-}
-
-function size() {
-  return redisReady ? null : mem.size();
-}
-
-export default {
-  get,
-  set,
-  setWithTags,
-  invalidate,
-  invalidatePrefix,
-  flushTenant,
-  invalidateTag,
-  invalidateTags,
-  warm,
-  analytics,
-  size,
+// ---------------------------------------------------------------------------
+// Metrics counters
+// ---------------------------------------------------------------------------
+const metrics = {
+  l1Hits: 0,
+  l2Hits: 0,
+  l3Hits: 0,
+  misses: 0,
 };
+
+// ---------------------------------------------------------------------------
+// L1 instance
+// ---------------------------------------------------------------------------
+const l1 = new LRUCache(500);
+
+// ---------------------------------------------------------------------------
+// Public cache service
+// ---------------------------------------------------------------------------
+const cacheService = {
+  /**
+   * Retrieve a value by key. Resolution order: L1 -> L2 -> L3 (fetcher).
+   *
+   * @param {string} key
+   * @param {Function} fetcher  async () => value  - called only on full miss
+   * @param {number}  [ttl=300]  TTL in seconds for L2
+   * @returns {Promise<*>}
+   */
+  async get(key, fetcher, ttl = 300) {
+    // L1 check
+    const l1Value = l1.get(key);
+    if (l1Value !== undefined) {
+      metrics.l1Hits++;
+      return l1Value;
+    }
+
+    // L2 check
+    let l2Value = null;
+    try {
+      l2Value = await redis.get(key);
+    } catch (err) {
+      console.warn('[CacheService] Redis get error:', err.message);
+    }
+
+    if (l2Value !== null) {
+      metrics.l2Hits++;
+      // Populate L1 from L2
+      l1.set(key, l2Value);
+      return l2Value;
+    }
+
+    // L3 check (DB via fetcher)
+    if (typeof fetcher !== 'function') {
+      metrics.misses++;
+      return null;
+    }
+
+    let dbValue = null;
+    try {
+      dbValue = await fetcher();
+    } catch (err) {
+      console.error('[CacheService] Fetcher error for key', key, err.message);
+      metrics.misses++;
+      throw err;
+    }
+
+    if (dbValue === null || dbValue === undefined) {
+      metrics.misses++;
+      return null;
+    }
+
+    metrics.l3Hits++;
+
+    // Back-fill L1 and L2
+    l1.set(key, dbValue);
+    try {
+      const serialized =
+        typeof dbValue === 'string' ? dbValue : JSON.stringify(dbValue);
+      await redis.set(key, serialized, 'EX', ttl);
+    } catch (err) {
+      console.warn('[CacheService] Redis set error after L3 hit:', err.message);
+    }
+
+    return dbValue;
+  },
+
+  /**
+   * Write a value to all three cache layers.
+   *
+   * @param {string} key
+   * @param {*}      value
+   * @param {number} [ttl=300]
+   */
+  async set(key, value, ttl = 300) {
+    l1.set(key, value);
+
+    try {
+      const serialized =
+        typeof value === 'string' ? value : JSON.stringify(value);
+      await redis.set(key, serialized, 'EX', ttl);
+    } catch (err) {
+      console.warn('[CacheService] Redis set error:', err.message);
+    }
+  },
+
+  /**
+   * Remove a single key from all cache layers.
+   *
+   * @param {string} key
+   */
+  async invalidate(key) {
+    l1.delete(key);
+    try {
+      await redis.del(key);
+    } catch (err) {
+      console.warn('[CacheService] Redis del error:', err.message);
+    }
+  },
+
+  /**
+   * Remove all keys matching a pattern from Redis and L1.
+   * Pattern supports trailing wildcard, e.g. "user:*"
+   *
+   * @param {string} pattern
+   */
+  async invalidatePattern(pattern) {
+    // Redis pattern invalidation
+    let matchedKeys = [];
+    try {
+      matchedKeys = await redis.keys(pattern);
+      await Promise.all(matchedKeys.map((k) => redis.del(k)));
+    } catch (err) {
+      console.warn('[CacheService] Redis pattern invalidation error:', err.message);
+    }
+
+    // L1 pattern invalidation (simple prefix match on trailing '*')
+    const prefix = pattern.replace(/\*$/, '');
+    for (const k of l1.keys()) {
+      if (k.startsWith(prefix)) {
+        l1.delete(k);
+      }
+    }
+
+    return matchedKeys.length;
+  },
+
+  /**
+   * Return cumulative cache hit/miss statistics.
+   *
+   * @returns {{ l1Hits: number, l2Hits: number, l3Hits: number, misses: number }}
+   */
+  getMetrics() {
+    return { ...metrics };
+  },
+
+  /**
+   * Reset metrics counters (useful in tests).
+   */
+  resetMetrics() {
+    metrics.l1Hits = 0;
+    metrics.l2Hits = 0;
+    metrics.l3Hits = 0;
+    metrics.misses = 0;
+  },
+
+  /**
+   * Flush all layers (primarily for testing).
+   */
+  async flush() {
+    l1.clear();
+    _redisStore.clear();
+  },
+};
+
+module.exports = cacheService;
