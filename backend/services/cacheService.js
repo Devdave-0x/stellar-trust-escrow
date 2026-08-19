@@ -1,4 +1,4 @@
-'use strict';
+
 
 /**
  * Three-tier caching service
@@ -258,4 +258,4 @@ const cacheService = {
   },
 };
 
-module.exports = cacheService;
+export default cacheService;
