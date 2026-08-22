@@ -1,6 +1,7 @@
 import express from 'express';
 import { versioning } from '../middleware/version.js';
 
+import assetRoutes from '../routes/assetRoutes.js';
 import disputeRoutes from '../routes/disputeRoutes.js';
 import escrowRoutes from '../routes/escrowRoutes.js';
 import exportRoutes from '../routes/exportRoutes.js';
@@ -20,6 +21,7 @@ router.use(versioning('v1'));
 
 // Mounted before /escrows so the more specific export prefix wins over the
 // escrow `/:id` catch-all route.
+router.use('/assets', assetRoutes);
 router.use('/escrows/export', exportRoutes);
 router.use('/escrows', escrowRoutes);
 router.use('/users', userRoutes);
