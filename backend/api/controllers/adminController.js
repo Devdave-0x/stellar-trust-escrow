@@ -608,9 +608,9 @@ const getAuditLogs = async (req, res) => {
 const getSettings = async (req, res) => {
   try {
     res.json({
-      platformFeePercent: process.env.PLATFORM_FEE_PERCENT || '1.5',
-      stellarNetwork: process.env.STELLAR_NETWORK || 'testnet',
-      allowedOrigins: process.env.ALLOWED_ORIGINS || 'http://localhost:3000',
+      platformFeePercent: process.env.PLATFORM_FEE_PERCENT ?? '1.5',
+      stellarNetwork: process.env.STELLAR_NETWORK ?? 'testnet',
+      allowedOrigins: process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000',
     });
   } catch (err) {
     logControllerError('admin.getSettings', err, req);
@@ -660,7 +660,7 @@ const rotateKeys = async (req, res) => {
         action: 'KEY_ROTATED',
         targetAddress: 'system',
         reason: 'Manual rotation triggered',
-        performedBy: req.user?.address || 'admin',
+        performedBy: req.user?.address ?? 'admin',
         performedAt: new Date(),
       },
     });
@@ -951,9 +951,9 @@ const getDisputeQueue = async (req, res) => {
       escrowId: d.escrowId,
       raisedAt: d.raisedAt,
       currentArbiter: d.currentArbiter,
-      escalationCount: d.escalationCount || 0,
+      escalationCount: d.escalationCount ?? 0,
       autoEscalateAt: d.autoEscalateAt,
-      escalationRisk: d.escalationCount || 0, // For sorting
+      escalationRisk: d.escalationCount ?? 0, // For sorting
     }));
 
     // Apply custom sorting if needed
@@ -961,7 +961,7 @@ const getDisputeQueue = async (req, res) => {
     if (orderBy === 'escalationRisk') {
       sortedDisputes = [...formattedDisputes].sort((a, b) => {
         // Sort by escalation count (higher first), then by time until escalation (sooner first)
-        const countCompare = (b.escalationCount || 0) - (a.escalationCount || 0);
+        const countCompare = (b.escalationCount ?? 0) - (a.escalationCount ?? 0);
         if (countCompare !== 0) return countCompare;
 
         const aTime = a.autoEscalateAt ? new Date(a.autoEscalateAt).getTime() : Infinity;

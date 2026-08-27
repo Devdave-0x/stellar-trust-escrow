@@ -166,3 +166,18 @@ describe('exportAuditLogsCsv', () => {
     );
   });
 });
+
+describe('getSettings', () => {
+  it('preserves explicit zero-like env values instead of falling back', async () => {
+    const originalFee = process.env.PLATFORM_FEE_PERCENT;
+    process.env.PLATFORM_FEE_PERCENT = '0';
+
+    const res = createResponse();
+    await adminController.getSettings({}, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.platformFeePercent).toBe('0');
+
+    process.env.PLATFORM_FEE_PERCENT = originalFee;
+  });
+});
