@@ -14,6 +14,7 @@ import cache from '../../lib/cache.js';
 import { MFA_JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
 
 const MFA_SESSION_DURATION = 30 * 60 * 1000; // 30 minutes
+const MFA_ENV_VARS = ['MFA_JWT_SECRET', 'MFA_HIGH_VALUE_THRESHOLD'];
 
 /**
  * Middleware to require MFA verification for sensitive operations
@@ -183,6 +184,8 @@ export function generateMfaToken(userId, tenantId, method) {
     { algorithm: JWT_ALGORITHM, expiresIn: '30m' }, // MFA token valid for 30 minutes
   );
 }
+
+export { MFA_ENV_VARS };
 
 export default {
   requireMfa,

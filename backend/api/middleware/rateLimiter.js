@@ -108,6 +108,12 @@ class SlidingWindowStore {
 
 // Module-level shared store (single instance per process).
 const slidingStore = new SlidingWindowStore();
+const RATE_LIMIT_HEADERS = {
+  LIMIT: 'X-RateLimit-Limit',
+  REMAINING: 'X-RateLimit-Remaining',
+  RESET: 'X-RateLimit-Reset',
+  RETRY_AFTER: 'Retry-After',
+};
 
 // ── Adaptive load tracking ────────────────────────────────────────────────────
 
@@ -197,9 +203,9 @@ export function createSlidingWindowRateLimiter({
       const burstKey = `${key}:burst`;
       const burstCount = slidingStore.count(burstKey, burstWindowMs, now);
       if (burstCount >= burstMax) {
-        res.set('Retry-After', String(Math.ceil(burstWindowMs / 1000)));
-        res.set('X-RateLimit-Limit', String(effectiveMax));
-        res.set('X-RateLimit-Remaining', '0');
+        res.set(RATE_LIMIT_HEADERS.RETRY_AFTER, String(Math.ceil(burstWindowMs / 1000)));
+        res.set(RATE_LIMIT_HEADERS.LIMIT, String(effectiveMax));
+        res.set(RATE_LIMIT_HEADERS.REMAINING, '0');
         return res
           .status(429)
           .json({ error: message, code: 'RATE_LIMIT_EXCEEDED', reason: 'burst' });
@@ -210,15 +216,15 @@ export function createSlidingWindowRateLimiter({
     // ── Sliding window check ────────────────────────────────────────────────
     const count = slidingStore.count(key, windowMs, now);
 
-    res.set('X-RateLimit-Limit', String(effectiveMax));
-    res.set('X-RateLimit-Remaining', String(Math.max(0, effectiveMax - count - 1)));
-    res.set('X-RateLimit-Reset', String(Math.ceil((now + windowMs) / 1000)));
+    res.set(RATE_LIMIT_HEADERS.LIMIT, String(effectiveMax));
+    res.set(RATE_LIMIT_HEADERS.REMAINING, String(Math.max(0, effectiveMax - count - 1)));
+    res.set(RATE_LIMIT_HEADERS.RESET, String(Math.ceil((now + windowMs) / 1000)));
 
     if (count >= effectiveMax) {
       const oldest = slidingStore.oldest(key);
       const retryAfterMs = oldest ? oldest + windowMs - now : windowMs;
-      res.set('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
-      res.set('X-RateLimit-Remaining', '0');
+      res.set(RATE_LIMIT_HEADERS.RETRY_AFTER, String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
+      res.set(RATE_LIMIT_HEADERS.REMAINING, '0');
       return res.status(429).json({ error: message, code: 'RATE_LIMIT_EXCEEDED' });
     }
 

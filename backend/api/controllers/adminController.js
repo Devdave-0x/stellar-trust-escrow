@@ -72,6 +72,12 @@ const getUserRateLimitUsage = (req, res) => {
   res.json({ userId, ...usage });
 };
 
+const ADMIN_STATUS_MESSAGES = {
+  NOT_FOUND: 'User not found.',
+  BANNED: 'User is permanently banned and cannot be suspended.',
+  NOT_SUSPENDED: 'User is not suspended.',
+};
+
 // ── Users ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -137,7 +143,7 @@ const getUserDetail = async (req, res) => {
     ]);
 
     if (!reputation) {
-      return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).json({ error: ADMIN_STATUS_MESSAGES.NOT_FOUND });
     }
 
     const result = {
@@ -192,9 +198,9 @@ const suspendUser = async (req, res) => {
       return { auditEntry };
     });
 
-    if (!result) return res.status(404).json({ error: 'User not found.' });
+    if (!result) return res.status(404).json({ error: ADMIN_STATUS_MESSAGES.NOT_FOUND });
     if (result.alreadyBanned) {
-      return res.status(409).json({ error: 'User is permanently banned and cannot be suspended.' });
+      return res.status(409).json({ error: ADMIN_STATUS_MESSAGES.BANNED });
     }
 
     await cache.invalidatePrefix(`admin:user:${address}`);

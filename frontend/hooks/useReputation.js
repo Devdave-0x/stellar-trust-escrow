@@ -42,6 +42,6 @@ export function useReputation(address) {
     reputation: data ?? null,
     badge: data ? getBadgeFromScore(data.totalScore ?? 0) : 'NEW',
     isLoading,
-    error: error ?? null,
+    error: error ?? (address ? new Error('Reputation data is temporarily unavailable.') : null),
   };
 }

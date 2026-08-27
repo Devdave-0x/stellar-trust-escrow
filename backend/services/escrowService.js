@@ -3,6 +3,9 @@
  *
  * All multi-table write operations wrapped in Prisma transactions
  * with deadlock retry via withTransaction().
+ *
+ * Runtime env:
+ * - no extra env vars required for the transactional flows below
  */
 
 import { withTransaction } from '../lib/transaction.js';
