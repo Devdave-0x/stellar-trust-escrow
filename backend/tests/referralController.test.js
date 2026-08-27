@@ -83,6 +83,22 @@ describe('referralController.getMyReferral', () => {
     });
     expect(res.body.referralCode).toBe('NEWCODE1');
   });
+
+  it('returns a contextual and sanitized error when referral lookup fails', async () => {
+    prismaMock.userProfile.findUnique.mockRejectedValue(
+      new Error('database timeout token=super-secret-token'),
+    );
+
+    const req = { user: { address: ADDRESS }, tenant: { id: 'tenant_default' } };
+    const res = createMockRes();
+
+    await referralController.getMyReferral(req, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body.error).toBe(
+      'Unable to load referral summary: database timeout token=[redacted]',
+    );
+  });
 });
 
 describe('referralController.getMyReferrals', () => {
@@ -115,5 +131,19 @@ describe('referralController.getMyReferrals', () => {
     await referralController.getMyReferrals(req, res);
 
     expect(res.statusCode).toBe(401);
+  });
+
+  it('returns a contextual error when referral activity lookup fails', async () => {
+    prismaMock.$transaction.mockRejectedValue(new Error('query engine unavailable'));
+
+    const req = { user: { address: ADDRESS }, query: {} };
+    const res = createMockRes();
+
+    await referralController.getMyReferrals(req, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body.error).toBe(
+      'Unable to load referral activity: query engine unavailable',
+    );
   });
 });
