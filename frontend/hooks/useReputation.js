@@ -1,18 +1,9 @@
-/**
- * useReputation Hook
- *
- * Fetches reputation data for a Stellar address from the backend API.
- *
- * Usage:
- *   const { reputation, badge, isLoading } = useReputation(address);
- *
- * TODO (contributor — medium, Issue #39):
- * Implement with SWR — similar pattern to useEscrow.
- * Cache aggressively (revalidateOnFocus: false) since reputation
- * changes infrequently.
- */
-
 'use client';
+
+import useSWR from 'swr';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const fetcher = (url) => fetch(url, { credentials: 'include' }).then((r) => r.json());
 
 const BADGE_THRESHOLDS = {
   ELITE: 1000,
@@ -37,18 +28,20 @@ export function getBadgeFromScore(score) {
   return 'NEW';
 }
 
-/**
- * @param {string|null} address — Stellar public key
- * @returns {{ reputation: object|null, badge: string, isLoading: boolean, error: Error|null }}
- *
- * TODO (contributor — Issue #39): replace stub with SWR fetch
- */
 export function useReputation(address) {
-  // TODO: implement
+  const { data, error, isLoading } = useSWR(
+    address ? `${API_URL}/api/reputation/${address}` : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      refreshInterval: 60_000,
+    },
+  );
+
   return {
-    reputation: null,
-    badge: 'NEW',
-    isLoading: false,
-    error: address ? new Error('useReputation not implemented — see Issue #39') : null,
+    reputation: data ?? null,
+    badge: data ? getBadgeFromScore(data.totalScore ?? 0) : 'NEW',
+    isLoading,
+    error: error ?? null,
   };
 }

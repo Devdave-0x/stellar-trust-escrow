@@ -23,7 +23,7 @@ const createCheckout = async (req, res) => {
     if (!walletAddress) return;
 
     if (!address || !STELLAR_ADDRESS_RE.test(address)) {
-      return res.status(400).json({ error: 'Valid Stellar address required' });
+      return res.status(400).json({ error: 'A valid Stellar public key is required.' });
     }
     if (address !== walletAddress) {
       return res
@@ -31,7 +31,7 @@ const createCheckout = async (req, res) => {
         .json({ error: 'Forbidden: cannot create checkout for another wallet.' });
     }
     if (!amountUsd || typeof amountUsd !== 'number' || amountUsd <= 0) {
-      return res.status(400).json({ error: 'amountUsd must be a positive number' });
+      return res.status(400).json({ error: 'amountUsd must be a positive dollar amount.' });
     }
 
     // KYC gate — require Approved status for fiat on-ramp

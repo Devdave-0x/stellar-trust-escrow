@@ -25,7 +25,7 @@ const getReputation = async (req, res) => {
   try {
     const { address } = req.params;
     if (!STELLAR_ADDRESS_RE.test(address)) {
-      return res.status(400).json({ error: 'Invalid Stellar address' });
+      return res.status(400).json({ error: 'A valid Stellar public key is required.' });
     }
     const record = await prisma.reputationRecord.findUnique({ where: { address } });
     res.json(
