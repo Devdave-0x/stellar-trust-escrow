@@ -14,6 +14,7 @@ import cache from '../../lib/cache.js';
 import { MFA_JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
 
 const MFA_SESSION_DURATION = 30 * 60 * 1000; // 30 minutes
+const DEFAULT_MFA_HIGH_VALUE_THRESHOLD = '10000';
 
 /**
  * Middleware to require MFA verification for sensitive operations
@@ -126,7 +127,9 @@ export async function requireMfa(req, res, next) {
 export async function requireMfaForHighValue(req, res, next) {
   try {
     const amount = req.body?.amount || req.params?.amount || 0;
-    const threshold = parseFloat(process.env.MFA_HIGH_VALUE_THRESHOLD || '10000');
+    const threshold = parseFloat(
+      process.env.MFA_HIGH_VALUE_THRESHOLD ?? DEFAULT_MFA_HIGH_VALUE_THRESHOLD,
+    );
 
     // If amount is below threshold, skip MFA
     if (parseFloat(amount) < threshold) {

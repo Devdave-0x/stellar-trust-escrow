@@ -301,6 +301,8 @@ NODE_ENV="development"
 
 Generate secrets with: `openssl rand -hex 64`
 
+If you use MFA-protected flows locally, also set `MFA_JWT_SECRET` and adjust `MFA_HIGH_VALUE_THRESHOLD` if you want a lower trigger amount.
+
 Never reuse secrets between environments. Never commit `.env` files.
 
 ```bash
