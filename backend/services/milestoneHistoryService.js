@@ -18,6 +18,14 @@ import {
 
 const log = createModuleLogger('milestoneHistoryService');
 
+function buildLatestHistoryOrder() {
+  return { createdAt: 'desc' };
+}
+
+function buildLatestHistoryMap(rows) {
+  return new Map(rows.map((row) => [row.milestoneId, row]));
+}
+
 // ── Write ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -100,7 +108,7 @@ export async function getMilestoneStatusHistory(milestoneId, query = {}) {
 export async function getLastStatusChange(milestoneId) {
   return prisma.milestoneStatusHistory.findFirst({
     where: { milestoneId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: buildLatestHistoryOrder(),
   });
 }
 
@@ -116,11 +124,11 @@ export async function getLastStatusChangeBatch(milestoneIds) {
 
   const rows = await prisma.milestoneStatusHistory.findMany({
     where: { milestoneId: { in: milestoneIds } },
-    orderBy: [{ milestoneId: 'asc' }, { createdAt: 'desc' }],
+    orderBy: [{ milestoneId: 'asc' }, buildLatestHistoryOrder()],
     distinct: ['milestoneId'],
   });
 
-  return new Map(rows.map((row) => [row.milestoneId, row]));
+  return buildLatestHistoryMap(rows);
 }
 
 /** Shape a MilestoneStatusHistory row for inclusion in a milestone response. */
