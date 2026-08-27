@@ -16,6 +16,7 @@ const {
   getPreference,
   getQueueSnapshot,
   notifyEscrowStatusChange,
+  notifyMilestoneCompleted,
   resubscribe,
   unsubscribe,
 } = await import('../services/emailService.js');
@@ -43,6 +44,23 @@ describe('emailService', () => {
     expect(snapshot.queue[0].message.subject).toContain('Escrow #42');
     expect(snapshot.queue[0].message.text).toContain('Completed');
     expect(snapshot.queue[0].message.html).toContain('Open escrow details');
+  });
+
+  it('queues a milestone completion email with dashboard and unsubscribe links', async () => {
+    const result = await notifyMilestoneCompleted({
+      escrowId: 7,
+      milestoneIndex: 2,
+      milestoneTitle: 'API integration',
+      dashboardUrl: 'http://localhost:4000/escrows/7',
+      recipients: [{ email: 'client@example.com', name: 'Client' }],
+    });
+
+    const snapshot = await getQueueSnapshot();
+    expect(result.queued).toBe(1);
+    expect(snapshot.queue[0].message.subject).toContain('Milestone 2 completed');
+    expect(snapshot.queue[0].message.text).toContain('API integration');
+    expect(snapshot.queue[0].message.html).toContain('View escrow progress');
+    expect(snapshot.queue[0].message.text).toContain('Unsubscribe:');
   });
 
   it('skips queueing when a recipient has unsubscribed', async () => {

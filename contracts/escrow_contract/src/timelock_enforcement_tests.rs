@@ -96,6 +96,26 @@ mod timelock_enforcement_tests {
         );
     }
 
+    /// A competing caller cannot front-run the timelock window by releasing
+    /// funds before the unlock timestamp.
+    #[test]
+    fn test_timelock_closes_front_running_window() {
+        let (env, admin, _contract_id, client) = setup();
+        let duration: u64 = 1_800;
+        let (escrow_id, mid, start_ts) =
+            setup_approved_milestone_with_timelock(&env, &admin, &client, duration);
+
+        env.ledger()
+            .with_mut(|l| l.timestamp = start_ts + duration - 10);
+
+        let attacker = Address::generate(&env);
+        let result = client.try_release_with_timelock(&attacker, &escrow_id, &mid);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::E53))),
+            "release_with_timelock must stay locked until the timelock expires"
+        );
+    }
+
     /// release_funds must succeed and emit tl_rel when called at or after
     /// start_ledger + duration_ledger.
     #[test]
