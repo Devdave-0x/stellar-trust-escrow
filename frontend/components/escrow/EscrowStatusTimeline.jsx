@@ -74,11 +74,13 @@ export default function EscrowStatusTimeline({ events = [], currentState, classN
                   border-2 border-gray-600 transition-all
                   ${getStateColor(event.state, isCurrent, isCompleted)}
                 `}
+                role="img"
+                aria-label={`${stateLabels[event.state] || event.state} status indicator`}
               >
                 {isCompleted ? (
-                  <Check className="w-5 h-5 text-white" />
+                  <Check className="w-5 h-5 text-white" aria-hidden="true" />
                 ) : isCurrent ? (
-                  <Clock className="w-5 h-5 text-white" />
+                  <Clock className="w-5 h-5 text-white" aria-hidden="true" />
                 ) : (
                   <div className="w-2 h-2 bg-gray-400 rounded-full" />
                 )}
@@ -88,6 +90,7 @@ export default function EscrowStatusTimeline({ events = [], currentState, classN
               {index < events.length - 1 && (
                 <div
                   className={`w-1 h-12 mt-2 ${getLineColor(index, events.length)}`}
+                  aria-hidden="true"
                 />
               )}
             </div>
