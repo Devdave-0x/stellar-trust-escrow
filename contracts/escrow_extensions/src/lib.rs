@@ -390,6 +390,10 @@ impl EscrowExtensions {
     ///
     /// Anyone can open arbitration for an escrow that is in Disputed state.
     /// Voting runs for VOTING_WINDOW_SECONDS (7 days).
+    ///
+    /// # Returns
+    /// `Ok(())` when the dispute record is created, or `DisputeAlreadyExists`
+    /// if the escrow already has an active arbitration window.
     pub fn open_dispute(env: Env, escrow_id: u64) -> Result<(), ExtError> {
         let key = DataKey::Dispute(escrow_id);
         if env.storage().persistent().has(&key) {
@@ -428,6 +432,10 @@ impl EscrowExtensions {
     /// * `escrow_id`  — the disputed escrow
     /// * `stake`      — reputation points committed (burned on slash)
     /// * `for_client` — true = vote for client, false = vote for freelancer
+    ///
+    /// # Returns
+    /// `Ok(())` on a recorded vote, or a domain error if the dispute is
+    /// missing, closed, resolved, or the caller has already voted.
     pub fn cast_vote(
         env: Env,
         voter: Address,
@@ -508,6 +516,10 @@ impl EscrowExtensions {
     ///   are flagged (actual stake deduction handled by reputation contract)
     ///
     /// Anyone can call this after the window closes.
+    ///
+    /// # Returns
+    /// `Ok(true)` when the client wins, `Ok(false)` when the freelancer wins,
+    /// or a domain error if the window is still open or the dispute is absent.
     #[deny(clippy::arithmetic_side_effects)]
     pub fn resolve_dispute(env: Env, escrow_id: u64) -> Result<bool, ExtError> {
         let key = DataKey::Dispute(escrow_id);
@@ -577,6 +589,10 @@ impl EscrowExtensions {
     }
 
     /// Returns the current state of an arbitration dispute.
+    ///
+    /// # Returns
+    /// The stored dispute record, or `DisputeNotFound` when the escrow has no
+    /// active arbitration window.
     pub fn get_dispute(env: Env, escrow_id: u64) -> Result<ArbitrationDispute, ExtError> {
         env.storage()
             .persistent()

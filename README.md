@@ -327,6 +327,7 @@ See [docs/security-model.md](docs/security-model.md) for the complete security m
 - [Dispute Resolution Guide](docs/dispute-resolution-guide.md) — End-to-end guide on raising disputes, IPFS evidence submission, and arbiter rulings.
 - [Security Model Documentation](docs/security-model.md) — System threat model, access control matrix, and smart contract invariants.
 - [Production Deployment Guide](docs/production-deployment-guide.md) — Deploying Soroban contracts, backend API, databases, and Docker services to production.
+- [Testnet Deployment Guide](docs/testnet-deployment-guide.md) — Step-by-step Stellar testnet deployment and contract invocation walkthrough.
 - [Configuration Reference](docs/configuration.md) — Detailed environment variables and system settings.
 - [Multi-Tenant Architecture](docs/multi-tenant-architecture.md) — Tenant model, tenant resolution, data isolation guarantees, and audit chain integrity.
 - [Stellar Network Integration](docs/stellar-network-integration.md) — Local sandbox, testnet, and mainnet setup with contract deployment and wallet management.

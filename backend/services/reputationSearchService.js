@@ -16,6 +16,7 @@
 
 import { Client } from '@elastic/elasticsearch';
 import prisma from '../lib/prisma.js';
+import cache from '../lib/cache.js';
 
 // ── ES client (lazy, singleton) ───────────────────────────────────────────────
 
@@ -40,6 +41,14 @@ export function isAvailable() {
 }
 
 const INDEX = 'reputation_records';
+const CACHE_TTL_SECONDS = 300;
+
+function cacheKey(scope, q, opts = {}) {
+  const tenant = opts.tenantId || 'global';
+  const limit = opts.limit ?? 10;
+  const from = opts.from ?? 0;
+  return `reputation-search:${scope}:${tenant}:${q || ''}:${limit}:${from}`;
+}
 
 // ── Index mapping ─────────────────────────────────────────────────────────────
 
@@ -174,6 +183,10 @@ export async function syncFromPrisma() {
  * @returns {Promise<{ hits: object[], total: number, source: 'es'|'prisma' }>}
  */
 export async function search(q, { tenantId, limit = 10, from = 0 } = {}) {
+  const key = cacheKey('search', q, { tenantId, limit, from });
+  const cached = await cache.get(key);
+  if (cached) return { ...cached, source: 'cache' };
+
   const client = getClient();
 
   if (client) {
@@ -205,11 +218,13 @@ export async function search(q, { tenantId, limit = 10, from = 0 } = {}) {
         },
       });
 
-      return {
+      const result = {
         hits: hits.hits.map((h) => h._source),
         total: typeof hits.total === 'object' ? hits.total.value : hits.total,
         source: 'es',
       };
+      await cache.set(key, result, CACHE_TTL_SECONDS);
+      return result;
     } catch (err) {
       console.warn('[ReputationSearch] search ES failed, falling back:', err.message);
     }
@@ -229,7 +244,9 @@ export async function search(q, { tenantId, limit = 10, from = 0 } = {}) {
     }),
     prisma.reputationRecord.count({ where }),
   ]);
-  return { hits: records.map(toDoc), total, source: 'prisma' };
+  const result = { hits: records.map(toDoc), total, source: 'prisma' };
+  await cache.set(key, result, CACHE_TTL_SECONDS);
+  return result;
 }
 
 // ── Leaderboard aggregation ───────────────────────────────────────────────────
