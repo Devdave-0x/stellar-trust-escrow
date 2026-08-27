@@ -82,6 +82,20 @@ export default function DashboardPage() {
   const reputationScore = reputation?.totalScore
     ? Math.min(100, Math.round(Number(reputation.totalScore) / 100))
     : null;
+  const milestoneProgress = escrows.length
+    ? escrows.reduce((acc, escrow) => {
+        const raw = String(escrow.milestoneProgress || '0 / 0');
+        const [donePart, totalPart] = raw.split('/').map((part) => Number(part.trim()) || 0);
+        return {
+          done: acc.done + donePart,
+          total: acc.total + totalPart,
+        };
+      }, { done: 0, total: 0 })
+    : null;
+  const milestonePercent =
+    milestoneProgress && milestoneProgress.total > 0
+      ? Math.round((milestoneProgress.done / milestoneProgress.total) * 100)
+      : null;
 
   return (
     <PageTransition>
@@ -114,6 +128,20 @@ export default function DashboardPage() {
             Connect your wallet and use the Stellar Friendbot faucet to fund testnet XLM for your
             first escrow contract experiments.
           </div>
+
+          {milestonePercent !== null && (
+            <section aria-label="Milestone progress summary" className="card p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-white">Milestone Progress</h2>
+                  <p className="text-xs text-gray-400">
+                    {milestoneProgress.done} of {milestoneProgress.total} milestones completed.
+                  </p>
+                </div>
+                <div className="text-2xl font-bold text-white">{milestonePercent}%</div>
+              </div>
+            </section>
+          )}
 
           <section aria-label="Key performance metrics">
             <h2 className="sr-only">Dashboard Statistics</h2>

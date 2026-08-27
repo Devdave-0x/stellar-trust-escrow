@@ -129,4 +129,11 @@ describe('DashboardPage', () => {
     renderDashboard();
     expect(await screen.findByText('87')).toBeInTheDocument();
   });
+
+  it('renders milestone progress summary', async () => {
+    renderDashboard();
+    expect(await screen.findByText('Milestone Progress')).toBeInTheDocument();
+    expect(screen.getByText('3 of 7 milestones completed.')).toBeInTheDocument();
+    expect(screen.getByText('43%')).toBeInTheDocument();
+  });
 });
