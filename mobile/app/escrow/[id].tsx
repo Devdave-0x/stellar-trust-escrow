@@ -1,86 +1,18 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import * as LocalAuthentication from 'expo-local-authentication';
-import { getCachedEscrow, type Escrow } from '../../services/offlineCache';
-
-function isBiometricEnabled(): boolean {
-  return true;
-}
-
-export default function EscrowDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [escrow, setEscrow] = useState<Escrow | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [authed, setAuthed] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
-
-  useEffect(() => {
-    async function authenticate() {
-      if (!isBiometricEnabled()) {
-        setAuthed(true);
-        setAuthChecked(true);
-        return;
-      }
-
-      try {
-        const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: 'Authenticate to view escrow details',
-          fallbackLabel: 'Use passcode',
-        });
-        setAuthed(result.success);
-      } catch {
-        setAuthed(false);
-      } finally {
-        setAuthChecked(true);
-      }
-    }
-
-    authenticate();
-  }, []);
-
-  useEffect(() => {
-    if (!authChecked || !authed || !id) return;
-
-    async function loadEscrow() {
-      setIsLoading(true);
-      try {
-        const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
-        const res = await fetch(`${API_URL}/api/escrows/${id}`);
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const data = await res.json();
-        setEscrow(data);
-      } catch {
-        const cached = getCachedEscrow(id);
-        setEscrow(cached);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadEscrow();
-  }, [id, authChecked, authed]);
-
-  if (!authChecked) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6366f1" />
-        <Text style={styles.loadingText}>Verifying identity...</Text>
-      </View>
-    );
-  }
-
-  if (!authed) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Authentication required to view escrow details.</Text>
-      </View>
 /**
- * Escrow Detail Screen — biometric-gated.
+ * Escrow Detail Screen - biometric-gated with offline cached read mode.
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Alert,
+  Linking,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEscrow, useMilestones } from '../../hooks/useEscrows';
@@ -99,10 +31,13 @@ export default function EscrowDetailScreen() {
   const router = useRouter();
   const [authed, setAuthed] = useState(!isBiometricEnabled());
 
-  const { data: escrow, isLoading, refetch } = useEscrow(authed && id ? id : null);
-  const { data: milestones = [], isLoading: milestonesLoading } = useMilestones(
-    authed && escrow && id ? id : null,
-  );
+  const escrowQuery = useEscrow(authed && id ? id : null);
+  const escrow = escrowQuery.data?.data;
+  const escrowOffline = escrowQuery.data?.isOffline ?? false;
+  const milestonesQuery = useMilestones(authed && escrow && id ? id : null);
+  const milestones = milestonesQuery.data?.data ?? [];
+  const milestonesOffline = milestonesQuery.data?.isOffline ?? false;
+  const isOffline = escrowOffline || milestonesOffline;
 
   useEffect(() => {
     if (!authed && isBiometricEnabled()) {
@@ -116,7 +51,6 @@ export default function EscrowDetailScreen() {
     }
   }, [authed, router]);
 
-  // Render skeleton while biometric auth is pending
   if (!authed && isBiometricEnabled()) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -131,37 +65,24 @@ export default function EscrowDetailScreen() {
     );
   }
 
-  if (isLoading) {
+  if (escrowQuery.isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6366f1" />
-        <Text style={styles.loadingText}>Loading escrow...</Text>
-      </View>
       <SafeAreaView style={styles.safe}>
-        <EmptyState icon="⏳" title="Loading escrow…" />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#6366f1" />
+          <Text style={styles.loadingText}>Loading escrow...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   if (!escrow) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Escrow not found.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Escrow #{escrow.id}</Text>
-      <View style={styles.statusRow}>
-        <Text style={styles.label}>Status:</Text>
-        <Text style={styles.value}>{escrow.status}</Text>
       <SafeAreaView style={styles.safe}>
         <EmptyState
-          icon="❌"
+          icon="!"
           title="Escrow not found"
-          subtitle="It may have been removed or you're offline."
+          subtitle="It may have been removed, or this escrow has not been cached for offline viewing."
         />
       </SafeAreaView>
     );
@@ -176,22 +97,32 @@ export default function EscrowDetailScreen() {
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading || milestonesLoading}
-            onRefresh={refetch}
+            refreshing={escrowQuery.isLoading || milestonesQuery.isLoading}
+            onRefresh={() => {
+              void escrowQuery.refetch();
+              void milestonesQuery.refetch();
+            }}
             tintColor="#6366f1"
           />
         }
       >
-        {/* Status + amount */}
+        {isOffline && (
+          <Card style={styles.offlineCard}>
+            <Text style={styles.offlineTitle}>Offline mode</Text>
+            <Text style={styles.offlineText}>
+              Showing the last cached escrow state. Transaction actions are unavailable until the
+              connection is restored.
+            </Text>
+          </Card>
+        )}
+
         <Card style={styles.headerCard}>
           <View style={styles.row}>
             <Text style={styles.escrowId}>Escrow #{escrow.id}</Text>
             <Badge status={escrow.status} />
           </View>
           <Text style={styles.amount}>{stroopsToXlm(escrow.totalAmount)} XLM</Text>
-          <Text style={styles.remaining}>
-            Remaining: {stroopsToXlm(escrow.remainingBalance)} XLM
-          </Text>
+          <Text style={styles.remaining}>Remaining: {stroopsToXlm(escrow.remainingBalance)} XLM</Text>
           {escrow.deadline && (
             <Text style={styles.deadline}>
               Deadline: {new Date(escrow.deadline).toLocaleDateString()}
@@ -199,7 +130,6 @@ export default function EscrowDetailScreen() {
           )}
         </Card>
 
-        {/* Parties */}
         <Card style={styles.partiesCard}>
           <PartyRow label="Client" address={escrow.clientAddress} isYou={isClient} />
           <PartyRow label="Freelancer" address={escrow.freelancerAddress} isYou={isFreelancer} />
@@ -208,18 +138,18 @@ export default function EscrowDetailScreen() {
           )}
         </Card>
 
-        {/* Milestones */}
         <Text style={styles.sectionTitle}>Milestones ({milestones.length})</Text>
         <Card>
-          {milestones.length === 0 ? (
-            <Text style={styles.emptyMilestones}>No milestones yet.</Text>
+          {milestonesQuery.isLoading ? (
+            <ActivityIndicator color="#6366f1" />
+          ) : milestones.length === 0 ? (
+            <Text style={styles.emptyMilestones}>No milestones cached yet.</Text>
           ) : (
             milestones.map((m, i) => <MilestoneItem key={m.id} milestone={m} index={i} />)
           )}
         </Card>
 
-        {/* Actions */}
-        {escrow.status === 'Active' && (
+        {escrow.status === 'Active' && !isOffline && (
           <View style={styles.actionsSection}>
             <Text style={styles.sectionTitle}>Actions</Text>
             <Button
@@ -247,7 +177,7 @@ export default function EscrowDetailScreen() {
 
         {escrow.status === 'Disputed' && (
           <Card style={styles.disputeCard}>
-            <Text style={styles.disputeTitle}>⚠️ Dispute Active</Text>
+            <Text style={styles.disputeTitle}>Dispute Active</Text>
             <Text style={styles.disputeText}>
               This escrow is under dispute. An arbiter will review and resolve it on-chain.
             </Text>
@@ -271,53 +201,31 @@ function PartyRow({ label, address, isYou }: { label: string; address: string; i
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: '#0f172a',
-  },
+  safe: { flex: 1, backgroundColor: '#0f0f0f' },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#0f0f0f',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 16,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  label: {
-    color: '#94a3b8',
-    fontSize: 14,
-  },
-  value: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+  content: { padding: 16, paddingBottom: 48 },
+  skeleton: {
+    backgroundColor: '#1f2937',
+    borderRadius: 6,
   },
   loadingText: {
     color: '#94a3b8',
     marginTop: 12,
     fontSize: 14,
   },
-  errorText: {
-    color: '#ef4444',
-    fontSize: 16,
-  },
-  safe: { flex: 1, backgroundColor: '#0f0f0f' },
-  content: { padding: 16, paddingBottom: 48 },
-  skeleton: {
-    backgroundColor: '#1f2937',
-    borderRadius: 6,
-  },
   headerCard: { marginBottom: 12 },
+  offlineCard: {
+    marginBottom: 12,
+    borderColor: '#854d0e',
+    backgroundColor: '#1c1202',
+  },
+  offlineTitle: { fontSize: 14, fontWeight: '700', color: '#fbbf24', marginBottom: 4 },
+  offlineText: { fontSize: 13, color: '#d1d5db', lineHeight: 19 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

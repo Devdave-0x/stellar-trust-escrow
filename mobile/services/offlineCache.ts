@@ -1,72 +1,52 @@
-import * as SQLite from 'expo-sqlite';
-import { AppState, type AppStateStatus } from 'react-native';
-
-const db = SQLite.openDatabaseSync('escrow_cache.db');
-
-const CACHE_VERSION = 1;
-
-const CACHE_TTL_MS: Record<string, number> = {
-  escrow: 5 * 60 * 1000,
-  milestone: 2 * 60 * 1000,
-  reputation: 30 * 60 * 1000,
-};
-
-const DEFAULT_TTL_MS = 5 * 60 * 1000;
-
-function getTTL(entityType: string): number {
-  return CACHE_TTL_MS[entityType] ?? DEFAULT_TTL_MS;
-}
-
-function initCacheDb(): void {
-  db.execSync(`
-    CREATE TABLE IF NOT EXISTS cache_meta (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `);
-
-  const row = db.getFirstSync<{ value: string }>(
-    'SELECT value FROM cache_meta WHERE key = ?',
-    ['schema_version']
-  );
-
-  const storedVersion = row ? parseInt(row.value, 10) : 0;
-
-  if (storedVersion < CACHE_VERSION) {
-    db.execSync('DROP TABLE IF EXISTS escrow_cache');
-    db.execSync(
-      `INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('schema_version', '${CACHE_VERSION}')`
-    );
-  }
-
-  db.execSync(`
-    CREATE TABLE IF NOT EXISTS escrow_cache (
-      id TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      entity_type TEXT NOT NULL DEFAULT 'escrow',
 /**
  * Offline Cache Service
  *
- * Persists escrow data to SQLite so the app remains usable without a network
- * connection. The cache is invalidated when the app comes back online.
+ * Persists escrow and milestone data to SQLite so active escrow details remain
+ * readable when the device loses connectivity. Cached reads are intentionally
+ * read-only; mutation screens should disable write actions while offline.
  */
 
 import * as SQLite from 'expo-sqlite';
 
 const db = SQLite.openDatabaseSync('ste_offline.db');
 
-const CACHE_TTL_MS = parseInt(process.env.EXPO_PUBLIC_OFFLINE_CACHE_TTL_MS ?? '300000', 10); // 5 min default
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = Number.parseInt(
+  process.env.EXPO_PUBLIC_OFFLINE_CACHE_TTL_MS ?? String(DEFAULT_CACHE_TTL_MS),
+  10,
+);
+
+export interface Escrow {
+  id: string;
+  status: string;
+  milestones?: Milestone[];
+  [key: string]: unknown;
+}
+
+export interface Milestone {
+  id: number;
+  escrowId?: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+function cacheCutoff(): number {
+  return Date.now() - CACHE_TTL_MS;
+}
 
 function safeParseRow<T>(
   row: { id?: string | number; escrow_id?: string; data: string } | null,
-  tableName: string,
+  tableName: 'escrows' | 'milestones',
 ): T | null {
   if (!row) return null;
+
   try {
     return JSON.parse(row.data) as T;
   } catch {
-    const pk = row.id ?? row.escrow_id;
-    db.runSync(`DELETE FROM ${tableName} WHERE id = ?`, [String(pk)]);
+    const key = tableName === 'milestones' ? row.id : row.id ?? row.escrow_id;
+    if (key !== undefined) {
+      db.runSync(`DELETE FROM ${tableName} WHERE id = ?`, [String(key)]);
+    }
     return null;
   }
 }
@@ -78,178 +58,93 @@ export function initOfflineDb(): void {
       data TEXT NOT NULL,
       cached_at INTEGER NOT NULL
     );
+
     CREATE TABLE IF NOT EXISTS milestones (
-      id INTEGER PRIMARY KEY,
+      id TEXT PRIMARY KEY,
       escrow_id TEXT NOT NULL,
       data TEXT NOT NULL,
       cached_at INTEGER NOT NULL
     );
+
+    CREATE INDEX IF NOT EXISTS idx_milestones_escrow_id ON milestones (escrow_id);
   `);
 }
 
-initCacheDb();
+initOfflineDb();
 
-export interface Escrow {
-  id: string;
-  status: string;
-  [key: string]: unknown;
-}
-
-export function cacheEscrow(escrow: Escrow, entityType = 'escrow'): void {
-  db.runSync(
-    'INSERT OR REPLACE INTO escrow_cache (id, data, entity_type, cached_at) VALUES (?, ?, ?, ?)',
-    [escrow.id, JSON.stringify(escrow), entityType, Date.now()]
-  );
-}
-
-export function getCachedEscrow(id: string, entityType = 'escrow'): Escrow | null {
-  const row = db.getFirstSync<{ data: string; cached_at: number }>(
-    'SELECT data, cached_at FROM escrow_cache WHERE id = ?',
-    [id]
-  );
-
-  if (!row) return null;
-
-  if (Date.now() - row.cached_at > getTTL(entityType)) {
-    db.runSync('DELETE FROM escrow_cache WHERE id = ?', [id]);
-    return null;
-  }
-
-  try {
-    return JSON.parse(row.data) as Escrow;
-  } catch {
-    db.runSync('DELETE FROM escrow_cache WHERE id = ?', [id]);
-    console.warn(`Corrupted cache entry deleted: id=${id}`);
-    return null;
-  }
-}
-
-export function getCachedEscrows(entityType = 'escrow'): Escrow[] {
-  const ttl = getTTL(entityType);
-  const cutoff = Date.now() - ttl;
-
-  db.runSync('DELETE FROM escrow_cache WHERE entity_type = ? AND cached_at <= ?', [
-    entityType,
-    cutoff,
-  ]);
-
-  const rows = db.getAllSync<{ id: string; data: string }>(
-    'SELECT id, data FROM escrow_cache WHERE entity_type = ?',
-    [entityType]
-  );
-
-  const results: Escrow[] = [];
-  const corruptedIds: string[] = [];
-
-  for (const row of rows) {
-    try {
-      results.push(JSON.parse(row.data) as Escrow);
-    } catch {
-      corruptedIds.push(row.id);
-    }
-  }
-
-  if (corruptedIds.length > 0) {
-    const placeholders = corruptedIds.map(() => '?').join(',');
-    db.runSync(`DELETE FROM escrow_cache WHERE id IN (${placeholders})`, corruptedIds);
-    console.warn(`Deleted ${corruptedIds.length} corrupted cache entries`);
-  }
-
-  return results;
-}
-
-export function pruneStaleCache(): void {
-  const now = Date.now();
-  for (const [entityType, ttl] of Object.entries(CACHE_TTL_MS)) {
-    db.runSync('DELETE FROM escrow_cache WHERE entity_type = ? AND cached_at <= ?', [
-      entityType,
-      now - ttl,
-    ]);
-  }
-  db.runSync('DELETE FROM escrow_cache WHERE cached_at <= ?', [now - DEFAULT_TTL_MS]);
-}
-
-let appStateSubscription: { remove: () => void } | null = null;
-
-export function startCacheCleanupListener(): void {
-  if (appStateSubscription) return;
-
-  appStateSubscription = AppState.addEventListener(
-    'change',
-    (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
-        pruneStaleCache();
-      }
-    }
-  );
-}
-
-export function stopCacheCleanupListener(): void {
-  appStateSubscription?.remove();
-  appStateSubscription = null;
-}
-
-export function clearAllCache(): void {
-  db.runSync('DELETE FROM escrow_cache');
-}
-
-export function invalidateCacheVersion(): void {
-  db.execSync('DROP TABLE IF EXISTS escrow_cache');
-  db.execSync(
-    `INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('schema_version', '${CACHE_VERSION}')`
-  );
-  initCacheDb();
 export function cacheEscrow(escrow: Record<string, unknown>): void {
-  db.runSync(`INSERT OR REPLACE INTO escrows (id, data, cached_at) VALUES (?, ?, ?)`, [
+  if (!escrow.id) return;
+
+  db.runSync('INSERT OR REPLACE INTO escrows (id, data, cached_at) VALUES (?, ?, ?)', [
     String(escrow.id),
     JSON.stringify(escrow),
     Date.now(),
   ]);
 }
 
-export function getCachedEscrow(id: string): Record<string, unknown> | null {
+export function getCachedEscrow(id: string): Escrow | null {
   const row = db.getFirstSync<{ id: string; data: string; cached_at: number }>(
-    `SELECT id, data, cached_at FROM escrows WHERE id = ?`,
+    'SELECT id, data, cached_at FROM escrows WHERE id = ?',
     [id],
   );
-  if (!row || Date.now() - row.cached_at > CACHE_TTL_MS) {
-    if (row) db.runSync(`DELETE FROM escrows WHERE id = ?`, [id]);
+
+  if (!row) return null;
+  if (row.cached_at < cacheCutoff()) {
+    db.runSync('DELETE FROM escrows WHERE id = ?', [id]);
     return null;
   }
-  return safeParseRow<Record<string, unknown>>(row, 'escrows');
+
+  return safeParseRow<Escrow>(row, 'escrows');
 }
 
-export function getCachedEscrows(): Record<string, unknown>[] {
-  const cutoff = Date.now() - CACHE_TTL_MS;
-  db.runSync(`DELETE FROM escrows WHERE cached_at < ?`, [cutoff]);
+export function getCachedEscrows(): Escrow[] {
+  db.runSync('DELETE FROM escrows WHERE cached_at < ?', [cacheCutoff()]);
+
   const rows = db.getAllSync<{ id: string; data: string; cached_at: number }>(
-    `SELECT id, data, cached_at FROM escrows ORDER BY cached_at DESC`,
+    'SELECT id, data, cached_at FROM escrows ORDER BY cached_at DESC',
   );
+
   return rows
-    .map((r) => safeParseRow<Record<string, unknown>>(r, 'escrows'))
-    .filter((r): r is Record<string, unknown> => r !== null);
+    .map((row) => safeParseRow<Escrow>(row, 'escrows'))
+    .filter((escrow): escrow is Escrow => escrow !== null);
 }
 
 export function cacheMilestones(escrowId: string, milestones: Record<string, unknown>[]): void {
-  db.runSync(`DELETE FROM milestones WHERE escrow_id = ?`, [escrowId]);
-  for (const m of milestones) {
-    db.runSync(`INSERT INTO milestones (id, escrow_id, data, cached_at) VALUES (?, ?, ?, ?)`, [
-      Number(m.id),
-      escrowId,
-      JSON.stringify(m),
-      Date.now(),
-    ]);
+  db.runSync('DELETE FROM milestones WHERE escrow_id = ?', [escrowId]);
+
+  for (const milestone of milestones) {
+    if (milestone.id === undefined || milestone.id === null) continue;
+
+    db.runSync(
+      'INSERT OR REPLACE INTO milestones (id, escrow_id, data, cached_at) VALUES (?, ?, ?, ?)',
+      [String(milestone.id), escrowId, JSON.stringify({ ...milestone, escrowId }), Date.now()],
+    );
   }
 }
 
-export function getCachedMilestones(escrowId: string): Record<string, unknown>[] {
-  const cutoff = Date.now() - CACHE_TTL_MS;
-  db.runSync(`DELETE FROM milestones WHERE escrow_id = ? AND cached_at < ?`, [escrowId, cutoff]);
-  const rows = db.getAllSync<{ id: number; data: string; cached_at: number }>(
-    `SELECT id, data, cached_at FROM milestones WHERE escrow_id = ? ORDER BY id`,
+export function getCachedMilestones(escrowId: string): Milestone[] {
+  db.runSync('DELETE FROM milestones WHERE escrow_id = ? AND cached_at < ?', [
+    escrowId,
+    cacheCutoff(),
+  ]);
+
+  const rows = db.getAllSync<{ id: string; data: string; cached_at: number }>(
+    'SELECT id, data, cached_at FROM milestones WHERE escrow_id = ? ORDER BY CAST(id AS INTEGER)',
     [escrowId],
   );
+
   return rows
-    .map((r) => safeParseRow<Record<string, unknown>>(r, 'milestones'))
-    .filter((r): r is Record<string, unknown> => r !== null);
+    .map((row) => safeParseRow<Milestone>(row, 'milestones'))
+    .filter((milestone): milestone is Milestone => milestone !== null);
+}
+
+export function pruneStaleCache(): void {
+  const cutoff = cacheCutoff();
+  db.runSync('DELETE FROM escrows WHERE cached_at < ?', [cutoff]);
+  db.runSync('DELETE FROM milestones WHERE cached_at < ?', [cutoff]);
+}
+
+export function clearAllCache(): void {
+  db.runSync('DELETE FROM escrows');
+  db.runSync('DELETE FROM milestones');
 }
