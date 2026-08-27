@@ -40,7 +40,13 @@ export default function EscrowCard({
   const { t } = useI18n();
   const cardRef = useRef(null);
 
-  if (isLoading) return <EscrowCardSkeleton />;
+  if (isLoading || !escrow) {
+    return (
+      <div role="status" aria-live="polite" aria-label="Loading escrow card">
+        <EscrowCardSkeleton />
+      </div>
+    );
+  }
 
   const {
     id,
