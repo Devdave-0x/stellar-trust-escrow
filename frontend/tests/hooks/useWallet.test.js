@@ -37,6 +37,19 @@ describe('useWallet', () => {
     expect(result.current.isConnecting).toBe(false);
   });
 
+  it('normalizes string errors when connect fails', async () => {
+    const { result } = renderHook(() => useWallet(), { wrapper });
+    const originalEnv = process.env.NEXT_PUBLIC_FREIGHTER_INSTALL_URL;
+    process.env.NEXT_PUBLIC_FREIGHTER_INSTALL_URL = '';
+
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    expect(result.current.error).toBeDefined();
+    process.env.NEXT_PUBLIC_FREIGHTER_INSTALL_URL = originalEnv;
+  });
+
   it('disconnect clears state', async () => {
     const { result } = renderHook(() => useWallet(), { wrapper });
     act(() => {

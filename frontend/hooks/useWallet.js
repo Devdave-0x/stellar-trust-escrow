@@ -60,7 +60,18 @@ import {
 } from '@stellar/freighter-api';
 import { useWalletStore } from '../store/app-store';
 
-const FREIGHTER_INSTALL_URL = 'https://www.freighter.app/';
+const FREIGHTER_INSTALL_URL =
+  process.env.NEXT_PUBLIC_FREIGHTER_INSTALL_URL || 'https://www.freighter.app/';
+
+function toErrorMessage(err, fallback) {
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+  if (typeof err === 'string' && err.trim()) {
+    return err.trim();
+  }
+  return fallback;
+}
 
 export function useWallet() {
   const {
@@ -124,9 +135,9 @@ export function useWallet() {
       });
     } catch (err) {
       const message =
-        err.message === 'User rejected access'
+        toErrorMessage(err, 'Wallet connection failed') === 'User rejected access'
           ? 'You declined wallet connection.'
-          : err.message;
+          : toErrorMessage(err, 'Wallet connection failed');
       setConnectError(message);
     }
   }, [isFreighterInstalled, startConnect, finishConnect, setConnectError]);
@@ -163,9 +174,9 @@ export function useWallet() {
         return signedXdr;
       } catch (err) {
         const message =
-          err.message === 'User rejected signing'
+          toErrorMessage(err, 'Signing failed') === 'User rejected signing'
             ? 'Transaction signing was cancelled.'
-            : `Signing failed: ${err.message}`;
+            : `Signing failed: ${toErrorMessage(err, 'unknown error')}`;
         throw new Error(message);
       }
     },
