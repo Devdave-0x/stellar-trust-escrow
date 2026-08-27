@@ -11,6 +11,17 @@ const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
 const DEFAULT_RETRY_ATTEMPTS = 5;
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
 
+function selectSubscriptionFields(includeActive = false) {
+  return {
+    id: true,
+    url: true,
+    eventTypes: true,
+    ...(includeActive ? { isActive: true } : {}),
+    createdAt: true,
+    updatedAt: true,
+  };
+}
+
 function buildWebhookPayload(eventType, payload, deliveryId, timestamp = new Date().toISOString()) {
   return {
     eventType,
@@ -72,11 +83,7 @@ async function createSubscription({ url, eventTypes, createdBy }) {
       isActive: true,
     },
     select: {
-      id: true,
-      url: true,
-      eventTypes: true,
-      createdAt: true,
-      updatedAt: true,
+      ...selectSubscriptionFields(),
     },
   });
 
@@ -87,14 +94,7 @@ async function listSubscriptions({ createdBy }) {
   return prisma.webhookSubscription.findMany({
     where: { createdBy },
     orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      url: true,
-      eventTypes: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: selectSubscriptionFields(true),
   });
 }
 
