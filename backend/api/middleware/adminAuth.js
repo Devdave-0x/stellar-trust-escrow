@@ -62,6 +62,12 @@ function deriveAdminId(key) {
 }
 
 /** Mints a short-lived admin session token bound to `adminId`. */
+/**
+ * Issue a short-lived admin JWT tied to a derived admin identity.
+ *
+ * @param {string} adminId
+ * @returns {string}
+ */
 export function issueAdminToken(adminId) {
   return jwt.sign({ type: 'admin', adminId }, ADMIN_JWT_SECRET, {
     algorithm: JWT_ALGORITHM,
@@ -70,6 +76,12 @@ export function issueAdminToken(adminId) {
 }
 
 /** Verifies an admin session token, returning its payload. Throws on failure. */
+/**
+ * Verify an admin JWT and return its decoded payload.
+ *
+ * @param {string} token
+ * @returns {import('jsonwebtoken').JwtPayload | string}
+ */
 export function verifyAdminToken(token) {
   const payload = jwt.verify(token, ADMIN_JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
   if (payload.type !== 'admin') throw new Error('Not an admin token');
@@ -143,6 +155,14 @@ const adminAuth = async (req, res, next) => {
   next();
 };
 
+/**
+ * Best-effort admin auth that marks the request when a valid admin API key is present.
+ *
+ * @param {import('express').Request} req
+ * @param {import('express').Response} _res
+ * @param {import('express').NextFunction} next
+ * @returns {void}
+ */
 export function optionalAdminAuth(req, _res, next) {
   const adminKey = process.env.ADMIN_API_KEY;
   const providedKey = req.headers['x-admin-api-key'];
