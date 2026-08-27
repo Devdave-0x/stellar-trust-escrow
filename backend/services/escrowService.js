@@ -8,6 +8,7 @@
 import { withTransaction } from '../lib/transaction.js';
 import prisma from '../lib/prisma.js';
 
+/// Create and persist a funded escrow record.
 export async function fundEscrow(data) {
   return withTransaction(
     async (tx) => {
@@ -44,6 +45,7 @@ export async function fundEscrow(data) {
   );
 }
 
+/// Approve a milestone release and update the escrow balance atomically.
 export async function releaseMilestone({ escrowId, milestoneIndex, amount, callerAddress }) {
   return withTransaction(async (tx) => {
     const escrow = await tx.escrow.findUniqueOrThrow({
@@ -87,6 +89,7 @@ export async function releaseMilestone({ escrowId, milestoneIndex, amount, calle
   });
 }
 
+/// Mark an escrow as disputed and record the dispute atomically.
 export async function raiseDispute({ escrowId, raisedByAddress, milestoneIndex }) {
   return withTransaction(
     async (tx) => {
@@ -133,6 +136,7 @@ export async function raiseDispute({ escrowId, raisedByAddress, milestoneIndex }
   );
 }
 
+/// Resolve a dispute, settle balances, and persist the outcome atomically.
 export async function resolveDispute({
   escrowId,
   clientAmount,
