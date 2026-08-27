@@ -10,6 +10,14 @@ import { authorizeBodyAddress, authorizeParamAddress } from '../middleware/autho
 
 const router = express.Router();
 
+export const PAYMENT_ROUTE_A11Y_LABELS = {
+  webhook: 'Stripe webhook endpoint',
+  checkout: 'Create checkout session',
+  status: 'Check payment session status',
+  listByAddress: 'List payments for a Stellar address',
+  refund: 'Issue a payment refund',
+};
+
 const captureRawBody = (req, _res, next) => {
   let data = '';
   req.on('data', (chunk) => (data += chunk));
