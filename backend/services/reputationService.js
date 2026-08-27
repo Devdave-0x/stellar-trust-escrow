@@ -7,13 +7,28 @@ const BADGE_THRESHOLDS = {
 
 import prisma from '../lib/prisma.js';
 
+function toErrorMessage(error, fallback) {
+  if (error instanceof Error && error.message) {
+    const message = error.message.trim();
+    return message.length > 0 ? message : fallback;
+  }
+  if (typeof error === 'string' && error.trim().length > 0) {
+    return error.trim();
+  }
+  return fallback;
+}
+
 // ── Read Operations ──────────────────────────────────────────────────────────
 
 const getReputationByAddress = async (address) => {
-  const record = await prisma.reputationRecord.findUnique({
-    where: { address },
-  });
-  return record || null;
+  try {
+    const record = await prisma.reputationRecord.findUnique({
+      where: { address },
+    });
+    return record || null;
+  } catch (error) {
+    throw new Error(`Failed to load reputation for ${address}: ${toErrorMessage(error, 'unknown database error')}`);
+  }
 };
 
 const getBadge = (score) => {
@@ -31,26 +46,34 @@ const computeCompletionRate = (completed, disputed) => {
 };
 
 const getLeaderboard = async (limit = 20, page = 1) => {
-  const skip = (page - 1) * limit;
-  return prisma.reputationRecord.findMany({
-    orderBy: { totalScore: 'desc' },
-    take: limit,
-    skip,
-  });
+  try {
+    const skip = (page - 1) * limit;
+    return prisma.reputationRecord.findMany({
+      orderBy: { totalScore: 'desc' },
+      take: limit,
+      skip,
+    });
+  } catch (error) {
+    throw new Error(`Failed to load reputation leaderboard: ${toErrorMessage(error, 'unknown database error')}`);
+  }
 };
 
 const getPercentileRank = async (address) => {
-  const result = await prisma.$queryRaw`
-    WITH Ranked AS (
-      SELECT address, PERCENT_RANK() OVER (ORDER BY total_score ASC) as rank
-      FROM reputation_records
-    )
-    SELECT rank FROM Ranked WHERE address = ${address}
-  `;
-  if (result.length > 0) {
-    return Math.round(Number(result[0].rank) * 100);
+  try {
+    const result = await prisma.$queryRaw`
+      WITH Ranked AS (
+        SELECT address, PERCENT_RANK() OVER (ORDER BY total_score ASC) as rank
+        FROM reputation_records
+      )
+      SELECT rank FROM Ranked WHERE address = ${address}
+    `;
+    if (result.length > 0) {
+      return Math.round(Number(result[0].rank) * 100);
+    }
+    return 0;
+  } catch (error) {
+    throw new Error(`Failed to compute percentile rank for ${address}: ${toErrorMessage(error, 'unknown database error')}`);
   }
-  return 0;
 };
 
 // ── Write Operations ────────────────────────────────────────────────────────
