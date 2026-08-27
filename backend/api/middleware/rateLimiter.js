@@ -19,6 +19,12 @@ import {
   DEFAULT_TIER,
 } from '../../config/rateLimits.js';
 
+export const RATE_LIMITER_A11Y_LABELS = {
+  retryAfter: 'Retry after rate limit window resets',
+  remaining: 'Remaining requests in the current rate limit window',
+  reset: 'Unix timestamp for the next rate limit reset',
+};
+
 // ── Sliding window store ──────────────────────────────────────────────────────
 
 /**
