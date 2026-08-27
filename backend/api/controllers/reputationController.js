@@ -20,6 +20,14 @@ const logControllerError = (ctx, err, req) =>
   log.error({ err, ctx, path: req?.path }, 'Controller error');
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+// Public leaderboard responses are intentionally capped to avoid oversized payloads.
+const LEADERBOARD_MAX_LIMIT = 50;
+// Search falls back to a small default page size for quick typeahead queries.
+const SEARCH_DEFAULT_LIMIT = 10;
+// Search responses should stay bounded even when callers request larger pages.
+const SEARCH_MAX_LIMIT = 50;
+// Recalculate endpoint allows these privileged roles to rebuild scores.
+const REPUTATION_ADMIN_ROLES = new Set(['admin', 'superadmin']);
 
 const getReputation = async (req, res) => {
   try {
@@ -44,8 +52,6 @@ const getReputation = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-
-const LEADERBOARD_MAX_LIMIT = 50;
 
 const getLeaderboard = async (req, res) => {
   try {
@@ -85,7 +91,7 @@ const getLeaderboard = async (req, res) => {
 const search = async (req, res) => {
   try {
     const q = (req.query.q ?? '').trim();
-    const limit = Math.min(parseInt(req.query.limit ?? '10', 10), 50);
+    const limit = Math.min(parseInt(req.query.limit ?? String(SEARCH_DEFAULT_LIMIT), 10), SEARCH_MAX_LIMIT);
     const from = parseInt(req.query.from ?? '0', 10);
     const tenantId = req.tenant?.id;
 
@@ -115,7 +121,7 @@ const recalculate = async (req, res) => {
     const userRole = user.role || 'user';
 
     // Admin-only check
-    if (userRole !== 'admin' && userRole !== 'superadmin') {
+    if (!REPUTATION_ADMIN_ROLES.has(userRole)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
