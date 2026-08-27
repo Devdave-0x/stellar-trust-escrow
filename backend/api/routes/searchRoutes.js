@@ -1,8 +1,15 @@
 import express from 'express';
 import searchController from '../controllers/searchController.js';
 import adminAuth from '../middleware/adminAuth.js';
+import { createRedisSlidingWindowRateLimiter } from '../middleware/slidingRateLimiter.js';
 
 const router = express.Router();
+const publicSearchRateLimit = createRedisSlidingWindowRateLimiter({
+  prefix: 'search',
+  max: Number(process.env.SEARCH_RATE_LIMIT_PER_MINUTE || 60),
+  windowMs: 60_000,
+  message: 'Too many search requests, please try again later.',
+});
 
 /**
  * @route  GET /api/search
@@ -21,7 +28,7 @@ const router = express.Router();
  * @query  limit       {number}  default 20, max 100
  * @returns { data, page, limit, total, totalPages, hasNextPage, hasPreviousPage, facets }
  */
-router.get('/', searchController.searchEscrows);
+router.get('/', publicSearchRateLimit, searchController.searchEscrows);
 
 /**
  * @route  GET /api/search/suggest
@@ -30,7 +37,7 @@ router.get('/', searchController.searchEscrows);
  * @query  size  {number}  max suggestions to return (default 5, max 20)
  * @returns { suggestions: [{ text, score }] }
  */
-router.get('/suggest', searchController.getSuggestions);
+router.get('/suggest', publicSearchRateLimit, searchController.getSuggestions);
 
 /**
  * @route  GET /api/search/analytics
