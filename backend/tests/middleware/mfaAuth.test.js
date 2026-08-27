@@ -194,6 +194,44 @@ describe('MFA Middleware', () => {
         }),
       );
     });
+
+    it('should reject malformed MFA token payloads', async () => {
+      mfaService.requiresMfa.mockResolvedValue(true);
+      cache.get.mockResolvedValue(null);
+      req.headers['x-mfa-token'] = jwt.sign(
+        { userId: 'not-a-number', tenantId: 'tenant-123', type: 'wrong-type' },
+        process.env.MFA_JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '30m' },
+      );
+
+      await requireMfa(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'Invalid MFA token',
+          mfaRequired: true,
+        }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should reject empty MFA token values', async () => {
+      mfaService.requiresMfa.mockResolvedValue(true);
+      cache.get.mockResolvedValue(null);
+      req.headers['x-mfa-token'] = '';
+
+      await requireMfa(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'MFA verification required',
+          mfaRequired: true,
+        }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
   });
 
   describe('requireMfaForHighValue', () => {
