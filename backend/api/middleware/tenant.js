@@ -1,6 +1,14 @@
 import prisma from '../../lib/prisma.js';
 import { DEFAULT_TENANT_SLUG, runWithTenantContext } from '../../lib/tenantContext.js';
 
+function buildTenantEmptyState({ title, description, action }) {
+  return {
+    title,
+    description,
+    action,
+  };
+}
+
 function extractHostname(req) {
   const forwardedHost = req.headers['x-forwarded-host'];
   const rawHost = Array.isArray(forwardedHost)
@@ -71,12 +79,30 @@ export default async function tenantMiddleware(req, res, next) {
     const tenant = await findTenant(req);
 
     if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
+      return res.status(404).json({
+        error: 'Tenant not found',
+        emptyState: buildTenantEmptyState({
+          title: 'No tenant matched this request',
+          description:
+            'Check the tenant slug, tenant id, or request hostname and try again.',
+          action: 'Provide a valid tenant identifier or configure the default tenant.',
+        }),
+      });
     }
 
     if (tenant.status !== 'active') {
       const message = tenant.status === 'suspended' ? 'Tenant suspended' : 'Tenant is not active';
-      return res.status(403).json({ error: message });
+      return res.status(403).json({
+        error: message,
+        emptyState: buildTenantEmptyState({
+          title: 'Tenant is unavailable',
+          description:
+            tenant.status === 'suspended'
+              ? 'This tenant is suspended and cannot serve API requests right now.'
+              : 'This tenant exists but is not currently active.',
+          action: 'Reactivate the tenant or switch to an active tenant before retrying.',
+        }),
+      });
     }
 
     req.tenant = tenant;
