@@ -34,6 +34,7 @@ const DLQ_KEY = 'indexer:dlq';
 
 const getEscrowId = (event) => parseBigInt(event.topic?.[1]);
 const getMilestoneIndex = (value) => Number(parseBigInt(value));
+const hasEventValue = (event) => Array.isArray(event.value) && event.value.length > 0;
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ const parseAddress = (v) => {
 
 export async function handleMilestoneApproved(event) {
   const escrowId = getEscrowId(event);
-  const [milestoneId] = event.value ?? [];
+  const [milestoneId] = hasEventValue(event) ? event.value : [];
   if (!escrowId || milestoneId === undefined) return;
   await prisma.milestone.updateMany({
     where: { escrowId, milestoneIndex: getMilestoneIndex(milestoneId) },
@@ -155,7 +156,7 @@ export async function handleEscrowCancelled(event) {
 
 export async function handleEscrowCreated(event) {
   const escrowId = getEscrowId(event);
-  const [client, freelancer, amount] = event.value ?? [];
+  const [client, freelancer, amount] = hasEventValue(event) ? event.value : [];
   if (!escrowId || !client) return;
   await prisma.escrow.upsert({
     where: { id: escrowId },
@@ -177,7 +178,7 @@ export async function handleEscrowCreated(event) {
 
 export async function handleMilestoneAdded(event) {
   const escrowId = getEscrowId(event);
-  const [milestoneId, amount] = event.value ?? [];
+  const [milestoneId, amount] = hasEventValue(event) ? event.value : [];
   if (!escrowId || milestoneId === undefined) return;
   const milestoneIndex = getMilestoneIndex(milestoneId);
   await prisma.milestone.upsert({
@@ -196,7 +197,7 @@ export async function handleMilestoneAdded(event) {
 
 export async function handleMilestoneSubmitted(event) {
   const escrowId = getEscrowId(event);
-  const [milestoneId] = event.value ?? [];
+  const [milestoneId] = hasEventValue(event) ? event.value : [];
   if (!escrowId || milestoneId === undefined) return;
   const milestoneIndex = getMilestoneIndex(milestoneId);
 
