@@ -22,6 +22,7 @@ const ADMIN_EMPTY_STATE = {
   title: 'No admin data found',
   description: 'There are no records to display for this request yet.',
   action: 'Try widening the filters or create a record before retrying.',
+  variant: 'empty',
 };
 
 // JSON.stringify does not guarantee key order, so two objects with the same
