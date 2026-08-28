@@ -32,6 +32,10 @@ const START_LEDGER = parseInt(process.env.INDEXER_START_LEDGER || '0', 10);
 const MAX_RETRIES = 3;
 const DLQ_KEY = 'indexer:dlq';
 
+const getEscrowId = (event) => parseBigInt(event.topic?.[1]);
+const getMilestoneIndex = (value) => Number(parseBigInt(value));
+const hasEventValue = (event) => Array.isArray(event.value) && event.value.length > 0;
+
 // ── Redis ─────────────────────────────────────────────────────────────────────
 
 let _redis = null;
@@ -79,17 +83,17 @@ const parseAddress = (v) => {
 // ── Event handlers ────────────────────────────────────────────────────────────
 
 export async function handleMilestoneApproved(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
-  const [milestoneId] = event.value ?? [];
+  const escrowId = getEscrowId(event);
+  const [milestoneId] = hasEventValue(event) ? event.value : [];
   if (!escrowId || milestoneId === undefined) return;
   await prisma.milestone.updateMany({
-    where: { escrowId, milestoneIndex: Number(parseBigInt(milestoneId)) },
+    where: { escrowId, milestoneIndex: getMilestoneIndex(milestoneId) },
     data: { status: 'Approved', resolvedAt: new Date(event.ledgerClosedAt) },
   });
 }
 
 export async function handleDisputeRaised(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
+  const escrowId = getEscrowId(event);
   if (!escrowId) return;
   const raisedBy = parseAddress(event.value);
   await prisma.$transaction([
@@ -109,7 +113,7 @@ export async function handleDisputeRaised(event) {
 }
 
 export async function handleFundsReleased(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
+  const escrowId = getEscrowId(event);
   const [, amount] = event.value ?? [];
   if (!escrowId || !amount) return;
 
@@ -145,14 +149,14 @@ export async function handleFundsReleased(event) {
 }
 
 export async function handleEscrowCancelled(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
+  const escrowId = getEscrowId(event);
   if (!escrowId) return;
   await prisma.escrow.updateMany({ where: { id: escrowId }, data: { status: 'Cancelled' } });
 }
 
 export async function handleEscrowCreated(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
-  const [client, freelancer, amount] = event.value ?? [];
+  const escrowId = getEscrowId(event);
+  const [client, freelancer, amount] = hasEventValue(event) ? event.value : [];
   if (!escrowId || !client) return;
   await prisma.escrow.upsert({
     where: { id: escrowId },
@@ -173,10 +177,10 @@ export async function handleEscrowCreated(event) {
 }
 
 export async function handleMilestoneAdded(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
-  const [milestoneId, amount] = event.value ?? [];
+  const escrowId = getEscrowId(event);
+  const [milestoneId, amount] = hasEventValue(event) ? event.value : [];
   if (!escrowId || milestoneId === undefined) return;
-  const milestoneIndex = Number(parseBigInt(milestoneId));
+  const milestoneIndex = getMilestoneIndex(milestoneId);
   await prisma.milestone.upsert({
     where: { escrowId_milestoneIndex: { escrowId, milestoneIndex } },
     create: {
@@ -192,10 +196,10 @@ export async function handleMilestoneAdded(event) {
 }
 
 export async function handleMilestoneSubmitted(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
-  const [milestoneId] = event.value ?? [];
+  const escrowId = getEscrowId(event);
+  const [milestoneId] = hasEventValue(event) ? event.value : [];
   if (!escrowId || milestoneId === undefined) return;
-  const milestoneIndex = Number(parseBigInt(milestoneId));
+  const milestoneIndex = getMilestoneIndex(milestoneId);
 
   const existing = await prisma.milestone.findUnique({
     where: { escrowId_milestoneIndex: { escrowId, milestoneIndex } },
@@ -220,7 +224,7 @@ export async function handleMilestoneSubmitted(event) {
 }
 
 export async function handleDisputeResolved(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
+  const escrowId = getEscrowId(event);
   if (!escrowId) return;
 
   // Contract emits resolution outcome in value: [winnerId, ...] or similar
