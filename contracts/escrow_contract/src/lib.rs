@@ -275,48 +275,148 @@ struct ApproveMilestoneArgs {
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct EscrowMeta {
+    /// Unique monotonically-increasing identifier assigned at creation time.
+    /// Derived from the global `EscrowCounter` and never reused after expiry.
     pub escrow_id: u64,
+
+    /// The party who funded the escrow and approves milestone delivery.
+    /// Has sole authority to call `approve_milestone` and `raise_dispute`.
     pub client: Address,
+
+    /// The party who delivers work and receives milestone payments.
+    /// Has sole authority to call `submit_milestone`.
     pub freelancer: Address,
+
+    /// The SEP-41 (SAC) token contract address used for all fund transfers
+    /// in this escrow. Immutable after creation.
     pub token: Address,
+
+    /// Total token amount (in the token's smallest unit, e.g. stroops for XLM)
+    /// deposited by the client at creation. Invariant:
+    /// `allocated_amount <= total_amount` at all times.
     pub total_amount: i128,
-    /// Running sum of milestone amounts added so far (allocation guard).
+
+    /// Running sum (in stroops) of all milestone amounts added so far.
+    /// Acts as an allocation guard: adding a milestone that would push
+    /// `allocated_amount > total_amount` is rejected with `E17`.
+    /// Distinct from `remaining_balance`: milestones can be allocated but not
+    /// yet released, so `allocated_amount` may equal `total_amount` while
+    /// `remaining_balance` is still positive.
     pub allocated_amount: i128,
+
+    /// Token amount (in stroops) still held by the contract for this escrow.
+    /// Starts equal to `total_amount` and decreases by `milestone.amount` on
+    /// each successful `release_funds` call. On completion or cancellation
+    /// the remaining balance is refunded to `client`. Invariant:
+    /// `remaining_balance >= 0` at all times.
     pub remaining_balance: i128,
+
+    /// Current lifecycle state of the escrow.
+    /// Valid transitions: `Active → Completed | Disputed | Cancelled`.
+    /// See `EscrowStatus` for the full set of variants.
     pub status: EscrowStatus,
+
+    /// Total number of milestones added to this escrow (includes all statuses).
+    /// Upper-bounded by `MAX_MILESTONES` (20). Used as the iteration bound when
+    /// loading milestones and as the storage-entry count for rent calculation.
     pub milestone_count: u32,
-    /// Number of milestones in Approved state — avoids full scan on completion check.
+
+    /// Count of milestones currently in `Approved` state (MS_APPROVED bit set).
+    /// Maintained as an O(1) counter to avoid a full milestone scan in
+    /// `approve_milestone` when checking if all milestones are complete.
+    /// Invariant: `approved_count <= milestone_count`.
     pub approved_count: u32,
+
+    /// Count of milestones for which funds have been fully released
+    /// (`MS_RELEASED` bit set). A milestone transitions here after the client
+    /// approves it and `release_funds` executes the token transfer.
+    /// Invariant: `released_count <= approved_count <= milestone_count`.
     pub released_count: u32,
-    /// Number of milestones in Submitted state — avoids O(n) scan in cancel_escrow.
+
+    /// Count of milestones currently in `Submitted` state (MS_SUBMITTED bit set).
+    /// Maintained as an O(1) counter so `cancel_escrow` can check for
+    /// in-flight submissions without iterating over all milestones.
+    /// Invariant: `submitted_count <= milestone_count`.
     pub submitted_count: u32,
+
+    /// Optional third-party arbiter address authorised to call `resolve_dispute`.
+    /// When `None`, only governance escalation can resolve disputes.
     pub arbiter: Option<Address>,
+
+    /// List of additional buyer-side signers for multi-sig escrows.
+    /// All addresses in this list must co-sign milestone approvals when
+    /// `MultisigConfig` requires it. Maximum length: `MAX_BUYER_SIGNERS` (10).
     pub buyer_signers: soroban_sdk::Vec<Address>,
+
+    /// Unix timestamp (seconds since epoch) recorded at escrow creation.
+    /// Used for off-chain display and the dispute-cooldown window.
     pub created_at: u64,
+
+    /// Optional Unix timestamp after which the escrow can no longer accept
+    /// new milestone submissions from the freelancer. `None` means no deadline.
     pub deadline: Option<u64>,
-    /// Optional lock time (ledger timestamp) - funds locked until this time.
+
+    /// Optional Unix timestamp (seconds) before which fund release is blocked.
+    /// When set, `release_funds` returns `E28` if `now < lock_time`.
+    /// Distinct from `timelock`: `lock_time` is a Unix wall-clock timestamp;
+    /// `timelock` uses ledger sequence numbers.
     pub lock_time: Option<u64>,
-    /// Optional extension deadline for the lock time.
+
+    /// Optional Unix timestamp (seconds) deadline for a pending lock-time
+    /// extension request. Extension requests expire if not confirmed by this
+    /// time. `None` when no extension is pending.
     pub lock_time_extension: Option<u64>,
-    /// Optional timelock controls release window after approval.
+
+    /// Optional per-escrow release timelock expressed in ledger sequence numbers.
+    /// When set, `release_funds` blocks until `now >= start_ledger + duration_ledger`.
+    /// Uses ledger sequence (not wall clock) for deterministic enforcement.
+    /// See `Timelock` struct for fields. `OptionalTimelock::None` disables it.
     pub timelock: OptionalTimelock,
-    /// Optional dispute timeout measured in ledger sequence increments.
+
+    /// Optional maximum number of ledgers a dispute may remain open before it
+    /// can be force-resolved. Measured in ledger sequence increments (~5 s/ledger).
+    /// `None` disables the automatic timeout.
     pub dispute_timeout_ledger: Option<u32>,
-    /// Ledger sequence at which the current dispute was raised.
+
+    /// Ledger sequence number at which the active dispute was raised.
+    /// Used together with `dispute_timeout_ledger` to determine when a dispute
+    /// has timed out. `None` when no dispute is active.
     pub dispute_started_ledger: Option<u32>,
+
+    /// SHA-256 hash of the off-chain project brief stored on IPFS.
+    /// Immutable after creation; links the on-chain escrow to the agreed scope
+    /// of work without storing large content on-chain.
     pub brief_hash: BytesN<32>,
-    /// Prepaid storage rent reserve held by the contract in the escrow token.
+
+    /// Prepaid storage rent reserve (in the escrow token's smallest unit, i.e.
+    /// stroops for XLM-denominated escrows) held by the contract on behalf of
+    /// this escrow. Decremented by `collect_rent_due` each period according to
+    /// the formula: `rent_due = active_entries × RENT_PER_ENTRY_PER_PERIOD`.
+    /// When `rent_balance` reaches zero the escrow becomes eligible for expiry.
+    /// Topped up by calling `top_up_rent`. See `RENT_RESERVE_PERIODS` and
+    /// `RENT_PER_ENTRY_PER_PERIOD` for the constant values.
     pub rent_balance: i128,
-    /// Timestamp of the last successful rent collection checkpoint.
+
+    /// Unix timestamp (seconds) of the last successful rent collection
+    /// checkpoint. Updated by `collect_rent_due` after each period boundary
+    /// crossing. Together with the current ledger timestamp, this determines
+    /// how many complete `RENT_PERIOD_SECONDS` (86 400 s = 1 day) periods have
+    /// elapsed and therefore how much rent is owed. Relationship to
+    /// `rent_balance`: `covered_periods = rent_balance / rent_due_per_period`.
     pub last_rent_collection_at: u64,
-    /// Ledger timestamp when the dispute was raised. None if not disputed.
+
+    /// Unix timestamp (seconds) when the active dispute was raised.
+    /// Stored in addition to `dispute_started_ledger` for off-chain display.
+    /// `None` when no dispute is currently active.
     pub dispute_start_ledger: Option<u64>,
-    /// Optional SHA-256 hash of the off-chain terms document.
+
+    /// Optional SHA-256 hash of the off-chain terms document (e.g. a signed
+    /// contract or statement of work). Set at creation time and immutable
+    /// thereafter. Creates a tamper-evident binding between the on-chain escrow
+    /// and the signed off-chain agreement.
     ///
-    /// Set at creation time and immutable thereafter. Creates a tamper-evident
-    /// binding between the on-chain escrow and the signed off-chain agreement.
-    ///
-    /// Generate with: `sha256sum <terms.txt>` or `crypto.subtle.digest('SHA-256', ...)`.
+    /// Generate with: `sha256sum <terms.txt>` or
+    /// `crypto.subtle.digest('SHA-256', textEncoder.encode(terms))` in JS.
     pub terms_hash: OptionalBytesN32,
 }
 
