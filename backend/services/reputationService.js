@@ -1,9 +1,15 @@
 const BADGE_THRESHOLDS = {
-  TRUSTED: 100,
-  VERIFIED: 250,
-  EXPERT: 500,
-  ELITE: 1000,
+  TRUSTED: Number(process.env.REPUTATION_THRESHOLD_TRUSTED ?? 100),
+  VERIFIED: Number(process.env.REPUTATION_THRESHOLD_VERIFIED ?? 250),
+  EXPERT: Number(process.env.REPUTATION_THRESHOLD_EXPERT ?? 500),
+  ELITE: Number(process.env.REPUTATION_THRESHOLD_ELITE ?? 1000),
 };
+
+const FREELANCER_SCORE_DELTA = Number(process.env.REPUTATION_SCORE_FREELANCER_COMPLETION ?? 10);
+const CLIENT_SCORE_DELTA = Number(process.env.REPUTATION_SCORE_CLIENT_COMPLETION ?? 5);
+const DISPUTE_WON_SCORE_DELTA = Number(process.env.REPUTATION_SCORE_DISPUTE_WON ?? 15);
+const DISPUTE_LOST_SCORE_DELTA = Number(process.env.REPUTATION_SCORE_DISPUTE_LOST ?? -5);
+const CANCELLATION_SCORE_DELTA = Number(process.env.REPUTATION_SCORE_CANCELLATION ?? -8);
 
 import prisma from '../lib/prisma.js';
 
@@ -64,8 +70,8 @@ const getPercentileRank = async (address) => {
  * @param {string} tenantId - Tenant context
  */
 const recordEscrowCompletion = async (address, role, escrowId, tenantId) => {
-  // Score delta: +10 for freelancer, +5 for client
-  const scoreDelta = role === 'freelancer' ? 10 : 5;
+  // Score delta: freelancer or client completion bonus
+  const scoreDelta = role === 'freelancer' ? FREELANCER_SCORE_DELTA : CLIENT_SCORE_DELTA;
 
   // Upsert reputation event (idempotent on address, eventType, escrowId)
   await prisma.reputationEvent.upsert({
@@ -106,7 +112,7 @@ const recordEscrowCompletion = async (address, role, escrowId, tenantId) => {
  * @param {string} tenantId - Tenant context
  */
 const recordDisputeOutcome = async (address, won, escrowId, tenantId) => {
-  const scoreDelta = won ? 15 : -5;
+  const scoreDelta = won ? DISPUTE_WON_SCORE_DELTA : DISPUTE_LOST_SCORE_DELTA;
   const eventType = won ? 'DISPUTE_WON' : 'DISPUTE_LOST';
 
   // Upsert reputation event (idempotent on address, eventType, escrowId)
@@ -135,10 +141,10 @@ const recordDisputeOutcome = async (address, won, escrowId, tenantId) => {
 
   if (won) {
     data.disputesWon = { increment: 1 };
-    data.totalScore = { increment: 15 };
+    data.totalScore = { increment: DISPUTE_WON_SCORE_DELTA };
   } else {
     // Decrement score, floor at 0
-    data.totalScore = { decrement: 5 };
+    data.totalScore = { increment: DISPUTE_LOST_SCORE_DELTA };
   }
 
   const updated = await prisma.reputationRecord.update({
@@ -166,7 +172,7 @@ const recordDisputeOutcome = async (address, won, escrowId, tenantId) => {
 const recordEscrowCancellation = async (address, wasAtFault, escrowId, tenantId) => {
   if (!wasAtFault) return;
 
-  const scoreDelta = -8;
+  const scoreDelta = CANCELLATION_SCORE_DELTA;
 
   // Upsert reputation event
   await prisma.reputationEvent.upsert({
@@ -191,7 +197,7 @@ const recordEscrowCancellation = async (address, wasAtFault, escrowId, tenantId)
   const updated = await prisma.reputationRecord.update({
     where: { address },
     data: {
-      totalScore: { decrement: 8 },
+      totalScore: { increment: CANCELLATION_SCORE_DELTA },
       lastUpdated: new Date(),
     },
   });

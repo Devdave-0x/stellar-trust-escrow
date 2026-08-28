@@ -2,14 +2,11 @@
  * ReputationBadge Component
  *
  * Displays a numerical reputation score with a color-coded ring and hover tooltip.
+ * Reads tier threshold values from process.env with fallbacks.
  *
  * @param {object} props
  * @param {number} props.score  — 0–1000+
  * @param {'sm'|'md'|'lg'} [props.size='md']
- *
- * TODO (contributor — easy, Issue #28):
- * - Color ring based on score tier (matches BADGE_THRESHOLDS in reputationService)
- * - Add animated ring fill (CSS conic-gradient) proportional to score
  */
 
 'use client';
@@ -17,14 +14,21 @@
 import Tooltip from './Tooltip';
 
 export default function ReputationBadge({ score, size = 'md' }) {
+  const eliteThreshold = Number(process.env.NEXT_PUBLIC_REPUTATION_TIER_ELITE ?? 1000);
+  const expertThreshold = Number(process.env.NEXT_PUBLIC_REPUTATION_TIER_EXPERT ?? 500);
+  const verifiedThreshold = Number(process.env.NEXT_PUBLIC_REPUTATION_TIER_VERIFIED ?? 250);
+  const trustedThreshold = Number(process.env.NEXT_PUBLIC_REPUTATION_TIER_TRUSTED ?? 100);
+
   const color =
-    score >= 500
-      ? 'text-amber-400 ring-amber-400/30'
-      : score >= 250
-        ? 'text-purple-400 ring-purple-400/30'
-        : score >= 100
-          ? 'text-indigo-400 ring-indigo-400/30'
-          : 'text-gray-400 ring-gray-600/30';
+    score >= eliteThreshold
+      ? 'text-yellow-500 ring-yellow-500/30'
+      : score >= expertThreshold
+        ? 'text-amber-400 ring-amber-400/30'
+        : score >= verifiedThreshold
+          ? 'text-purple-400 ring-purple-400/30'
+          : score >= trustedThreshold
+            ? 'text-indigo-400 ring-indigo-400/30'
+            : 'text-gray-400 ring-gray-600/30';
 
   const sizeClass =
     size === 'sm'
@@ -34,9 +38,10 @@ export default function ReputationBadge({ score, size = 'md' }) {
         : 'w-12 h-12 text-base';
 
   const getTier = (score) => {
-    if (score >= 500) return 'Excellent';
-    if (score >= 250) return 'Good';
-    if (score >= 100) return 'Fair';
+    if (score >= eliteThreshold) return 'Elite';
+    if (score >= expertThreshold) return 'Excellent';
+    if (score >= verifiedThreshold) return 'Good';
+    if (score >= trustedThreshold) return 'Fair';
     return 'New';
   };
 

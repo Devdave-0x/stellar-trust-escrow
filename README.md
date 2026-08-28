@@ -303,11 +303,16 @@ Generate secrets with: `openssl rand -hex 64`
 
 Never reuse secrets between environments. Never commit `.env` files.
 
+> **Note:** Backend reputation score weights and tier thresholds (`REPUTATION_THRESHOLD_*`, `REPUTATION_SCORE_*`) can be customized in `backend/.env`. See `backend/.env.example` for details.
+
 ```bash
 cp frontend/.env.example frontend/.env.local
 ```
 
+> **Note:** Frontend reputation badge tier score thresholds (`NEXT_PUBLIC_REPUTATION_TIER_*`) can be customized in `frontend/.env.local`. See `frontend/.env.example` for details.
+
 ### Step 5 — Set up the database
+
 
 ```bash
 cd backend
