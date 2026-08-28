@@ -153,6 +153,27 @@ describe('per-user rate limiter', () => {
     expect(res.headers['retry-after']).toBeDefined();
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   });
+
+  it('returns a contextual 503 when the limiter internals fail', async () => {
+    const app = express();
+    app.use(
+      createSlidingWindowRateLimiter({
+        max: 1,
+        keyGenerator: () => {
+          throw new Error('store offline token=private-token');
+        },
+      }),
+    );
+    app.get('/test', (_req, res) => res.json({ ok: true }));
+
+    const res = await request(app).get('/test');
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({
+      error: 'Rate limiter unavailable: store offline token=[redacted]',
+      code: 'RATE_LIMITER_UNAVAILABLE',
+    });
+  });
 });
 
 // ── Sliding-window correctness ────────────────────────────────────────────────
