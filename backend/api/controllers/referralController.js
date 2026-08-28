@@ -55,6 +55,13 @@ const getMyReferral = async (req, res) => {
       referralCode: profile.referralCode,
       totalReferrals,
       pendingRewards,
+      ...(totalReferrals === 0 && {
+        isEmpty: true,
+        emptyState: {
+          title: 'No referrals yet',
+          message: 'Share your referral code to start earning rewards for every friend who joins.',
+        },
+      }),
     });
   } catch (err) {
     res.status(500).json({
@@ -94,7 +101,20 @@ const getMyReferrals = async (req, res) => {
       rewarded: r.rewardedAt !== null,
     }));
 
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
+    const response = buildPaginatedResponse(data, { total, page, limit });
+
+    // Give the caller something actionable to render instead of an
+    // empty list with no explanation.
+    if (data.length === 0) {
+      response.isEmpty = true;
+      response.emptyState = {
+        title: 'No referrals yet',
+        message:
+          "You haven't referred anyone yet. Share your referral code with friends to start earning rewards.",
+      };
+    }
+
+    res.json(response);
   } catch (err) {
     res.status(500).json({
       error: `Unable to load referral activity: ${sanitizeErrorMessage(
