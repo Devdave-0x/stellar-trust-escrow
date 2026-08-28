@@ -60,6 +60,18 @@ describe('milestoneHistoryService', () => {
 
       expect(result).toBeNull();
     });
+
+    it('returns null for malformed escrow ids on the unhappy path', async () => {
+      const result = await recordStatusChange({
+        milestoneId: 5,
+        escrowId: 'not-a-number',
+        toStatus: 'Submitted',
+        changedBy: 'GFREELANCER1',
+      });
+
+      expect(result).toBeNull();
+      expect(prismaMock.milestoneStatusHistory.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('getMilestoneStatusHistory', () => {
@@ -85,6 +97,19 @@ describe('milestoneHistoryService', () => {
       const result = await getMilestoneStatusHistory(5, {});
 
       expect(result).toEqual({ data: rows, next_cursor: null, has_more: false });
+    });
+
+    it('falls back cleanly when the cursor token is malformed', async () => {
+      prismaMock.milestoneStatusHistory.findMany.mockResolvedValue([]);
+
+      await getMilestoneStatusHistory(5, { cursor: 'not-base64', sortOrder: 'desc' });
+
+      expect(prismaMock.milestoneStatusHistory.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { milestoneId: 5 },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+      );
     });
   });
 
@@ -119,6 +144,18 @@ describe('milestoneHistoryService', () => {
 
       expect(result.get(5)).toEqual(rows[0]);
       expect(result.get(6)).toEqual(rows[1]);
+    });
+
+    it('keeps only the latest row when duplicate milestone ids are returned', async () => {
+      const rows = [
+        { id: 2n, milestoneId: 5, toStatus: 'Submitted' },
+        { id: 3n, milestoneId: 5, toStatus: 'Approved' },
+      ];
+      prismaMock.milestoneStatusHistory.findMany.mockResolvedValue(rows);
+
+      const result = await getLastStatusChangeBatch([5]);
+
+      expect(result.get(5)).toEqual(rows[1]);
     });
   });
 
