@@ -116,7 +116,7 @@ class ExportService {
 
     return payments.map((payment) => ({
       id: payment.id,
-      escrowId: payment.escrowId?.toString() || null,
+      escrowId: payment.escrowId == null ? null : payment.escrowId.toString(),
       stripeSessionId: payment.stripeSessionId,
       stripePaymentIntent: payment.stripePaymentIntent,
       amountFiat: payment.amountFiat,
@@ -253,7 +253,7 @@ class ExportService {
       tenantId,
       requestedBy,
       downloadUrl,
-      recipients: user?.email ? [{ email: user.email }] : [],
+      recipients: user?.email == null ? [] : [{ email: user.email }],
       message: {
         subject: 'Your Stellar Trust Escrow data export is ready',
         text: `Your data export is ready: ${downloadUrl}`,
@@ -512,19 +512,19 @@ class ExportService {
           where: { address },
           create: {
             address,
-            totalScore: BigInt(rep.totalScore || 0),
-            completedEscrows: rep.completedEscrows || 0,
-            disputedEscrows: rep.disputedEscrows || 0,
-            disputesWon: rep.disputesWon || 0,
-            totalVolume: rep.totalVolume || '0',
+            totalScore: BigInt(rep.totalScore ?? 0),
+            completedEscrows: rep.completedEscrows ?? 0,
+            disputedEscrows: rep.disputedEscrows ?? 0,
+            disputesWon: rep.disputesWon ?? 0,
+            totalVolume: rep.totalVolume ?? '0',
             lastUpdated: rep.lastUpdated ? new Date(rep.lastUpdated) : new Date(),
           },
           update: {
-            totalScore: BigInt(rep.totalScore || 0),
-            completedEscrows: rep.completedEscrows || 0,
-            disputedEscrows: rep.disputedEscrows || 0,
-            disputesWon: rep.disputesWon || 0,
-            totalVolume: rep.totalVolume || '0',
+            totalScore: BigInt(rep.totalScore ?? 0),
+            completedEscrows: rep.completedEscrows ?? 0,
+            disputedEscrows: rep.disputedEscrows ?? 0,
+            disputesWon: rep.disputesWon ?? 0,
+            totalVolume: rep.totalVolume ?? '0',
             lastUpdated: rep.lastUpdated ? new Date(rep.lastUpdated) : new Date(),
           },
         });

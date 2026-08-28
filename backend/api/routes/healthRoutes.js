@@ -19,6 +19,7 @@ import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
 import { pool } from '../websocket/handlers.js';
 import { getQueueSnapshot } from '../../services/emailService.js';
+import { getShutdownState } from '../../lib/gracefulShutdown.js';
 
 const RPC_URL = process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
 const STELLAR_TIMEOUT_MS = parseInt(process.env.HEALTH_STELLAR_TIMEOUT_MS || '5000', 10);
@@ -204,6 +205,15 @@ router.get('/live', (_req, res) => {
  *         description: Service is not ready — critical dependency unavailable
  */
 router.get('/ready', async (_req, res) => {
+  const shutdown = getShutdownState();
+  if (shutdown.status !== 'running') {
+    return res.status(503).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      components: { shutdown: { status: 'draining' } },
+    });
+  }
+
   const [db, cacheResult] = await Promise.all([checkDatabase(), checkCache()]);
   const components = { db, cache: cacheResult };
   const status = aggregateStatus(components);

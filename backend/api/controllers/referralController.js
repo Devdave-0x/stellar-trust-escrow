@@ -12,6 +12,14 @@ import prisma from '../../lib/prisma.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 import referralService from '../../services/referralService.js';
 
+function sanitizeErrorMessage(err, fallback) {
+  const raw = typeof err?.message === 'string' ? err.message.trim() : '';
+  if (!raw) return fallback;
+  return raw
+    .replace(/bearer\s+[a-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/\b(token|secret|password|apikey|api[-_ ]key)\b\s*[:=]\s*\S+/gi, '$1=[redacted]');
+}
+
 /**
  * GET /api/users/me/referral
  * Returns the caller's referral code, total referrals, and pending rewards.
@@ -49,7 +57,12 @@ const getMyReferral = async (req, res) => {
       pendingRewards,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: `Unable to load referral summary: ${sanitizeErrorMessage(
+        err,
+        'unexpected referral lookup failure',
+      )}`,
+    });
   }
 };
 
@@ -83,7 +96,12 @@ const getMyReferrals = async (req, res) => {
 
     res.json(buildPaginatedResponse(data, { total, page, limit }));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: `Unable to load referral activity: ${sanitizeErrorMessage(
+        err,
+        'unexpected referral activity lookup failure',
+      )}`,
+    });
   }
 };
 

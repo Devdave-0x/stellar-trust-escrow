@@ -209,6 +209,12 @@ pub const DEFAULT_DISPUTE_COOLDOWN_SECS: u64 = 86_400;
 /// Threshold for high-value escrows that can be escalated to governance (1000 XLM in stroops).
 pub const HIGH_VALUE_THRESHOLD: i128 = 10_000_000_000i128;
 
+/// Timelock delay for admin transfer: approximately 48 hours at ~5 s/ledger.
+///
+/// 48 h × 3600 s/h ÷ 5 s/ledger = 34 560 ledgers.
+/// This gives the current admin time to detect and cancel an unauthorised transfer.
+pub const ADMIN_TRANSFER_TIMELOCK_LEDGERS: u32 = 34_560;
+
 // ── Granular storage keys ─────────────────────────────────────────────────────
 // Separate keys for meta vs each milestone avoids deserialising the full
 // milestone list on every escrow-level operation.
@@ -339,6 +345,7 @@ impl ContractStorage {
         StorageManager::init_version(env);
         Self::bump_instance_ttl(env);
         events::emit_admin_initialized(env, admin);
+        events::emit_platform_fee_initialised(env, 0_u32);
         Ok(())
     }
 
@@ -499,6 +506,12 @@ impl ContractStorage {
         let key = PackedDataKey::Milestone(escrow_id, milestone.id);
         env.storage().persistent().set(&key, milestone);
         Self::bump_persistent_ttl(env, &key);
+    }
+
+    fn has_milestone(env: &Env, escrow_id: u64, milestone_id: u32) -> bool {
+        env.storage()
+            .persistent()
+            .has(&PackedDataKey::Milestone(escrow_id, milestone_id))
     }
 
     fn remove_milestone(env: &Env, escrow_id: u64, milestone_id: u32) {
@@ -1094,6 +1107,36 @@ impl ContractStorage {
             .persistent()
             .remove(&FeatDataKey::ExtensionRequest(escrow_id));
     }
+
+    // ── Last activity timestamp ───────────────────────────────────────────────
+
+    /// Records `now` as the last on-chain activity for `escrow_id`.
+    ///
+    /// Called at the end of every state-changing entry point so that
+    /// off-chain monitors can detect stale / inactive escrows without
+    /// replaying the full event log.  The key lives in persistent storage
+    /// and gets a standard TTL bump alongside the escrow meta.
+    fn set_last_activity_timestamp(env: &Env, escrow_id: u64, now: u64) {
+        let key = FeatDataKey::LastActivityTimestamp(escrow_id);
+        env.storage().persistent().set(&key, &now);
+        Self::bump_persistent_ttl(env, &key);
+    }
+
+    /// Returns the last recorded activity timestamp for `escrow_id`, or 0
+    /// if the escrow has never been touched by a state-changing call (which
+    /// only happens for escrows created before this feature was deployed).
+    fn get_last_activity_timestamp(env: &Env, escrow_id: u64) -> u64 {
+        let key = FeatDataKey::LastActivityTimestamp(escrow_id);
+        let ts: u64 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(0_u64);
+        if ts > 0 {
+            Self::bump_persistent_ttl(env, &key);
+        }
+        ts
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1449,6 +1492,7 @@ impl EscrowContract {
             events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
             events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
 
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, now);
             ContractStorage::bump_instance_ttl(&env);
             Ok(())
         })
@@ -1733,7 +1777,7 @@ impl EscrowContract {
         env.storage().instance().get(&DataKey::PlatformTreasury)
     }
 
-    /// Sets a flat platform fee in basis points (max 1000 = 10%). Admin only.
+    /// Sets a flat platform fee in basis points (max 500 = 5%). Admin only.
     pub fn set_platform_fee_bps(
         env: Env,
         caller: Address,
@@ -1741,7 +1785,7 @@ impl EscrowContract {
     ) -> Result<(), EscrowError> {
         ContractStorage::require_admin(&env, &caller)?;
         caller.require_auth();
-        if fee_bps > 1_000 {
+        if fee_bps > 500 {
             return Err(EscrowError::E19);
         }
         let old_bps: u32 = env
@@ -1753,9 +1797,7 @@ impl EscrowContract {
             .instance()
             .set(&DataKey::PlatformFeeBps, &fee_bps);
         ContractStorage::bump_instance_ttl(&env);
-        if old_bps != fee_bps {
-            events::emit_platform_fee_updated(&env, old_bps, fee_bps);
-        }
+        events::emit_platform_fee_updated(&env, old_bps, fee_bps);
         Ok(())
     }
 
@@ -2100,6 +2142,35 @@ impl EscrowContract {
         let arbiter_for_cap = arbiter.clone();
 
         let escrow_id = ContractStorage::next_escrow_id(&env)?;
+
+        // ── Creation nonce ────────────────────────────────────────────────────
+        // Derive a per-escrow nonce from the creator address bytes and the
+        // current ledger sequence so that a replayed create_escrow call with
+        // identical parameters is rejected rather than silently duplicated.
+        let ledger_seq_bytes = env.ledger().sequence().to_be_bytes();
+        let mut nonce_input = soroban_sdk::Bytes::new(&env);
+        nonce_input.append(&client.to_xdr(&env));
+        nonce_input.append(&soroban_sdk::Bytes::from_array(&env, &ledger_seq_bytes));
+        let creation_nonce: BytesN<32> = env.crypto().sha256(&nonce_input).into();
+
+        if env
+            .storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::UsedCreationNonce(creation_nonce.clone()))
+            .unwrap_or(false)
+        {
+            return Err(EscrowError::CreationNonceAlreadyUsed);
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::UsedCreationNonce(creation_nonce.clone()), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::EscrowCreationNonce(escrow_id), &creation_nonce);
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::UsedCreationNonce(creation_nonce.clone()));
+        ContractStorage::bump_persistent_ttl(&env, &DataKey::EscrowCreationNonce(escrow_id));
+        // ─────────────────────────────────────────────────────────────────────
+
         let rent_reserve = ContractStorage::reserve_for_entries(1);
 
         // Transfer tokens — single cross-contract call
@@ -2185,6 +2256,7 @@ impl EscrowContract {
                 .set(&DataKey::ArbiterList(escrow_id), &arbiters);
         }
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, now);
         Ok(escrow_id)
     }
 
@@ -2453,6 +2525,12 @@ impl EscrowContract {
             .ok_or(EscrowError::E16)?;
         meta.allocated_amount = next_allocated;
         ContractStorage::charge_entry_rent(env, &mut meta, caller, 1)?;
+
+        // Guard: reject if a milestone already occupies this slot (prevents
+        // silent data corruption if milestone_count ever drifts out of sync).
+        if ContractStorage::has_milestone(env, escrow_id, milestone_id) {
+            return Err(EscrowError::DuplicateMilestoneId);
+        }
 
         ContractStorage::save_milestone(
             env,
@@ -2821,6 +2899,7 @@ impl EscrowContract {
                 events::emit_funds_released(&env, escrow_id, &meta.freelancer, total_amount);
             }
 
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(total_amount)
         })
     }
@@ -2914,6 +2993,7 @@ impl EscrowContract {
             }
 
             ContractStorage::save_escrow_meta(&env, &meta);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(payout_amount)
         })
     }
@@ -3039,6 +3119,7 @@ impl EscrowContract {
                 },
             );
             events::emit_funds_released(&env, escrow_id, &meta.freelancer, total_released);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(processed_count)
         })
     }
@@ -3098,6 +3179,7 @@ impl EscrowContract {
             .ok_or(EscrowError::E20)?;
         ContractStorage::save_escrow_meta(&env, &meta);
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
         events::emit_milestone_submitted(&env, escrow_id, milestone_id, &caller);
         Ok(())
     }
@@ -3203,6 +3285,7 @@ impl EscrowContract {
             }
 
             events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, now);
             Ok(())
         })
     }
@@ -3476,6 +3559,7 @@ impl EscrowContract {
                 events::emit_timelock_released(&env, escrow_id, env.ledger().timestamp());
             }
 
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(())
         })
     }
@@ -3611,6 +3695,7 @@ impl EscrowContract {
                 (freelancer_payout, client_refund, fee_amount),
             );
             events::emit_escrow_cancelled(&env, escrow_id, client_refund);
+            ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(())
         })
     }
@@ -4204,6 +4289,7 @@ impl EscrowContract {
             }
         }
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
         Ok(())
     }
 
@@ -4360,6 +4446,11 @@ impl EscrowContract {
                 freelancer_payout,
             );
 
+            ContractStorage::set_last_activity_timestamp(
+                &env,
+                escrow_id,
+                env.ledger().timestamp(),
+            );
             Ok(())
         })
     }
@@ -4532,6 +4623,7 @@ impl EscrowContract {
             }
         }
 
+        ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
         Ok(())
     }
 
@@ -4920,30 +5012,44 @@ impl EscrowContract {
         Ok(admin)
     }
 
-    /// Step 1 of two-step admin transfer: propose a new admin.
+    /// Step 1 of two-step admin transfer: propose a new admin with a timelock.
     ///
     /// Only the current admin may call this. Stores `new_admin` under
-    /// `DataKey::PendingAdmin`. The transfer is not complete until the
-    /// proposed admin calls `accept_admin`.
+    /// `DataKey::PendingAdmin` and records `current_ledger + ADMIN_TRANSFER_TIMELOCK_LEDGERS`
+    /// as the earliest ledger at which `accept_admin` can succeed.
+    ///
+    /// The transfer is not complete until the proposed admin calls `accept_admin`
+    /// **after** the timelock has elapsed. The current admin may call
+    /// `cancel_admin_proposal` at any time to abort the transfer.
     pub fn propose_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_admin(&env, &caller)?;
 
+        let valid_after_ledger = env
+            .ledger()
+            .sequence()
+            .saturating_add(ADMIN_TRANSFER_TIMELOCK_LEDGERS);
+
         env.storage()
             .instance()
             .set(&DataKey::PendingAdmin, &new_admin);
+        env.storage()
+            .instance()
+            .set(&FeatDataKey::AdminTransferValidAfterLedger, &valid_after_ledger);
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_proposed(&env, &caller, &new_admin);
         events::emit_admin_transferred(&env, &caller, &new_admin);
+        events::emit_admin_transfer_proposed(&env, &caller, &new_admin, valid_after_ledger);
         Ok(())
     }
 
     /// Step 2 of two-step admin transfer: accept the pending admin role.
     ///
-    /// Only the address stored as `DataKey::PendingAdmin` may call this.
+    /// Only the address stored as `DataKey::PendingAdmin` may call this,
+    /// **and** only after the ledger sequence recorded at proposal time has passed.
     /// On success, `DataKey::Admin` is updated to the caller and
-    /// `DataKey::PendingAdmin` is cleared.
+    /// `DataKey::PendingAdmin` / `FeatDataKey::AdminTransferValidAfterLedger` are cleared.
     pub fn accept_admin(env: Env, caller: Address) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_initialized(&env)?;
@@ -4958,6 +5064,16 @@ impl EscrowContract {
             return Err(EscrowError::E3);
         }
 
+        // Enforce timelock: accept_admin is only callable after valid_after_ledger.
+        let valid_after_ledger: u32 = env
+            .storage()
+            .instance()
+            .get(&FeatDataKey::AdminTransferValidAfterLedger)
+            .unwrap_or(0_u32);
+        if env.ledger().sequence() <= valid_after_ledger {
+            return Err(EscrowError::E46);
+        }
+
         let old_admin: Address = env
             .storage()
             .instance()
@@ -4966,10 +5082,39 @@ impl EscrowContract {
 
         env.storage().instance().set(&DataKey::Admin, &caller);
         env.storage().instance().remove(&DataKey::PendingAdmin);
+        env.storage()
+            .instance()
+            .remove(&FeatDataKey::AdminTransferValidAfterLedger);
         ContractStorage::bump_instance_ttl(&env);
 
         events::emit_admin_changed(&env, &old_admin, &caller);
         events::emit_admin_accepted(&env, &caller);
+        events::emit_admin_transfer_accepted(&env, &old_admin, &caller);
+        Ok(())
+    }
+
+    /// Cancel a pending admin transfer proposal.
+    ///
+    /// Only the **current** admin may call this. Clears `DataKey::PendingAdmin`
+    /// and `FeatDataKey::AdminTransferValidAfterLedger` so no transfer can proceed.
+    /// Returns `EscrowError::E3` if there is no pending proposal to cancel.
+    pub fn cancel_admin_proposal(env: Env, caller: Address) -> Result<(), EscrowError> {
+        caller.require_auth();
+        ContractStorage::require_admin(&env, &caller)?;
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(EscrowError::E3)?;
+
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        env.storage()
+            .instance()
+            .remove(&FeatDataKey::AdminTransferValidAfterLedger);
+        ContractStorage::bump_instance_ttl(&env);
+
+        events::emit_admin_proposal_cancelled(&env, &caller, &pending);
         Ok(())
     }
 

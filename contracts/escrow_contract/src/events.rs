@@ -18,10 +18,19 @@ use crate::event_names as ev;
 
 /// Emitted when the admin changes the platform fee rate.
 ///
-/// Schema: topic=(PLATFORM_FEE_UPDATED,), data=(old_bps, new_bps)
+/// Schema: topic=(PLATFORM_FEE_UPDATED,), data=(old_bps, new_bps, updated_at)
 pub fn emit_platform_fee_updated(env: &Env, old_bps: u32, new_bps: u32) {
+    let updated_at: u64 = env.ledger().timestamp();
     env.events()
-        .publish((ev::PLATFORM_FEE_UPDATED,), (old_bps, new_bps));
+        .publish((ev::PLATFORM_FEE_UPDATED,), (old_bps, new_bps, updated_at));
+}
+
+/// Emitted once during contract initialisation with the initial fee rate.
+///
+/// Schema: topic=(PLATFORM_FEE_INITIALISED,), data=(initial_bps,)
+pub fn emit_platform_fee_initialised(env: &Env, initial_bps: u32) {
+    env.events()
+        .publish((ev::PLATFORM_FEE_INITIALISED,), (initial_bps,));
 }
 
 /// Emitted by the canonical `create_milestone` entry point, carrying the
@@ -641,4 +650,45 @@ pub fn emit_pending_release_executed(env: &Env, escrow_id: u64, milestone_id: u3
 pub fn emit_cooldown_elapsed(env: &Env, escrow_id: u64, cooldown_ended_at: u64) {
     env.events()
         .publish((ev::COOLDOWN_ELAPSED, escrow_id), cooldown_ended_at);
+}
+
+// ── Issue 2: Admin transfer timelock events ───────────────────────────────────
+
+/// Emitted by `propose_admin` (Issue 2 version with timelock expiry ledger).
+///
+/// Schema: topic=(ADMIN_TRANSFER_PROPOSED,), data=(current_admin, pending_admin, valid_after_ledger)
+pub fn emit_admin_transfer_proposed(
+    env: &Env,
+    current_admin: &Address,
+    pending_admin: &Address,
+    valid_after_ledger: u32,
+) {
+    env.events().publish(
+        (ev::ADMIN_TRANSFER_PROPOSED,),
+        (current_admin.clone(), pending_admin.clone(), valid_after_ledger),
+    );
+}
+
+/// Emitted by `accept_admin` once the timelock has elapsed and the transfer is complete.
+///
+/// Schema: topic=(ADMIN_TRANSFER_ACCEPTED,), data=(old_admin, new_admin)
+pub fn emit_admin_transfer_accepted(env: &Env, old_admin: &Address, new_admin: &Address) {
+    env.events().publish(
+        (ev::ADMIN_TRANSFER_ACCEPTED,),
+        (old_admin.clone(), new_admin.clone()),
+    );
+}
+
+/// Emitted by `cancel_admin_proposal` when the current admin cancels the pending transfer.
+///
+/// Schema: topic=(ADMIN_PROPOSAL_CANCELLED,), data=(admin, cancelled_pending_admin)
+pub fn emit_admin_proposal_cancelled(
+    env: &Env,
+    admin: &Address,
+    cancelled_pending_admin: &Address,
+) {
+    env.events().publish(
+        (ev::ADMIN_PROPOSAL_CANCELLED,),
+        (admin.clone(), cancelled_pending_admin.clone()),
+    );
 }

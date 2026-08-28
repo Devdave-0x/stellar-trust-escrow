@@ -861,6 +861,10 @@ pub enum DataKey {
     DisputeCooldownSecs,
     /// Monotonically increasing counter incremented on every upgrade — value: u32
     MigrationVersion,
+    /// Used creation nonces — key: BytesN<32>, value: bool
+    UsedCreationNonce(BytesN<32>),
+    /// Creation nonce stored per escrow for retrieval — key: u64, value: BytesN<32>
+    EscrowCreationNonce(u64),
 }
 
 /// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.
@@ -878,4 +882,32 @@ pub enum FeatDataKey {
     ActiveArbiters,
     /// Ledger sequence + timestamp recorded at escrow creation — key: u64, value: (u32, u64)
     EscrowCreationInfo(u64),
+    /// Ledger timestamp of the last on-chain state-changing action on an escrow.
+    /// Updated by every entry point that mutates escrow state so off-chain systems
+    /// can calculate inactivity without replaying the full event log.
+    /// key: u64 (escrow_id), value: u64 (Unix timestamp from env.ledger().timestamp())
+    LastActivityTimestamp(u64),
+
+    // ── Issue 1: Pending milestone counts ────────────────────────────────────
+
+    /// Number of milestones in Pending state per escrow — key: u64, value: u32
+    ///
+    /// Incremented by `add_milestone` / `create_milestone` (new milestones start Pending).
+    /// Decremented by `approve_milestone` and `reject_milestone` (both transition out of Pending).
+    PendingMilestoneCount(u64),
+
+    // ── Issue 2: Admin transfer timelock ─────────────────────────────────────
+
+    /// The ledger sequence number after which `accept_admin` becomes callable.
+    /// Set by `propose_admin`; cleared on `accept_admin` or `cancel_admin_proposal`.
+    /// value: u32
+    AdminTransferValidAfterLedger,
+
+    // ── Issue 3: Dispute counters ─────────────────────────────────────────────
+
+    /// Cumulative count of all `raise_dispute` calls across every escrow — value: u32
+    TotalDisputeCount,
+
+    /// Per-escrow count of `raise_dispute` calls — key: u64 (escrow_id), value: u32
+    DisputeCountByEscrow(u64),
 }

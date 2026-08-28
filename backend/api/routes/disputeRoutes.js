@@ -22,6 +22,12 @@ router.get(
   disputeController.listDisputes,
 );
 
+router.post(
+  '/',
+  invalidateOn({ tags: ['disputes', 'escrows'] }),
+  disputeController.createDispute,
+);
+
 router.get(
   '/history',
   cacheResponse({ ttl: TTL.LIST, tags: ['disputes', 'disputes:history'] }),
