@@ -95,6 +95,28 @@ describe('useEscrow', () => {
     expect(result.current.error).toBe(fetchError);
     expect(result.current.escrow).toBeUndefined();
   });
+
+  it('treats an empty string id as no fetch key', () => {
+    renderHook(() => useEscrow(''));
+    expect(useSWR).toHaveBeenCalledWith(null, expect.any(Function), expect.any(Object));
+  });
+
+  it('treats zero as no fetch key', () => {
+    renderHook(() => useEscrow(0));
+    expect(useSWR).toHaveBeenCalledWith(null, expect.any(Function), expect.any(Object));
+  });
+
+  it('keeps mutate available on the unhappy path', () => {
+    useSWR.mockReturnValue({
+      data: undefined,
+      error: new Error('Bad gateway'),
+      isLoading: false,
+      mutate: mockMutate,
+    });
+
+    const { result } = renderHook(() => useEscrow(99));
+    expect(result.current.mutate).toBe(mockMutate);
+  });
 });
 
 describe('useUserEscrows', () => {
