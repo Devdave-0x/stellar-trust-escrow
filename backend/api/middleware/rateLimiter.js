@@ -19,11 +19,13 @@ import {
   DEFAULT_TIER,
 } from '../../config/rateLimits.js';
 
-export const RATE_LIMITER_A11Y_LABELS = {
-  retryAfter: 'Retry after rate limit window resets',
-  remaining: 'Remaining requests in the current rate limit window',
-  reset: 'Unix timestamp for the next rate limit reset',
-};
+function sanitizeLimiterError(err, fallback) {
+  const raw = typeof err?.message === 'string' ? err.message.trim() : '';
+  if (!raw) return fallback;
+  return raw
+    .replace(/bearer\s+[a-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/\b(token|secret|password|apikey|api[-_ ]key)\b\s*[:=]\s*\S+/gi, '$1=[redacted]');
+}
 
 // ── Sliding window store ──────────────────────────────────────────────────────
 
@@ -194,42 +196,52 @@ export function createSlidingWindowRateLimiter({
   const getKey = keyGenerator || defaultKeyGen;
 
   return (req, res, next) => {
-    const now = Date.now();
-    const key = getKey(req);
-    const effectiveMax = adaptive ? Math.floor(max * _getAdaptiveFactor()) : max;
+    try {
+      const now = Date.now();
+      const key = getKey(req);
+      const effectiveMax = adaptive ? Math.floor(max * _getAdaptiveFactor()) : max;
 
-    // ── Burst check: short-window spike protection ──────────────────────────
-    if (burstMax !== undefined) {
-      const burstKey = `${key}:burst`;
-      const burstCount = slidingStore.count(burstKey, burstWindowMs, now);
-      if (burstCount >= burstMax) {
-        res.set('Retry-After', String(Math.ceil(burstWindowMs / 1000)));
-        res.set('X-RateLimit-Limit', String(effectiveMax));
-        res.set('X-RateLimit-Remaining', '0');
-        return res
-          .status(429)
-          .json({ error: message, code: 'RATE_LIMIT_EXCEEDED', reason: 'burst' });
+      // ── Burst check: short-window spike protection ────────────────────────
+      if (burstMax !== undefined) {
+        const burstKey = `${key}:burst`;
+        const burstCount = slidingStore.count(burstKey, burstWindowMs, now);
+        if (burstCount >= burstMax) {
+          res.set('Retry-After', String(Math.ceil(burstWindowMs / 1000)));
+          res.set('X-RateLimit-Limit', String(effectiveMax));
+          res.set('X-RateLimit-Remaining', '0');
+          return res
+            .status(429)
+            .json({ error: message, code: 'RATE_LIMIT_EXCEEDED', reason: 'burst' });
+        }
+        slidingStore.record(burstKey, burstWindowMs, now);
       }
-      slidingStore.record(burstKey, burstWindowMs, now);
+
+      // ── Sliding window check ──────────────────────────────────────────────
+      const count = slidingStore.count(key, windowMs, now);
+
+      res.set('X-RateLimit-Limit', String(effectiveMax));
+      res.set('X-RateLimit-Remaining', String(Math.max(0, effectiveMax - count - 1)));
+      res.set('X-RateLimit-Reset', String(Math.ceil((now + windowMs) / 1000)));
+
+      if (count >= effectiveMax) {
+        const oldest = slidingStore.oldest(key);
+        const retryAfterMs = oldest ? oldest + windowMs - now : windowMs;
+        res.set('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
+        res.set('X-RateLimit-Remaining', '0');
+        return res.status(429).json({ error: message, code: 'RATE_LIMIT_EXCEEDED' });
+      }
+
+      slidingStore.record(key, windowMs, now);
+      next();
+    } catch (err) {
+      return res.status(503).json({
+        error: `Rate limiter unavailable: ${sanitizeLimiterError(
+          err,
+          'unexpected rate limiter failure',
+        )}`,
+        code: 'RATE_LIMITER_UNAVAILABLE',
+      });
     }
-
-    // ── Sliding window check ────────────────────────────────────────────────
-    const count = slidingStore.count(key, windowMs, now);
-
-    res.set('X-RateLimit-Limit', String(effectiveMax));
-    res.set('X-RateLimit-Remaining', String(Math.max(0, effectiveMax - count - 1)));
-    res.set('X-RateLimit-Reset', String(Math.ceil((now + windowMs) / 1000)));
-
-    if (count >= effectiveMax) {
-      const oldest = slidingStore.oldest(key);
-      const retryAfterMs = oldest ? oldest + windowMs - now : windowMs;
-      res.set('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
-      res.set('X-RateLimit-Remaining', '0');
-      return res.status(429).json({ error: message, code: 'RATE_LIMIT_EXCEEDED' });
-    }
-
-    slidingStore.record(key, windowMs, now);
-    next();
   };
 }
 
@@ -273,19 +285,29 @@ export function createPerUserRateLimiter({
 
   // Dynamic — resolve tier limits on each request
   return (req, res, next) => {
-    const tier = req.user?.tier ?? DEFAULT_TIER;
-    const max = getLimitForTier(tier);
-    const burstMax = getBurstLimitForTier(tier);
+    try {
+      const tier = req.user?.tier ?? DEFAULT_TIER;
+      const max = getLimitForTier(tier);
+      const burstMax = getBurstLimitForTier(tier);
 
-    createSlidingWindowRateLimiter({
-      windowMs: RATE_LIMIT_WINDOW_MS,
-      max,
-      burstMax,
-      prefix,
-      message,
-      keyGenerator,
-      adaptive,
-    })(req, res, next);
+      createSlidingWindowRateLimiter({
+        windowMs: RATE_LIMIT_WINDOW_MS,
+        max,
+        burstMax,
+        prefix,
+        message,
+        keyGenerator,
+        adaptive,
+      })(req, res, next);
+    } catch (err) {
+      return res.status(503).json({
+        error: `Rate limiter unavailable: ${sanitizeLimiterError(
+          err,
+          'unexpected rate limiter failure',
+        )}`,
+        code: 'RATE_LIMITER_UNAVAILABLE',
+      });
+    }
   };
 }
 
