@@ -113,7 +113,9 @@ export async function requireMfa(req, res, next) {
     next();
   } catch (error) {
     console.error('[MFA Middleware] Error:', error);
-    return res.status(500).json({ error: 'Internal server error during MFA verification' });
+    return res.status(500).json({
+      error: `MFA verification failed: ${error.message || 'unexpected error'}`,
+    });
   }
 }
 
@@ -137,7 +139,9 @@ export async function requireMfaForHighValue(req, res, next) {
     return requireMfa(req, res, next);
   } catch (error) {
     console.error('[MFA High Value Middleware] Error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({
+      error: `High-value MFA check failed: ${error.message || 'unexpected error'}`,
+    });
   }
 }
 
