@@ -7,6 +7,13 @@ import useSWRInfinite from 'swr/infinite';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const fetcher = (url) => fetch(url, { credentials: 'include' }).then((r) => r.json());
 
+// Single-escrow poll cadence — fast enough to feel live, slow enough to stay cheap at scale.
+const ESCROW_POLL_INTERVAL_MS = 30_000;
+// Default page size for list/cursor endpoints when the caller doesn't specify one.
+const DEFAULT_PAGE_LIMIT = 20;
+// Cap for the user-escrows list, which has no pagination controls in the UI yet.
+const USER_ESCROWS_LIMIT = 50;
+
 /**
  * Fetch a single escrow by ID.
  * Polls every 30 seconds; pauses automatically when the page is hidden.
@@ -19,7 +26,7 @@ export function useEscrow(id) {
     id ? `${API_URL}/api/escrows/${id}` : null,
     fetcher,
     {
-      refreshInterval: 30_000, // poll every 30 seconds
+      refreshInterval: ESCROW_POLL_INTERVAL_MS,
       refreshWhenHidden: false, // pause polling when page is not visible
     },
   );
@@ -38,7 +45,7 @@ export function useUserEscrows(address, role = 'all') {
   const query = param ? `${param}=${encodeURIComponent(address)}` : `client=${encodeURIComponent(address)}`;
 
   const { data, error, isLoading } = useSWR(
-    address ? `${API_URL}/api/escrows?${query}&limit=50` : null,
+    address ? `${API_URL}/api/escrows?${query}&limit=${USER_ESCROWS_LIMIT}` : null,
     fetcher,
   );
 
@@ -64,7 +71,7 @@ export function useUserEscrows(address, role = 'all') {
  * @param {{ limit?: number, status?: string, sortBy?: string, sortOrder?: string }} options
  * @returns {{ pages: Array, escrows: Array, total: number, isLoading: boolean, isLoadingMore: boolean, hasMore: boolean, error: Error|null, loadMore: Function }}
  */
-export function useEscrowList({ limit = 20, status = '', sortBy = 'createdAt', sortOrder = 'desc' } = {}) {
+export function useEscrowList({ limit = DEFAULT_PAGE_LIMIT, status = '', sortBy = 'createdAt', sortOrder = 'desc' } = {}) {
   const buildUrl = useCallback(
     (cursor) => {
       const params = new URLSearchParams();
@@ -124,7 +131,7 @@ export function useEscrowList({ limit = 20, status = '', sortBy = 'createdAt', s
  * @param {{ limit?: number, status?: string }} options
  * @returns {{ escrows: Array, nextCursor: string|null, hasMore: boolean, isLoading: boolean, error: Error|null }}
  */
-export function useEscrowPage(cursor = null, { limit = 20, status = '' } = {}) {
+export function useEscrowPage(cursor = null, { limit = DEFAULT_PAGE_LIMIT, status = '' } = {}) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (status) params.set('status', status);
   if (cursor) params.set('cursor', cursor);

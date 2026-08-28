@@ -14,7 +14,7 @@ const handleKycError = (route, err, req, res) => {
 const getToken = async (req, res) => {
   try {
     const { address } = req.body;
-    if (!address || !STELLAR_ADDRESS_RE.test(address)) {
+    if (isNullish(address) || !STELLAR_ADDRESS_RE.test(address)) {
       return res.status(400).json({ error: 'Valid Stellar address required' });
     }
     const result = await kycService.generateSdkToken(address);
@@ -28,11 +28,11 @@ const getToken = async (req, res) => {
 const getStatus = async (req, res) => {
   try {
     const { address } = req.params;
-    if (!STELLAR_ADDRESS_RE.test(address)) {
+    if (isNullish(address) || !STELLAR_ADDRESS_RE.test(address)) {
       return res.status(400).json({ error: 'Invalid Stellar address' });
     }
     const record = await kycService.getStatus(address);
-    if (!record) return res.json({ address, status: 'Pending' });
+    if (isNullish(record)) return res.json({ address, status: 'Pending' });
     res.json(record);
   } catch (err) {
     handleKycError('kyc.getStatus', err, req, res);
@@ -43,7 +43,7 @@ const getStatus = async (req, res) => {
 const webhook = async (req, res) => {
   try {
     const signature = req.headers['x-payload-digest'];
-    if (!signature || !kycService.verifyWebhookSignature(req.rawBody, signature)) {
+    if (isNullish(signature) || !kycService.verifyWebhookSignature(req.rawBody, signature)) {
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
     await kycService.handleWebhook(req.body);
