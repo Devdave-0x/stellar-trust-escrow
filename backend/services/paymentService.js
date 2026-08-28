@@ -18,7 +18,7 @@ async function getStripeClient() {
   return stripeClient;
 }
 
-const STELLAR_HORIZON = process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+const STELLAR_HORIZON = process.env.STELLAR_HORIZON_URL ?? 'https://horizon-testnet.stellar.org';
 
 /**
  * Fetch the current XLM/USD price from Stellar DEX via Horizon.
@@ -180,7 +180,7 @@ async function handleWebhook(rawBody, signature) {
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object;
-      const tenantId = session.metadata?.tenantId || getCurrentTenantId();
+      const tenantId = session.metadata?.tenantId ?? getCurrentTenantId();
       // Compute crypto equivalent
       let amountCrypto = null;
       try {
@@ -213,7 +213,7 @@ async function handleWebhook(rawBody, signature) {
     case 'checkout.session.expired':
     case 'payment_intent.payment_failed': {
       const obj = event.data.object;
-      const tenantId = obj.metadata?.tenantId || getCurrentTenantId();
+      const tenantId = obj.metadata?.tenantId ?? getCurrentTenantId();
       const where =
         obj.object === 'checkout.session'
           ? { stripeSessionId: obj.id, ...(tenantId ? { tenantId } : {}) }
