@@ -19,7 +19,7 @@ const log = getLogger();
 const logControllerError = (ctx, err, req) =>
   log.error({ err, ctx, path: req?.path }, 'Controller error');
 
-const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55};
+const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 // Public leaderboard responses are intentionally capped to avoid oversized payloads.
 const LEADERBOARD_MAX_LIMIT = 50;
 // Search falls back to a small default page size for quick typeahead queries.
@@ -27,7 +27,7 @@ const SEARCH_DEFAULT_LIMIT = 10;
 // Search responses should stay bounded even when callers request larger pages.
 const SEARCH_MAX_LIMIT = 50;
 // Recalculate endpoint allows these privileged roles to rebuild scores.
-const REPUTATION_ADMIN_ROLES = new Set(["admin", "superadmin"]);
+const REPUTATION_ADMIN_ROLES = new Set(['admin', 'superadmin']);
 
 const getReputation = async (req, res) => {
   try {

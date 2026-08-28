@@ -37,6 +37,10 @@ export function getBadgeFromScore(score) {
   return 'NEW';
 }
 
+function buildReputationError(reason) {
+  return new Error(`Unable to load reputation: ${reason}`);
+}
+
 /**
  * @param {string|null} address — Stellar public key
  * @returns {{ reputation: object|null, badge: string, isLoading: boolean, error: Error|null }}
@@ -44,11 +48,24 @@ export function getBadgeFromScore(score) {
  * TODO (contributor — Issue #39): replace stub with SWR fetch
  */
 export function useReputation(address) {
-  // TODO: implement
+  if (!address) {
+    return {
+      reputation: null,
+      badge: 'NEW',
+      isLoading: false,
+      error: null,
+    };
+  }
+
+  const trimmedAddress = typeof address === 'string' ? address.trim() : '';
+  const error = trimmedAddress
+    ? buildReputationError('reputation service integration is not implemented yet')
+    : buildReputationError('a valid Stellar address is required');
+
   return {
     reputation: null,
     badge: 'NEW',
     isLoading: false,
-    error: address ? new Error('useReputation not implemented — see Issue #39') : null,
+    error,
   };
 }
