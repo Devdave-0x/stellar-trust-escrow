@@ -171,6 +171,62 @@ export async function checkMfaStatus(req, res, next) {
 }
 
 /**
+ * Middleware to attach a summary of the user's enrolled MFA methods.
+ *
+ * Account/security pages that list a user's enrolled MFA methods need
+ * something sensible to render when that list is empty — this middleware
+ * attaches `req.mfaMethodsSummary` with either the enrolled methods or a
+ * friendly, actionable empty-state message so callers never have to render
+ * nothing.
+ *
+ * Usage:
+ *   router.get('/account/security/mfa', authMiddleware, attachMfaMethodsSummary, mfaController.list)
+ */
+export async function attachMfaMethodsSummary(req, res, next) {
+  try {
+    if (!req.user || !req.user.userId) {
+      req.mfaMethodsSummary = {
+        methods: [],
+        isEmpty: true,
+        message: 'Sign in to view and manage your multi-factor authentication methods.',
+      };
+      return next();
+    }
+
+    const userId = req.user.userId || req.user.id;
+    const tenantId = req.tenant?.id || req.user.tenantId;
+
+    const methods = await mfaService.listMfaMethods(userId, tenantId);
+
+    if (!methods || methods.length === 0) {
+      req.mfaMethodsSummary = {
+        methods: [],
+        isEmpty: true,
+        message:
+          "You haven't set up multi-factor authentication yet. Add an authenticator app or security key to protect your account.",
+      };
+    } else {
+      req.mfaMethodsSummary = {
+        methods,
+        isEmpty: false,
+        message: null,
+      };
+    }
+
+    next();
+  } catch (error) {
+    console.error('[MFA Methods Summary] Error:', error);
+    // Fail open with a friendly empty state rather than rendering nothing.
+    req.mfaMethodsSummary = {
+      methods: [],
+      isEmpty: true,
+      message: 'Unable to load your MFA methods right now. Please try again shortly.',
+    };
+    next();
+  }
+}
+
+/**
  * Generate MFA token after successful verification
  * This token is used in the x-mfa-token header for subsequent requests
  */
@@ -192,5 +248,6 @@ export default {
   requireMfa,
   requireMfaForHighValue,
   checkMfaStatus,
+  attachMfaMethodsSummary,
   generateMfaToken,
 };
