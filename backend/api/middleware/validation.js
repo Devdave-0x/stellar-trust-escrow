@@ -2,6 +2,10 @@ import { validationResult, query, param, body } from 'express-validator';
 
 /** Maximum unsigned 64-bit integer (inclusive) for on-chain / DB escrow identifiers. */
 const U64_MAX = 18446744073709551615n;
+export const VALIDATION_A11Y_LABELS = {
+  errorSummary: 'Validation error summary',
+  fieldMessage: 'Validation field message',
+};
 
 /**
  * Runs express-validator chains and, on failure, responds with HTTP 400 and a stable JSON body.
