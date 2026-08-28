@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { Copy, Check, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAdminStore } from '../../../store/app-store';
 import { adminFetch } from '../../../store/admin';
 
@@ -24,6 +25,15 @@ export default function AdminAuditLogsPage() {
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [copiedAddress, setCopiedAddress] = useState(null);
+
+  const copyAddress = useCallback((address) => {
+    if (!address) return;
+    navigator.clipboard?.writeText(address).then(() => {
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress((current) => (current === address ? null : current)), 1500);
+    });
+  }, []);
 
   const fetchLogs = useCallback(
     async (page = 1) => {
@@ -55,12 +65,23 @@ export default function AdminAuditLogsPage() {
           <h1 className="text-2xl font-bold text-white">Audit Logs</h1>
           <p className="text-gray-400 text-sm mt-1">{pagination.total} entries total</p>
         </div>
-        <a
-          href="/admin"
-          className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
-        >
-          ← Dashboard
-        </a>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => fetchLogs(pagination.page)}
+            disabled={loading}
+            className="text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Refresh audit logs"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <a
+            href="/admin"
+            className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            ← Dashboard
+          </a>
+        </div>
       </div>
 
       {error && (
@@ -109,9 +130,31 @@ export default function AdminAuditLogsPage() {
                     className="px-5 py-3 hidden sm:table-cell font-mono text-gray-400 text-xs"
                     title={log.targetAddress}
                   >
-                    {log.targetAddress?.length > 20
-                      ? `${log.targetAddress.slice(0, 10)}…`
-                      : log.targetAddress}
+                    <div className="flex items-center gap-1.5">
+                      <span>
+                        {log.targetAddress?.length > 20
+                          ? `${log.targetAddress.slice(0, 10)}…`
+                          : log.targetAddress}
+                      </span>
+                      {log.targetAddress && (
+                        <button
+                          type="button"
+                          onClick={() => copyAddress(log.targetAddress)}
+                          className="text-gray-500 hover:text-gray-300 transition-colors"
+                          aria-label={
+                            copiedAddress === log.targetAddress
+                              ? 'Address copied'
+                              : 'Copy target address'
+                          }
+                        >
+                          {copiedAddress === log.targetAddress ? (
+                            <Check size={12} />
+                          ) : (
+                            <Copy size={12} />
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="px-5 py-3 hidden md:table-cell text-gray-500 max-w-xs truncate">
                     {log.reason || '—'}
@@ -131,9 +174,11 @@ export default function AdminAuditLogsPage() {
           <button
             onClick={() => fetchLogs(pagination.page - 1)}
             disabled={pagination.page <= 1}
-            className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label="Previous page"
           >
-            ← Prev
+            <ChevronLeft size={14} aria-hidden="true" />
+            Prev
           </button>
           <span className="text-sm text-gray-500 px-2 py-1.5">
             {pagination.page} / {pagination.pages}
@@ -141,9 +186,11 @@ export default function AdminAuditLogsPage() {
           <button
             onClick={() => fetchLogs(pagination.page + 1)}
             disabled={pagination.page >= pagination.pages}
-            className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label="Next page"
           >
-            Next →
+            Next
+            <ChevronRight size={14} aria-hidden="true" />
           </button>
         </div>
       )}
