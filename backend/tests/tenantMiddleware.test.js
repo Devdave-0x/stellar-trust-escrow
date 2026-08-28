@@ -111,7 +111,14 @@ describe('tenant middleware', () => {
     await tenantMiddleware(req, res, next);
 
     expect(res.statusCode).toBe(404);
-    expect(res.body).toEqual({ error: 'Tenant not found' });
+    expect(res.body).toEqual({
+      error: 'Tenant not found',
+      emptyState: {
+        title: 'No tenant matched this request',
+        description: 'Check the tenant slug, tenant id, or request hostname and try again.',
+        action: 'Provide a valid tenant identifier or configure the default tenant.',
+      },
+    });
     expect(next).not.toHaveBeenCalled();
   });
 });

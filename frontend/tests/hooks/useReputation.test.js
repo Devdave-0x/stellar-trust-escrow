@@ -37,10 +37,20 @@ describe('useReputation', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('returns error when address is provided (not yet implemented)', () => {
+  it('returns a contextual error when address is provided', () => {
     const { result } = renderHook(() => useReputation('GABC123'));
     expect(result.current.error).toBeInstanceOf(Error);
-    expect(result.current.error.message).toMatch(/not implemented/i);
+    expect(result.current.error.message).toBe(
+      'Unable to load reputation: reputation service integration is not implemented yet',
+    );
+  });
+
+  it('returns a specific validation error when the address is blank', () => {
+    const { result } = renderHook(() => useReputation('   '));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.error.message).toBe(
+      'Unable to load reputation: a valid Stellar address is required',
+    );
   });
 
   it('returns isLoading false', () => {
