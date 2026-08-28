@@ -18,6 +18,12 @@ import { ESCROW_STATUSES, isValidTransition } from '../../lib/escrowTransitions.
 
 const adminLog = getLogger();
 const MAX_BULK_ESCROW_IDS = 50;
+const ADMIN_EMPTY_STATE = {
+  title: 'No admin data found',
+  description: 'There are no records to display for this request yet.',
+  action: 'Try widening the filters or create a record before retrying.',
+  variant: 'empty',
+};
 
 // JSON.stringify does not guarantee key order, so two objects with the same
 // contents but different insertion order produce different cache keys.
@@ -110,7 +116,7 @@ const listUsers = async (req, res) => {
 
     const result = buildPaginatedResponse(users, { total, page, limit });
     await cache.set(cacheKey, result, 30);
-    res.json(result);
+    res.json(total === 0 ? { ...result, emptyState: ADMIN_EMPTY_STATE } : result);
   } catch (err) {
     logControllerError('admin.listUsers', err, req);
     res.status(500).json({ error: err.message });
