@@ -11,6 +11,13 @@ import {
 
 const router = express.Router();
 
+/**
+ * Buffers the raw request body onto `req.rawBody` for webhook signature verification.
+ * @param {import('express').Request} req - Express request; `req.rawBody` is set on completion.
+ * @param {import('express').Response} _res - Unused Express response.
+ * @param {import('express').NextFunction} next - Callback invoked once the body is fully read.
+ * @returns {void}
+ */
 const captureRawBody = (req, _res, next) => {
   let data = '';
   req.on('data', (chunk) => (data += chunk));
@@ -54,4 +61,8 @@ router.get(
 router.post('/webhook', captureRawBody, express.json(), kycController.webhook);
 router.get('/admin', adminAuth, kycController.adminList);
 
+/**
+ * Express router exposing the KYC endpoints (token issuance, status lookup, webhook, admin list).
+ * @returns {import('express').Router}
+ */
 export default router;
