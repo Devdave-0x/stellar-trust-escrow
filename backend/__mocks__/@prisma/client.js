@@ -104,6 +104,25 @@ function createMemoryDb() {
   };
 }
 
+/** Operation names a Prisma model extension's `$allOperations` may intercept. */
+const INTERCEPTABLE_OPERATIONS = [
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'create',
+  'createMany',
+  'update',
+  'updateMany',
+  'upsert',
+  'delete',
+  'deleteMany',
+  'count',
+  'aggregate',
+  'groupBy',
+];
+
 function createModel(name, db) {
   let numericId = 1;
   let stringId = 1;
@@ -241,6 +260,7 @@ function createClient() {
 
   const getModel = (name) => {
     if (!models.has(name)) {
+      if (!db[name]) db[name] = [];
       models.set(name, createModel(name, db));
     }
     return models.get(name);
@@ -254,7 +274,31 @@ function createClient() {
     $executeRaw: jest.fn().mockResolvedValue(0),
     $on: jest.fn(),
     $use: jest.fn(),
-    $extends: jest.fn().mockReturnThis(),
+    $extends: jest.fn((config) => {
+      // Applies the `query.$allModels.$allOperations` extension contract (the
+      // only shape lib/prisma.js uses) so tests that import the real
+      // lib/prisma.js exercise its tenant-scoping logic instead of silently
+      // no-opping it.
+      const handler = config?.query?.$allModels?.$allOperations;
+      if (typeof handler !== 'function') return client;
+
+      return new Proxy(client, {
+        get(target, prop) {
+          if (prop in target) return target[prop];
+          if (prop === '__esModule') return true;
+          if (prop === 'then') return undefined;
+
+          const model = getModel(prop);
+          const modelName = String(prop)[0].toUpperCase() + String(prop).slice(1);
+          const wrapped = {};
+          for (const op of INTERCEPTABLE_OPERATIONS) {
+            wrapped[op] = (args) =>
+              handler({ model: modelName, operation: op, args: args ?? {}, query: model[op] });
+          }
+          return wrapped;
+        },
+      });
+    }),
   };
 
   return new Proxy(client, {

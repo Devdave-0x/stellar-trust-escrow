@@ -13,6 +13,14 @@ const baseEscrow = {
 };
 
 describe('EscrowCard', () => {
+  it('renders the loading skeleton while escrow data is in flight', () => {
+    renderWithAppProviders(<EscrowCard isLoading />);
+
+    expect(screen.getByRole('status', { name: /loading escrow card/i })).toBeInTheDocument();
+    expect(screen.getByTestId('escrow-card-skeleton')).toBeInTheDocument();
+    expect(screen.queryByText('Logo Design Project')).not.toBeInTheDocument();
+  });
+
   it('renders escrow title', () => {
     renderWithAppProviders(<EscrowCard escrow={baseEscrow} />);
     expect(screen.getByText('Logo Design Project')).toBeInTheDocument();

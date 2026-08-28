@@ -21,6 +21,7 @@
  */
 
 import { useState, useMemo, useRef, useEffect } from 'react';
+import Badge from '../ui/Badge';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,15 @@ const STATUS_COLORS = {
   Released: { bar: '#065f46', fill: '#34d399', text: '#a7f3d0' },
   Rejected: { bar: '#7f1d1d', fill: '#ef4444', text: '#fca5a5' },
   Disputed: { bar: '#78350f', fill: '#f59e0b', text: '#fde68a' },
+};
+
+const STATUS_VARIANTS = {
+  Pending: 'neutral',
+  Submitted: 'info',
+  Approved: 'success',
+  Released: 'success',
+  Rejected: 'error',
+  Disputed: 'warning',
 };
 
 const COMPLETION = {
@@ -81,7 +91,6 @@ function formatAmount(amount) {
 
 function Tooltip({ milestone, x, y, visible }) {
   if (!visible) return null;
-  const colors = STATUS_COLORS[milestone.status] ?? STATUS_COLORS.Pending;
   return (
     <div
       className="absolute z-50 bg-gray-900 border border-gray-700 rounded-xl shadow-xl
@@ -90,7 +99,9 @@ function Tooltip({ milestone, x, y, visible }) {
       role="tooltip"
     >
       <p className="font-semibold text-white truncate">{milestone.title}</p>
-      <p style={{ color: colors.text }}>● {milestone.status}</p>
+      <Badge variant={STATUS_VARIANTS[milestone.status] || 'neutral'} dot size="sm">
+        {milestone.status}
+      </Badge>
       <p className="text-gray-400">
         Amount: <span className="text-white">{formatAmount(milestone.amount)}</span>
       </p>
@@ -335,11 +346,10 @@ export default function MilestoneGantt({ milestones = [], startDate, endDate, cl
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 mt-3 px-2">
-        {Object.entries(STATUS_COLORS).map(([status, colors]) => (
-          <span key={status} className="flex items-center gap-1.5 text-xs text-gray-400">
-            <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: colors.fill }} />
+        {Object.keys(STATUS_COLORS).map((status) => (
+          <Badge key={status} variant={STATUS_VARIANTS[status] || 'neutral'} dot size="sm">
             {status}
-          </span>
+          </Badge>
         ))}
       </div>
     </div>

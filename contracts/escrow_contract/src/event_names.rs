@@ -118,6 +118,7 @@ pub const PENDING_RELEASE_EXECUTED: Symbol = symbol_short!("pend_rel");
 // ── Platform fee ──────────────────────────────────────────────────────────────
 
 pub const FEE_COLLECTED: Symbol = symbol_short!("fee_col");
+pub const PLATFORM_FEE_INITIALISED: Symbol = symbol_short!("fee_init");
 
 // ── Deadline extension ────────────────────────────────────────────────────────
 
@@ -156,3 +157,12 @@ pub const MILESTONE_CREATED: Symbol = symbol_short!("mile_crt");
 // ── Escrow creation timing record ──────────────────────────────────────────────
 
 pub const ESCROW_CREATION_TIME: Symbol = symbol_short!("esc_ctim");
+
+// ── Issue 2: Admin transfer timelock events ───────────────────────────────────
+
+/// Emitted by `propose_admin` with the timelock expiry ledger sequence.
+pub const ADMIN_TRANSFER_PROPOSED: Symbol = symbol_short!("adm_prp2");
+/// Emitted by `accept_admin` after the timelock has elapsed.
+pub const ADMIN_TRANSFER_ACCEPTED: Symbol = symbol_short!("adm_acc2");
+/// Emitted by `cancel_admin_proposal` when the current admin cancels the pending transfer.
+pub const ADMIN_PROPOSAL_CANCELLED: Symbol = symbol_short!("adm_canc");

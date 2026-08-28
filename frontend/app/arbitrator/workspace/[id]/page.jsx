@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import CurrencyConverter from '../../../../components/ui/CurrencyConverter';
 import DisputeTermsDiff from '../../../../components/dispute/DisputeTermsDiff';
+import CharCountTextarea from '../../../../components/ui/CharCountTextarea';
 
 const MOCK_DISPUTE_DIFF = {
   originalTerms:
@@ -361,12 +362,13 @@ export default function ArbitratorWorkspacePage({ params }) {
               <label className="sr-only" htmlFor="workspace-notes">
                 Workspace notes
               </label>
-              <textarea
+              <CharCountTextarea
                 id="workspace-notes"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 rows={8}
                 placeholder="Capture evidence observations, security flags, and suggested settlement notes."
+                maxLength={4000}
                 className="w-full rounded-3xl border border-white/10 bg-slate-950/80 p-4 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
               />
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -11,6 +11,17 @@ const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
 const DEFAULT_RETRY_ATTEMPTS = 5;
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
 
+function selectSubscriptionFields(includeActive = false) {
+  return {
+    id: true,
+    url: true,
+    eventTypes: true,
+    ...(includeActive ? { isActive: true } : {}),
+    createdAt: true,
+    updatedAt: true,
+  };
+}
+
 function buildWebhookPayload(eventType, payload, deliveryId, timestamp = new Date().toISOString()) {
   return {
     eventType,
@@ -30,6 +41,37 @@ function signPayload(secret, timestamp, body) {
   return `sha256=${crypto.createHmac('sha256', secret).update(signingInput).digest('hex')}`;
 }
 
+/**
+ * Verify an HMAC-SHA256 signature in a timing-safe manner.
+ *
+ * Mirrors the `sha256=` prefixed, timestamp-bound scheme documented in
+ * docs/webhook-delivery.md and produced by signPayload/queueSubscriptionWebhook.
+ *
+ * @param {string} secret - The shared webhook secret.
+ * @param {string} timestamp - The value from the X-Webhook-Timestamp header.
+ * @param {object|string} payload - The parsed JSON payload (or raw body) to verify.
+ * @param {string} receivedSignature - The signature received in X-Webhook-Signature.
+ * @returns {boolean} true if the signature is valid, false otherwise.
+ */
+function verifySignature(secret, timestamp, payload, receivedSignature) {
+  if (!receivedSignature || typeof receivedSignature !== 'string') {
+    return false;
+  }
+
+  const expectedHex = signPayload(secret, timestamp, payload).slice('sha256='.length);
+  const receivedHex = receivedSignature.startsWith('sha256=')
+    ? receivedSignature.slice('sha256='.length)
+    : receivedSignature;
+
+  if (!/^[0-9a-f]+$/i.test(receivedHex) || receivedHex.length !== expectedHex.length) {
+    return false;
+  }
+
+  const expectedBuf = Buffer.from(expectedHex, 'hex');
+  const receivedBuf = Buffer.from(receivedHex, 'hex');
+  return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+}
+
 async function createSubscription({ url, eventTypes, createdBy }) {
   const subscriptionSecret = generateSecret();
   const subscription = await prisma.webhookSubscription.create({
@@ -41,11 +83,7 @@ async function createSubscription({ url, eventTypes, createdBy }) {
       isActive: true,
     },
     select: {
-      id: true,
-      url: true,
-      eventTypes: true,
-      createdAt: true,
-      updatedAt: true,
+      ...selectSubscriptionFields(),
     },
   });
 
@@ -56,14 +94,7 @@ async function listSubscriptions({ createdBy }) {
   return prisma.webhookSubscription.findMany({
     where: { createdBy },
     orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      url: true,
-      eventTypes: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: selectSubscriptionFields(true),
   });
 }
 
@@ -129,7 +160,12 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
   });
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signedPayload = buildWebhookPayload(eventType, payload, delivery.id, new Date().toISOString());
+  const signedPayload = buildWebhookPayload(
+    eventType,
+    payload,
+    delivery.id,
+    new Date().toISOString(),
+  );
   const signature = signPayload(subscription.secret, timestamp, signedPayload);
   const headers = {
     'Content-Type': 'application/json',
@@ -180,6 +216,7 @@ export {
   getDeliveryHistory,
   queueEventWebhooks,
   signPayload,
+  verifySignature,
   buildWebhookPayload,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
@@ -195,4 +232,5 @@ export default {
   getDeliveryHistory,
   queueEventWebhooks,
   signPayload,
+  verifySignature,
 };

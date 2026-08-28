@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from './Modal';
 import Button from './Button';
+import CharCountTextarea from './CharCountTextarea';
 
 /**
  * The `Modal` component is an accessible overlay dialog with backdrop-dismiss
@@ -113,11 +114,12 @@ export const DisputeModal = {
         Raising a dispute will freeze all funds until the arbiter resolves the issue. Please provide
         a reason below.
       </p>
-      <textarea
+      <CharCountTextarea
         className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm
                    text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2
                    focus:ring-indigo-500/50 resize-none"
         rows={4}
+        maxLength={2000}
         placeholder="Describe the issue…"
       />
       <div className="flex justify-end gap-2 mt-4">

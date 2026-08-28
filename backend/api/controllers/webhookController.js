@@ -1,4 +1,5 @@
 import webhookService from '../../services/webhookService.js';
+import respond from '../../lib/respond.js';
 
 const MAX_EVENT_TYPES = 20;
 const ALLOWED_SCHEMES = ['https:'];
@@ -17,17 +18,20 @@ const subscribe = async (req, res) => {
     const { url, eventTypes } = req.body;
 
     if (!url || !isValidWebhookUrl(url)) {
-      return res.status(400).json({ error: 'url must be a valid HTTPS URL' });
+      return respond.error(res, 400, 'VALIDATION_ERROR', 'url must be a valid HTTPS URL');
     }
 
     if (!Array.isArray(eventTypes) || eventTypes.length === 0) {
-      return res.status(400).json({ error: 'eventTypes must be a non-empty array' });
+      return respond.error(res, 400, 'VALIDATION_ERROR', 'eventTypes must be a non-empty array');
     }
 
     if (eventTypes.length > MAX_EVENT_TYPES) {
-      return res
-        .status(400)
-        .json({ error: `eventTypes may not exceed ${MAX_EVENT_TYPES} entries` });
+      return respond.error(
+        res,
+        400,
+        'VALIDATION_ERROR',
+        `eventTypes may not exceed ${MAX_EVENT_TYPES} entries`,
+      );
     }
 
     const result = await webhookService.createSubscription({
@@ -36,9 +40,9 @@ const subscribe = async (req, res) => {
       createdBy: req.user?.address || null,
     });
 
-    res.status(201).json({ data: result });
+    return respond.success(res, result, { created: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return respond.error(res, 500, 'INTERNAL_ERROR', err.message);
   }
 };
 
@@ -47,9 +51,9 @@ const listSubscriptions = async (req, res) => {
     const subscriptions = await webhookService.listSubscriptions({
       createdBy: req.user?.address || null,
     });
-    res.json({ data: subscriptions });
+    return respond.success(res, subscriptions);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return respond.error(res, 500, 'INTERNAL_ERROR', err.message);
   }
 };
 
@@ -61,12 +65,12 @@ const deleteSubscription = async (req, res) => {
     });
 
     if (!deleted) {
-      return res.status(404).json({ error: 'Webhook subscription not found' });
+      return respond.error(res, 404, 'NOT_FOUND', 'Webhook subscription not found');
     }
 
-    res.status(204).send();
+    return res.status(204).send();
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return respond.error(res, 500, 'INTERNAL_ERROR', err.message);
   }
 };
 
@@ -82,9 +86,9 @@ const getDeliveries = async (req, res) => {
       limit,
     });
 
-    res.json(result);
+    return res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return respond.error(res, 500, 'INTERNAL_ERROR', err.message);
   }
 };
 
@@ -97,12 +101,17 @@ const rotateSecret = async (req, res) => {
     });
 
     if (!updated) {
-      return res.status(404).json({ error: 'Webhook subscription not found' });
+      return respond.error(res, 404, 'NOT_FOUND', 'Webhook subscription not found');
     }
 
-    res.json({ data: updated });
+    return respond.success(res, updated);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    // Prisma throws (rather than returning null) when the id/createdBy pair
+    // doesn't match an existing row — treat that as a 404, not a 500.
+    if (err.code === 'P2025') {
+      return respond.error(res, 404, 'NOT_FOUND', 'Webhook subscription not found');
+    }
+    return respond.error(res, 500, 'INTERNAL_ERROR', err.message);
   }
 };
 

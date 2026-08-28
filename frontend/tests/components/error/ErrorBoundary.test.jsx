@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import ErrorBoundary from '../../../components/error/ErrorBoundary';
 
 // Silence expected console.error output from React's error boundary
@@ -72,14 +72,15 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
 
-    // After retry the boundary resets; re-render with non-throwing child
+    // First swap out the throwing child so clicking Retry renders something valid
     rerender(
       <ErrorBoundary>
         <Bomb shouldThrow={false} />
       </ErrorBoundary>,
     );
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
 
     expect(screen.getByText('OK')).toBeInTheDocument();
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();

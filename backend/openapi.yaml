@@ -1770,6 +1770,61 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/system/shutdown-status:
+    get:
+      tags: [Admin]
+      summary: Graceful shutdown / drain status
+      description: |
+        Reports the process's graceful-shutdown state: `running`, `draining`
+        (SIGTERM/SIGINT received, in-flight requests being drained), or
+        `closed`. Intended for deploy tooling confirming a pod has finished
+        draining before the orchestrator removes it from service.
+      operationId: getShutdownStatus
+      security:
+        - BearerAuth: []
+        - AdminAuth: []
+      responses:
+        '200':
+          description: Current shutdown state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [running, draining, closed]
+                      drainStartedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      inFlightRequests:
+                        type: integer
+                      uptimeSeconds:
+                        type: integer
+                  meta:
+                    type: object
+                    properties:
+                      requestId:
+                        type: string
+                      timestamp:
+                        type: string
+                        format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
   /api/audit:
     get:
       tags: [Audit]

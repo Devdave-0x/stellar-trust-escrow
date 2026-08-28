@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import Badge from '../../../components/ui/Badge';
 
 // ── Mock data helpers ─────────────────────────────────────────────────────────
 
@@ -406,9 +407,9 @@ export default function ArbitratorDashboard() {
                 <div className="mb-6">
                   <div className="flex items-center gap-3 mb-1">
                     <h2 className="text-lg font-bold text-white">{selected.escrowId}</h2>
-                    <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">
+                    <Badge variant="warning" dot size="sm">
                       Disputed
-                    </span>
+                    </Badge>
                   </div>
                   <p className="text-sm text-gray-400">
                     {selected.client} ↔ {selected.freelancer}

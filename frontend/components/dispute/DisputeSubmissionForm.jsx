@@ -14,6 +14,7 @@
 
 import { useState, useRef } from 'react';
 import { Upload, X, File, Image as ImageIcon, Video } from 'lucide-react';
+import CharCountTextarea from '../ui/CharCountTextarea';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILES = 5;
@@ -158,12 +159,13 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
         <label htmlFor="description" className="block text-sm font-medium text-white mb-2">
           Description *
         </label>
-        <textarea
+        <CharCountTextarea
           id="description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Describe the issue in detail..."
           rows={4}
+          maxLength={2000}
           className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg
                      focus:outline-none focus:border-indigo-500"
           disabled={loading}

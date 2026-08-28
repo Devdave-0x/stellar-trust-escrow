@@ -2,9 +2,11 @@ import { validationResult, query, param, body } from 'express-validator';
 
 /** Maximum unsigned 64-bit integer (inclusive) for on-chain / DB escrow identifiers. */
 const U64_MAX = 18446744073709551615n;
-export const VALIDATION_A11Y_LABELS = {
-  errorSummary: 'Validation error summary',
-  fieldMessage: 'Validation field message',
+const VALIDATION_EMPTY_STATE = {
+  title: 'Nothing matched the validation rules',
+  description:
+    'The request could not be processed because the expected fields were missing or invalid.',
+  action: 'Review the request payload, query parameters, or route params and try again.',
 };
 
 /**
@@ -28,9 +30,22 @@ export function validate(chains) {
       message: e.msg,
       location: e.location,
     }));
+    const hasFieldLevelDetails = details.length > 0;
     return res.status(400).json({
       error: 'Validation failed',
-      details,
+      details: hasFieldLevelDetails
+        ? details
+        : [
+            {
+              field: null,
+              message: 'No field-level validation details were generated.',
+              location: 'request',
+            },
+          ],
+      message: hasFieldLevelDetails
+        ? 'Fix the invalid request fields and try again.'
+        : 'The request did not include enough information to validate successfully.',
+      emptyState: hasFieldLevelDetails ? undefined : VALIDATION_EMPTY_STATE,
     });
   };
 }

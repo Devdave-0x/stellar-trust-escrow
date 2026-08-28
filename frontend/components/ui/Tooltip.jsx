@@ -98,10 +98,10 @@ export default function Tooltip({ children, content, className, position: prefer
     setIsVisible(false);
   }, [clearShowTimer]);
 
-  const show = useCallback(() => {
+  const show = useCallback((immediate = false) => {
     clearShowTimer();
-    showTimerRef.current = setTimeout(() => {
-      // Determine best position based on viewport
+    if (immediate) {
+      // Keyboard focus — show without delay for immediate accessibility
       if (wrapperRef.current && tooltipRef.current) {
         const rect = wrapperRef.current.getBoundingClientRect();
         const tooltipRect = tooltipRef.current.getBoundingClientRect();
@@ -109,8 +109,19 @@ export default function Tooltip({ children, content, className, position: prefer
         setPosition(best);
       }
       setIsVisible(true);
-    }, SHOW_DELAY_MS);
-  }, [clearShowTimer]);
+    } else {
+      showTimerRef.current = setTimeout(() => {
+        // Determine best position based on viewport
+        if (wrapperRef.current && tooltipRef.current) {
+          const rect = wrapperRef.current.getBoundingClientRect();
+          const tooltipRect = tooltipRef.current.getBoundingClientRect();
+          const best = getFlippedPosition(rect, tooltipRect.width, tooltipRect.height, preferredPosition);
+          setPosition(best);
+        }
+        setIsVisible(true);
+      }, SHOW_DELAY_MS);
+    }
+  }, [clearShowTimer, preferredPosition]);
 
   // Handle Escape key
   useEffect(() => {
@@ -137,7 +148,7 @@ export default function Tooltip({ children, content, className, position: prefer
       <div
         onMouseEnter={show}
         onMouseLeave={hide}
-        onFocus={show}
+        onFocus={() => show(true)}
         onBlur={hide}
         aria-describedby={isVisible ? tooltipId : undefined}
         tabIndex={0}

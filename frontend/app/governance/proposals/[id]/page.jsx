@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import { ThumbsUp, ThumbsDown, MessageCircle, Clock } from 'lucide-react';
 import Button from '../../../../components/ui/Button';
+import CharCountTextarea from '../../../../components/ui/CharCountTextarea';
 import { useI18n } from '../../../../i18n/index.jsx';
 
 const COLORS = ['#10b981', '#ef4444', '#f59e0b'];
@@ -274,10 +275,11 @@ export default function ProposalPage({ params }) {
 
         {/* New Comment */}
         <div className="space-y-2">
-          <textarea
+          <CharCountTextarea
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Share your thoughts... (Markdown supported)"
+            maxLength={2000}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             rows="3"
           />

@@ -11,6 +11,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAdminStore } from '../../../store/app-store';
 import { adminFetch } from '../../../store/admin';
 import EmptyState from '../../../components/ui/EmptyState';
+import Badge from '../../../components/ui/Badge';
+import CharCountTextarea from '../../../components/ui/CharCountTextarea';
 
 function ResolveModal({ dispute, onClose, onConfirm }) {
   const [clientAmount, setClientAmount] = useState('');
@@ -80,13 +82,15 @@ function ResolveModal({ dispute, onClose, onConfirm }) {
         <label htmlFor={`resolve-notes-${dispute.id}`} className="sr-only">
           Resolution notes
         </label>
-        <textarea
+        <CharCountTextarea
           id={`resolve-notes-${dispute.id}`}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Resolution notes (optional)…"
           rows={2}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500 mb-4 resize-none"
+          maxLength={2000}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none"
+          wrapperClassName="mb-4"
         />
 
         <div className="flex gap-2 justify-end">
@@ -109,18 +113,6 @@ function ResolveModal({ dispute, onClose, onConfirm }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function StatusBadge({ resolved }) {
-  return resolved ? (
-    <span role="status" aria-label="Status: Resolved" className="badge-completed text-xs px-2 py-0.5 rounded-full">
-      Resolved
-    </span>
-  ) : (
-    <span role="status" aria-label="Status: Open" className="badge-disputed text-xs px-2 py-0.5 rounded-full">
-      Open
-    </span>
   );
 }
 
@@ -261,7 +253,9 @@ export default function AdminDisputesPage() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-white font-semibold">Dispute #{d.id}</span>
-                    <StatusBadge resolved={!!d.resolvedAt} />
+                    <Badge variant={d.resolvedAt ? 'success' : 'warning'} dot size="sm">
+                      {d.resolvedAt ? 'Resolved' : 'Open'}
+                    </Badge>
                   </div>
                   <p className="text-xs text-gray-500 mb-2">
                     Escrow:{' '}

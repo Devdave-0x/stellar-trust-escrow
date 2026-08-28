@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Button from '../../../components/ui/Button.jsx';
+import CharCountTextarea from '../../../components/ui/CharCountTextarea';
 
 const DEFAULT_ABI = [
   {
@@ -279,10 +280,11 @@ export default function ContractInspectorPage() {
             <h2 className="text-xl font-semibold text-white">ABI Inspector</h2>
             <label className="block text-sm font-medium text-gray-300">
               Contract ABI JSON
-              <textarea
+              <CharCountTextarea
                 rows={12}
                 value={abiText}
                 onChange={(event) => setAbiText(event.target.value)}
+                maxLength={50000}
                 className="mt-2 w-full rounded-2xl border border-gray-700 bg-slate-950 px-4 py-3 text-sm text-gray-100 focus:border-indigo-500 focus:ring-indigo-500"
               />
             </label>

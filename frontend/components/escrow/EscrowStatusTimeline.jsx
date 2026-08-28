@@ -12,6 +12,7 @@
  */
 
 import { Check, Clock } from 'lucide-react';
+import Badge from '../ui/Badge';
 
 export default function EscrowStatusTimeline({ events = [], currentState, className = '' }) {
   const stateLabels = {
@@ -23,6 +24,17 @@ export default function EscrowStatusTimeline({ events = [], currentState, classN
     Disputed: 'Disputed',
     Resolved: 'Resolved',
     Cancelled: 'Cancelled',
+  };
+
+  const stateVariants = {
+    Created: 'neutral',
+    Funded: 'info',
+    InProgress: 'info',
+    ReleaseRequested: 'warning',
+    Released: 'success',
+    Disputed: 'error',
+    Resolved: 'success',
+    Cancelled: 'neutral',
   };
 
   const getStateColor = (state, isCurrent, isCompleted) => {
@@ -82,11 +94,9 @@ export default function EscrowStatusTimeline({ events = [], currentState, classN
 
             {/* Event details */}
             <div className="flex-1 pt-1">
-              <h4
-                className={`font-medium ${isCurrent ? 'text-white' : 'text-gray-400'}`}
-              >
+              <Badge variant={stateVariants[event.state] || 'neutral'} dot size="sm">
                 {stateLabels[event.state] || event.state}
-              </h4>
+              </Badge>
               <p className="text-xs text-gray-500 mt-1">{formatTime(event.timestamp)}</p>
               {event.actor && (
                 <p className="text-xs text-gray-600 mt-0.5">by {event.actor}</p>
