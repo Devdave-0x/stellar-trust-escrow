@@ -69,6 +69,15 @@ const updateRateLimit = (req, res) => {
 const getUserRateLimitUsage = (req, res) => {
   const { userId } = req.params;
   const usage = getUserUsage(userId);
+
+  if (usage.count === 0) {
+    return res.json({
+      userId,
+      ...usage,
+      message: 'No rate limit activity recorded for this user yet.',
+    });
+  }
+
   res.json({ userId, ...usage });
 };
 
