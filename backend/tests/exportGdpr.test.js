@@ -144,6 +144,30 @@ describe('GDPR export route protection', () => {
 });
 
 describe('exportService GDPR data scope', () => {
+  it('preserves a zero escrowId instead of collapsing it to null', async () => {
+    prismaMock.payment.findMany.mockResolvedValue([
+      {
+        id: 'pay_1',
+        escrowId: 0n,
+        stripeSessionId: null,
+        stripePaymentIntent: null,
+        amountFiat: 0,
+        amountCrypto: '0',
+        currency: 'usd',
+        status: 'pending',
+        refundId: null,
+        createdAt: new Date('2026-06-19T12:00:00.000Z'),
+        updatedAt: new Date('2026-06-19T12:00:00.000Z'),
+      },
+    ]);
+
+    const payments = await exportService.exportPaymentHistory(ADDRESS_A, {
+      tenantId: 'tenant_default',
+    });
+
+    expect(payments[0].escrowId).toBe('0');
+  });
+
   it('includes sanitized admin audit actions and dispute messages', async () => {
     const performedAt = new Date('2026-06-19T12:00:00.000Z');
     prismaMock.adminAuditLog.findMany.mockResolvedValue([

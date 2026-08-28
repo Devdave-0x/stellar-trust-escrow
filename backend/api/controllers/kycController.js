@@ -4,8 +4,11 @@ import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
-/** Consistent null/undefined check, used everywhere in this file instead of mixing `!x`, `== null`, etc. */
-const isNullish = (value) => value === null || value === undefined;
+/** Shared 500 handler: logs the error against `route` and sends a JSON error response. */
+const handleKycError = (route, err, req, res) => {
+  logControllerError(route, err, req);
+  res.status(500).json({ error: err.message });
+};
 
 /** POST /api/kyc/token — get Sumsub SDK token for the authenticated user. */
 const getToken = async (req, res) => {
@@ -17,8 +20,7 @@ const getToken = async (req, res) => {
     const result = await kycService.generateSdkToken(address);
     res.json(result);
   } catch (err) {
-    logControllerError('kyc.getToken', err, req);
-    res.status(500).json({ error: err.message });
+    handleKycError('kyc.getToken', err, req, res);
   }
 };
 
@@ -33,8 +35,7 @@ const getStatus = async (req, res) => {
     if (isNullish(record)) return res.json({ address, status: 'Pending' });
     res.json(record);
   } catch (err) {
-    logControllerError('kyc.getStatus', err, req);
-    res.status(500).json({ error: err.message });
+    handleKycError('kyc.getStatus', err, req, res);
   }
 };
 
@@ -48,8 +49,7 @@ const webhook = async (req, res) => {
     await kycService.handleWebhook(req.body);
     res.json({ ok: true });
   } catch (err) {
-    logControllerError('kyc.webhook', err, req);
-    res.status(500).json({ error: err.message });
+    handleKycError('kyc.webhook', err, req, res);
   }
 };
 
@@ -61,8 +61,7 @@ const adminList = async (req, res) => {
     const { data, total } = await kycService.listAll({ skip, take: limit, status });
     res.json(buildPaginatedResponse(data, { total, page, limit }));
   } catch (err) {
-    logControllerError('kyc.adminList', err, req);
-    res.status(500).json({ error: err.message });
+    handleKycError('kyc.adminList', err, req, res);
   }
 };
 

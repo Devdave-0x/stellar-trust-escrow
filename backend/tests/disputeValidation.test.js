@@ -73,6 +73,7 @@ describe('dispute route validation', () => {
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       error: 'Validation failed',
+      message: 'Fix the invalid request fields and try again.',
       details: expect.arrayContaining([
         expect.objectContaining({
           field: 'page',
