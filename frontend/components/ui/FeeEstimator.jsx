@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Info, X } from 'lucide-react';
 import Skeleton from './Skeleton';
 
 const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
@@ -45,6 +45,7 @@ export default function FeeEstimator({ className = '' }) {
   const [stroops, setStroops] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const intervalRef = useRef(null);
 
   const loadFee = useCallback(async () => {
@@ -82,7 +83,24 @@ export default function FeeEstimator({ className = '' }) {
     >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Estimated fee</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Estimated fee</p>
+            <button
+              type="button"
+              onClick={() => setShowInfo((prev) => !prev)}
+              className="text-gray-500 hover:text-gray-300 transition"
+              aria-label={showInfo ? 'Hide fee explanation' : 'What is this fee?'}
+              aria-expanded={showInfo}
+            >
+              {showInfo ? <X size={12} /> : <Info size={12} />}
+            </button>
+          </div>
+          {showInfo && (
+            <p className="text-xs text-gray-400 max-w-xs">
+              This is the current Stellar network base fee per operation, refreshed automatically
+              every minute. Your wallet may add a small buffer before signing.
+            </p>
+          )}
           {loading ? (
             <div className="flex items-center gap-2">
               <Skeleton className="h-4 w-28 rounded-md" />
