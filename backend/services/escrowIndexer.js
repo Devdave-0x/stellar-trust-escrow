@@ -77,9 +77,9 @@ const parseAddress = (v) => {
 // ── Event handlers ────────────────────────────────────────────────────────────
 
 export async function handleMilestoneApproved(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
   const [milestoneId] = event.value ?? [];
-  if (!escrowId || milestoneId === undefined) return;
+  if (event.topic?.[1] == null || milestoneId == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
   await prisma.milestone.updateMany({
     where: { escrowId, milestoneIndex: Number(parseBigInt(milestoneId)) },
     data: { status: 'Approved', resolvedAt: new Date(event.ledgerClosedAt) },
@@ -87,8 +87,8 @@ export async function handleMilestoneApproved(event) {
 }
 
 export async function handleDisputeRaised(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
-  if (!escrowId) return;
+  if (event.topic?.[1] == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
   const raisedBy = parseAddress(event.value);
   await prisma.$transaction([
     prisma.escrow.updateMany({ where: { id: escrowId }, data: { status: 'Disputed' } }),
@@ -105,9 +105,9 @@ export async function handleDisputeRaised(event) {
 }
 
 export async function handleFundsReleased(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
   const [, amount] = event.value ?? [];
-  if (!escrowId || !amount) return;
+  if (event.topic?.[1] == null || amount == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
 
   // Fetch escrow to get client and freelancer addresses
   const escrow = await prisma.escrow.findUnique({
@@ -141,15 +141,15 @@ export async function handleFundsReleased(event) {
 }
 
 export async function handleEscrowCancelled(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
-  if (!escrowId) return;
+  if (event.topic?.[1] == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
   await prisma.escrow.updateMany({ where: { id: escrowId }, data: { status: 'Cancelled' } });
 }
 
 export async function handleEscrowCreated(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
   const [client, freelancer, amount] = event.value ?? [];
-  if (!escrowId || !client) return;
+  if (event.topic?.[1] == null || client == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
   await prisma.escrow.upsert({
     where: { id: escrowId },
     create: {
@@ -169,9 +169,9 @@ export async function handleEscrowCreated(event) {
 }
 
 export async function handleMilestoneAdded(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
   const [milestoneId, amount] = event.value ?? [];
-  if (!escrowId || milestoneId === undefined) return;
+  if (event.topic?.[1] == null || milestoneId == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
   const milestoneIndex = Number(parseBigInt(milestoneId));
   await prisma.milestone.upsert({
     where: { escrowId_milestoneIndex: { escrowId, milestoneIndex } },
@@ -188,9 +188,9 @@ export async function handleMilestoneAdded(event) {
 }
 
 export async function handleMilestoneSubmitted(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
   const [milestoneId] = event.value ?? [];
-  if (!escrowId || milestoneId === undefined) return;
+  if (event.topic?.[1] == null || milestoneId == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
   await prisma.milestone.updateMany({
     where: { escrowId, milestoneIndex: Number(parseBigInt(milestoneId)) },
     data: { status: 'Submitted', submittedAt: new Date(event.ledgerClosedAt) },
@@ -198,8 +198,8 @@ export async function handleMilestoneSubmitted(event) {
 }
 
 export async function handleDisputeResolved(event) {
-  const escrowId = parseBigInt(event.topic?.[1]);
-  if (!escrowId) return;
+  if (event.topic?.[1] == null) return;
+  const escrowId = parseBigInt(event.topic[1]);
 
   // Contract emits resolution outcome in value: [winnerId, ...] or similar
   // For now, assume the event.value contains winner address indicator
@@ -234,7 +234,7 @@ export async function handleDisputeResolved(event) {
 
 export async function handleReputationUpdated(event) {
   const [address, newScore] = event.value ?? [];
-  if (!address) return;
+  if (address == null) return;
   await prisma.reputationRecord.upsert({
     where: { address: String(address) },
     create: {
