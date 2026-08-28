@@ -69,6 +69,7 @@ export function useUserEscrows(address, role = 'all') {
  *   const allEscrows = pages.flatMap(p => p.data);
  *
  * @param {{ limit?: number, status?: string, sortBy?: string, sortOrder?: string }} options
+ * @returns {{ pages: Array, escrows: Array, total: number, isLoading: boolean, isLoadingMore: boolean, hasMore: boolean, error: Error|null, loadMore: Function }}
  */
 export function useEscrowList({ limit = DEFAULT_PAGE_LIMIT, status = '', sortBy = 'createdAt', sortOrder = 'desc' } = {}) {
   const buildUrl = useCallback(
@@ -128,6 +129,7 @@ export function useEscrowList({ limit = DEFAULT_PAGE_LIMIT, status = '', sortBy 
  *
  * @param {string|null} cursor — pass null for the first page, then pass next_cursor from response
  * @param {{ limit?: number, status?: string }} options
+ * @returns {{ escrows: Array, nextCursor: string|null, hasMore: boolean, isLoading: boolean, error: Error|null }}
  */
 export function useEscrowPage(cursor = null, { limit = DEFAULT_PAGE_LIMIT, status = '' } = {}) {
   const params = new URLSearchParams({ limit: String(limit) });
