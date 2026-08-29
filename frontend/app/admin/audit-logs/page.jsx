@@ -9,19 +9,49 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAdminStore } from '../../../store/app-store';
 import { adminFetch } from '../../../store/admin';
+import Skeleton from '../../../components/ui/Skeleton';
 
 function actionColor(action) {
   if (action?.includes('BAN')) return 'text-red-400 bg-red-500/10 border-red-500/20';
   if (action?.includes('SUSPEND')) return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
   if (action?.includes('RESOLVE'))
     return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+
   return 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20';
+}
+
+function AuditLogSkeletonRows() {
+  return Array.from({ length: 6 }, (_, index) => (
+    <tr key={index} className="border-b border-gray-800/60">
+      <td className="px-5 py-3">
+        {index === 0 && <span className="sr-only">Loading audit logs</span>}
+        <Skeleton variant="text" className="w-24" />
+      </td>
+
+      <td className="px-5 py-3 hidden sm:table-cell">
+        <Skeleton variant="text" className="w-32" />
+      </td>
+
+      <td className="px-5 py-3 hidden md:table-cell">
+        <Skeleton variant="text" className="w-full max-w-xs" />
+      </td>
+
+      <td className="px-5 py-3">
+        <Skeleton variant="text" className="w-28 ml-auto" />
+      </td>
+    </tr>
+  ));
 }
 
 export default function AdminAuditLogsPage() {
   const { apiKey } = useAdminStore();
+
   const [logs, setLogs] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    total: 0,
+    pages: 1,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,10 +59,15 @@ export default function AdminAuditLogsPage() {
     async (page = 1) => {
       setLoading(true);
       setError('');
+
       try {
         const res = await adminFetch(`/api/admin/audit-logs?page=${page}&limit=50`, apiKey);
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to fetch audit logs');
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to fetch audit logs');
+        }
+
         setLogs(data.logs);
         setPagination(data.pagination);
       } catch (err) {
@@ -55,6 +90,7 @@ export default function AdminAuditLogsPage() {
           <h1 className="text-2xl font-bold text-white">Audit Logs</h1>
           <p className="text-gray-400 text-sm mt-1">{pagination.total} entries total</p>
         </div>
+
         <a
           href="/admin"
           className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
@@ -70,7 +106,11 @@ export default function AdminAuditLogsPage() {
       )}
 
       <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+        <table
+          className="w-full table-fixed text-sm"
+          aria-busy={loading}
+          aria-label="Audit logs"
+        >
           <thead>
             <tr className="border-b border-gray-800 text-xs text-gray-400 uppercase tracking-wider">
               <th className="text-left px-5 py-3">Action</th>
@@ -79,13 +119,10 @@ export default function AdminAuditLogsPage() {
               <th className="text-right px-5 py-3">Performed At</th>
             </tr>
           </thead>
+
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={4} className="text-center py-12 text-gray-500">
-                  Loading…
-                </td>
-              </tr>
+              <AuditLogSkeletonRows />
             ) : logs.length === 0 ? (
               <tr>
                 <td colSpan={4} className="text-center py-12 text-gray-500">
@@ -100,11 +137,14 @@ export default function AdminAuditLogsPage() {
                 >
                   <td className="px-5 py-3">
                     <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded border ${actionColor(log.action)}`}
+                      className={`text-xs font-semibold px-2 py-0.5 rounded border ${actionColor(
+                        log.action,
+                      )}`}
                     >
                       {log.action}
                     </span>
                   </td>
+
                   <td
                     className="px-5 py-3 hidden sm:table-cell font-mono text-gray-400 text-xs"
                     title={log.targetAddress}
@@ -113,9 +153,11 @@ export default function AdminAuditLogsPage() {
                       ? `${log.targetAddress.slice(0, 10)}…`
                       : log.targetAddress}
                   </td>
+
                   <td className="px-5 py-3 hidden md:table-cell text-gray-500 max-w-xs truncate">
                     {log.reason || '—'}
                   </td>
+
                   <td className="px-5 py-3 text-right text-gray-500 text-xs whitespace-nowrap">
                     {new Date(log.performedAt).toLocaleString()}
                   </td>
@@ -130,17 +172,19 @@ export default function AdminAuditLogsPage() {
         <div className="flex justify-center gap-2 mt-4">
           <button
             onClick={() => fetchLogs(pagination.page - 1)}
-            disabled={pagination.page <= 1}
+            disabled={pagination.page <= 1 || loading}
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             ← Prev
           </button>
+
           <span className="text-sm text-gray-500 px-2 py-1.5">
             {pagination.page} / {pagination.pages}
           </span>
+
           <button
             onClick={() => fetchLogs(pagination.page + 1)}
-            disabled={pagination.page >= pagination.pages}
+            disabled={pagination.page >= pagination.pages || loading}
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Next →
