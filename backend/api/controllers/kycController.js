@@ -3,6 +3,7 @@ import { logControllerError } from '../../config/logger.js';
 import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+const isNullish = (val) => val === null || val === undefined;
 
 /** Shared 500 handler: logs the error against `route` and sends a JSON error response. */
 const handleKycError = (route, err, req, res) => {

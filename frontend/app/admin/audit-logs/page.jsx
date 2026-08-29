@@ -57,6 +57,7 @@ export default function AdminAuditLogsPage() {
         </div>
         <a
           href="/admin"
+          aria-label="Navigate back to admin dashboard"
           className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
         >
           ← Dashboard
@@ -131,6 +132,7 @@ export default function AdminAuditLogsPage() {
           <button
             onClick={() => fetchLogs(pagination.page - 1)}
             disabled={pagination.page <= 1}
+            aria-label="Previous page"
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             ← Prev
@@ -141,6 +143,7 @@ export default function AdminAuditLogsPage() {
           <button
             onClick={() => fetchLogs(pagination.page + 1)}
             disabled={pagination.page >= pagination.pages}
+            aria-label="Next page"
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Next →
