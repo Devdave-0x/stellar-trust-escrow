@@ -91,9 +91,13 @@ const parseBigInt = (scVal) => {
 // ─── Event handlers ───────────────────────────────────────────────────────────
 
 /**
- * Handles esc_crt — inserts a new escrow row.
- * topic: (esc_crt, escrow_id)
- * data:  (client, freelancer, amount)
+ * Handles the `esc_crt` contract event — inserts a new escrow row.
+ * topic: (esc_crt, escrow_id) · data: (client, freelancer, amount)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleEscrowCreated = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -127,9 +131,13 @@ const handleEscrowCreated = async (event, meta) => {
 };
 
 /**
- * Handles mil_add — inserts a new milestone row.
- * topic: (mil_add, escrow_id)
- * data:  (milestone_id, amount)
+ * Handles the `mil_add` contract event — inserts a new milestone row.
+ * topic: (mil_add, escrow_id) · data: (milestone_id, amount)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleMilestoneAdded = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -154,9 +162,13 @@ const handleMilestoneAdded = async (event, meta) => {
 };
 
 /**
- * Handles mil_sub — marks milestone as Submitted.
- * topic: (mil_sub, escrow_id)
- * data:  (milestone_id, freelancer)
+ * Handles the `mil_sub` contract event — marks a milestone as Submitted.
+ * topic: (mil_sub, escrow_id) · data: (milestone_id, freelancer)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleMilestoneSubmitted = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -173,9 +185,13 @@ const handleMilestoneSubmitted = async (event, meta) => {
 };
 
 /**
- * Handles mil_apr — marks milestone as Approved.
- * topic: (mil_apr, escrow_id)
- * data:  (milestone_id, amount)
+ * Handles the `mil_apr` contract event — marks a milestone as Approved.
+ * topic: (mil_apr, escrow_id) · data: (milestone_id, amount)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleMilestoneApproved = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -192,9 +208,13 @@ const handleMilestoneApproved = async (event, meta) => {
 };
 
 /**
- * Handles mil_rej — marks milestone as Rejected.
- * topic: (mil_rej, escrow_id)
- * data:  (milestone_id, client)
+ * Handles the `mil_rej` contract event — marks a milestone as Rejected.
+ * topic: (mil_rej, escrow_id) · data: (milestone_id, client)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleMilestoneRejected = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -211,9 +231,13 @@ const handleMilestoneRejected = async (event, meta) => {
 };
 
 /**
- * Handles mil_dis — marks milestone as Disputed.
- * topic: (mil_dis, escrow_id)
- * data:  (milestone_id, raised_by)
+ * Handles the `mil_dis` contract event — marks a milestone as Disputed.
+ * topic: (mil_dis, escrow_id) · data: (milestone_id, raised_by)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleMilestoneDisputed = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -230,9 +254,13 @@ const handleMilestoneDisputed = async (event, meta) => {
 };
 
 /**
- * Handles funds_rel — updates escrow remaining_balance.
- * topic: (funds_rel, escrow_id)
- * data:  (to, amount)
+ * Handles the `funds_rel` contract event — decrements the escrow's remaining balance.
+ * topic: (funds_rel, escrow_id) · data: (to, amount)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleFundsReleased = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -257,9 +285,13 @@ const handleFundsReleased = async (event, meta) => {
 };
 
 /**
- * Handles esc_can — marks escrow as Cancelled.
- * topic: (esc_can, escrow_id)
- * data:  returned_amount
+ * Handles the `esc_can` contract event — marks an escrow as Cancelled.
+ * topic: (esc_can, escrow_id) · data: returned_amount
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleEscrowCancelled = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -274,9 +306,14 @@ const handleEscrowCancelled = async (event, meta) => {
 };
 
 /**
- * Handles dis_rai — creates a Dispute record and marks escrow as Disputed.
- * topic: (dis_rai, escrow_id)
- * data:  raised_by
+ * Handles the `dis_rai` contract event — creates a Dispute record and marks
+ * the escrow as Disputed.
+ * topic: (dis_rai, escrow_id) · data: raised_by
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleDisputeRaised = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -307,9 +344,14 @@ const handleDisputeRaised = async (event, meta) => {
 };
 
 /**
- * Handles dis_res — resolves a dispute and marks escrow as Completed.
- * topic: (dis_res, escrow_id)
- * data:  (client_amount, freelancer_amount)
+ * Handles the `dis_res` contract event — resolves a dispute and marks the
+ * escrow as Completed.
+ * topic: (dis_res, escrow_id) · data: (client_amount, freelancer_amount)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleDisputeResolved = async (event, meta) => {
   const escrowId = parseBigInt(event.topic[1]);
@@ -339,9 +381,14 @@ const handleDisputeResolved = async (event, meta) => {
 };
 
 /**
- * Handles rep_upd — upserts a reputation record.
- * topic: (rep_upd,)
- * data:  (address, new_score)
+ * Handles the `rep_upd` contract event — upserts a reputation record and
+ * syncs it to the search index.
+ * topic: (rep_upd,) · data: (address, new_score)
+ *
+ * @param {object} event - Raw Soroban event with `topic` and `value` arrays.
+ * @param {{ledger: bigint, ledgerAt: Date, txHash: string, eventIndex: number, contractId: string}} meta
+ *   - Normalized ledger metadata for the event.
+ * @returns {Promise<void>}
  */
 const handleReputationUpdated = async (event, meta) => {
   const [address, newScore] = event.value;
@@ -385,9 +432,11 @@ const HANDLERS = {
 };
 
 /**
- * Routes a raw Soroban event to the correct handler.
+ * Routes a raw Soroban event to the correct handler, then queues webhook
+ * deliveries and broadcasts a realtime update for the affected escrow.
  *
- * @param {object} rawEvent — event object from SorobanRpc.Server.getEvents()
+ * @param {object} rawEvent - Event object from SorobanRpc.Server.getEvents().
+ * @returns {Promise<void>}
  */
 const dispatchEvent = async (rawEvent) => {
   const eventType = parseEventType(rawEvent.topic[0]);
@@ -455,8 +504,8 @@ const dispatchEvent = async (rawEvent) => {
 /**
  * Fetches and processes all new events since lastProcessedLedger.
  *
- * @param {number} fromLedger
- * @returns {Promise<number>} the latest ledger sequence processed
+ * @param {number} fromLedger - Ledger sequence to resume fetching events from.
+ * @returns {Promise<number>} The latest ledger sequence processed.
  */
 const fetchAndProcessEvents = async (fromLedger) => {
   if (!CONTRACT_ID) {
@@ -485,6 +534,9 @@ const fetchAndProcessEvents = async (fromLedger) => {
 /**
  * Starts the indexer polling loop.
  * Loads the last processed ledger from DB and polls on POLL_INTERVAL_MS.
+ *
+ * @returns {Promise<void>} Resolves once the initial tick has run; polling
+ *   continues indefinitely via `setInterval`.
  */
 const startIndexer = async () => {
   // Load persisted cursor
