@@ -57,20 +57,24 @@ export default function AdminAuditLogsPage() {
         </div>
         <a
           href="/admin"
+          aria-label="Back to admin dashboard"
           className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
         >
-          ← Dashboard
+          <span aria-hidden="true">←</span> Dashboard
         </a>
       </div>
 
       {error && (
-        <div className="bg-red-900/20 border border-red-500/30 text-red-400 text-sm rounded-lg px-4 py-3 mb-4">
-          ⚠️ {error}
+        <div
+          role="alert"
+          className="bg-red-900/20 border border-red-500/30 text-red-400 text-sm rounded-lg px-4 py-3 mb-4"
+        >
+          <span aria-hidden="true">⚠️</span> {error}
         </div>
       )}
 
       <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="Admin audit log entries">
           <thead>
             <tr className="border-b border-gray-800 text-xs text-gray-400 uppercase tracking-wider">
               <th className="text-left px-5 py-3">Action</th>
@@ -131,19 +135,21 @@ export default function AdminAuditLogsPage() {
           <button
             onClick={() => fetchLogs(pagination.page - 1)}
             disabled={pagination.page <= 1}
+            aria-label="Go to previous page"
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            ← Prev
+            <span aria-hidden="true">←</span> Prev
           </button>
-          <span className="text-sm text-gray-500 px-2 py-1.5">
+          <span className="text-sm text-gray-500 px-2 py-1.5" aria-live="polite">
             {pagination.page} / {pagination.pages}
           </span>
           <button
             onClick={() => fetchLogs(pagination.page + 1)}
             disabled={pagination.page >= pagination.pages}
+            aria-label="Go to next page"
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Next →
+            Next <span aria-hidden="true">→</span>
           </button>
         </div>
       )}
