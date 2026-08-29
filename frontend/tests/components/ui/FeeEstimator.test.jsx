@@ -9,7 +9,10 @@ const mockSuccessResponse = {
 const mockJson = jest.fn().mockResolvedValue(mockSuccessResponse);
 
 const mockFetch = jest.fn(() =>
-  Promise.resolve({ ok: true, json: mockJson }),
+  Promise.resolve({
+    ok: true,
+    json: mockJson,
+  }),
 );
 
 describe('FeeEstimator', () => {
@@ -24,37 +27,101 @@ describe('FeeEstimator', () => {
   it('shows loading skeleton and disables refresh while fetching', () => {
     render(<FeeEstimator />);
 
-    expect(screen.getByRole('button', { name: /Refresh fee estimate/i })).toBeDisabled();
-    expect(screen.getByText(/Estimated fee/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: /Refresh fee estimate/i,
+      }),
+    ).toBeDisabled();
+
+    expect(
+      screen.getByText(/Estimated fee/i),
+    ).toBeInTheDocument();
   });
 
   it('renders the fee estimate in XLM and stroops after successful fetch', async () => {
     render(<FeeEstimator />);
 
-    expect(await screen.findByText(/0\.00001\s*XLM/)).toBeInTheDocument();
-    expect(await screen.findByText(/\(100\s*stroops\)/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Refresh fee estimate/i })).not.toBeDisabled();
+    expect(
+      await screen.findByText(/0\.00001\s*XLM/),
+    ).toBeInTheDocument();
+
+    expect(
+      await screen.findByText(/\(100\s*stroops\)/),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole('button', {
+        name: /Refresh fee estimate/i,
+      }),
+    ).not.toBeDisabled();
   });
 
-  it('shows an error message when fee fetch fails', async () => {
-    global.fetch = jest.fn(() => Promise.reject(new Error('Network failure')));
+  it('shows an empty state when the fee source returns no result', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: async () => ({}),
+      }),
+    );
 
     render(<FeeEstimator />);
 
     expect(
-      await screen.findByText(/Fee unavailable — check your wallet before signing/i),
+      await screen.findByText(
+        'No fee estimate available',
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Refresh fee estimate/i })).not.toBeDisabled();
+
+    expect(
+      screen.getByText(
+        'No fee data was returned. Try refreshing the estimate before signing.',
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Try again',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows an error message when fee fetch fails', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.reject(new Error('Network failure')),
+    );
+
+    render(<FeeEstimator />);
+
+    expect(
+      await screen.findByText(
+        /Fee unavailable — check your wallet before signing/i,
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole('button', {
+        name: /Refresh fee estimate/i,
+      }),
+    ).not.toBeDisabled();
   });
 
   it('re-fetches fee when refresh is clicked', async () => {
     render(<FeeEstimator />);
 
-    expect(await screen.findByText(/0\.00001\s*XLM/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/0\.00001\s*XLM/),
+    ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Refresh fee estimate/i }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /Refresh fee estimate/i,
+      }),
+    );
 
-    expect(await screen.findByText(/0\.00001\s*XLM/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/0\.00001\s*XLM/),
+    ).toBeInTheDocument();
+
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
