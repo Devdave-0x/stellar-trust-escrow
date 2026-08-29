@@ -5,7 +5,26 @@ import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-const fetcher = (url) => fetch(url, { credentials: 'include' }).then((r) => r.json());
+const fetcher = async (url) => {
+  const response = await fetch(url, { credentials: 'include' });
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json')
+    ? await response.json().catch(() => null)
+    : await response.text().catch(() => null);
+
+  if (!response.ok) {
+    const detail =
+      (typeof payload === 'object' && payload && (payload.error || payload.message)) ||
+      (typeof payload === 'string' && payload.trim()) ||
+      `Request failed with status ${response.status}`;
+    const error = new Error(typeof detail === 'string' ? detail : `Request failed with status ${response.status}`);
+    error.status = response.status;
+    error.details = payload;
+    throw error;
+  }
+
+  return payload;
+};
 
 // Single-escrow poll cadence — fast enough to feel live, slow enough to stay cheap at scale.
 const ESCROW_POLL_INTERVAL_MS = 30_000;
