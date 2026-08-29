@@ -22,6 +22,30 @@
  * Issue #25
  */
 
+// ─── Layout / animation constants ───────────────────────────────────
+// Icon stroke weight for the check/x glyphs (visually balances the 32px dot).
+const ICON_STROKE_WIDTH = 2.5;
+// Icon glyphs are drawn on a 24x24 viewBox regardless of rendered size.
+const ICON_VIEWBOX_SIZE = 24;
+// Rendered icon size in Tailwind units (h-4 w-4 = 16px), fits inside the 32px step dot.
+const ICON_SIZE_CLASS = 'h-4 w-4';
+// Step dot diameter in Tailwind units (h-8 w-8 = 32px).
+const STEP_DOT_SIZE_CLASS = 'h-8 w-8';
+// Duration for connector/colour transitions between step states, in ms.
+const TRANSITION_DURATION_MS = 500;
+// Opacity of the pulsing ring animation on the active step (30%).
+const PULSE_RING_OPACITY_CLASS = 'opacity-30';
+// Max lines shown for a step's description before truncating (kept as a literal
+// Tailwind class below — `line-clamp-2` — so the JIT scanner can detect it).
+const DESCRIPTION_MAX_LINES_CLASS = 'line-clamp-2';
+// Font size for the step timestamp, in px (10px = text-[10px]).
+const TIMESTAMP_FONT_SIZE_CLASS = 'text-[10px]';
+// Vertical connector line offsets (px): aligned to the center/bottom of the 32px dot.
+const VERTICAL_CONNECTOR_LEFT_PX = 15;
+const VERTICAL_CONNECTOR_TOP_PX = 32;
+// Horizontal connector line vertical offset (px), centers it on the dot.
+const HORIZONTAL_CONNECTOR_TOP_PX = 16;
+
 // ─── Status colours ─────────────────────────────────────────────────
 const STEP_STATE = {
   completed: {
@@ -61,11 +85,11 @@ function CheckIcon() {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2.5}
+      viewBox={`0 0 ${ICON_VIEWBOX_SIZE} ${ICON_VIEWBOX_SIZE}`}
+      strokeWidth={ICON_STROKE_WIDTH}
       stroke="currentColor"
       aria-hidden="true"
-      className="h-4 w-4"
+      className={ICON_SIZE_CLASS}
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
     </svg>
@@ -77,11 +101,11 @@ function XIcon() {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2.5}
+      viewBox={`0 0 ${ICON_VIEWBOX_SIZE} ${ICON_VIEWBOX_SIZE}`}
+      strokeWidth={ICON_STROKE_WIDTH}
       stroke="currentColor"
       aria-hidden="true"
-      className="h-4 w-4"
+      className={ICON_SIZE_CLASS}
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
     </svg>
@@ -92,7 +116,7 @@ function XIcon() {
 function PulseRing() {
   return (
     <span
-      className="absolute inset-0 rounded-full animate-ping opacity-30 bg-brand-500"
+      className={`absolute inset-0 rounded-full animate-ping ${PULSE_RING_OPACITY_CLASS} bg-brand-500`}
       aria-hidden="true"
     />
   );
@@ -115,13 +139,19 @@ function StepNode({ step, state, stepNumber, isLast, orientation }) {
         <div
           aria-hidden="true"
           className={`
-            absolute transition-colors duration-500
+            absolute transition-colors
             ${
               isVertical
-                ? `left-[15px] top-8 w-0.5 bottom-0 ${cfg.connector}`
-                : `top-4 left-1/2 w-full h-0.5 ${cfg.connector}`
+                ? `w-0.5 bottom-0 ${cfg.connector}`
+                : `left-1/2 w-full h-0.5 ${cfg.connector}`
             }
           `}
+          style={{
+            transitionDuration: `${TRANSITION_DURATION_MS}ms`,
+            ...(isVertical
+              ? { left: `${VERTICAL_CONNECTOR_LEFT_PX}px`, top: `${VERTICAL_CONNECTOR_TOP_PX}px` }
+              : { top: `${HORIZONTAL_CONNECTOR_TOP_PX}px` }),
+          }}
         />
       )}
 
@@ -129,10 +159,11 @@ function StepNode({ step, state, stepNumber, isLast, orientation }) {
       <div className={`relative flex-shrink-0 ${isVertical ? '' : 'z-10'}`}>
         <div
           className={`
-            relative h-8 w-8 rounded-full flex items-center justify-center
-            ring-2 transition-all duration-500
+            relative ${STEP_DOT_SIZE_CLASS} rounded-full flex items-center justify-center
+            ring-2 transition-all
             ${cfg.ring} ${cfg.bg}
           `}
+          style={{ transitionDuration: `${TRANSITION_DURATION_MS}ms` }}
         >
           {state === 'current' && <PulseRing />}
           {state === 'completed' && (
@@ -163,14 +194,16 @@ function StepNode({ step, state, stepNumber, isLast, orientation }) {
           {step.label}
         </p>
         {step.description && (
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+          <p
+            className={`mt-0.5 text-xs text-gray-500 dark:text-gray-400 ${DESCRIPTION_MAX_LINES_CLASS}`}
+          >
             {step.description}
           </p>
         )}
         {step.timestamp && (
           <time
             dateTime={new Date(step.timestamp).toISOString()}
-            className="mt-0.5 block text-[10px] text-gray-400 dark:text-gray-500 tabular-nums"
+            className={`mt-0.5 block ${TIMESTAMP_FONT_SIZE_CLASS} text-gray-400 dark:text-gray-500 tabular-nums`}
           >
             {new Date(step.timestamp).toLocaleString()}
           </time>
