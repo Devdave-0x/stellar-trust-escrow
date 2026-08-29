@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import Skeleton from './Skeleton';
+import EmptyState from './EmptyState';
 
-const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
-const REFRESH_INTERVAL_MS = 60_000; // 60 seconds — refresh when user stays on the page
+const HORIZON_URL =
+  process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+
+const REFRESH_INTERVAL_MS = 60_000;
 const STROOPS_PER_XLM = 10_000_000;
 
 async function fetchBaseFee() {
@@ -22,9 +25,19 @@ async function fetchBaseFee() {
     }
 
     const data = await response.json();
-    const baseFee = parseInt(data.last_ledger_base_fee ?? data.fee_charged?.min ?? 100, 10);
+
+    const rawFee =
+      data?.last_ledger_base_fee ??
+      data?.fee_charged?.min;
+
+    if (rawFee === undefined || rawFee === null || rawFee === '') {
+      return null;
+    }
+
+    const baseFee = parseInt(rawFee, 10);
+
     if (Number.isNaN(baseFee) || baseFee <= 0) {
-      throw new Error('Invalid fee estimate from Horizon');
+      return null;
     }
 
     return baseFee;
@@ -65,7 +78,11 @@ export default function FeeEstimator({ className = '' }) {
 
   useEffect(() => {
     loadFee();
-    intervalRef.current = setInterval(loadFee, REFRESH_INTERVAL_MS);
+
+    intervalRef.current = setInterval(
+      loadFee,
+      REFRESH_INTERVAL_MS,
+    );
 
     return () => {
       if (intervalRef.current) {
@@ -77,23 +94,38 @@ export default function FeeEstimator({ className = '' }) {
   return (
     <div
       className={`rounded-2xl border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-200 ${className}`}
-      role="status"
       aria-live="polite"
     >
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Estimated fee</p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="flex-1 space-y-1">
+          <p className="text-xs uppercase tracking-[0.24em] text-gray-500">
+            Estimated fee
+          </p>
+
           {loading ? (
             <div className="flex items-center gap-2">
               <Skeleton className="h-4 w-28 rounded-md" />
               <Skeleton className="h-4 w-18 rounded-md" />
             </div>
           ) : hasError ? (
-            <p className="text-amber-300">Fee unavailable — check your wallet before signing</p>
+            <p className="text-amber-300">
+              Fee unavailable — check your wallet before signing
+            </p>
+          ) : stroops === null ? (
+            <EmptyState
+              type="search"
+              title="No fee estimate available"
+              description="No fee data was returned. Try refreshing the estimate before signing."
+              actionLabel="Try again"
+              onAction={loadFee}
+              className="py-8"
+            />
           ) : (
             <p className="text-white font-semibold tabular-nums">
               {formatXlm(stroops)} XLM{' '}
-              <span className="text-gray-400 font-normal">({formatStroops(stroops)} stroops)</span>
+              <span className="text-gray-400 font-normal">
+                ({formatStroops(stroops)} stroops)
+              </span>
             </p>
           )}
         </div>
@@ -105,7 +137,10 @@ export default function FeeEstimator({ className = '' }) {
           className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-200 transition hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Refresh fee estimate"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw
+            size={14}
+            className={loading ? 'animate-spin' : ''}
+          />
           Refresh
         </button>
       </div>
