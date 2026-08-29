@@ -19,6 +19,11 @@ import { log, AuditCategory, AuditAction } from './auditService.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+/**
+ * Enumerates how a dispute was (or will be) resolved.
+ *
+ * @type {{AUTO: string, MANUAL: string, ESCALATED: string}}
+ */
 export const ResolutionType = {
   AUTO: 'AUTO',
   MANUAL: 'MANUAL',
@@ -42,6 +47,11 @@ const rules = [
    */
   {
     name: 'one_sided_evidence',
+    /**
+     * @param {Array<object>} evidence - DisputeEvidence records for this dispute
+     * @param {object} _escrow - Escrow context (unused by this rule)
+     * @returns {{fires: boolean, confidence?: number, clientSplit?: number, resolution?: string}}
+     */
     evaluate(evidence, _escrow) {
       const clientEvidence = evidence.filter((e) => e.role === 'client');
       const freelancerEvidence = evidence.filter((e) => e.role === 'freelancer');
@@ -74,6 +84,11 @@ const rules = [
    */
   {
     name: 'no_evidence',
+    /**
+     * @param {Array<object>} evidence - DisputeEvidence records for this dispute
+     * @param {object} escrow - Escrow context, including `raisedAt`
+     * @returns {{fires: boolean, confidence?: number, clientSplit?: number, resolution?: string}}
+     */
     evaluate(evidence, escrow) {
       if (evidence.length === 0) {
         const hoursOpen = (Date.now() - new Date(escrow.raisedAt).getTime()) / 3_600_000;
@@ -97,6 +112,11 @@ const rules = [
    */
   {
     name: 'milestone_approved_before_dispute',
+    /**
+     * @param {Array<object>} evidence - DisputeEvidence records (unused by this rule)
+     * @param {object} escrow - Escrow context, including `milestones` and `raisedAt`
+     * @returns {{fires: boolean, confidence?: number, clientSplit?: number, resolution?: string}}
+     */
     evaluate(evidence, escrow) {
       const hasApprovedMilestone = escrow.milestones?.some(
         (m) =>
@@ -123,6 +143,11 @@ const rules = [
    */
   {
     name: 'deadline_passed_no_submission',
+    /**
+     * @param {Array<object>} evidence - DisputeEvidence records (unused by this rule)
+     * @param {object} escrow - Escrow context, including `deadline` and `milestones`
+     * @returns {{fires: boolean, confidence?: number, clientSplit?: number, resolution?: string}}
+     */
     evaluate(evidence, escrow) {
       if (!escrow.deadline) return { fires: false };
       const deadlinePassed = new Date(escrow.deadline) < new Date();
@@ -422,6 +447,13 @@ export async function reviewAppeal(appealId, payload) {
   return updated;
 }
 
+/**
+ * Default export bundling all public dispute-resolution operations.
+ *
+ * @type {{submitEvidence: Function, runAutomatedResolution: Function,
+ *         getResolutionRecommendation: Function, submitAppeal: Function,
+ *         reviewAppeal: Function, evaluateRules: Function, ResolutionType: object}}
+ */
 export default {
   submitEvidence,
   runAutomatedResolution,
