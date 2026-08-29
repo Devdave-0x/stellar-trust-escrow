@@ -93,6 +93,60 @@ async function onEscrowStatusChange(id) {
   }
 }
 
+// ── Error responses ───────────────────────────────────────────────────────────
+
+/**
+ * Caller-safe reasons for error shapes we recognise. Anything not listed here
+ * collapses to a generic reason, so driver output (raw SQL, connection strings,
+ * credentials, tokens) can never reach the client.
+ */
+const FAILURE_REASONS = {
+  P1001: 'the database is unreachable',
+  P1002: 'the database connection timed out',
+  P1008: 'the database operation timed out',
+  P1017: 'the database closed the connection',
+  P2002: 'a record with those unique values already exists',
+  P2003: 'a related record referenced by this request does not exist',
+  P2024: 'the database connection pool is exhausted',
+  P2025: 'the requested record no longer exists',
+  ECONNREFUSED: 'a required upstream service refused the connection',
+  ECONNRESET: 'a required upstream service closed the connection',
+  ENOTFOUND: 'a required upstream service could not be resolved',
+  ETIMEDOUT: 'a required upstream service timed out',
+};
+
+const GENERIC_FAILURE_REASON = 'an unexpected internal error occurred';
+
+/** Reduce a caught error to a short reason that is safe to return to the caller. */
+function describeFailure(err) {
+  if (err?.code && FAILURE_REASONS[err.code]) return FAILURE_REASONS[err.code];
+  if (err?.name === 'PrismaClientValidationError') {
+    return 'the request produced an invalid database query';
+  }
+  if (err?.name === 'PrismaClientInitializationError') {
+    return 'the database connection could not be established';
+  }
+  if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {
+    return 'the operation timed out';
+  }
+  return GENERIC_FAILURE_REASON;
+}
+
+/**
+ * Respond 500 with the operation that failed and a safe reason for it. The
+ * request id lets an operator find the full error (message + stack) in the
+ * logs, which is where the unredacted detail stays.
+ */
+function sendServerError(res, operation, err, req) {
+  const body = {
+    error: `Failed to ${operation}: ${describeFailure(err)}`,
+    operation,
+  };
+  const requestId = req?.id;
+  if (requestId) body.requestId = requestId;
+  return res.status(500).json(body);
+}
+
 // ── Read handlers (cached at route level) ─────────────────────────────────────
 
 const listEscrows = async (req, res) => {
@@ -181,7 +235,7 @@ const listEscrows = async (req, res) => {
     res.json(buildCursorResponse(data, take, 'id', resolvedSortBy, resolvedSortOrder));
   } catch (err) {
     logControllerError('escrow.listEscrows', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'list escrows', err, req);
   }
 };
 
@@ -285,7 +339,7 @@ const exportEscrowsCsv = async (req, res) => {
   } catch (err) {
     logControllerError('escrow.exportEscrowsCsv', err, req);
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message });
+      sendServerError(res, 'export escrows to CSV', err, req);
     } else {
       res.destroy(err);
     }
@@ -352,7 +406,7 @@ const getEscrow = async (req, res) => {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.getEscrow', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'fetch the escrow', err, req);
   }
 };
 
@@ -439,7 +493,7 @@ const broadcastCreateEscrow = async (req, res) => {
     });
   } catch (err) {
     logControllerError('escrow.broadcastCreateEscrow', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'broadcast the escrow creation transaction', err, req);
   }
 };
 
@@ -491,7 +545,7 @@ const updateEscrowMetadata = async (req, res) => {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.updateEscrowMetadata', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'update the escrow metadata', err, req);
   }
 };
 
@@ -549,7 +603,7 @@ const deleteEscrow = async (req, res) => {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.deleteEscrow', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'delete the escrow', err, req);
   }
 };
 
@@ -671,7 +725,7 @@ const cloneEscrow = async (req, res) => {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.cloneEscrow', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'clone the escrow', err, req);
   }
 };
 
@@ -718,7 +772,7 @@ const getMilestones = async (req, res) => {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.getMilestones', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'list the escrow milestones', err, req);
   }
 };
 
@@ -750,7 +804,7 @@ const getMilestone = async (req, res) => {
     });
   } catch (err) {
     logControllerError('escrow.getMilestone', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'fetch the milestone', err, req);
   }
 };
 
@@ -821,7 +875,7 @@ const getTotalVolume = async (req, res) => {
     res.json(stats);
   } catch (err) {
     logControllerError('escrow.getTotalVolume', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'compute total escrow volume', err, req);
   }
 };
 
@@ -838,7 +892,7 @@ const getActiveEscrows = async (req, res) => {
     res.json(stats);
   } catch (err) {
     logControllerError('escrow.getActiveEscrows', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'count active escrows', err, req);
   }
 };
 
@@ -859,7 +913,7 @@ const getSuccessRate = async (req, res) => {
     res.json(stats);
   } catch (err) {
     logControllerError('escrow.getSuccessRate', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'compute the escrow success rate', err, req);
   }
 };
 
@@ -899,7 +953,7 @@ const getEscrowAudit = async (req, res) => {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.getEscrowAudit', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'fetch the escrow audit log', err, req);
   }
 };
 
@@ -945,7 +999,7 @@ const getMilestoneHistory = async (req, res) => {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.getMilestoneHistory', err, req);
-    res.status(500).json({ error: err.message });
+    sendServerError(res, 'fetch the milestone status history', err, req);
   }
 };
 

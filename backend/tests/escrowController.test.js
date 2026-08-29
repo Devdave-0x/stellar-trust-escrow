@@ -188,7 +188,10 @@ describe('escrowController', () => {
       await escrowController.listEscrows(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.body.error).toBe('DB Error');
+      expect(res.body.error).toBe('Failed to list escrows: an unexpected internal error occurred');
+      expect(res.body.operation).toBe('list escrows');
+      // the raw driver message stays in the logs, never in the response
+      expect(JSON.stringify(res.body)).not.toContain('DB Error');
     });
   });
 
