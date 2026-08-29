@@ -90,34 +90,46 @@ const recordEscrowCompletion = async (address, role, escrowId, tenantId) => {
   // Score delta: +10 for freelancer, +5 for client
   const scoreDelta = role === 'freelancer' ? 10 : 5;
 
-  // Upsert reputation event (idempotent on address, eventType, escrowId)
-  await prisma.reputationEvent.upsert({
-    where: {
-      address_eventType_escrowId: {
+  try {
+    // Upsert reputation event (idempotent on address, eventType, escrowId)
+    await prisma.reputationEvent.upsert({
+      where: {
+        address_eventType_escrowId: {
+          address,
+          eventType: 'ESCROW_COMPLETED',
+          escrowId,
+        },
+      },
+      create: {
         address,
         eventType: 'ESCROW_COMPLETED',
         escrowId,
+        scoreDelta,
+        tenantId,
       },
-    },
-    create: {
-      address,
-      eventType: 'ESCROW_COMPLETED',
-      escrowId,
-      scoreDelta,
-      tenantId,
-    },
-    update: {}, // No-op on conflict (already recorded)
-  });
+      update: {}, // No-op on conflict (already recorded)
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to record escrow completion event for ${address} (escrow ${escrowId}): ${toErrorMessage(error, 'unknown database error')}`,
+    );
+  }
 
-  // Atomically increment completedEscrows and totalScore
-  await prisma.reputationRecord.update({
-    where: { address },
-    data: {
-      completedEscrows: { increment: 1 },
-      totalScore: { increment: scoreDelta },
-      lastUpdated: new Date(),
-    },
-  });
+  try {
+    // Atomically increment completedEscrows and totalScore
+    await prisma.reputationRecord.update({
+      where: { address },
+      data: {
+        completedEscrows: { increment: 1 },
+        totalScore: { increment: scoreDelta },
+        lastUpdated: new Date(),
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to update reputation record for ${address} after escrow ${escrowId} completion: ${toErrorMessage(error, 'unknown database error')}`,
+    );
+  }
 };
 
 /**
@@ -132,24 +144,30 @@ const recordDisputeOutcome = async (address, won, escrowId, tenantId) => {
   const scoreDelta = won ? 15 : -5;
   const eventType = won ? 'DISPUTE_WON' : 'DISPUTE_LOST';
 
-  // Upsert reputation event (idempotent on address, eventType, escrowId)
-  await prisma.reputationEvent.upsert({
-    where: {
-      address_eventType_escrowId: {
+  try {
+    // Upsert reputation event (idempotent on address, eventType, escrowId)
+    await prisma.reputationEvent.upsert({
+      where: {
+        address_eventType_escrowId: {
+          address,
+          eventType,
+          escrowId,
+        },
+      },
+      create: {
         address,
         eventType,
         escrowId,
+        scoreDelta,
+        tenantId,
       },
-    },
-    create: {
-      address,
-      eventType,
-      escrowId,
-      scoreDelta,
-      tenantId,
-    },
-    update: {}, // No-op on conflict (already recorded)
-  });
+      update: {}, // No-op on conflict (already recorded)
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to record dispute outcome event (${eventType}) for ${address} (escrow ${escrowId}): ${toErrorMessage(error, 'unknown database error')}`,
+    );
+  }
 
   // Atomically update: increment/decrement score, track disputesWon
   const data = {
@@ -164,17 +182,30 @@ const recordDisputeOutcome = async (address, won, escrowId, tenantId) => {
     data.totalScore = { decrement: 5 };
   }
 
-  const updated = await prisma.reputationRecord.update({
-    where: { address },
-    data,
-  });
+  let updated;
+  try {
+    updated = await prisma.reputationRecord.update({
+      where: { address },
+      data,
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to update reputation record for ${address} after dispute outcome (${eventType}): ${toErrorMessage(error, 'unknown database error')}`,
+    );
+  }
 
   // Floor totalScore at 0
   if (updated.totalScore < 0) {
-    await prisma.reputationRecord.update({
-      where: { address },
-      data: { totalScore: 0 },
-    });
+    try {
+      await prisma.reputationRecord.update({
+        where: { address },
+        data: { totalScore: 0 },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to floor negative reputation score for ${address}: ${toErrorMessage(error, 'unknown database error')}`,
+      );
+    }
   }
 };
 
@@ -191,39 +222,58 @@ const recordEscrowCancellation = async (address, wasAtFault, escrowId, tenantId)
 
   const scoreDelta = -8;
 
-  // Upsert reputation event
-  await prisma.reputationEvent.upsert({
-    where: {
-      address_eventType_escrowId: {
+  try {
+    // Upsert reputation event
+    await prisma.reputationEvent.upsert({
+      where: {
+        address_eventType_escrowId: {
+          address,
+          eventType: 'CANCELLATION',
+          escrowId,
+        },
+      },
+      create: {
         address,
         eventType: 'CANCELLATION',
         escrowId,
+        scoreDelta,
+        tenantId,
       },
-    },
-    create: {
-      address,
-      eventType: 'CANCELLATION',
-      escrowId,
-      scoreDelta,
-      tenantId,
-    },
-    update: {}, // No-op on conflict
-  });
+      update: {}, // No-op on conflict
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to record cancellation event for ${address} (escrow ${escrowId}): ${toErrorMessage(error, 'unknown database error')}`,
+    );
+  }
 
-  // Decrement score, floor at 0
-  const updated = await prisma.reputationRecord.update({
-    where: { address },
-    data: {
-      totalScore: { decrement: 8 },
-      lastUpdated: new Date(),
-    },
-  });
+  let updated;
+  try {
+    // Decrement score, floor at 0
+    updated = await prisma.reputationRecord.update({
+      where: { address },
+      data: {
+        totalScore: { decrement: 8 },
+        lastUpdated: new Date(),
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to apply cancellation penalty to reputation record for ${address} (escrow ${escrowId}): ${toErrorMessage(error, 'unknown database error')}`,
+    );
+  }
 
   if (updated.totalScore < 0) {
-    await prisma.reputationRecord.update({
-      where: { address },
-      data: { totalScore: 0 },
-    });
+    try {
+      await prisma.reputationRecord.update({
+        where: { address },
+        data: { totalScore: 0 },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to floor negative reputation score for ${address}: ${toErrorMessage(error, 'unknown database error')}`,
+      );
+    }
   }
 };
 
@@ -237,18 +287,32 @@ const recalculateFromEventHistory = async (tenantId) => {
   const where = tenantId ? { tenantId } : {};
 
   // Get all unique addresses with events
-  const addresses = await prisma.reputationEvent.findMany({
-    where,
-    distinct: ['address'],
-    select: { address: true },
-  });
+  let addresses;
+  try {
+    addresses = await prisma.reputationEvent.findMany({
+      where,
+      distinct: ['address'],
+      select: { address: true },
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to load addresses for reputation recalculation${tenantId ? ` (tenant ${tenantId})` : ''}: ${toErrorMessage(error, 'unknown database error')}`,
+    );
+  }
 
   for (const { address } of addresses) {
-    // Fetch all events for this address, sorted by creation time
-    const events = await prisma.reputationEvent.findMany({
-      where: { address },
-      orderBy: { createdAt: 'asc' },
-    });
+    let events;
+    try {
+      // Fetch all events for this address, sorted by creation time
+      events = await prisma.reputationEvent.findMany({
+        where: { address },
+        orderBy: { createdAt: 'asc' },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to load event history for ${address} during recalculation: ${toErrorMessage(error, 'unknown database error')}`,
+      );
+    }
 
     // Compute score from scratch
     let totalScore = 0;
@@ -264,16 +328,22 @@ const recalculateFromEventHistory = async (tenantId) => {
     // Floor at 0
     totalScore = Math.max(0, totalScore);
 
-    // Update record
-    await prisma.reputationRecord.update({
-      where: { address },
-      data: {
-        totalScore,
-        completedEscrows,
-        disputesWon,
-        lastUpdated: new Date(),
-      },
-    });
+    try {
+      // Update record
+      await prisma.reputationRecord.update({
+        where: { address },
+        data: {
+          totalScore,
+          completedEscrows,
+          disputesWon,
+          lastUpdated: new Date(),
+        },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to persist recalculated reputation for ${address}: ${toErrorMessage(error, 'unknown database error')}`,
+      );
+    }
   }
 };
 
