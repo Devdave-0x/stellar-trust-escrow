@@ -56,6 +56,47 @@ const getPercentileRank = async (address) => {
 // ── Write Operations ────────────────────────────────────────────────────────
 
 /**
+ * Upsert a reputation event, idempotent on (address, eventType, escrowId).
+ * A repeat call for the same triple is a no-op.
+ *
+ * @param {object} params
+ * @param {string} params.address - Stellar address
+ * @param {string} params.eventType - Event discriminator
+ * @param {BigInt} params.escrowId - Escrow ID for idempotency
+ * @param {number} params.scoreDelta - Score change carried by the event
+ * @param {string} params.tenantId - Tenant context
+ */
+const recordReputationEvent = async ({ address, eventType, escrowId, scoreDelta, tenantId }) => {
+  await prisma.reputationEvent.upsert({
+    where: {
+      address_eventType_escrowId: {
+        address,
+        eventType,
+        escrowId,
+      },
+    },
+    create: {
+      address,
+      eventType,
+      escrowId,
+      scoreDelta,
+      tenantId,
+    },
+    update: {}, // No-op on conflict (already recorded)
+  });
+};
+
+/** Reset totalScore to 0 when a decrement pushed the record negative. */
+const floorScoreAtZero = async (address, record) => {
+  if (record.totalScore < 0) {
+    await prisma.reputationRecord.update({
+      where: { address },
+      data: { totalScore: 0 },
+    });
+  }
+};
+
+/**
  * Record escrow completion and update reputation.
  *
  * @param {string} address - Stellar address
@@ -67,23 +108,12 @@ const recordEscrowCompletion = async (address, role, escrowId, tenantId) => {
   // Score delta: +10 for freelancer, +5 for client
   const scoreDelta = role === 'freelancer' ? 10 : 5;
 
-  // Upsert reputation event (idempotent on address, eventType, escrowId)
-  await prisma.reputationEvent.upsert({
-    where: {
-      address_eventType_escrowId: {
-        address,
-        eventType: 'ESCROW_COMPLETED',
-        escrowId,
-      },
-    },
-    create: {
-      address,
-      eventType: 'ESCROW_COMPLETED',
-      escrowId,
-      scoreDelta,
-      tenantId,
-    },
-    update: {}, // No-op on conflict (already recorded)
+  await recordReputationEvent({
+    address,
+    eventType: 'ESCROW_COMPLETED',
+    escrowId,
+    scoreDelta,
+    tenantId,
   });
 
   // Atomically increment completedEscrows and totalScore
@@ -109,24 +139,7 @@ const recordDisputeOutcome = async (address, won, escrowId, tenantId) => {
   const scoreDelta = won ? 15 : -5;
   const eventType = won ? 'DISPUTE_WON' : 'DISPUTE_LOST';
 
-  // Upsert reputation event (idempotent on address, eventType, escrowId)
-  await prisma.reputationEvent.upsert({
-    where: {
-      address_eventType_escrowId: {
-        address,
-        eventType,
-        escrowId,
-      },
-    },
-    create: {
-      address,
-      eventType,
-      escrowId,
-      scoreDelta,
-      tenantId,
-    },
-    update: {}, // No-op on conflict (already recorded)
-  });
+  await recordReputationEvent({ address, eventType, escrowId, scoreDelta, tenantId });
 
   // Atomically update: increment/decrement score, track disputesWon
   const data = {
@@ -146,13 +159,7 @@ const recordDisputeOutcome = async (address, won, escrowId, tenantId) => {
     data,
   });
 
-  // Floor totalScore at 0
-  if (updated.totalScore < 0) {
-    await prisma.reputationRecord.update({
-      where: { address },
-      data: { totalScore: 0 },
-    });
-  }
+  await floorScoreAtZero(address, updated);
 };
 
 /**
@@ -168,23 +175,12 @@ const recordEscrowCancellation = async (address, wasAtFault, escrowId, tenantId)
 
   const scoreDelta = -8;
 
-  // Upsert reputation event
-  await prisma.reputationEvent.upsert({
-    where: {
-      address_eventType_escrowId: {
-        address,
-        eventType: 'CANCELLATION',
-        escrowId,
-      },
-    },
-    create: {
-      address,
-      eventType: 'CANCELLATION',
-      escrowId,
-      scoreDelta,
-      tenantId,
-    },
-    update: {}, // No-op on conflict
+  await recordReputationEvent({
+    address,
+    eventType: 'CANCELLATION',
+    escrowId,
+    scoreDelta,
+    tenantId,
   });
 
   // Decrement score, floor at 0
@@ -196,12 +192,7 @@ const recordEscrowCancellation = async (address, wasAtFault, escrowId, tenantId)
     },
   });
 
-  if (updated.totalScore < 0) {
-    await prisma.reputationRecord.update({
-      where: { address },
-      data: { totalScore: 0 },
-    });
-  }
+  await floorScoreAtZero(address, updated);
 };
 
 /**
