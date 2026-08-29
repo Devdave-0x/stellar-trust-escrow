@@ -47,4 +47,51 @@ describe('useReputation', () => {
     const { result } = renderHook(() => useReputation('GABC123'));
     expect(result.current.isLoading).toBe(false);
   });
+
+  it('treats an empty string address the same as no address (falsy input)', () => {
+    const { result } = renderHook(() => useReputation(''));
+    expect(result.current.reputation).toBeNull();
+    expect(result.current.badge).toBe('NEW');
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('surfaces an error for malformed (non-string, truthy) address input', () => {
+    const { result } = renderHook(() => useReputation({ not: 'a-valid-address' }));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.reputation).toBeNull();
+    expect(result.current.badge).toBe('NEW');
+  });
+
+  it('surfaces an error for a whitespace-only address (unhappy path)', () => {
+    const { result } = renderHook(() => useReputation('   '));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.error.message).toMatch(/not implemented/i);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('does not throw and returns a stable shape across re-renders with changing input', () => {
+    const { result, rerender } = renderHook(({ address }) => useReputation(address), {
+      initialProps: { address: null },
+    });
+    expect(result.current.error).toBeNull();
+
+    rerender({ address: 'GXYZ999' });
+    expect(result.current.error).toBeInstanceOf(Error);
+
+    rerender({ address: null });
+    expect(result.current.error).toBeNull();
+  });
+});
+
+describe('getBadgeFromScore — edge cases', () => {
+  it('handles boundary values exactly at thresholds', () => {
+    expect(getBadgeFromScore(0)).toBe('NEW');
+    expect(getBadgeFromScore(100)).toBe('TRUSTED');
+  });
+
+  it('handles malformed/negative numeric input without throwing', () => {
+    expect(getBadgeFromScore(-50)).toBe('NEW');
+    expect(getBadgeFromScore(NaN)).toBe('NEW');
+  });
 });
