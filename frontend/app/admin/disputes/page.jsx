@@ -206,7 +206,23 @@ export default function AdminDisputesPage() {
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading…</div>
         ) : disputes.length === 0 ? (
-          <div className="card text-center py-12 text-gray-500">No disputes found.</div>
+          <div className="card text-center py-16 text-gray-500">
+            <div className="text-4xl mb-3">🕊️</div>
+            <p className="text-white font-semibold mb-1">
+              {filter === 'false'
+                ? 'No open disputes right now'
+                : filter === 'true'
+                  ? 'No resolved disputes yet'
+                  : 'No disputes found'}
+            </p>
+            <p className="text-sm text-gray-500 max-w-sm mx-auto">
+              {filter === 'false'
+                ? "All escrows are running smoothly — nothing needs your attention."
+                : filter === 'true'
+                  ? 'Resolved disputes will show up here once you close one out.'
+                  : 'Try switching filters above, or check back once a dispute is raised.'}
+            </p>
+          </div>
         ) : (
           disputes.map((d) => (
             <div key={d.id} className="card">
