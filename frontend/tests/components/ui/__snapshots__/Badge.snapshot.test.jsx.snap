@@ -1,0 +1,145 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Badge snapshots renders default props 1`] = `
+<span
+  aria-label="Status: Default"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-gray-700/60 text-gray-300 border-gray-600/60"
+  data-size="md"
+  data-variant="neutral"
+  role="status"
+>
+  <span>
+    Default
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the dot indicator 1`] = `
+<span
+  aria-label="Status: With dot"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+  data-size="md"
+  data-variant="success"
+  role="status"
+>
+  <span
+    aria-hidden="true"
+    class="shrink-0 rounded-full h-2 w-2 bg-emerald-400"
+  />
+  <span>
+    With dot
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the error colour variant 1`] = `
+<span
+  aria-label="Status: error"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-red-500/15 text-red-300 border-red-500/30"
+  data-size="md"
+  data-variant="error"
+  role="status"
+>
+  <span>
+    error
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the info colour variant 1`] = `
+<span
+  aria-label="Status: info"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-blue-500/15 text-blue-300 border-blue-500/30"
+  data-size="md"
+  data-variant="info"
+  role="status"
+>
+  <span>
+    info
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the lg size 1`] = `
+<span
+  aria-label="Status: Sized"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-sm px-3 py-1.5 gap-2 bg-blue-500/15 text-blue-300 border-blue-500/30"
+  data-size="lg"
+  data-variant="info"
+  role="status"
+>
+  <span>
+    Sized
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the md size 1`] = `
+<span
+  aria-label="Status: Sized"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-blue-500/15 text-blue-300 border-blue-500/30"
+  data-size="md"
+  data-variant="info"
+  role="status"
+>
+  <span>
+    Sized
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the neutral colour variant 1`] = `
+<span
+  aria-label="Status: neutral"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-gray-700/60 text-gray-300 border-gray-600/60"
+  data-size="md"
+  data-variant="neutral"
+  role="status"
+>
+  <span>
+    neutral
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the sm size 1`] = `
+<span
+  aria-label="Status: Sized"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-[11px] px-2 py-0.5 gap-1.5 bg-blue-500/15 text-blue-300 border-blue-500/30"
+  data-size="sm"
+  data-variant="info"
+  role="status"
+>
+  <span>
+    Sized
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the success colour variant 1`] = `
+<span
+  aria-label="Status: success"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+  data-size="md"
+  data-variant="success"
+  role="status"
+>
+  <span>
+    success
+  </span>
+</span>
+`;
+
+exports[`Badge snapshots renders the warning colour variant 1`] = `
+<span
+  aria-label="Status: warning"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none text-xs px-2.5 py-1 gap-1.5 bg-amber-500/15 text-amber-300 border-amber-500/30"
+  data-size="md"
+  data-variant="warning"
+  role="status"
+>
+  <span>
+    warning
+  </span>
+</span>
+`;

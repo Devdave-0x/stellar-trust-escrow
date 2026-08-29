@@ -7,6 +7,12 @@
 
 import { listArchiveTables } from './escrowArchiveService.js';
 
+const ANALYTICS_EMPTY_STATE = {
+  title: 'No search analytics yet',
+  description: 'No searches have been recorded yet.',
+  action: 'Run a search to start tracking usage and zero-result queries.',
+};
+
 const analytics = {
   totalSearches: 0,
   topQueries: new Map(),
@@ -206,11 +212,21 @@ async function suggest(q, size = 5) {
 }
 
 function getAnalytics() {
-  return {
+  const result = {
     totalSearches: analytics.totalSearches,
     topQueries: mapTopEntries(analytics.topQueries),
     zeroResultQueries: mapTopEntries(analytics.zeroResultQueries),
   };
+
+  if (
+    analytics.totalSearches === 0 &&
+    !analytics.topQueries.size &&
+    !analytics.zeroResultQueries.size
+  ) {
+    return { ...result, emptyState: ANALYTICS_EMPTY_STATE };
+  }
+
+  return result;
 }
 
 async function reindex(prismaClient) {

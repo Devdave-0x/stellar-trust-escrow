@@ -83,19 +83,24 @@ export default function FeeEstimator({ className = '' }) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="space-y-1">
           <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Estimated fee</p>
-          {loading ? (
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-4 w-28 rounded-md" />
-              <Skeleton className="h-4 w-18 rounded-md" />
-            </div>
-          ) : hasError ? (
-            <p className="text-amber-300">Fee unavailable — check your wallet before signing</p>
-          ) : (
-            <p className="text-white font-semibold tabular-nums">
-              {formatXlm(stroops)} XLM{' '}
-              <span className="text-gray-400 font-normal">({formatStroops(stroops)} stroops)</span>
-            </p>
-          )}
+          <div className="min-h-[2.5rem] flex items-center" aria-busy={loading} aria-live="polite">
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <span className="sr-only">Loading fee estimate</span>
+                <Skeleton className="h-5 w-24 rounded-md" />
+                <Skeleton className="h-5 w-20 rounded-md" />
+              </div>
+            ) : hasError ? (
+              <p className="text-amber-300">Fee unavailable — check your wallet before signing</p>
+            ) : (
+              <p className="text-white font-semibold tabular-nums">
+                {formatXlm(stroops)} XLM{' '}
+                <span className="text-gray-400 font-normal">
+                  ({formatStroops(stroops)} stroops)
+                </span>
+              </p>
+            )}
+          </div>
         </div>
 
         <button

@@ -1,0 +1,211 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Modal snapshots renders nothing when closed (default props) 1`] = `null`;
+
+exports[`Modal snapshots renders open with a title 1`] = `
+<div
+  aria-labelledby="modal-title"
+  aria-modal="true"
+  class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  role="dialog"
+>
+  <div
+    class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+  />
+  <div
+    class="relative w-full max-w-md bg-gray-900 border border-gray-800
+                    rounded-2xl shadow-2xl p-6 space-y-4"
+  >
+    <div
+      class="flex items-start justify-between"
+    >
+      <h2
+        class="text-lg font-semibold text-white"
+        id="modal-title"
+      >
+        Confirm action
+      </h2>
+      <button
+        aria-label="Close modal"
+        class="ml-auto text-gray-500 hover:text-white transition-colors p-1 rounded-lg hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+        type="button"
+      >
+        ✕
+      </button>
+    </div>
+    <div>
+      Content
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Modal snapshots renders the confirmation footer variant 1`] = `
+<div
+  aria-labelledby="modal-title"
+  aria-modal="true"
+  class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  role="dialog"
+>
+  <div
+    class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+  />
+  <div
+    class="relative w-full max-w-md bg-gray-900 border border-gray-800
+                    rounded-2xl shadow-2xl p-6 space-y-4"
+  >
+    <div
+      class="flex items-start justify-between"
+    >
+      <h2
+        class="text-lg font-semibold text-white"
+        id="modal-title"
+      >
+        Are you sure?
+      </h2>
+      <button
+        aria-label="Close modal"
+        class="ml-auto text-gray-500 hover:text-white transition-colors p-1 rounded-lg hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+        type="button"
+      >
+        ✕
+      </button>
+    </div>
+    <div>
+      This cannot be undone.
+    </div>
+    <div
+      class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-800"
+    >
+      <button
+        aria-busy="false"
+        class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-4 py-2 text-sm gap-2 flex-1"
+        type="button"
+      >
+        Cancel
+      </button>
+      <button
+        aria-busy="false"
+        class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-800 px-4 py-2 text-sm gap-2 flex-1"
+        type="button"
+      >
+        Confirm
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Modal snapshots renders the lg size 1`] = `
+<div
+  aria-labelledby="modal-title"
+  aria-modal="true"
+  class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  role="dialog"
+>
+  <div
+    class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+  />
+  <div
+    class="relative w-full max-w-2xl bg-gray-900 border border-gray-800
+                    rounded-2xl shadow-2xl p-6 space-y-4"
+  >
+    <div
+      class="flex items-start justify-between"
+    >
+      <h2
+        class="text-lg font-semibold text-white"
+        id="modal-title"
+      >
+        Sized modal
+      </h2>
+      <button
+        aria-label="Close modal"
+        class="ml-auto text-gray-500 hover:text-white transition-colors p-1 rounded-lg hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+        type="button"
+      >
+        ✕
+      </button>
+    </div>
+    <div>
+      Content
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Modal snapshots renders the md size 1`] = `
+<div
+  aria-labelledby="modal-title"
+  aria-modal="true"
+  class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  role="dialog"
+>
+  <div
+    class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+  />
+  <div
+    class="relative w-full max-w-md bg-gray-900 border border-gray-800
+                    rounded-2xl shadow-2xl p-6 space-y-4"
+  >
+    <div
+      class="flex items-start justify-between"
+    >
+      <h2
+        class="text-lg font-semibold text-white"
+        id="modal-title"
+      >
+        Sized modal
+      </h2>
+      <button
+        aria-label="Close modal"
+        class="ml-auto text-gray-500 hover:text-white transition-colors p-1 rounded-lg hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+        type="button"
+      >
+        ✕
+      </button>
+    </div>
+    <div>
+      Content
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Modal snapshots renders the sm size 1`] = `
+<div
+  aria-labelledby="modal-title"
+  aria-modal="true"
+  class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  role="dialog"
+>
+  <div
+    class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+  />
+  <div
+    class="relative w-full max-w-sm bg-gray-900 border border-gray-800
+                    rounded-2xl shadow-2xl p-6 space-y-4"
+  >
+    <div
+      class="flex items-start justify-between"
+    >
+      <h2
+        class="text-lg font-semibold text-white"
+        id="modal-title"
+      >
+        Sized modal
+      </h2>
+      <button
+        aria-label="Close modal"
+        class="ml-auto text-gray-500 hover:text-white transition-colors p-1 rounded-lg hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+        type="button"
+      >
+        ✕
+      </button>
+    </div>
+    <div>
+      Content
+    </div>
+  </div>
+</div>
+`;

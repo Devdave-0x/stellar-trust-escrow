@@ -198,6 +198,30 @@ describe('searchController.getAnalytics', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual(mockAnalytics);
   });
+
+  it('returns an empty state when there are no search analytics yet', () => {
+    const mockAnalytics = {
+      totalSearches: 0,
+      topQueries: [],
+      zeroResultQueries: [],
+      emptyState: {
+        title: 'No search analytics yet',
+        description: 'No searches have been recorded yet.',
+        action: 'Run a search to start tracking usage and zero-result queries.',
+      },
+    };
+    searchServiceMock.getAnalytics.mockReturnValue(mockAnalytics);
+
+    const res = createRes();
+    searchController.getAnalytics({}, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.emptyState).toMatchObject({
+      title: 'No search analytics yet',
+      description: 'No searches have been recorded yet.',
+      action: 'Run a search to start tracking usage and zero-result queries.',
+    });
+  });
 });
 
 // ── reindex ───────────────────────────────────────────────────────────────────
