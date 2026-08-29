@@ -10,6 +10,45 @@ const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
 const DEFAULT_RETRY_ATTEMPTS = 5;
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
 
+/**
+ * Accessible labels for webhook delivery statuses.
+ *
+ * The admin/dev dashboard renders each delivery's status as an icon-only
+ * badge (checkmark, clock, warning triangle, etc). Screen reader users have
+ * no way to tell what an icon-only element means without a text label, so
+ * every status this service can produce ships with an `ariaLabel` here that
+ * the frontend attaches via `aria-label` on the icon button/badge, plus a
+ * human-readable `description` for tooltips.
+ */
+const DELIVERY_STATUS_LABELS = {
+  pending: {
+    ariaLabel: 'Delivery pending',
+    description: 'Webhook has been queued and has not been attempted yet.',
+  },
+  success: {
+    ariaLabel: 'Delivery succeeded',
+    description: 'Webhook was delivered and acknowledged with a 2xx response.',
+  },
+  failed: {
+    ariaLabel: 'Delivery failed',
+    description: 'Webhook exhausted all retry attempts without success.',
+  },
+  retrying: {
+    ariaLabel: 'Delivery retrying',
+    description: 'Webhook failed at least once and is scheduled for another attempt.',
+  },
+};
+
+/** Look up the accessible label metadata for a delivery status, with a safe fallback. */
+function getDeliveryStatusLabel(status) {
+  return (
+    DELIVERY_STATUS_LABELS[status] || {
+      ariaLabel: `Delivery status: ${status}`,
+      description: 'Unrecognized delivery status.',
+    }
+  );
+}
+
 function buildWebhookPayload(eventType, payload, deliveryId) {
   return {
     eventType,
@@ -99,7 +138,10 @@ async function getDeliveryHistory({ subscriptionId, createdBy, page = 1, limit =
     page,
     limit,
     total,
-    deliveries,
+    deliveries: deliveries.map((delivery) => ({
+      ...delivery,
+      statusLabel: getDeliveryStatusLabel(delivery.status),
+    })),
   };
 }
 
@@ -163,6 +205,8 @@ export {
   queueEventWebhooks,
   signPayload,
   buildWebhookPayload,
+  getDeliveryStatusLabel,
+  DELIVERY_STATUS_LABELS,
   SIGNATURE_HEADER,
   DELIVERY_ID_HEADER,
   EVENT_TYPE_HEADER,
@@ -175,4 +219,6 @@ export default {
   getDeliveryHistory,
   queueEventWebhooks,
   signPayload,
+  getDeliveryStatusLabel,
+  DELIVERY_STATUS_LABELS,
 };
