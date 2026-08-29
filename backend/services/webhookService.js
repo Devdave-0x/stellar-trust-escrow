@@ -7,8 +7,19 @@ import { enqueueWebhookDelivery } from '../queues/webhookQueue.js';
 const SIGNATURE_HEADER = 'X-Webhook-Signature';
 const DELIVERY_ID_HEADER = 'X-Webhook-Delivery-Id';
 const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
+
+/** Number of retry attempts the delivery queue makes before giving up on a webhook. */
 const DEFAULT_RETRY_ATTEMPTS = 5;
+/** Base delay (ms) for the exponential backoff between retry attempts. */
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
+/** Number of random bytes used to generate a subscription's HMAC signing secret. */
+const SUBSCRIPTION_SECRET_BYTE_LENGTH = 32;
+/** Hash algorithm used to sign outgoing webhook payloads. */
+const SIGNATURE_ALGORITHM = 'sha256';
+/** Default page number for paginated delivery history queries. */
+const DEFAULT_HISTORY_PAGE = 1;
+/** Default number of delivery records returned per history page. */
+const DEFAULT_HISTORY_PAGE_SIZE = 30;
 
 function buildWebhookPayload(eventType, payload, deliveryId) {
   return {
@@ -20,11 +31,14 @@ function buildWebhookPayload(eventType, payload, deliveryId) {
 }
 
 function generateSecret() {
-  return crypto.randomBytes(32).toString('hex');
+  return crypto.randomBytes(SUBSCRIPTION_SECRET_BYTE_LENGTH).toString('hex');
 }
 
 function signPayload(secret, payload) {
-  return crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+  return crypto
+    .createHmac(SIGNATURE_ALGORITHM, secret)
+    .update(JSON.stringify(payload))
+    .digest('hex');
 }
 
 async function createSubscription({ url, eventTypes, createdBy }) {
@@ -71,7 +85,12 @@ async function deleteSubscription({ id, createdBy }) {
   return deleted.count > 0;
 }
 
-async function getDeliveryHistory({ subscriptionId, createdBy, page = 1, limit = 30 }) {
+async function getDeliveryHistory({
+  subscriptionId,
+  createdBy,
+  page = DEFAULT_HISTORY_PAGE,
+  limit = DEFAULT_HISTORY_PAGE_SIZE,
+}) {
   const skip = (page - 1) * limit;
   const [deliveries, total] = await Promise.all([
     prisma.webhookDelivery.findMany({
@@ -166,6 +185,12 @@ export {
   SIGNATURE_HEADER,
   DELIVERY_ID_HEADER,
   EVENT_TYPE_HEADER,
+  DEFAULT_RETRY_ATTEMPTS,
+  DEFAULT_BACKOFF_DELAY_MS,
+  SUBSCRIPTION_SECRET_BYTE_LENGTH,
+  SIGNATURE_ALGORITHM,
+  DEFAULT_HISTORY_PAGE,
+  DEFAULT_HISTORY_PAGE_SIZE,
 };
 
 export default {
