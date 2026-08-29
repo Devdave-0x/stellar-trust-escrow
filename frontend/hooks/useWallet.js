@@ -73,6 +73,23 @@ function toErrorMessage(err, fallback) {
   return fallback;
 }
 
+/**
+ * React hook that manages Freighter wallet connection state across the app.
+ * Detects whether Freighter is installed, auto-restores an existing
+ * connection on mount, and exposes helpers to connect and sign transactions.
+ *
+ * @returns {{
+ *   address: string|null,
+ *   network: ('testnet'|'mainnet'|null),
+ *   isConnected: boolean,
+ *   isFreighterInstalled: boolean,
+ *   isConnecting: boolean,
+ *   error: string|null,
+ *   connect: () => Promise<void>,
+ *   disconnect: () => void,
+ *   signTx: (unsignedXdr: string) => Promise<string>,
+ * }} Wallet state and actions.
+ */
 export function useWallet() {
   const {
     address,
@@ -116,6 +133,13 @@ export function useWallet() {
   }, [isFreighterInstalled, finishConnect]);
 
   // ── Connect ────────────────────────────────────────────────────────────────
+  /**
+   * Prompts the user to connect their Freighter wallet and stores the
+   * resulting address and network in the wallet store.
+   *
+   * @returns {Promise<void>} Resolves once the connect attempt finishes;
+   *   failures are surfaced via the hook's `error` state rather than a throw.
+   */
   const connect = useCallback(async () => {
     startConnect();
     try {
