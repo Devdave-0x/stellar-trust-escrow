@@ -4,10 +4,32 @@ const DISPUTE_EMPTY_STATE = {
   action: 'Adjust the dispute filters or create a dispute before retrying.',
 };
 
-export function getDisputeEmptyState() {
-  return DISPUTE_EMPTY_STATE;
+/**
+ * Standardized null or undefined check helper.
+ */
+export function isNil(val) {
+  return val == null;
+}
+
+export function getDisputeEmptyState(query) {
+  if (isNil(query)) {
+    return DISPUTE_EMPTY_STATE;
+  }
+  return {
+    ...DISPUTE_EMPTY_STATE,
+    query,
+  };
+}
+
+export function validateDisputeInput(escrowId, reason) {
+  if (isNil(escrowId) || isNil(reason)) {
+    throw new Error('Escrow ID and reason are required');
+  }
+  return true;
 }
 
 export default {
+  isNil,
   getDisputeEmptyState,
+  validateDisputeInput,
 };

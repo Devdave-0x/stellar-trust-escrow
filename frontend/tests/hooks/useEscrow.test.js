@@ -142,3 +142,14 @@ describe('useEscrowList', () => {
     expect(result.current.escrows).toEqual([]);
   });
 });
+
+
+describe('useEscrow null/undefined regression tests (#456)', () => {
+  it('handles null and undefined id consistently', () => {
+    renderHook(() => useEscrow(null));
+    expect(useSWR).toHaveBeenLastCalledWith(null, expect.any(Function), expect.any(Object));
+
+    renderHook(() => useEscrow(undefined));
+    expect(useSWR).toHaveBeenLastCalledWith(null, expect.any(Function), expect.any(Object));
+  });
+});
