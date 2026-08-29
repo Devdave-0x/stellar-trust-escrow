@@ -5,6 +5,19 @@ const BADGE_THRESHOLDS = {
   ELITE: 1000,
 };
 
+// Icon-only badge glyphs paired with an accessible label. Any UI (frontend
+// components, PDF exports, email templates) that renders a badge as a bare
+// icon/emoji must surface `ariaLabel` (e.g. as an `aria-label` attribute or
+// screen-reader-only text) rather than the glyph alone, so assistive
+// technology users can tell what the icon represents.
+const BADGE_ICONS = {
+  NEW: { icon: '⭐', ariaLabel: 'New member badge' },
+  TRUSTED: { icon: '✅', ariaLabel: 'Trusted member badge' },
+  VERIFIED: { icon: '✔️', ariaLabel: 'Verified member badge' },
+  EXPERT: { icon: '🏆', ariaLabel: 'Expert member badge' },
+  ELITE: { icon: '💎', ariaLabel: 'Elite member badge' },
+};
+
 import prisma from '../lib/prisma.js';
 
 function toErrorMessage(error, fallback) {
@@ -38,6 +51,18 @@ const getBadge = (score) => {
   if (s >= BADGE_THRESHOLDS.VERIFIED) return 'VERIFIED';
   if (s >= BADGE_THRESHOLDS.TRUSTED) return 'TRUSTED';
   return 'NEW';
+};
+
+/**
+ * Returns the icon glyph and accessible label for a badge tier, for use by
+ * any icon-only UI element (frontend badge chip, PDF export, email
+ * template) rendering the reputation badge.
+ *
+ * @param {string} badge - one of BADGE_THRESHOLDS keys, or 'NEW'
+ * @returns {{ icon: string, ariaLabel: string }}
+ */
+const getBadgeIcon = (badge) => {
+  return BADGE_ICONS[badge] ?? BADGE_ICONS.NEW;
 };
 
 const computeCompletionRate = (completed, disputed) => {
@@ -279,8 +304,10 @@ const recalculateFromEventHistory = async (tenantId) => {
 
 export {
   BADGE_THRESHOLDS,
+  BADGE_ICONS,
   computeCompletionRate,
   getBadge,
+  getBadgeIcon,
   getLeaderboard,
   getPercentileRank,
   getReputationByAddress,
@@ -293,6 +320,8 @@ export {
 export default {
   getReputationByAddress,
   getBadge,
+  getBadgeIcon,
+  BADGE_ICONS,
   computeCompletionRate,
   getLeaderboard,
   getPercentileRank,
