@@ -19,6 +19,15 @@ const log = getLogger();
 const logControllerError = (ctx, err, req) =>
   log.error({ err, ctx, path: req?.path }, 'Controller error');
 
+const formatControllerError = (ctx, err) => {
+  const reason = err?.message || 'Unknown error';
+  const safeReason = reason.replace(
+    /(secret|token|password|authorization|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi,
+    '$1=[REDACTED]',
+  );
+  return `${ctx}: ${safeReason}`;
+};
+
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 // Public leaderboard responses are intentionally capped to avoid oversized payloads.
 const LEADERBOARD_MAX_LIMIT = 50;
@@ -48,8 +57,9 @@ const getReputation = async (req, res) => {
       },
     );
   } catch (err) {
+    const errorMessage = formatControllerError('Failed to fetch reputation record', err);
     logControllerError('reputation.getReputation', err, req);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: errorMessage });
   }
 };
 
@@ -78,7 +88,8 @@ const getLeaderboard = async (req, res) => {
     res.set('X-Data-Source', source);
     res.json(buildPaginatedResponse(data, { total, page, limit }));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const errorMessage = formatControllerError('Failed to fetch leaderboard', err);
+    res.status(500).json({ error: errorMessage });
   }
 };
 
@@ -91,7 +102,10 @@ const getLeaderboard = async (req, res) => {
 const search = async (req, res) => {
   try {
     const q = (req.query.q ?? '').trim();
-    const limit = Math.min(parseInt(req.query.limit ?? String(SEARCH_DEFAULT_LIMIT), 10), SEARCH_MAX_LIMIT);
+    const limit = Math.min(
+      parseInt(req.query.limit ?? String(SEARCH_DEFAULT_LIMIT), 10),
+      SEARCH_MAX_LIMIT,
+    );
     const from = parseInt(req.query.from ?? '0', 10);
     const tenantId = req.tenant?.id;
 
@@ -104,8 +118,9 @@ const search = async (req, res) => {
     res.set('X-Data-Source', source);
     res.json({ data: hits, total, limit, from });
   } catch (err) {
+    const errorMessage = formatControllerError('Failed to search reputation records', err);
     logControllerError('reputation.getLeaderboard', err, req);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: errorMessage });
   }
 };
 
@@ -134,8 +149,9 @@ const recalculate = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
+    const errorMessage = formatControllerError('Failed to recalculate reputation scores', err);
     logControllerError('reputation.recalculate', err, req);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: errorMessage });
   }
 };
 
