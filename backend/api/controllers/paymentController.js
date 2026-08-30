@@ -82,7 +82,14 @@ const listByAddress = async (req, res) => {
         .json({ error: 'Forbidden: cannot access another wallet payment history.' });
     }
     const payments = await paymentService.getByAddress(address);
-    res.json(payments);
+    if (payments.length === 0) {
+      return res.json({
+        data: payments,
+        message:
+          'No payments found for this wallet yet. Fund an escrow or make a payment to see your activity here.',
+      });
+    }
+    res.json({ data: payments });
   } catch (err) {
     logControllerError('payment.listByAddress', err, req);
     res.status(500).json({ error: err.message });
