@@ -16,6 +16,11 @@ const kycServiceMock = {
   getStatus: jest.fn(),
 };
 
+const loggerMock = {
+  getLogger: jest.fn(() => ({ warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() })),
+  logControllerError: jest.fn(),
+};
+
 jest.unstable_mockModule('../services/paymentService.js', () => ({
   default: paymentServiceMock,
 }));
@@ -23,6 +28,8 @@ jest.unstable_mockModule('../services/paymentService.js', () => ({
 jest.unstable_mockModule('../services/kycService.js', () => ({
   default: kycServiceMock,
 }));
+
+jest.unstable_mockModule('../config/logger.js', () => loggerMock);
 
 const { default: paymentController } = await import('../api/controllers/paymentController.js');
 
@@ -109,5 +116,51 @@ describe('paymentController authorization', () => {
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(paymentServiceMock.refund).not.toHaveBeenCalled();
+  });
+});
+
+describe('paymentController.listByAddress empty state', () => {
+  const baseReq = {
+    params: { address: ADDRESS_A },
+    user: { address: ADDRESS_A },
+  };
+
+  it('returns a friendly empty state when the wallet has no payments', async () => {
+    paymentServiceMock.getByAddress.mockResolvedValue([]);
+    const res = createMockRes();
+
+    await paymentController.listByAddress(baseReq, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.body.data).toEqual([]);
+    expect(res.body.message).toMatch(/No payments found for this wallet yet/);
+  });
+
+  it('returns the payments in a data envelope when the list is non-empty', async () => {
+    const payments = [
+      { id: 'pay_1', escrowId: 'esc_1', status: 'Completed' },
+      { id: 'pay_2', escrowId: 'esc_2', status: 'Pending' },
+    ];
+    paymentServiceMock.getByAddress.mockResolvedValue(payments);
+    const res = createMockRes();
+
+    await paymentController.listByAddress(baseReq, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.body.data).toEqual(payments);
+    expect(res.body.message).toBeUndefined();
+  });
+
+  it('still rejects an empty state request for another wallets history', async () => {
+    const req = {
+      params: { address: ADDRESS_B },
+      user: { address: ADDRESS_A },
+    };
+    const res = createMockRes();
+
+    await paymentController.listByAddress(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(paymentServiceMock.getByAddress).not.toHaveBeenCalled();
   });
 });
