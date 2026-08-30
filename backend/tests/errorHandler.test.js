@@ -16,7 +16,7 @@ import {
   AuthError,
   ForbiddenError,
   errorHandler,
-} from '../../middleware/errorHandler.js';
+} from '../middleware/errorHandler.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
