@@ -25,6 +25,7 @@ import ThemeToggle from './ThemeToggle';
 import CurrencySelector from '../ui/CurrencySelector';
 import NetworkIndicator from './NetworkIndicator';
 import NotificationPanel from './NotificationPanel';
+import RateTicker from './RateTicker';
 
 export default function Header() {
   const wallet = useWallet();
@@ -83,6 +84,9 @@ export default function Header() {
           <div className="flex items-center gap-3">
             {/* Network Indicator */}
             <NetworkIndicator network={wallet.network} isConnected={wallet.isConnected} />
+
+            {/* Live XLM rate with friendly empty state */}
+            <RateTicker />
 
             {/* Wallet Status */}
             <WalletStatus wallet={wallet} />
