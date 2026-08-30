@@ -161,6 +161,13 @@ describe('webhookService HMAC utilities — unit', () => {
       expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, null)).toBe(false);
     });
 
+    it('returns false when any required value is nullish', () => {
+      const sig = signPayload(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD);
+      expect(verifySignature(undefined, TEST_TIMESTAMP, TEST_PAYLOAD, sig)).toBe(false);
+      expect(verifySignature(TEST_SECRET, undefined, TEST_PAYLOAD, sig)).toBe(false);
+      expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, null, sig)).toBe(false);
+    });
+
     it('returns false for an empty string signature', () => {
       expect(verifySignature(TEST_SECRET, TEST_TIMESTAMP, TEST_PAYLOAD, '')).toBe(false);
     });
