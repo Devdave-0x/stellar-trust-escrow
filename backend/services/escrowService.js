@@ -8,6 +8,7 @@
 import { withTransaction } from '../lib/transaction.js';
 import prisma from '../lib/prisma.js';
 import { recordEscrowStateTransition } from '../lib/metrics.js';
+import { assertEscrowStatus, createAdminAuditLog } from '../lib/escrowServiceHelpers.js';
 
 export async function fundEscrow(data) {
   return withTransaction(
@@ -29,14 +30,11 @@ export async function fundEscrow(data) {
         },
       });
 
-      await tx.adminAuditLog.create({
-        data: {
-          action: 'ESCROW_FUNDED',
-          targetAddress: data.clientAddress,
-          reason: `Escrow ${escrow.id} funded with ${data.totalAmount}`,
-          performedBy: data.clientAddress,
-          performedAt: new Date(),
-        },
+      await createAdminAuditLog(tx, {
+        action: 'ESCROW_FUNDED',
+        targetAddress: data.clientAddress,
+        reason: `Escrow ${escrow.id} funded with ${data.totalAmount}`,
+        performedBy: data.clientAddress,
       });
 
       recordEscrowStateTransition('null', 'Active');
@@ -54,9 +52,7 @@ export async function releaseMilestone({ escrowId, milestoneIndex, amount, calle
       select: { remainingBalance: true, status: true },
     });
 
-    if (escrow.status !== 'Active') {
-      throw Object.assign(new Error('Escrow is not active'), { statusCode: 409 });
-    }
+    assertEscrowStatus(escrow, 'Active', 'Escrow is not active', 409);
 
     const newBalance = BigInt(escrow.remainingBalance) - BigInt(amount);
     if (newBalance < 0n) {
@@ -80,14 +76,11 @@ export async function releaseMilestone({ escrowId, milestoneIndex, amount, calle
           ...(newBalance === 0n ? { status: 'Completed' } : {}),
         },
       }),
-      tx.adminAuditLog.create({
-        data: {
-          action: 'MILESTONE_RELEASED',
-          targetAddress: callerAddress,
-          reason: `Milestone ${milestoneIndex} of escrow ${escrowId} released`,
-          performedBy: callerAddress,
-          performedAt: new Date(),
-        },
+      createAdminAuditLog(tx, {
+        action: 'MILESTONE_RELEASED',
+        targetAddress: callerAddress,
+        reason: `Milestone ${milestoneIndex} of escrow ${escrowId} released`,
+        performedBy: callerAddress,
       }),
       tx.milestoneStatusHistory.create({
         data: {
@@ -117,25 +110,18 @@ export async function raiseDispute({ escrowId, raisedByAddress, milestoneIndex }
         select: { status: true },
       });
 
-      if (escrow.status !== 'Active') {
-        throw Object.assign(new Error('Escrow must be Active to raise a dispute'), {
-          statusCode: 409,
-        });
-      }
+      assertEscrowStatus(escrow, 'Active', 'Escrow must be Active to raise a dispute', 409);
 
       const ops = [
         tx.escrow.update({ where: { id: BigInt(escrowId) }, data: { status: 'Disputed' } }),
         tx.dispute.create({
           data: { escrowId: BigInt(escrowId), raisedByAddress, raisedAt: new Date() },
         }),
-        tx.adminAuditLog.create({
-          data: {
-            action: 'DISPUTE_RAISED',
-            targetAddress: raisedByAddress,
-            reason: `Dispute raised on escrow ${escrowId}`,
-            performedBy: raisedByAddress,
-            performedAt: new Date(),
-          },
+        createAdminAuditLog(tx, {
+          action: 'DISPUTE_RAISED',
+          targetAddress: raisedByAddress,
+          reason: `Dispute raised on escrow ${escrowId}`,
+          performedBy: raisedByAddress,
         }),
       ];
 
@@ -192,9 +178,7 @@ export async function resolveDispute({
         select: { status: true, remainingBalance: true },
       });
 
-      if (escrow.status !== 'Disputed') {
-        throw Object.assign(new Error('Escrow is not in Disputed state'), { statusCode: 409 });
-      }
+      assertEscrowStatus(escrow, 'Disputed', 'Escrow is not in Disputed state', 409);
 
       const total = BigInt(clientAmount) + BigInt(freelancerAmount);
       if (total !== BigInt(escrow.remainingBalance)) {
@@ -218,14 +202,11 @@ export async function resolveDispute({
             resolution,
           },
         }),
-        tx.adminAuditLog.create({
-          data: {
-            action: 'DISPUTE_RESOLVED',
-            targetAddress: resolvedBy,
-            reason: resolution ?? `Dispute on escrow ${escrowId} resolved`,
-            performedBy: resolvedBy,
-            performedAt: new Date(),
-          },
+        createAdminAuditLog(tx, {
+          action: 'DISPUTE_RESOLVED',
+          targetAddress: resolvedBy,
+          reason: resolution ?? `Dispute on escrow ${escrowId} resolved`,
+          performedBy: resolvedBy,
         }),
       ]);
 

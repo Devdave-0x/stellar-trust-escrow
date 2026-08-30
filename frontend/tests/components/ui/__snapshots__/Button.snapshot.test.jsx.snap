@@ -1,0 +1,126 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Button snapshots renders default props 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 px-4 py-2 text-sm gap-2"
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the danger variant 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-800 px-4 py-2 text-sm gap-2"
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the disabled state 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 px-4 py-2 text-sm gap-2 opacity-50 cursor-not-allowed pointer-events-none"
+  disabled=""
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the ghost variant 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-transparent hover:bg-gray-800 text-gray-400 border border-transparent px-4 py-2 text-sm gap-2"
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the lg size 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 px-5 py-2.5 text-base gap-2"
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the loading state 1`] = `
+<button
+  aria-busy="true"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 px-4 py-2 text-sm gap-2 opacity-50 cursor-not-allowed pointer-events-none"
+  disabled=""
+  type="button"
+>
+  <svg
+    aria-hidden="true"
+    class="animate-spin h-4 w-4 shrink-0"
+    fill="none"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      class="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      stroke-width="4"
+    />
+    <path
+      class="opacity-75"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+      fill="currentColor"
+    />
+  </svg>
+  <span>
+    …
+  </span>
+</button>
+`;
+
+exports[`Button snapshots renders the md size 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 px-4 py-2 text-sm gap-2"
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the primary variant 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 px-4 py-2 text-sm gap-2"
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the secondary variant 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-4 py-2 text-sm gap-2"
+  type="button"
+>
+  Click me
+</button>
+`;
+
+exports[`Button snapshots renders the sm size 1`] = `
+<button
+  aria-busy="false"
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 px-3 py-1.5 text-sm gap-1.5"
+  type="button"
+>
+  Click me
+</button>
+`;

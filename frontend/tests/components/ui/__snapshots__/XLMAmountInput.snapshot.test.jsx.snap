@@ -1,0 +1,118 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`XLMAmountInput snapshots renders a controlled value 1`] = `
+<div
+  class="relative flex flex-col "
+>
+  <div
+    class="relative flex items-center"
+  >
+    <span
+      aria-hidden="true"
+      class="absolute left-3 text-gray-400 text-sm font-medium select-none pointer-events-none"
+    >
+      XLM
+    </span>
+    <input
+      aria-invalid="false"
+      class="w-full bg-gray-800 border rounded-lg pl-12 pr-4 py-2.5
+                      text-white placeholder-gray-500 focus:outline-none transition-colors
+                      border-gray-700 focus:border-indigo-500
+                      "
+      placeholder="0.00"
+      type="number"
+      value="42.5"
+    />
+  </div>
+</div>
+`;
+
+exports[`XLMAmountInput snapshots renders default props 1`] = `
+<div
+  class="relative flex flex-col "
+>
+  <div
+    class="relative flex items-center"
+  >
+    <span
+      aria-hidden="true"
+      class="absolute left-3 text-gray-400 text-sm font-medium select-none pointer-events-none"
+    >
+      XLM
+    </span>
+    <input
+      aria-invalid="false"
+      class="w-full bg-gray-800 border rounded-lg pl-12 pr-4 py-2.5
+                      text-white placeholder-gray-500 focus:outline-none transition-colors
+                      border-gray-700 focus:border-indigo-500
+                      "
+      placeholder="0.00"
+      type="number"
+      value=""
+    />
+  </div>
+</div>
+`;
+
+exports[`XLMAmountInput snapshots renders the disabled state 1`] = `
+<div
+  class="relative flex flex-col "
+>
+  <div
+    class="relative flex items-center"
+  >
+    <span
+      aria-hidden="true"
+      class="absolute left-3 text-gray-400 text-sm font-medium select-none pointer-events-none"
+    >
+      XLM
+    </span>
+    <input
+      aria-invalid="false"
+      class="w-full bg-gray-800 border rounded-lg pl-12 pr-4 py-2.5
+                      text-white placeholder-gray-500 focus:outline-none transition-colors
+                      border-gray-700 focus:border-indigo-500
+                      "
+      disabled=""
+      placeholder="0.00"
+      type="number"
+      value="10"
+    />
+  </div>
+</div>
+`;
+
+exports[`XLMAmountInput snapshots renders the error variant 1`] = `
+<div
+  class="relative flex flex-col "
+>
+  <div
+    class="relative flex items-center"
+  >
+    <span
+      aria-hidden="true"
+      class="absolute left-3 text-gray-400 text-sm font-medium select-none pointer-events-none"
+    >
+      XLM
+    </span>
+    <input
+      aria-describedby="amount-error"
+      aria-invalid="true"
+      class="w-full bg-gray-800 border rounded-lg pl-12 pr-4 py-2.5
+                      text-white placeholder-gray-500 focus:outline-none transition-colors
+                      border-red-500 focus:border-red-400
+                      "
+      placeholder="0.00"
+      type="number"
+      value="0"
+    />
+  </div>
+  <p
+    class="mt-1 text-xs text-red-400"
+    id="amount-error"
+    role="alert"
+  >
+    Amount must be greater than zero
+  </p>
+</div>
+`;

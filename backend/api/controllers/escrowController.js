@@ -36,6 +36,11 @@ import {
   getLastStatusChangeBatch,
   formatStatusChange,
 } from '../../services/milestoneHistoryService.js';
+import {
+  parseEscrowId,
+  checkEscrowPartyAccess,
+  buildDateRangeFilter,
+} from '../../lib/escrowControllerHelpers.js';
 
 const ESCROW_SUMMARY_SELECT = {
   id: true,
@@ -143,15 +148,8 @@ const listEscrows = async (req, res) => {
     if (minAmount) where.totalAmount = { ...where.totalAmount, gte: String(minAmount) };
     if (maxAmount) where.totalAmount = { ...where.totalAmount, lte: String(maxAmount) };
 
-    if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
-      if (dateTo) {
-        const end = new Date(dateTo);
-        end.setHours(23, 59, 59, 999);
-        where.createdAt.lte = end;
-      }
-    }
+    const dateFilter = buildDateRangeFilter(dateFrom, dateTo);
+    if (dateFilter) where.createdAt = dateFilter;
 
     // metadata[key]=value query filter, e.g. ?metadata[propertyType]=condo
     if (req.query.metadata && typeof req.query.metadata === 'object') {
@@ -214,15 +212,8 @@ const exportEscrowsCsv = async (req, res) => {
       deletedAt: null,
       OR: [{ clientAddress: address }, { freelancerAddress: address }],
     };
-    if (from || to) {
-      where.createdAt = {};
-      if (from) where.createdAt.gte = new Date(from);
-      if (to) {
-        const end = new Date(to);
-        end.setHours(23, 59, 59, 999);
-        where.createdAt.lte = end;
-      }
-    }
+    const dateFilter = buildDateRangeFilter(from, to);
+    if (dateFilter) where.createdAt = dateFilter;
 
     const dateStamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'text/csv');
@@ -294,7 +285,7 @@ const exportEscrowsCsv = async (req, res) => {
 
 const getEscrow = async (req, res) => {
   try {
-    const id = BigInt(req.params.id);
+    const id = parseEscrowId(req.params.id);
 
     const escrow = await prisma.escrow.findUnique({
       where: { id },
@@ -348,7 +339,7 @@ const getEscrow = async (req, res) => {
 
     return res.status(404).json({ error: 'Escrow not found' });
   } catch (err) {
-    if (err.message?.includes('Cannot convert')) {
+    if (err.statusCode === 400 || err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.getEscrow', err, req);
@@ -450,7 +441,7 @@ const broadcastCreateEscrow = async (req, res) => {
  */
 const updateEscrowMetadata = async (req, res) => {
   try {
-    const id = BigInt(req.params.id);
+    const id = parseEscrowId(req.params.id);
     const { metadata } = req.body;
 
     if (metadata === undefined || metadata === null || typeof metadata !== 'object') {
@@ -468,12 +459,9 @@ const updateEscrowMetadata = async (req, res) => {
     });
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
 
-    const callerAddress = req.user?.address;
-    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
-    const isParty =
-      callerAddress === escrow.clientAddress || callerAddress === escrow.freelancerAddress;
-    if (!isAdmin && !isParty) {
-      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    const partyAccess = checkEscrowPartyAccess(req.user, escrow);
+    if (!partyAccess.allowed) {
+      return res.status(partyAccess.statusCode).json({ error: partyAccess.error });
     }
 
     const merged = { ...(escrow.metadata ?? {}), ...metadata };
@@ -487,7 +475,7 @@ const updateEscrowMetadata = async (req, res) => {
 
     res.json({ id: updated.id.toString(), metadata: updated.metadata });
   } catch (err) {
-    if (err.message?.includes('Cannot convert')) {
+    if (err.statusCode === 400 || err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.updateEscrowMetadata', err, req);
@@ -503,7 +491,7 @@ const updateEscrowMetadata = async (req, res) => {
  */
 const deleteEscrow = async (req, res) => {
   try {
-    const id = BigInt(req.params.id);
+    const id = parseEscrowId(req.params.id);
     const address = req.user?.address;
     if (!address) return res.status(401).json({ error: 'Authentication required' });
 
@@ -520,13 +508,9 @@ const deleteEscrow = async (req, res) => {
     });
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
 
-    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
-    const isOwnerOrParty =
-      address === escrow.ownerId ||
-      address === escrow.clientAddress ||
-      address === escrow.freelancerAddress;
-    if (!isAdmin && !isOwnerOrParty) {
-      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    const partyAccess = checkEscrowPartyAccess(req.user, escrow, { allowOwner: true });
+    if (!partyAccess.allowed) {
+      return res.status(partyAccess.statusCode).json({ error: partyAccess.error });
     }
 
     if (escrow.deletedAt) {
@@ -545,7 +529,7 @@ const deleteEscrow = async (req, res) => {
 
     res.json({ message: 'Escrow deleted.', escrowId: id.toString(), deletedAt });
   } catch (err) {
-    if (err.message?.includes('Cannot convert')) {
+    if (err.statusCode === 400 || err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.deleteEscrow', err, req);
@@ -572,8 +556,11 @@ const cloneEscrow = async (req, res) => {
     });
     if (!source) return res.status(404).json({ error: 'Escrow not found' });
 
-    const { title: titleOverride, amount: amountOverride, deadline: deadlineOverride } =
-      req.body || {};
+    const {
+      title: titleOverride,
+      amount: amountOverride,
+      deadline: deadlineOverride,
+    } = req.body || {};
 
     if (
       amountOverride !== undefined &&
@@ -872,7 +859,7 @@ const getSuccessRate = async (req, res) => {
  */
 const getEscrowAudit = async (req, res) => {
   try {
-    const id = BigInt(req.params.id);
+    const id = parseEscrowId(req.params.id);
 
     // Load the escrow to check party access
     const escrow = await prisma.escrow.findUnique({
@@ -882,20 +869,15 @@ const getEscrowAudit = async (req, res) => {
 
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
 
-    // Only admins and the escrow parties may access the audit log
-    const callerAddress = req.user?.address;
-    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
-    const isParty =
-      callerAddress === escrow.clientAddress || callerAddress === escrow.freelancerAddress;
-
-    if (!isAdmin && !isParty) {
-      return res.status(403).json({ error: 'Access denied: not a party to this escrow' });
+    const partyAccess = checkEscrowPartyAccess(req.user, escrow);
+    if (!partyAccess.allowed) {
+      return res.status(partyAccess.statusCode).json({ error: partyAccess.error });
     }
 
     const result = await getEscrowAuditLog(id, escrow.tenantId, req.query);
     res.json(result);
   } catch (err) {
-    if (err.message?.includes('Cannot convert')) {
+    if (err.statusCode === 400 || err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.getEscrowAudit', err, req);
@@ -911,7 +893,7 @@ const getEscrowAudit = async (req, res) => {
  */
 const getMilestoneHistory = async (req, res) => {
   try {
-    const escrowId = BigInt(req.params.id);
+    const escrowId = parseEscrowId(req.params.id);
     const milestoneIndex = parseInt(req.params.milestoneId, 10);
 
     const escrow = await prisma.escrow.findUnique({
@@ -920,16 +902,9 @@ const getMilestoneHistory = async (req, res) => {
     });
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
 
-    const callerAddress = req.user?.address;
-    const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
-    const participants = [
-      escrow.clientAddress,
-      escrow.freelancerAddress,
-      escrow.arbiterAddress,
-    ].filter(Boolean);
-
-    if (!isAdmin && !participants.includes(callerAddress)) {
-      return res.status(403).json({ error: 'Access denied: not a participant in this escrow' });
+    const partyAccess = checkEscrowPartyAccess(req.user, escrow, { allowArbiter: true });
+    if (!partyAccess.allowed) {
+      return res.status(partyAccess.statusCode).json({ error: partyAccess.error });
     }
 
     const milestone = await prisma.milestone.findUnique({
@@ -941,7 +916,7 @@ const getMilestoneHistory = async (req, res) => {
     const result = await getMilestoneStatusHistory(milestone.id, req.query);
     res.json(result);
   } catch (err) {
-    if (err.message?.includes('Cannot convert')) {
+    if (err.statusCode === 400 || err.message?.includes('Cannot convert')) {
       return res.status(400).json({ error: 'Invalid escrow id' });
     }
     logControllerError('escrow.getMilestoneHistory', err, req);
