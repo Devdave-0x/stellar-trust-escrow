@@ -35,6 +35,10 @@ function generateSecret() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function isNil(value) {
+  return value === null || value === undefined;
+}
+
 function signPayload(secret, timestamp, body) {
   const normalizedBody = typeof body === 'string' ? body : JSON.stringify(body);
   const signingInput = `${timestamp}.${normalizedBody}`;
@@ -54,7 +58,11 @@ function signPayload(secret, timestamp, body) {
  * @returns {boolean} true if the signature is valid, false otherwise.
  */
 function verifySignature(secret, timestamp, payload, receivedSignature) {
-  if (!receivedSignature || typeof receivedSignature !== 'string') {
+  if (isNil(secret) || isNil(timestamp) || isNil(payload) || isNil(receivedSignature)) {
+    return false;
+  }
+
+  if (typeof receivedSignature !== 'string') {
     return false;
   }
 
@@ -79,7 +87,7 @@ async function createSubscription({ url, eventTypes, createdBy }) {
       url: String(url).trim(),
       eventTypes,
       secret: subscriptionSecret,
-      createdBy: createdBy || null,
+      createdBy: createdBy ?? null,
       isActive: true,
     },
     select: {
