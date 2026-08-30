@@ -208,28 +208,27 @@ describe('NotificationService.send', () => {
 
   // ── Graceful failure: email provider throws ───────────────────────────────────
 
-  it(
-    'still creates the in-app notification even when the email queue throws',
-    async () => {
-      notificationQueueMock.add.mockRejectedValue(new Error('SMTP connection refused'));
+  it('still creates the in-app notification even when the email queue throws', async () => {
+    notificationQueueMock.add.mockRejectedValue(new Error('SMTP connection refused'));
 
-      // The service does NOT silently swallow this — it surfaces the queue error
-      // but the in-app record is already written before the queue call.
-      // We verify that in-app persistence happened before the error propagates.
-      let inAppCreated = false;
-      prismaMock.notification.create.mockImplementation(async () => {
-        inAppCreated = true;
-        return { id: 'notif-2' };
-      });
+    // The service does NOT silently swallow this — it surfaces the queue error
+    // but the in-app record is already written before the queue call.
+    // We verify that in-app persistence happened before the error propagates.
+    let inAppCreated = false;
+    prismaMock.notification.create.mockImplementation(async () => {
+      inAppCreated = true;
+      return { id: 'notif-2' };
+    });
 
-      await expect(
-        NotificationService.send(USER_ID, NotificationEvent.DISPUTE_RESOLVED, { escrowId: ESCROW_ID }),
-      ).rejects.toThrow('SMTP connection refused');
+    await expect(
+      NotificationService.send(USER_ID, NotificationEvent.DISPUTE_RESOLVED, {
+        escrowId: ESCROW_ID,
+      }),
+    ).rejects.toThrow('SMTP connection refused');
 
-      // In-app was persisted before the queue failure
-      expect(inAppCreated).toBe(true);
-    },
-  );
+    // In-app was persisted before the queue failure
+    expect(inAppCreated).toBe(true);
+  });
 
   // ── storeInApp helper ─────────────────────────────────────────────────────────
 
@@ -259,16 +258,53 @@ describe('NotificationService.send', () => {
 
   // ── isEnabled helper ──────────────────────────────────────────────────────────
 
+  it('executes the full notification flow for a happy-path event', async () => {
+    const data = { escrowId: ESCROW_ID, amount: '3500' };
+
+    const result = await NotificationService.send(USER_ID, NotificationEvent.ESCROW_FUNDED, data);
+
+    expect(result.inApp).toMatchObject({ id: 'notif-1' });
+    expect(result.email).toMatchObject({ id: 'job-1' });
+    expect(prismaMock.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: USER_ID,
+          tenantId: 'tenant-1',
+          event: NotificationEvent.ESCROW_FUNDED,
+          data,
+        }),
+      }),
+    );
+    expect(notificationQueueMock.add).toHaveBeenCalledWith(
+      `notify.${NotificationEvent.ESCROW_FUNDED}`,
+      expect.objectContaining({
+        userId: USER_ID,
+        tenantId: 'tenant-1',
+        event: NotificationEvent.ESCROW_FUNDED,
+        email: 'user@example.com',
+        data,
+      }),
+    );
+  });
+
   describe('isEnabled', () => {
     it('returns true when no preference row exists', async () => {
       prismaMock.notificationPreference.findUnique.mockResolvedValue(null);
-      const enabled = await NotificationService.isEnabled(USER_ID, NotificationEvent.ESCROW_FUNDED, 'email');
+      const enabled = await NotificationService.isEnabled(
+        USER_ID,
+        NotificationEvent.ESCROW_FUNDED,
+        'email',
+      );
       expect(enabled).toBe(true);
     });
 
     it('returns true when preference row has no entry for this event', async () => {
       prismaMock.notificationPreference.findUnique.mockResolvedValue({ preferences: {} });
-      const enabled = await NotificationService.isEnabled(USER_ID, NotificationEvent.DISPUTE_RAISED, 'inApp');
+      const enabled = await NotificationService.isEnabled(
+        USER_ID,
+        NotificationEvent.DISPUTE_RAISED,
+        'inApp',
+      );
       expect(enabled).toBe(true);
     });
 
