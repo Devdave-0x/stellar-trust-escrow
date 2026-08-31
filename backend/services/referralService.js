@@ -12,6 +12,11 @@ const CODE_LENGTH = 8;
 const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_GENERATION_ATTEMPTS = 10;
 
+/**
+ * Generates a random referral code using uppercase letters and digits.
+ *
+ * @returns {string} An 8-character referral code.
+ */
 function generateReferralCode() {
   const bytes = crypto.randomBytes(CODE_LENGTH);
   let code = '';
