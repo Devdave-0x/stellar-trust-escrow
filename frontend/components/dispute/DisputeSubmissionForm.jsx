@@ -175,7 +175,9 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
 
       {/* File Upload */}
       <div>
-        <label htmlFor="evidence-files" className="block text-sm font-medium text-white mb-2">Evidence Files *</label>
+        <label htmlFor="evidence-files" className="block text-sm font-medium text-white mb-2">
+          Evidence Files *
+        </label>
 
         {/* Drag-and-drop zone */}
         <div
@@ -196,6 +198,7 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="text-indigo-400 hover:text-indigo-300 underline"
+              aria-label="Browse for evidence files"
             >
               browse
             </button>
@@ -221,17 +224,16 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
         {Object.entries(errors)
           .filter(([k]) => k !== 'files' && k !== 'max' && k !== 'reason' && k !== 'description')
           .map(([k, v]) => (
-            <p key={k} className="text-red-500 text-xs mt-1">{v}</p>
+            <p key={k} className="text-red-500 text-xs mt-1">
+              {v}
+            </p>
           ))}
 
         {/* File list */}
         {files.length > 0 && (
           <div className="mt-4 space-y-2">
             {files.map((f) => (
-              <div
-                key={f.id}
-                className="flex items-center gap-3 p-3 bg-gray-700/50 rounded-lg"
-              >
+              <div key={f.id} className="flex items-center gap-3 p-3 bg-gray-700/50 rounded-lg">
                 {f.preview ? (
                   <img
                     src={f.preview}
@@ -245,17 +247,17 @@ export default function DisputeSubmissionForm({ escrowId, onSubmit, onCancel }) 
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-white truncate">{f.file.name}</p>
-                  <p className="text-xs text-gray-400">
-                    {(f.file.size / 1024).toFixed(1)} KB
-                  </p>
+                  <p className="text-xs text-gray-400">{(f.file.size / 1024).toFixed(1)} KB</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => removeFile(f.id)}
                   className="text-gray-400 hover:text-red-500 transition-colors"
                   disabled={loading}
+                  aria-label={`Remove ${f.file.name}`}
+                  title={`Remove ${f.file.name}`}
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </button>
               </div>
             ))}
