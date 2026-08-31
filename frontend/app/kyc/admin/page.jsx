@@ -67,7 +67,12 @@ export default function KycAdminPage() {
           <Spinner />
         </div>
       ) : records.length === 0 ? (
-        <p className="text-gray-500 text-center py-12">No records found.</p>
+        <div className="rounded-xl border border-dashed border-gray-700 bg-gray-950/40 py-12 text-center">
+          <p className="text-lg font-medium text-white">No KYC records match this filter.</p>
+          <p className="mt-2 text-sm text-gray-400">
+            Try another status or check back after a new applicant submits their verification.
+          </p>
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
