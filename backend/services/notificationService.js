@@ -40,8 +40,10 @@ async function storeInApp(userId, tenantId, event, data) {
  */
 async function isEnabled(userId, event, channel) {
   const pref = await prisma.notificationPreference.findUnique({ where: { userId } });
-  if (!pref || !pref.preferences[event]) return true; // default on
-  return pref.preferences[event][channel] !== false;
+  const settings = pref?.preferences?.[event];
+
+  if (settings == null) return true; // default on
+  return settings[channel] !== false;
 }
 
 /**
@@ -52,7 +54,10 @@ async function isEnabled(userId, event, channel) {
  */
 async function send(userId, event, data) {
   // Resolve tenantId and email from DB
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { tenantId: true, email: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tenantId: true, email: true },
+  });
   if (!user) throw new Error(`User ${userId} not found`);
 
   const { tenantId, email } = user;

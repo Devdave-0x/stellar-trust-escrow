@@ -194,6 +194,17 @@ describe('NotificationService.send', () => {
     expect(notificationQueueMock.add).toHaveBeenCalledTimes(1);
   });
 
+  it('defaults to enabled when the preference row exists but an event is missing', async () => {
+    prismaMock.notificationPreference.findUnique.mockResolvedValue({ preferences: {} });
+
+    await NotificationService.send(USER_ID, NotificationEvent.ESCROW_FUNDED, {
+      escrowId: ESCROW_ID,
+    });
+
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1);
+    expect(notificationQueueMock.add).toHaveBeenCalledTimes(1);
+  });
+
   // ── User has no email address ─────────────────────────────────────────────────
 
   it('skips email enqueue when the user has no email address', async () => {
