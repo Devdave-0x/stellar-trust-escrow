@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Admin bulk action safety guide (`docs/admin-bulk-actions.md`): permissions, allowed and blocked transitions, manual preview, audit log, post-action verification, and rollback strategy, guarded by `backend/tests/adminBulkDocs.test.js` (#630)
+
 - Relayer funding runbook (`docs/runbooks/relayer-funding.md`): balance checks, thresholds, scheduled balance check, testnet and production top-up, alert response, and wrong-network funding recovery (#628)
 
 - Dispute timeline data contract (`docs/dispute-timeline-contract.md`): event envelope, required fields, ordering and tie-break rules, anomaly handling, and producer/consumer compatibility rules, guarded by `backend/tests/disputeTimelineDocs.test.js` (#627)
