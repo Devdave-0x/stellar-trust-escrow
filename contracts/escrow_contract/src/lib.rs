@@ -99,6 +99,7 @@ mod nft_tests;
 mod nonce_registry;
 mod oracle;
 mod oracle_fallback_tests;
+mod ownership_transfer_invariant_tests;
 mod oracle_overflow_tests;
 mod oracle_tests;
 mod partial_cancel_tests;
