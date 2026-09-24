@@ -65,6 +65,7 @@
 #![allow(clippy::too_many_arguments)]
 
 mod admin_transfer_event_tests;
+mod admin_transfer_expiration_tests;
 mod admin_transfer_tests;
 mod arbiter_limit;
 mod arbiter_registry_tests;
@@ -72,6 +73,7 @@ mod arbiter_reputation_tests;
 mod batch_add_milestones_cap_tests;
 mod batch_approve_release_e2e_tests;
 mod bridge;
+mod bridge_asset_migration_tests;
 mod bridge_tests;
 mod dispute_cooldown_tests;
 mod dust_threshold;
@@ -79,6 +81,7 @@ mod errors;
 mod escrow_creation_time_tests;
 mod escrow_creator_count;
 mod escrow_label;
+mod escrow_label_snapshot_tests;
 mod event_names;
 mod event_tests;
 mod events;
@@ -96,6 +99,7 @@ mod min_milestone_duration_tests;
 mod milestone_title_view_tests;
 mod nft;
 mod nft_tests;
+mod nonce_duplicate_rejection_tests;
 mod nonce_registry;
 mod oracle;
 mod oracle_fallback_tests;
