@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Developer checklist for adding contract events (`docs/contract-event-checklist.md`): event constants, emitters, payload tests, event-schema docs, indexer handlers and replay validation, OpenAPI and frontend consumers; guarded by the `backend/tests/contractEventDocs.test.js` ratchet so new event topics cannot ship undocumented (#631)
+
 - IPFS evidence durability policy (`docs/ipfs-evidence-durability.md`): pinning, replication, gateway fallback, encryption and privacy, retention, deletion/GC rules, SLAs, verification steps, and a known-gaps table for the current implementation (#629)
 
 - Runnable Soroban CLI simulation scripts for all major escrow lifecycle scenarios in `scripts/simulate/`: happy-path release, arbiter dispute resolution (buyer's favour), expiry refund, and mutual cancellation (#112)
