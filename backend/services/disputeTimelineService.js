@@ -6,6 +6,9 @@
  *
  * Event types: filed, evidence_submitted, arbiter_assigned, arbiter_ruling,
  * appeal_filed, resolved.
+ *
+ * Validates that events occur in logically consistent order to detect
+ * data inconsistencies or scheduler issues.
  */
 
 import prisma from '../lib/prisma.js';
@@ -20,6 +23,63 @@ const EVENT_ORDER = {
   appeal_filed: 4,
   resolved: 5,
 };
+
+// Validation rules: logical dependencies between events.
+// Format: { first: event that must occur first, second: event that must occur second }
+const EVENT_DEPENDENCIES = [
+  // filed must come before resolved
+  { first: 'filed', second: 'resolved' },
+  // filed must come before appeal_filed
+  { first: 'filed', second: 'appeal_filed' },
+  // filed must come before arbiter_ruling
+  { first: 'filed', second: 'arbiter_ruling' },
+];
+
+/**
+ * Validates a timeline for logical consistency.
+ * Flags and returns diagnostics for invalid event sequences.
+ *
+ * @param {Array} events — ordered events from the timeline
+ * @returns {object} { isValid: boolean, violations: Array<{event, rule, diagnostics}> }
+ */
+export function validateTimelineSequence(events) {
+  const violations = [];
+
+  if (!events || events.length === 0) {
+    return { isValid: true, violations: [] };
+  }
+
+  const eventMap = new Map(events.map((e) => [e.event_type, e]));
+
+  for (const dep of EVENT_DEPENDENCIES) {
+    const firstEvent = eventMap.get(dep.first);
+    const secondEvent = eventMap.get(dep.second);
+
+    if (firstEvent && secondEvent) {
+      const firstTime = new Date(firstEvent.timestamp).getTime();
+      const secondTime = new Date(secondEvent.timestamp).getTime();
+
+      if (secondTime < firstTime) {
+        violations.push({
+          event: dep.second,
+          rule: `${dep.second} must occur after ${dep.first}`,
+          diagnostics: {
+            invalidEvent: dep.second,
+            invalidTimestamp: secondEvent.timestamp,
+            dependentEvent: dep.first,
+            dependentTimestamp: firstEvent.timestamp,
+            timeDifference: secondTime - firstTime,
+          },
+        });
+      }
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+  };
+}
 
 /**
  * Build the ordered timeline for a single dispute.
@@ -117,7 +177,15 @@ export async function getDisputeTimeline(disputeId, tenantId) {
     return delta !== 0 ? delta : EVENT_ORDER[a.event_type] - EVENT_ORDER[b.event_type];
   });
 
+  const validation = validateTimelineSequence(events);
+  if (!validation.isValid) {
+    console.warn(
+      `[DisputeTimelineService] Timeline inconsistencies detected for dispute ${disputeId}:`,
+      validation.violations,
+    );
+  }
+
   return events;
 }
 
-export default { getDisputeTimeline };
+export default { getDisputeTimeline, validateTimelineSequence };
