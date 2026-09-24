@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mobile offline cache schema version (#636): every cached escrow and milestone row stores a `schema_version` (older databases are upgraded in place with version 1 as the backfill), writes stamp `CACHE_SCHEMA_VERSION`, and reads run older rows through `CACHE_MIGRATIONS`, deleting rows that are corrupted, unmigratable, or written by a newer build. `mobile/services/offlineCache.ts` is also rebuilt as a single module after #1016 left two concatenated implementations in it; it keeps the API used by the app and #1016's per-entity TTLs and foreground cleanup listener. Covered by `mobile/__tests__/offlineCache.test.ts`
+
 - Announcement targeting documentation (`docs/announcements.md`): target rules, tenant scoping, inclusive active windows, ordering, client-side dismissal, admin examples, and edge cases for overlapping announcements (#632)
 
 - Developer checklist for adding contract events (`docs/contract-event-checklist.md`): event constants, emitters, payload tests, event-schema docs, indexer handlers and replay validation, OpenAPI and frontend consumers; guarded by the `backend/tests/contractEventDocs.test.js` ratchet so new event topics cannot ship undocumented (#631)
