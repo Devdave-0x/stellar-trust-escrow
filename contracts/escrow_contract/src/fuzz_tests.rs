@@ -1026,8 +1026,6 @@ mod fuzz_tests {
                 &no_multisig(&t.env),
             );
 
-            t.client.fund_escrow(&client_addr, &escrow_id);
-
             let mut total_milestone_amount: i128 = 0;
             for m in 0..3 {
                 let milestone_amt = if m < 2 { funded_amount / 3 } else { funded_amount / 3 + (funded_amount % 3) };
@@ -1069,8 +1067,6 @@ mod fuzz_tests {
             &no_multisig(&t.env),
         );
 
-        t.client.fund_escrow(&client_addr, &escrow_id);
-
         let m0 = t.client.add_milestone(
             &client_addr,
             &escrow_id,
@@ -1091,7 +1087,7 @@ mod fuzz_tests {
         t.client.approve_milestone(&client_addr, &escrow_id, &m0);
 
         let state = t.client.get_escrow(&escrow_id);
-        let approved_balance = state.amount_remaining;
+        let approved_balance = state.remaining_balance;
 
         assert!(approved_balance <= total, "Approved amount must not exceed total");
         assert!(approved_balance >= 0, "Remaining amount must not be negative");
@@ -1120,8 +1116,6 @@ mod fuzz_tests {
             &None,
             &no_multisig(&t.env),
         );
-
-        t.client.fund_escrow(&client_addr, &escrow_id);
 
         let split_sizes: [i128; 5] = [2_000, 2_000, 1_500, 1_277, 1_000];
         let mut sum: i128 = 0;
@@ -1170,8 +1164,6 @@ mod fuzz_tests {
                 &no_multisig(&t.env),
             );
 
-            t.client.fund_escrow(&client_addr, &escrow_id);
-
             let m0 = t.client.add_milestone(
                 &client_addr,
                 &escrow_id,
@@ -1208,7 +1200,7 @@ mod fuzz_tests {
             }
 
             let final_state = t.client.get_escrow(&escrow_id);
-            assert_eq!(final_state.amount_remaining, 0, "All funds should be released regardless of order");
+            assert_eq!(final_state.remaining_balance, 0, "All funds should be released regardless of order");
         }
     }
 }
