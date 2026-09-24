@@ -18,9 +18,10 @@ const SHARE_LINK_TTL_DAYS = 30;
  * Builds the plain (unsigned) certificate content for a completed escrow.
  *
  * @param {object} escrow — an Escrow row with its `milestones` included
+ * @param {boolean} [isRevoked=false] — whether the certificate has been revoked
  * @returns {object}
  */
-function buildCertificateContent(escrow) {
+function buildCertificateContent(escrow, isRevoked = false) {
   return {
     escrowId: escrow.id.toString(),
     title: escrow.title || `Escrow #${escrow.id}`,
@@ -30,6 +31,8 @@ function buildCertificateContent(escrow) {
     amount: escrow.totalAmount,
     currency: escrow.tokenAddress,
     completionDate: (escrow.updatedAt ?? escrow.createdAt).toISOString(),
+    isRevoked,
+    revocationReason: isRevoked ? 'Certificate revoked due to escrow state change' : null,
     milestones: escrow.milestones.map((m) => ({
       title: m.title,
       completedAt: m.resolvedAt ? m.resolvedAt.toISOString() : null,
@@ -101,6 +104,13 @@ async function renderCertificatePdf(content, signature, shareUrl) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   const qrPngBuffer = await QRCode.toBuffer(shareUrl, { width: 150 });
 
+  if (content.isRevoked) {
+    doc.fontSize(16).fillColor('red').text('⚠ REVOKED CERTIFICATE ⚠', { align: 'center' });
+    doc.fontSize(11).fillColor('red').text(`Revocation Reason: ${content.revocationReason}`, { align: 'center' });
+    doc.fillColor('black');
+    doc.moveDown();
+  }
+
   doc.fontSize(20).text('Escrow Completion Certificate', { align: 'center' });
   doc.moveDown();
 
@@ -113,6 +123,9 @@ async function renderCertificatePdf(content, signature, shareUrl) {
   doc.text(`Amount: ${content.amount}`);
   doc.text(`Currency / Token: ${content.currency}`);
   doc.text(`Completion Date: ${content.completionDate}`);
+  if (content.isRevoked) {
+    doc.text(`Status: REVOKED`, { underline: true });
+  }
   doc.moveDown();
 
   doc.fontSize(14).text('Milestones', { underline: true });
@@ -136,9 +149,56 @@ async function renderCertificatePdf(content, signature, shareUrl) {
   return doc;
 }
 
+/**
+ * Checks if a certificate should be revoked based on escrow state changes.
+ * Revocation occurs when escrows are reopened, have disputes, or corrections.
+ *
+ * @param {object} escrow — escrow with status and dispute info
+ * @returns {boolean} whether the certificate should be revoked
+ */
+export function shouldRevokeCertificate(escrow) {
+  if (!escrow) return false;
+
+  const revokedStatuses = ['Reopened', 'Dispute', 'Disputed', 'Correction'];
+  if (revokedStatuses.includes(escrow.status)) {
+    return true;
+  }
+
+  if (escrow.hasDispute || escrow.disputeCount > 0) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Marks a certificate as revoked in the system and logs the event for audit.
+ *
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {bigint} escrowId
+ * @param {string} reason — reason for revocation
+ * @returns {Promise<void>}
+ */
+export async function revokeCertificate(prisma, escrowId, reason = 'Escrow state change') {
+  await prisma.escrowAuditLog.create({
+    data: {
+      escrowId,
+      action: 'CERTIFICATE_REVOKED',
+      details: { reason },
+      timestamp: new Date(),
+    },
+  }).catch((err) => {
+    console.warn(`[CertificateService] Failed to log certificate revocation for escrow ${escrowId}:`, err.message);
+  });
+
+  console.log(`[CertificateService] Certificate revoked for escrow ${escrowId}: ${reason}`);
+}
+
 export default {
   buildCertificateContent,
   signContent,
   resolveShareUrl,
   renderCertificatePdf,
+  shouldRevokeCertificate,
+  revokeCertificate,
 };
