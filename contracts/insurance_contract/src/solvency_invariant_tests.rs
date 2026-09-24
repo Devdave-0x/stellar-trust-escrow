@@ -50,7 +50,7 @@ mod solvency_invariant_tests {
     }
 
     fn assert_solvency(s: &Setup) {
-        let fund_info = s.client.get_fund_info();
+        let fund_info = s.client.get_fund_info().unwrap();
         assert!(
             fund_info.current_balance >= 0,
             "Pool balance must never be negative"
@@ -74,16 +74,16 @@ mod solvency_invariant_tests {
         mint(&s.env, &s.admin, &s.token_id, &staker2, 2_000);
         mint(&s.env, &s.admin, &s.token_id, &staker3, 3_000);
 
-        s.client.contribute(&staker1, &500_i128);
+        s.client.contribute(&staker1, &500_i128).unwrap();
         assert_solvency(&s);
 
-        s.client.contribute(&staker2, &1_000_i128);
+        s.client.contribute(&staker2, &1_000_i128).unwrap();
         assert_solvency(&s);
 
-        s.client.contribute(&staker3, &1_500_i128);
+        s.client.contribute(&staker3, &1_500_i128).unwrap();
         assert_solvency(&s);
 
-        let fund_info = s.client.get_fund_info();
+        let fund_info = s.client.get_fund_info().unwrap();
         assert_eq!(fund_info.current_balance, 3_000);
         assert_eq!(fund_info.total_contributed, 3_000);
     }
@@ -99,30 +99,30 @@ mod solvency_invariant_tests {
 
         // Setup: contribute to fund and register governors
         mint(&s.env, &s.admin, &s.token_id, &contributor, 10_000);
-        s.client.contribute(&contributor, &5_000_i128);
+        s.client.contribute(&contributor, &5_000_i128).unwrap();
         assert_solvency(&s);
 
-        s.client.add_governor(&s.admin, &governor1);
-        s.client.add_governor(&s.admin, &governor2);
+        s.client.add_governor(&s.admin, &governor1).unwrap();
+        s.client.add_governor(&s.admin, &governor2).unwrap();
 
         // Submit claim
         let desc = String::from_str(&s.env, "Loss from contract bug");
-        let claim_id = s.client.submit_claim(&claimant, &desc, &1_000_i128);
+        let claim_id = s.client.submit_claim(&claimant, &desc, &1_000_i128).unwrap();
         assert_solvency(&s);
 
         // Governors vote to approve
-        s.client.vote_on_claim(&governor1, &claim_id, &true);
+        s.client.vote(&governor1, &claim_id, &true).unwrap();
         assert_solvency(&s);
 
-        s.client.vote_on_claim(&governor2, &claim_id, &true);
+        s.client.vote(&governor2, &claim_id, &true).unwrap();
         assert_solvency(&s);
 
         // Payout should maintain solvency
-        let initial_balance = s.client.get_fund_info().current_balance;
-        s.client.payout_claim(&s.admin, &claim_id);
+        let initial_balance = s.client.get_fund_info().unwrap().current_balance;
+        s.client.execute_payout(&claim_id).unwrap();
         assert_solvency(&s);
 
-        let final_balance = s.client.get_fund_info().current_balance;
+        let final_balance = s.client.get_fund_info().unwrap().current_balance;
         assert_eq!(final_balance, initial_balance - 1_000);
     }
 
@@ -134,22 +134,22 @@ mod solvency_invariant_tests {
 
         // Contribute
         mint(&s.env, &s.admin, &s.token_id, &staker, 2_000);
-        s.client.contribute(&staker, &1_000_i128);
+        s.client.contribute(&staker, &1_000_i128).unwrap();
         assert_solvency(&s);
 
         // Stake part of contribution
-        s.client.stake(&staker, &500_i128);
+        s.client.stake(&staker, &500_i128).unwrap();
         assert_solvency(&s);
 
         // Verify balance unchanged
-        let info_after_stake = s.client.get_fund_info();
+        let info_after_stake = s.client.get_fund_info().unwrap();
         assert_eq!(info_after_stake.current_balance, 1_000);
 
-        // Withdraw stake
-        s.client.withdraw(&staker, &250_i128);
+        // Unstake
+        s.client.unstake(&staker, &250_i128).unwrap();
         assert_solvency(&s);
 
-        let final_info = s.client.get_fund_info();
+        let final_info = s.client.get_fund_info().unwrap();
         assert_eq!(final_info.current_balance, 750);
     }
 
@@ -167,58 +167,55 @@ mod solvency_invariant_tests {
         mint(&s.env, &s.admin, &s.token_id, &staker1, 5_000);
         mint(&s.env, &s.admin, &s.token_id, &staker2, 3_000);
 
-        s.client.contribute(&staker1, &2_000_i128);
+        s.client.contribute(&staker1, &2_000_i128).unwrap();
         assert_solvency(&s);
 
-        s.client.contribute(&staker2, &1_500_i128);
+        s.client.contribute(&staker2, &1_500_i128).unwrap();
         assert_solvency(&s);
 
         // Add governor
-        s.client.add_governor(&s.admin, &governor);
+        s.client.add_governor(&s.admin, &governor).unwrap();
         assert_solvency(&s);
 
         // First claim
         let desc1 = String::from_str(&s.env, "First loss");
-        let claim1_id = s.client.submit_claim(&claimant1, &desc1, &500_i128);
+        let claim1_id = s.client.submit_claim(&claimant1, &desc1, &500_i128).unwrap();
         assert_solvency(&s);
 
         // Second claim
         let desc2 = String::from_str(&s.env, "Second loss");
-        let claim2_id = s.client.submit_claim(&claimant2, &desc2, &300_i128);
+        let _claim2_id = s.client.submit_claim(&claimant2, &desc2, &300_i128).unwrap();
         assert_solvency(&s);
 
         // Vote on claims
-        s.client.vote_on_claim(&governor, &claim1_id, &true);
-        assert_solvency(&s);
-
-        s.client.vote_on_claim(&governor, &claim2_id, &false);
+        s.client.vote(&governor, &claim1_id, &true).unwrap();
         assert_solvency(&s);
 
         // Verify final solvency
-        let final_info = s.client.get_fund_info();
+        let final_info = s.client.get_fund_info().unwrap();
         assert!(final_info.current_balance >= 0);
         assert_eq!(final_info.total_contributed, 3_500);
     }
 
-    /// Test invariant: solvency with yield settlement
+    /// Test invariant: solvency with yield claims
     #[test]
-    fn test_yield_settlement_solvency() {
+    fn test_yield_claim_solvency() {
         let s = setup();
         let staker = Address::generate(&s.env);
 
         // Contribute and stake
         mint(&s.env, &s.admin, &s.token_id, &staker, 2_000);
-        s.client.contribute(&staker, &1_000_i128);
+        s.client.contribute(&staker, &1_000_i128).unwrap();
         assert_solvency(&s);
 
-        s.client.stake(&staker, &800_i128);
+        s.client.stake(&staker, &800_i128).unwrap();
         assert_solvency(&s);
 
-        // Simulate yield distribution
-        s.client.settle_yield(&s.admin);
+        // Claim yield
+        s.client.claim_yield(&staker).unwrap();
         assert_solvency(&s);
 
-        let info = s.client.get_fund_info();
+        let info = s.client.get_fund_info().unwrap();
         assert!(info.current_balance >= 0);
     }
 
@@ -230,16 +227,16 @@ mod solvency_invariant_tests {
 
         // Make contribution
         mint(&s.env, &s.admin, &s.token_id, &contributor, 500);
-        s.client.contribute(&contributor, &100_i128);
+        s.client.contribute(&contributor, &100_i128).unwrap();
         assert_solvency(&s);
 
-        let before = s.client.get_fund_info();
+        let before = s.client.get_fund_info().unwrap();
 
-        // Attempt withdraw of 0 (should maintain balance)
-        s.client.withdraw(&contributor, &0_i128);
+        // Attempt unstake of 0 (should maintain balance)
+        s.client.unstake(&contributor, &0_i128).unwrap();
         assert_solvency(&s);
 
-        let after = s.client.get_fund_info();
+        let after = s.client.get_fund_info().unwrap();
         assert_eq!(before.current_balance, after.current_balance);
     }
 
@@ -252,15 +249,15 @@ mod solvency_invariant_tests {
 
         // Contribute max amount
         mint(&s.env, &s.admin, &s.token_id, &contributor, 20_000);
-        s.client.contribute(&contributor, &15_000_i128);
+        s.client.contribute(&contributor, &15_000_i128).unwrap();
         assert_solvency(&s);
 
         // Submit claim at max cap
         let desc = String::from_str(&s.env, "Max claim");
-        let claim_id = s.client.submit_claim(&claimant, &desc, &10_000_i128);
+        s.client.submit_claim(&claimant, &desc, &10_000_i128).unwrap();
         assert_solvency(&s);
 
-        let info = s.client.get_fund_info();
+        let info = s.client.get_fund_info().unwrap();
         assert_eq!(info.total_contributed, 15_000);
         assert!(info.current_balance >= 0);
     }

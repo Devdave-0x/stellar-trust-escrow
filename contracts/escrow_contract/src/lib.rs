@@ -70,6 +70,7 @@ mod arbiter_limit;
 mod arbiter_registry_tests;
 mod arbiter_reputation_tests;
 mod batch_add_milestones_cap_tests;
+mod batch_gas_benchmark_tests;
 mod batch_approve_release_e2e_tests;
 mod bridge;
 mod bridge_tests;
