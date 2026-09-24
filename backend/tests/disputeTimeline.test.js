@@ -6,7 +6,7 @@ const prismaMock = {
 
 jest.unstable_mockModule('../lib/prisma.js', () => ({ default: prismaMock }));
 
-const { getDisputeTimeline } = await import('../services/disputeTimelineService.js');
+const { getDisputeTimeline, validateTimelineSequence } = await import('../services/disputeTimelineService.js');
 const { default: disputeController } = await import('../api/controllers/disputeController.js');
 
 function createMockRes() {
@@ -215,5 +215,192 @@ describe('disputeController.getTimeline', () => {
 
     expect(res.body.data.events).toHaveLength(1);
     expect(res.body.data.events[0].event_type).toBe('filed');
+  });
+});
+
+describe('disputeTimelineService.validateTimelineSequence', () => {
+  it('returns valid for a logically consistent timeline', () => {
+    const events = [
+      {
+        event_type: 'filed',
+        timestamp: day(1),
+        actor: CLIENT,
+        metadata: {},
+      },
+      {
+        event_type: 'evidence_submitted',
+        timestamp: day(2),
+        actor: CLIENT,
+        metadata: {},
+      },
+      {
+        event_type: 'resolved',
+        timestamp: day(5),
+        actor: ARBITER,
+        metadata: {},
+      },
+    ];
+
+    const result = validateTimelineSequence(events);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  it('detects when dispute is resolved before being filed', () => {
+    const events = [
+      {
+        event_type: 'resolved',
+        timestamp: day(1),
+        actor: ARBITER,
+        metadata: {},
+      },
+      {
+        event_type: 'filed',
+        timestamp: day(3),
+        actor: CLIENT,
+        metadata: {},
+      },
+    ];
+
+    const result = validateTimelineSequence(events);
+
+    expect(result.isValid).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].event).toBe('resolved');
+    expect(result.violations[0].rule).toContain('resolved');
+  });
+
+  it('detects when appeal is filed before dispute is raised', () => {
+    const events = [
+      {
+        event_type: 'appeal_filed',
+        timestamp: day(1),
+        actor: FREELANCER,
+        metadata: {},
+      },
+      {
+        event_type: 'filed',
+        timestamp: day(5),
+        actor: CLIENT,
+        metadata: {},
+      },
+    ];
+
+    const result = validateTimelineSequence(events);
+
+    expect(result.isValid).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].event).toBe('appeal_filed');
+  });
+
+  it('detects when arbiter ruling occurs before filing', () => {
+    const events = [
+      {
+        event_type: 'arbiter_ruling',
+        timestamp: day(1),
+        actor: ARBITER,
+        metadata: {},
+      },
+      {
+        event_type: 'filed',
+        timestamp: day(3),
+        actor: CLIENT,
+        metadata: {},
+      },
+    ];
+
+    const result = validateTimelineSequence(events);
+
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+  });
+
+  it('includes diagnostic metadata for violations', () => {
+    const events = [
+      {
+        event_type: 'resolved',
+        timestamp: day(1),
+        actor: ARBITER,
+        metadata: {},
+      },
+      {
+        event_type: 'filed',
+        timestamp: day(5),
+        actor: CLIENT,
+        metadata: {},
+      },
+    ];
+
+    const result = validateTimelineSequence(events);
+
+    expect(result.violations[0].diagnostics).toBeDefined();
+    expect(result.violations[0].diagnostics.invalidEvent).toBe('resolved');
+    expect(result.violations[0].diagnostics.dependentEvent).toBe('filed');
+    expect(result.violations[0].diagnostics.timeDifference).toBeDefined();
+  });
+
+  it('handles empty timeline as valid', () => {
+    const result = validateTimelineSequence([]);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  it('handles null timeline as valid', () => {
+    const result = validateTimelineSequence(null);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  it('handles timeline with only one event as valid', () => {
+    const events = [
+      {
+        event_type: 'filed',
+        timestamp: day(1),
+        actor: CLIENT,
+        metadata: {},
+      },
+    ];
+
+    const result = validateTimelineSequence(events);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  it('detects multiple violations in out-of-order timeline', () => {
+    const events = [
+      {
+        event_type: 'resolved',
+        timestamp: day(1),
+        actor: ARBITER,
+        metadata: {},
+      },
+      {
+        event_type: 'appeal_filed',
+        timestamp: day(2),
+        actor: FREELANCER,
+        metadata: {},
+      },
+      {
+        event_type: 'arbiter_ruling',
+        timestamp: day(3),
+        actor: ARBITER,
+        metadata: {},
+      },
+      {
+        event_type: 'filed',
+        timestamp: day(5),
+        actor: CLIENT,
+        metadata: {},
+      },
+    ];
+
+    const result = validateTimelineSequence(events);
+
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(1);
   });
 });
