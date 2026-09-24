@@ -106,6 +106,7 @@ mod pause_tests;
 mod platform_fee_bps_tests;
 mod property_tests;
 mod reentrancy_tests;
+mod referral_registry_tests;
 mod release_allowlist;
 mod schema_version;
 mod self_escrow_tests;
