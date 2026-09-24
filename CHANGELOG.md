@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- API key management guide for integrators (`docs/api-key-management.md`): key format and storage, least privilege without scopes, zero-downtime rotation, revocation, compromised-key response, and audit monitoring (#626)
+
 - Runnable Soroban CLI simulation scripts for all major escrow lifecycle scenarios in `scripts/simulate/`: happy-path release, arbiter dispute resolution (buyer's favour), expiry refund, and mutual cancellation (#112)
 
 - GitHub Actions CI workflow with lint, backend/frontend/contract tests, and WCAG AA accessibility scan job that uploads HTML reports and blocks PRs on threshold violations (#912)
