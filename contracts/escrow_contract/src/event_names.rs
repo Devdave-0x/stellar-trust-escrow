@@ -88,6 +88,7 @@ pub const DEADLINE_EXTENDED: Symbol = symbol_short!("dl_ext");
 // ── Reputation ────────────────────────────────────────────────────────────────
 
 pub const REPUTATION_UPDATED: Symbol = symbol_short!("rep_upd");
+pub const ARBITER_REPUTATION_UPDATED: Symbol = symbol_short!("arb_rep_u");
 
 // ── Rent ──────────────────────────────────────────────────────────────────────
 
