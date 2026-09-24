@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Export verification docs (`docs/export-verification.md`): available exports, why regenerated exports never hash the same, recording and checking SHA-256 checksums, completeness checks, schema version notes, and mismatch troubleshooting; manifests and server-side checksums are documented as not yet supported (#635)
+
 - Ownership transfer user guide (`docs/user-guide/ownership-transfer.md`): who can transfer the client role, valid recipients, effect on each participant, how to transfer, notifications, common errors, and the parts of the request/accept/reject/expire flow that are not yet supported (#634)
 
 - Fraud signal review guide (`docs/fraud-signal-review.md`): signal meanings, what a flag does, review and false-positive handling, clearing or upholding a flag, user communication, and audit requirements, without exposing scoring details (#633)
