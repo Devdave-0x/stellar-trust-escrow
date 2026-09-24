@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Announcement targeting documentation (`docs/announcements.md`): target rules, tenant scoping, inclusive active windows, ordering, client-side dismissal, admin examples, and edge cases for overlapping announcements (#632)
+
 - Developer checklist for adding contract events (`docs/contract-event-checklist.md`): event constants, emitters, payload tests, event-schema docs, indexer handlers and replay validation, OpenAPI and frontend consumers; guarded by the `backend/tests/contractEventDocs.test.js` ratchet so new event topics cannot ship undocumented (#631)
 
 - IPFS evidence durability policy (`docs/ipfs-evidence-durability.md`): pinning, replication, gateway fallback, encryption and privacy, retention, deletion/GC rules, SLAs, verification steps, and a known-gaps table for the current implementation (#629)
