@@ -1136,4 +1136,220 @@ mod tests {
         let result = client.try_cast_vote(&voter, &id, &true);
         assert!(result.is_err(), "Expected AlreadyVoted error");
     }
+
+    // ── Issue #582: Governance quorum boundary tests ────────────────────────────
+
+    #[test]
+    fn test_quorum_just_below_fails() {
+        let (env, admin, ta, token, client) = setup();
+
+        // Set quorum to 10%
+        let mut config = client.get_config();
+        config.quorum_bps = 1_000; // 10%
+        client.update_config(&admin, &config);
+
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let whale = Address::generate(&env);
+
+        // Total supply = 10_000; 10% quorum = 1_000
+        // Voter votes 999 (just below quorum)
+        mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
+        mint(&env, &ta, &token, &voter, 999);
+        mint(&env, &ta, &token, &whale, 9_000);
+
+        let id = client.create_proposal(
+            &proposer,
+            &str(&env, "Below quorum"),
+            &str(&env, "Should be defeated"),
+            &ProposalType::TextProposal,
+            &ProposalPayload::Text,
+            &10_000i128,
+        );
+
+        advance(&env, VOTING_DELAY + 1);
+        client.cast_vote(&voter, &id, &true);
+
+        advance(&env, VOTING_PERIOD);
+        let status = client.finalize_proposal(&id);
+        assert_eq!(status, ProposalStatus::Defeated);
+    }
+
+    #[test]
+    fn test_quorum_exactly_at_passes() {
+        let (env, admin, ta, token, client) = setup();
+
+        // Set quorum to 10%
+        let mut config = client.get_config();
+        config.quorum_bps = 1_000; // 10%
+        client.update_config(&admin, &config);
+
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let whale = Address::generate(&env);
+
+        // Total supply = 10_000; 10% quorum = 1_000
+        // Voter votes exactly 1_000 (at quorum)
+        mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
+        mint(&env, &ta, &token, &voter, 1_000);
+        mint(&env, &ta, &token, &whale, 9_000);
+
+        let id = client.create_proposal(
+            &proposer,
+            &str(&env, "At quorum"),
+            &str(&env, "Should pass"),
+            &ProposalType::TextProposal,
+            &ProposalPayload::Text,
+            &10_000i128,
+        );
+
+        advance(&env, VOTING_DELAY + 1);
+        client.cast_vote(&voter, &id, &true);
+
+        advance(&env, VOTING_PERIOD);
+        let status = client.finalize_proposal(&id);
+        assert_eq!(status, ProposalStatus::Queued);
+    }
+
+    #[test]
+    fn test_threshold_just_below_fails() {
+        let (env, admin, ta, token, client) = setup();
+
+        // Set approval to 51%
+        let mut config = client.get_config();
+        config.approval_threshold_bps = 5_100; // 51%
+        client.update_config(&admin, &config);
+
+        let proposer = Address::generate(&env);
+        let voter_for = Address::generate(&env);
+        let voter_against = Address::generate(&env);
+
+        // Total supply = 10_000; 51% threshold = 5_100
+        // For: 5_099 (just below), Against: 4_900
+        mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
+        mint(&env, &ta, &token, &voter_for, 5_099);
+        mint(&env, &ta, &token, &voter_against, 4_900);
+
+        let id = client.create_proposal(
+            &proposer,
+            &str(&env, "Below threshold"),
+            &str(&env, "Should be defeated"),
+            &ProposalType::TextProposal,
+            &ProposalPayload::Text,
+            &10_000i128,
+        );
+
+        advance(&env, VOTING_DELAY + 1);
+        client.cast_vote(&voter_for, &id, &true);
+        client.cast_vote(&voter_against, &id, &false);
+
+        advance(&env, VOTING_PERIOD);
+        let status = client.finalize_proposal(&id);
+        assert_eq!(status, ProposalStatus::Defeated);
+    }
+
+    #[test]
+    fn test_threshold_exactly_at_passes() {
+        let (env, admin, ta, token, client) = setup();
+
+        // Set approval to 51%
+        let mut config = client.get_config();
+        config.approval_threshold_bps = 5_100; // 51%
+        client.update_config(&admin, &config);
+
+        let proposer = Address::generate(&env);
+        let voter_for = Address::generate(&env);
+        let voter_against = Address::generate(&env);
+
+        // Total supply = 10_000; 51% threshold = 5_100
+        // For: 5_100 (exactly at threshold), Against: 4_900
+        mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
+        mint(&env, &ta, &token, &voter_for, 5_100);
+        mint(&env, &ta, &token, &voter_against, 4_900);
+
+        let id = client.create_proposal(
+            &proposer,
+            &str(&env, "At threshold"),
+            &str(&env, "Should pass"),
+            &ProposalType::TextProposal,
+            &ProposalPayload::Text,
+            &10_000i128,
+        );
+
+        advance(&env, VOTING_DELAY + 1);
+        client.cast_vote(&voter_for, &id, &true);
+        client.cast_vote(&voter_against, &id, &false);
+
+        advance(&env, VOTING_PERIOD);
+        let status = client.finalize_proposal(&id);
+        assert_eq!(status, ProposalStatus::Queued);
+    }
+
+    #[test]
+    fn test_quorum_and_threshold_off_by_one() {
+        let (env, admin, ta, token, client) = setup();
+
+        let mut config = client.get_config();
+        config.quorum_bps = 5_000; // 50%
+        config.approval_threshold_bps = 5_000; // 50%
+        client.update_config(&admin, &config);
+
+        let proposer = Address::generate(&env);
+        let voter_for = Address::generate(&env);
+        let voter_against = Address::generate(&env);
+        let whale = Address::generate(&env);
+
+        // Total supply = 10_000; 50% quorum = 5_000, 50% threshold = 5_000
+        // For: 4_999, Against: 5_000, Other: 1
+        mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
+        mint(&env, &ta, &token, &voter_for, 4_999);
+        mint(&env, &ta, &token, &voter_against, 5_000);
+        mint(&env, &ta, &token, &whale, 1);
+
+        let id = client.create_proposal(
+            &proposer,
+            &str(&env, "Off by one"),
+            &str(&env, "Test edge case"),
+            &ProposalType::TextProposal,
+            &ProposalPayload::Text,
+            &10_000i128,
+        );
+
+        advance(&env, VOTING_DELAY + 1);
+        client.cast_vote(&voter_for, &id, &true);
+        client.cast_vote(&voter_against, &id, &false);
+
+        advance(&env, VOTING_PERIOD);
+        let status = client.finalize_proposal(&id);
+
+        // 4_999 + 5_000 = 9_999 votes >= 5_000 quorum ✓
+        // 4_999 / 9_999 < 50% threshold, so should be defeated
+        assert_eq!(status, ProposalStatus::Defeated);
+    }
+
+    #[test]
+    fn test_zero_votes_fails_quorum() {
+        let (env, _admin, ta, token, client) = setup();
+        let proposer = Address::generate(&env);
+        let whale = Address::generate(&env);
+
+        mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
+        mint(&env, &ta, &token, &whale, 10_000);
+
+        let id = client.create_proposal(
+            &proposer,
+            &str(&env, "No votes"),
+            &str(&env, "Should be defeated"),
+            &ProposalType::TextProposal,
+            &ProposalPayload::Text,
+            &10_000i128,
+        );
+
+        advance(&env, VOTING_DELAY + 1);
+        // No one votes
+
+        advance(&env, VOTING_PERIOD);
+        let status = client.finalize_proposal(&id);
+        assert_eq!(status, ProposalStatus::Defeated);
+    }
 }
