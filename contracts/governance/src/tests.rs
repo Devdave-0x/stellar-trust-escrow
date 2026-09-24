@@ -1224,11 +1224,11 @@ mod tests {
         let voter_for = Address::generate(&env);
         let voter_against = Address::generate(&env);
 
-        // Total supply = 10_000; 51% threshold = 5_100
-        // For: 5_099 (just below), Against: 4_900
+        // Total votes = 10_000; 51% threshold = 5_100
+        // For: 5_098 (just below), Against: 4_902
         mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
-        mint(&env, &ta, &token, &voter_for, 5_099);
-        mint(&env, &ta, &token, &voter_against, 4_900);
+        mint(&env, &ta, &token, &voter_for, 5_098);
+        mint(&env, &ta, &token, &voter_against, 4_902);
 
         let id = client.create_proposal(
             &proposer,
@@ -1297,14 +1297,12 @@ mod tests {
         let proposer = Address::generate(&env);
         let voter_for = Address::generate(&env);
         let voter_against = Address::generate(&env);
-        let whale = Address::generate(&env);
 
-        // Total supply = 10_000; 50% quorum = 5_000, 50% threshold = 5_000
-        // For: 4_999, Against: 5_000, Other: 1
+        // Total votes = 10_000; 50% quorum = 5_000, 50% threshold = 5_000
+        // For: 4_999, Against: 5_001
         mint(&env, &ta, &token, &proposer, THRESHOLD + PROPOSER_DEPOSIT);
         mint(&env, &ta, &token, &voter_for, 4_999);
-        mint(&env, &ta, &token, &voter_against, 5_000);
-        mint(&env, &ta, &token, &whale, 1);
+        mint(&env, &ta, &token, &voter_against, 5_001);
 
         let id = client.create_proposal(
             &proposer,
@@ -1322,8 +1320,8 @@ mod tests {
         advance(&env, VOTING_PERIOD);
         let status = client.finalize_proposal(&id);
 
-        // 4_999 + 5_000 = 9_999 votes >= 5_000 quorum ✓
-        // 4_999 / 9_999 < 50% threshold, so should be defeated
+        // 4_999 + 5_001 = 10_000 votes >= 5_000 quorum ✓
+        // 4_999 / 10_000 = 49.99% < 50% threshold, so should be defeated
         assert_eq!(status, ProposalStatus::Defeated);
     }
 

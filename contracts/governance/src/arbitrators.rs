@@ -668,8 +668,8 @@ mod arb_tests {
     fn test_registry_add_unauthorized_fails() {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
-            let admin = Address::generate(&env);
-            let unauthorized = Address::generate(&env);
+            let _admin = Address::generate(&env);
+            let _unauthorized = Address::generate(&env);
             let arb = Address::generate(&env);
 
             // Non-admin attempting to add an arbitrator should not work
