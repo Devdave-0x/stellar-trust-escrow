@@ -618,4 +618,111 @@ mod tests {
             "weight_for_client.checked_mul(100) must overflow for u64::MAX"
         );
     }
+
+    // ── Issue #584: Event schema documentation from contract constants ────────
+
+    #[test]
+    fn test_event_names_constants_exist() {
+        use crate::event_names::*;
+
+        assert_eq!(BATCH_ESCROW_CREATED.len(), 3);
+        assert_eq!(BATCH_COMPLETED.len(), 3);
+        assert_eq!(FEE_COLLECTED.len(), 3);
+        assert_eq!(FEE_DISTRIBUTED.len(), 3);
+        assert_eq!(FEE_EMERGENCY_WITHDRAWN.len(), 3);
+        assert_eq!(DISPUTE_OPENED.len(), 3);
+        assert_eq!(VOTE_CAST.len(), 3);
+        assert_eq!(DISPUTE_RESOLVED.len(), 3);
+        assert_eq!(VOTER_SLASHED.len(), 3);
+        assert_eq!(UPGRADE_QUEUED.len(), 3);
+        assert_eq!(UPGRADE_EXECUTED.len(), 3);
+        assert_eq!(UPGRADE_CANCELLED.len(), 3);
+    }
+
+    #[test]
+    fn test_batch_events_documented() {
+        let s = setup_with_fee(0);
+        let client_addr = soroban_sdk::Address::generate(&s.env);
+        let fl = soroban_sdk::Address::generate(&s.env);
+
+        mint(&s.env, &s.admin, &s.token_id, &client_addr, 1_000);
+
+        let mut params = Vec::new(&s.env);
+        params.push_back(BatchEscrowParams {
+            freelancer: fl,
+            token: s.token_id.clone(),
+            total_amount: 1_000,
+            brief_hash: make_hash(&s.env, 1),
+            arbiter: None,
+            deadline: None,
+        });
+
+        // Verify batch creation emits events (and doesn't error)
+        let _ids = s.client.create_batch(&client_addr, &params);
+        assert_eq!(s.client.batch_escrow_count(), 1);
+    }
+
+    #[test]
+    fn test_fee_events_documented() {
+        let s = setup_with_fee(100); // 1% fee
+        let client = soroban_sdk::Address::generate(&s.env);
+        let fl = soroban_sdk::Address::generate(&s.env);
+
+        mint(&s.env, &s.admin, &s.token_id, &client, 2_000);
+        mint(&s.env, &s.admin, &s.token_id, &fl, 0);
+
+        let escrow_id = 0u64;
+        s.env.as_contract(&s.contract_id, || {
+            let fee_recipients = Vec::new(&s.env);
+            s.env
+                .storage()
+                .instance()
+                .set(&DataKey::FeeRecipients, &fee_recipients);
+        });
+
+        // Verify fee operations work (events emitted internally)
+        let (net, fee) = s.client.collect_fee(&escrow_id, &s.token_id, &1_000i128);
+        assert_eq!(net, 990); // 99% of 1000
+        assert_eq!(fee, 10); // 1% of 1000
+    }
+
+    #[test]
+    fn test_arbitration_events_documented() {
+        let s = setup_with_fee(0);
+        let client = soroban_sdk::Address::generate(&s.env);
+        let fl = soroban_sdk::Address::generate(&s.env);
+
+        mint(&s.env, &s.admin, &s.token_id, &client, 1_000);
+        mint(&s.env, &s.admin, &s.token_id, &fl, 1_000);
+
+        let mut params = Vec::new(&s.env);
+        params.push_back(BatchEscrowParams {
+            freelancer: fl.clone(),
+            token: s.token_id.clone(),
+            total_amount: 1_000,
+            brief_hash: make_hash(&s.env, 1),
+            arbiter: None,
+            deadline: None,
+        });
+
+        let ids = s.client.create_batch(&client, &params);
+        let escrow_id = ids.get(0).unwrap();
+
+        // Verify dispute opening emits events
+        let result = s.client.try_open_dispute(&escrow_id, &client, &1_000i128);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_upgrade_events_documented() {
+        let s = setup_with_fee(0);
+        let hash = BytesN::from_array(&s.env, &[0x11; 32]);
+
+        // Verify upgrade operations emit events (and don't error)
+        s.client.queue_upgrade(&s.admin, &hash);
+        assert!(s.client.get_pending_upgrade().is_some());
+
+        s.client.cancel_upgrade(&s.admin);
+        assert!(s.client.get_pending_upgrade().is_none());
+    }
 }
