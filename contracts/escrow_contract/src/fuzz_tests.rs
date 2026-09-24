@@ -1075,7 +1075,7 @@ mod fuzz_tests {
             &5_000,
         );
 
-        let m1 = t.client.add_milestone(
+        let _m1 = t.client.add_milestone(
             &client_addr,
             &escrow_id,
             &String::from_str(&t.env, "Milestone 2"),

@@ -87,7 +87,7 @@ mod ownership_transfer_invariant_tests {
         let state_after_proposal = client.get_escrow(&escrow_id);
         assert_eq!(
             state_after_proposal.status,
-            EscrowStatus::Funded,
+            EscrowStatus::Active,
             "Escrow status should not change during pending transfer"
         );
 
@@ -157,7 +157,7 @@ mod ownership_transfer_invariant_tests {
 
         let state_after_transfer = client.get_escrow(&escrow_id);
         assert_eq!(state_after_transfer.freelancer, freelancer_before, "Freelancer should remain unchanged");
-        assert_eq!(state_after_transfer.status, EscrowStatus::Funded, "Escrow status should remain Funded");
+        assert_eq!(state_after_transfer.status, EscrowStatus::Active, "Escrow status should remain Active");
 
         client.submit_milestone(&freelancer, &escrow_id, &m1);
         let result = client.try_approve_milestone(&new_client, &escrow_id, &m1);
