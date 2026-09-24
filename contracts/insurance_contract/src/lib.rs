@@ -33,6 +33,7 @@
 mod errors;
 mod events;
 mod gas_profiling;
+mod solvency_invariant_tests;
 mod types;
 
 pub use errors::InsuranceError;
