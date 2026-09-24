@@ -15,6 +15,7 @@ import {
   cacheEscrow,
   cacheMilestones,
   getCachedEscrow,
+  getCachedEscrowEntry,
   getCachedEscrows,
   initOfflineDb,
   migrateRecord,
@@ -170,6 +171,19 @@ describe('cache reads', () => {
 
     expect(getCachedEscrow('e1')).toBeNull();
     expect(deletedIds()).toEqual(['e1']);
+  });
+
+  it('returns the cache time alongside the record for staleness display', () => {
+    const cachedAt = fresh() - 60_000;
+    mockDb.getFirstSync.mockReturnValue(row('e1', { id: 'e1' }, CACHE_SCHEMA_VERSION, cachedAt));
+
+    expect(getCachedEscrowEntry('e1')).toEqual({ record: { id: 'e1' }, cachedAt });
+  });
+
+  it('returns no entry for a record that cannot be used', () => {
+    mockDb.getFirstSync.mockReturnValue(row('e1', { id: 'e1' }, CACHE_SCHEMA_VERSION + 1));
+
+    expect(getCachedEscrowEntry('e1')).toBeNull();
   });
 
   it('keeps usable records and drops unusable ones in a list read', () => {

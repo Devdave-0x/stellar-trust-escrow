@@ -175,7 +175,14 @@ export function cacheEscrow(escrow: Record<string, unknown>): void {
   );
 }
 
-export function getCachedEscrow(id: string): Record<string, unknown> | null {
+/** A cached record together with the time it was written (ms since epoch). */
+export interface CachedEntry {
+  record: CachedRecord;
+  cachedAt: number;
+}
+
+/** Like getCachedEscrow, but also returns when the escrow was cached. */
+export function getCachedEscrowEntry(id: string): CachedEntry | null {
   const row = db.getFirstSync<CacheRow>(
     `SELECT id, data, cached_at, schema_version FROM escrows WHERE id = ?`,
     [id],
@@ -185,7 +192,12 @@ export function getCachedEscrow(id: string): Record<string, unknown> | null {
     deleteRow('escrow', row.id);
     return null;
   }
-  return decodeRow('escrow', row);
+  const record = decodeRow('escrow', row);
+  return record ? { record, cachedAt: row.cached_at } : null;
+}
+
+export function getCachedEscrow(id: string): Record<string, unknown> | null {
+  return getCachedEscrowEntry(id)?.record ?? null;
 }
 
 export function getCachedEscrows(): Record<string, unknown>[] {
