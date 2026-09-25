@@ -11,6 +11,7 @@ const router = express.Router();
 import adminAuth, { issueAdminToken, ADMIN_TOKEN_TTL } from '../middleware/adminAuth.js';
 import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
+import insuranceReviewController from '../controllers/insuranceReviewController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
 import announcementController from '../controllers/announcementController.js';
@@ -105,6 +106,16 @@ router.get('/disputes', adminController.listDisputes);
  * @security Requires MFA verification
  */
 router.post('/disputes/:id/resolve', requireMfa, adminController.resolveDispute);
+
+/**
+ * @route  GET  /api/admin/insurance/claims            — claims queue (?status=)
+ * @route  GET  /api/admin/insurance/claims/:claimId   — evidence, pool impact, decision history
+ * @route  POST /api/admin/insurance/claims/:claimId/decision — approve | deny | request_evidence
+ * @security Decisions require MFA verification
+ */
+router.get('/insurance/claims', insuranceReviewController.listClaims);
+router.get('/insurance/claims/:claimId', insuranceReviewController.getClaim);
+router.post('/insurance/claims/:claimId/decision', requireMfa, insuranceReviewController.decideClaim);
 
 // ── Settings & Fees ────────────────────────────────────────────────────────────
 /**
