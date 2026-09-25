@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { escrowApi, systemApi, userApi, type Escrow, type Milestone } from '../lib/api';
 import { assertNetworkMatch } from '../lib/networkMatch';
+import { submitSignedTransaction } from '../services/txRetryRunner';
 import { useWalletStore } from '../store/useWalletStore';
 import {
   cacheEscrow,
@@ -180,7 +181,8 @@ export function useBroadcastEscrow() {
         getWalletNetwork: () => useWalletStore.getState().walletNetwork,
         fetchApiNetwork: systemApi.apiNetwork,
       });
-      return escrowApi.broadcast(signedXdr).then((r) => r.data);
+      // Queued for retry if the API is unreachable (#639).
+      return submitSignedTransaction(signedXdr);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['escrows'] });

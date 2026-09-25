@@ -141,8 +141,12 @@ export const escrowApi = {
   getMilestones: (id: string, params?: Record<string, number>) =>
     api.get<PaginatedResponse<Milestone>>(`/api/escrows/${id}/milestones`, { params }),
 
-  broadcast: (signedXdr: string) =>
-    api.post<{ hash: string; status: string }>('/api/escrows/broadcast', { signedXdr }),
+  broadcast: (signedXdr: string, idempotencyKey?: string) =>
+    api.post<{ hash: string; status: string }>(
+      '/api/escrows/broadcast',
+      { signedXdr },
+      idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+    ),
 };
 
 export const userApi = {

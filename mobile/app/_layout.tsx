@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useWalletStore } from '../store/useWalletStore';
 import { initOfflineDb } from '../services/offlineCache';
 import { setupNotificationListeners } from '../services/notifications';
+import { startTxRetryQueue } from '../services/txRetryRunner';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +38,7 @@ export default function RootLayout() {
   useEffect(() => {
     hydrate();
     initOfflineDb();
+    const stopTxRetryQueue = startTxRetryQueue();
 
     const cleanup = setupNotificationListeners(
       () => {}, // foreground — banner handles it
@@ -54,7 +56,10 @@ export default function RootLayout() {
       },
     );
 
-    return cleanup;
+    return () => {
+      cleanup();
+      stopTxRetryQueue();
+    };
   }, [hydrate, router]);
 
   return (

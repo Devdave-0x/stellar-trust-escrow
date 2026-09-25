@@ -91,8 +91,16 @@ export default function CreateEscrowScreen() {
       return;
     }
     try {
-      const result = await broadcast.mutateAsync(form.signedXdr.trim());
-      Alert.alert('Success', `Escrow created!\nTx: ${result.hash.slice(0, 16)}…`, [
+      const outcome = await broadcast.mutateAsync(form.signedXdr.trim());
+      if (outcome.status === 'queued') {
+        Alert.alert(
+          'Saved for retry',
+          "The server couldn't be reached. Your signed transaction is saved and will be submitted automatically when you're back online.",
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/escrows') }],
+        );
+        return;
+      }
+      Alert.alert('Success', `Escrow created!\nTx: ${outcome.result.hash.slice(0, 16)}…`, [
         { text: 'View Escrows', onPress: () => router.replace('/(tabs)/escrows') },
       ]);
     } catch (err: unknown) {

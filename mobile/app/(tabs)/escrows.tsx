@@ -9,6 +9,9 @@ import { useWalletStore } from '../../store/useWalletStore';
 import { useUserEscrows } from '../../hooks/useEscrows';
 import EscrowCard from '../../components/escrow/EscrowCard';
 import EmptyState from '../../components/ui/EmptyState';
+import PendingTransactions from '../../components/escrow/PendingTransactions';
+import { useTxQueue } from '../../hooks/useTxQueue';
+import { dismissTx } from '../../services/txRetryRunner';
 import type { Escrow } from '../../lib/api';
 
 const ROLES = ['all', 'client', 'freelancer'] as const;
@@ -20,12 +23,15 @@ export default function EscrowsScreen() {
   const [status, setStatus] = useState<(typeof STATUSES)[number]>('All');
 
   const { data, isLoading, refetch } = useUserEscrows(address, role);
+  const txQueue = useTxQueue();
   const escrows: Escrow[] = (data?.data ?? []).filter(
     (e) => status === 'All' || e.status === status,
   );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <PendingTransactions entries={txQueue} onDismiss={dismissTx} />
+
       {/* Role filter */}
       <View style={styles.filterRow}>
         {ROLES.map((r) => (

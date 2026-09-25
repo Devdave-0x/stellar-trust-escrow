@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mobile retry queue for signed transactions (#639): when the API is unreachable (network error, 5xx, 429, or an in-flight 409) the signed XDR is kept in an MMKV-persisted queue and retried with backoff whenever connectivity returns; every attempt sends the transaction hash as `Idempotency-Key`, so a retry cannot broadcast twice. Rejections (other 4xx) are surfaced immediately and, if they happen on retry, shown on the Escrows tab until dismissed
+
 - Mobile wallet network mismatch messaging (#638): the wallet store records the network a wallet was connected on, the app compares it (and the API's network from `/api/relayer/status`) with its own, and on a mismatch the create-escrow screen shows the expected network with a Reconnect action, the Broadcast button is disabled, and `useBroadcastEscrow` refuses to submit
 
 - Shared zod schema for escrow share-link payloads (#641): `shared/schemas/shareLink.js` defines the `GET /api/share/:token` and `POST /api/escrows/:id/share` responses; the backend validates both responses against it (500 on drift), the frontend `lib/api/shareLinks.js` validates what it receives, and mobile imports the matching `shared/types/shareLink.d.ts` types, kept in sync by a backend test
