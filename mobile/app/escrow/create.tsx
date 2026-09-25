@@ -23,6 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useBroadcastEscrow } from '../../hooks/useEscrows';
+import { useNetworkMatch } from '../../hooks/useNetworkMatch';
+import NetworkMismatchBanner from '../../components/ui/NetworkMismatchBanner';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import { isValidStellarAddress } from '../../lib/stellar';
@@ -53,6 +55,13 @@ export default function CreateEscrowScreen() {
   const address = useWalletStore((s) => s.address)!;
   const router = useRouter();
   const broadcast = useBroadcastEscrow();
+  const networkMatch = useNetworkMatch();
+  const disconnect = useWalletStore((s) => s.disconnect);
+
+  const handleReconnect = () => {
+    disconnect();
+    router.replace('/(auth)/connect');
+  };
 
   const set = (key: keyof FormState) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -99,6 +108,7 @@ export default function CreateEscrowScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <NetworkMismatchBanner match={networkMatch} onReconnect={handleReconnect} />
           {step === 'form' && (
             <>
               <Text style={styles.sectionTitle}>Escrow Details</Text>
@@ -195,6 +205,7 @@ export default function CreateEscrowScreen() {
                   title="Broadcast"
                   onPress={() => void handleBroadcast()}
                   loading={broadcast.isPending}
+                  disabled={!networkMatch.ok}
                   style={styles.halfBtn}
                 />
               </View>

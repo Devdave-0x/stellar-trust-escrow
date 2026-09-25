@@ -5,7 +5,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
-import { escrowApi, userApi, type Escrow, type Milestone } from '../lib/api';
+import { escrowApi, systemApi, userApi, type Escrow, type Milestone } from '../lib/api';
+import { assertNetworkMatch } from '../lib/networkMatch';
+import { useWalletStore } from '../store/useWalletStore';
 import {
   cacheEscrow,
   getCachedEscrowEntry,
@@ -172,7 +174,14 @@ export function useMilestones(escrowId: string | null) {
 export function useBroadcastEscrow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (signedXdr: string) => escrowApi.broadcast(signedXdr).then((r) => r.data),
+    mutationFn: async (signedXdr: string) => {
+      // Refuse to submit a transaction for the wrong network (#638).
+      await assertNetworkMatch({
+        getWalletNetwork: () => useWalletStore.getState().walletNetwork,
+        fetchApiNetwork: systemApi.apiNetwork,
+      });
+      return escrowApi.broadcast(signedXdr).then((r) => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['escrows'] });
     },

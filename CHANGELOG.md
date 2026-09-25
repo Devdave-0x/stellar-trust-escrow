@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mobile wallet network mismatch messaging (#638): the wallet store records the network a wallet was connected on, the app compares it (and the API's network from `/api/relayer/status`) with its own, and on a mismatch the create-escrow screen shows the expected network with a Reconnect action, the Broadcast button is disabled, and `useBroadcastEscrow` refuses to submit
+
 - Shared zod schema for escrow share-link payloads (#641): `shared/schemas/shareLink.js` defines the `GET /api/share/:token` and `POST /api/escrows/:id/share` responses; the backend validates both responses against it (500 on drift), the frontend `lib/api/shareLinks.js` validates what it receives, and mobile imports the matching `shared/types/shareLink.d.ts` types, kept in sync by a backend test
 
 - Mobile stale-data banner on the escrow detail screen (#637): when the escrow comes from the offline cache, either because the device is offline or because the refresh failed, a banner says so and shows when the data was last synced; it disappears after a fresh sync. `useEscrow` now falls back to the cache on fetch failure (via the testable `loadEscrowWithFallback`) and reports the data source and sync time, and the cache exposes `getCachedEscrowEntry`. `mobile/hooks/useEscrows.ts` and `mobile/app/escrow/[id].tsx` are restored to single coherent versions after #1016 left two concatenated copies in each
