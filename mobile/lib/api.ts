@@ -166,6 +166,14 @@ export const disputeApi = {
   list: (params?: Record<string, string | number>) =>
     api.get<PaginatedResponse<Dispute>>('/api/disputes', { params }),
   get: (escrowId: string) => api.get<Dispute>(`/api/disputes/${escrowId}`),
+  /** Submit text-only evidence to a dispute (keyed by dispute id, not escrow id). */
+  submitTextEvidence: (disputeId: number, description: string) => {
+    const form = new FormData();
+    form.append('description', description);
+    return api.post(`/api/disputes/${disputeId}/evidence`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 export const systemApi = {

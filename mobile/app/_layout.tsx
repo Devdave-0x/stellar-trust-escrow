@@ -12,6 +12,7 @@ import { useWalletStore } from '../store/useWalletStore';
 import { initOfflineDb } from '../services/offlineCache';
 import { setupNotificationListeners } from '../services/notifications';
 import { startTxRetryQueue } from '../services/txRetryRunner';
+import { startEvidenceDraftSync } from '../services/evidenceDraftRunner';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,6 +40,7 @@ export default function RootLayout() {
     hydrate();
     initOfflineDb();
     const stopTxRetryQueue = startTxRetryQueue();
+    const stopEvidenceDraftSync = startEvidenceDraftSync();
 
     const cleanup = setupNotificationListeners(
       () => {}, // foreground — banner handles it
@@ -59,6 +61,7 @@ export default function RootLayout() {
     return () => {
       cleanup();
       stopTxRetryQueue();
+      stopEvidenceDraftSync();
     };
   }, [hydrate, router]);
 

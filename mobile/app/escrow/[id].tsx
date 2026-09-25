@@ -14,6 +14,9 @@ import MilestoneItem from '../../components/escrow/MilestoneItem';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';
 import StaleDataBanner from '../../components/escrow/StaleDataBanner';
+import EvidenceDrafts from '../../components/escrow/EvidenceDrafts';
+import { useEvidenceDrafts } from '../../hooks/useEvidenceDrafts';
+import { deleteEvidenceDraft, saveEvidenceDraft } from '../../services/evidenceDraftRunner';
 import { truncateAddress, stroopsToXlm, explorerUrl } from '../../lib/stellar';
 import { authenticate, isBiometricEnabled } from '../../services/biometrics';
 
@@ -25,6 +28,7 @@ export default function EscrowDetailScreen() {
 
   const { data: result, isLoading, refetch } = useEscrow(authed && id ? id : null);
   const escrow = result?.escrow;
+  const evidenceDrafts = useEvidenceDrafts(id ?? '');
   const { data: milestones = [], isLoading: milestonesLoading } = useMilestones(
     authed && escrow && id ? id : null,
   );
@@ -163,6 +167,14 @@ export default function EscrowDetailScreen() {
               This escrow is under dispute. An arbiter will review and resolve it on-chain.
             </Text>
           </Card>
+        )}
+
+        {escrow.status === 'Disputed' && (isClient || isFreelancer) && (
+          <EvidenceDrafts
+            drafts={evidenceDrafts}
+            onSave={(description) => saveEvidenceDraft(String(escrow.id), description)}
+            onDelete={deleteEvidenceDraft}
+          />
         )}
       </ScrollView>
     </SafeAreaView>
