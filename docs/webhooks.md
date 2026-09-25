@@ -390,6 +390,8 @@ def verify_webhook(raw_body: bytes, received_signature: str, timestamp: str, sec
     return hmac.compare_digest(expected, provided)
 ```
 
+> **Rotating the secret:** see [`webhook-secret-rotation.md`](./webhook-secret-rotation.md) for the dual-secret consumer rollout, deadlines and troubleshooting.
+
 > **Important:** compare using a constant-time function (`crypto.timingSafeEqual` in Node.js or `hmac.compare_digest` in Python) to prevent timing attacks. Never use `===` or direct string equality for signature comparison.
 
 ---
