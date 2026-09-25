@@ -262,6 +262,8 @@ model ApiKey {
   keyHash    String    @unique @map("key_hash")
   /// CIDR strings (e.g. "203.0.113.0/24") or bare IPs the key may be used from. Empty = allow all.
   allowedIps String[]  @default([]) @map("allowed_ips")
+  /// Fine-grained permissions presented to integration owners during key review.
+  scopes     String[]  @default(["read"])
   lastUsedAt DateTime? @map("last_used_at")
   revokedAt  DateTime? @map("revoked_at")
   createdAt  DateTime  @default(now()) @map("created_at")

@@ -13,6 +13,7 @@ import { adminFetch } from '../../../store/admin';
 import EmptyState from '../../../components/ui/EmptyState';
 import Badge from '../../../components/ui/Badge';
 import CharCountTextarea from '../../../components/ui/CharCountTextarea';
+import DisputeTimelineAnomaly from '../../../components/dispute/DisputeTimelineAnomaly';
 
 function ResolveModal({ dispute, onClose, onConfirm }) {
   const [clientAmount, setClientAmount] = useState('');
@@ -295,6 +296,16 @@ export default function AdminDisputesPage() {
                       </>
                     )}
                   </div>
+                  {(d.timelineAnomaly || d.timeline?.anomaly || d.timeline?.inconsistent) && (
+                    <div className="mt-4">
+                      <DisputeTimelineAnomaly
+                        events={d.timeline?.events || d.timeline || []}
+                        anomaly
+                        reason={d.timelineAnomalyReason || d.timeline?.reason}
+                        isAdmin
+                      />
+                    </div>
+                  )}
                 </div>
                 {!d.resolvedAt && (
                   <button

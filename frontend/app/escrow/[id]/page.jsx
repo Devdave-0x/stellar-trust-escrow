@@ -18,6 +18,7 @@ import Avatar from '../../../components/ui/Avatar';
 import Spinner from '../../../components/ui/Spinner';
 import ErrorBoundary from '../../../components/error/ErrorBoundary';
 import EscrowReceipt, { openReceiptWindow } from '../../../components/escrow/EscrowReceipt';
+import DisputeTimelineAnomaly from '../../../components/dispute/DisputeTimelineAnomaly';
 import {
   buildApproveMilestoneTx,
   buildSubmitMilestoneTx,
@@ -82,6 +83,8 @@ export default function EscrowDetailPage({ params }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [events, setEvents] = useState([]);
+  const [timelineAnomaly, setTimelineAnomaly] = useState(false);
+  const [timelineAnomalyReason, setTimelineAnomalyReason] = useState('');
   const [eventsLoading, setEventsLoading] = useState(true);
 
   const { escrow: fetchedEscrow, isLoading, mutate } = useEscrow(id);
@@ -104,8 +107,17 @@ export default function EscrowDetailPage({ params }) {
     setEventsLoading(true);
     fetch(`${API_BASE}/api/escrows/${id}/events`, { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setEvents(Array.isArray(data) ? data : data?.events ?? []))
-      .catch(() => setEvents([]))
+      .then((data) => {
+        const nextEvents = Array.isArray(data) ? data : data?.events ?? [];
+        setEvents(nextEvents);
+        setTimelineAnomaly(Boolean(data?.anomaly || data?.inconsistent || data?.timelineAnomaly));
+        setTimelineAnomalyReason(data?.anomalyReason || data?.reason || '');
+      })
+      .catch(() => {
+        setEvents([]);
+        setTimelineAnomaly(false);
+        setTimelineAnomalyReason('');
+      })
       .finally(() => setEventsLoading(false));
   }, [id]);
 
@@ -386,6 +398,13 @@ export default function EscrowDetailPage({ params }) {
                 <div className="flex items-center justify-center py-8">
                   <Spinner size="sm" />
                 </div>
+              ) : timelineAnomaly ? (
+                <DisputeTimelineAnomaly
+                  events={events}
+                  anomaly
+                  reason={timelineAnomalyReason}
+                  isAdmin={false}
+                />
               ) : events.length === 0 ? (
                 <p className="text-gray-500 text-sm">No events recorded yet.</p>
               ) : (

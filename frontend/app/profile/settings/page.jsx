@@ -149,6 +149,13 @@ export default function SettingsPage() {
         />
       </Section>
 
+      <Section title="Developer integrations">
+        <p className="text-sm text-gray-400">Review API key usage and rotate webhook secrets.</p>
+        <a href="/profile/integrations" className="mt-3 inline-flex rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          Manage integrations
+        </a>
+      </Section>
+
       <p className="text-xs text-gray-600 text-center">
         Preferences are saved automatically and applied without a page reload.
       </p>

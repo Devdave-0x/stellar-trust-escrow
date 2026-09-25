@@ -110,13 +110,47 @@ router.post('/fee-estimate', authMiddleware, async (req, res) => {
  * GET /api/relayer/status
  * Get relayer service status
  */
-router.get('/status', (req, res) => {
+router.get('/status', async (req, res) => {
   const relayer = getRelayer();
+  const lastCheckedAt = new Date().toISOString();
+  const warningThreshold = Number(process.env.RELAYER_BALANCE_WARNING_XLM || 10);
+  const criticalThreshold = Number(process.env.RELAYER_BALANCE_CRITICAL_XLM || 2);
+  let balanceXlm = null;
+  let balanceError = null;
+
+  if (relayer) {
+    const horizonUrl =
+      process.env.STELLAR_HORIZON_URL ||
+      (process.env.STELLAR_NETWORK === 'mainnet'
+        ? 'https://horizon.stellar.org'
+        : 'https://horizon-testnet.stellar.org');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const accountResponse = await fetch(
+        `${horizonUrl.replace(/\/$/, '')}/accounts/${relayer.relayerKeypair.publicKey()}`,
+        { signal: controller.signal },
+      );
+      if (!accountResponse.ok) throw new Error(`Horizon returned ${accountResponse.status}`);
+      const account = await accountResponse.json();
+      const nativeBalance = account.balances?.find((entry) => entry.asset_type === 'native');
+      balanceXlm = nativeBalance ? Number(nativeBalance.balance) : 0;
+    } catch (error) {
+      balanceError = error.name === 'AbortError' ? 'Balance check timed out' : 'Balance unavailable';
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   res.json({
     status: relayer ? 'active' : 'unconfigured',
     network: process.env.STELLAR_NETWORK,
     contractId: process.env.ESCROW_CONTRACT_ID,
     relayerAddress: relayer ? relayer.relayerKeypair.publicKey() : null,
+    balanceXlm,
+    balanceError,
+    thresholds: { warningXlm: warningThreshold, criticalXlm: criticalThreshold },
+    lastCheckedAt,
   });
 });
 

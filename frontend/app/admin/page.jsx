@@ -386,6 +386,12 @@ export default function AdminDashboard() {
       icon: '⚙️',
       desc: 'Manage fees and configuration',
     },
+    {
+      href: '/admin/system',
+      label: 'System Status',
+      icon: '💚',
+      desc: 'Monitor relayer account health',
+    },
   ];
 
   // Pre-compute chart series from stats (memoisation avoided to keep it simple;

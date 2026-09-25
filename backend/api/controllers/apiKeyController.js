@@ -15,10 +15,23 @@ const KEY_LIST_SELECT = {
   name: true,
   keyPrefix: true,
   allowedIps: true,
+  scopes: true,
   lastUsedAt: true,
   createdAt: true,
   updatedAt: true,
 };
+
+const ALLOWED_SCOPES = new Set(['read', 'read:escrows', 'read:webhooks', 'write:webhooks']);
+
+function validateScopes(scopes) {
+  if (scopes === undefined) return { valid: true, value: ['read'] };
+  if (!Array.isArray(scopes) || scopes.length === 0) {
+    return { valid: false, error: 'scopes must be a non-empty array' };
+  }
+  const invalid = scopes.filter((scope) => !ALLOWED_SCOPES.has(scope));
+  if (invalid.length > 0) return { valid: false, error: `Invalid scopes: ${invalid.join(', ')}` };
+  return { valid: true, value: [...new Set(scopes)] };
+}
 
 function validateAllowedIps(allowedIps) {
   if (allowedIps === undefined) return { valid: true };
@@ -42,19 +55,22 @@ const createKey = async (req, res) => {
     const address = req.user?.address;
     if (!address) return res.status(401).json({ error: 'Authentication required' });
 
-    const { name, allowedIps = [] } = req.body;
+    const { name, allowedIps = [], scopes } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'name is required' });
     }
 
     const validation = validateAllowedIps(allowedIps);
     if (!validation.valid) return res.status(400).json({ error: validation.error });
+    const scopeValidation = validateScopes(scopes);
+    if (!scopeValidation.valid) return res.status(400).json({ error: scopeValidation.error });
 
     const { rawKey, apiKey } = await apiKeyService.createApiKey({
       tenantId: req.tenant?.id,
       userId: address,
       name: name.trim(),
       allowedIps,
+      scopes: scopeValidation.value,
     });
 
     res.status(201).json({
@@ -63,6 +79,7 @@ const createKey = async (req, res) => {
       key: rawKey,
       keyPrefix: apiKey.keyPrefix,
       allowedIps: apiKey.allowedIps,
+      scopes: apiKey.scopes,
       createdAt: apiKey.createdAt,
     });
   } catch (err) {
@@ -103,13 +120,15 @@ const updateKey = async (req, res) => {
     if (!address) return res.status(401).json({ error: 'Authentication required' });
 
     const { id } = req.params;
-    const { name, allowedIps } = req.body;
+    const { name, allowedIps, scopes } = req.body;
 
     const existing = await prisma.apiKey.findFirst({ where: { id, userId: address } });
     if (!existing) return res.status(404).json({ error: 'API key not found' });
 
     const validation = validateAllowedIps(allowedIps);
     if (!validation.valid) return res.status(400).json({ error: validation.error });
+    const scopeValidation = validateScopes(scopes);
+    if (!scopeValidation.valid) return res.status(400).json({ error: scopeValidation.error });
 
     const data = {};
     if (name !== undefined) {
@@ -119,6 +138,7 @@ const updateKey = async (req, res) => {
       data.name = name.trim();
     }
     if (allowedIps !== undefined) data.allowedIps = allowedIps;
+    if (scopes !== undefined) data.scopes = scopeValidation.value;
 
     const updated = await prisma.apiKey.update({ where: { id }, data, select: KEY_LIST_SELECT });
     res.json(updated);
@@ -128,4 +148,27 @@ const updateKey = async (req, res) => {
   }
 };
 
-export default { createKey, listKeys, updateKey };
+/**
+ * DELETE /api/v1/api-keys/:id
+ * Revokes an API key owned by the requesting user. The key remains in the
+ * database for audit purposes but can no longer authenticate requests.
+ */
+const revokeKey = async (req, res) => {
+  try {
+    const address = req.user?.address;
+    if (!address) return res.status(401).json({ error: 'Authentication required' });
+
+    const result = await prisma.apiKey.updateMany({
+      where: { id: req.params.id, userId: address, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    if (result.count === 0) return res.status(404).json({ error: 'API key not found' });
+    return res.status(204).send();
+  } catch (err) {
+    logControllerError('apiKey.revokeKey', err, req);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+export default { createKey, listKeys, updateKey, revokeKey };

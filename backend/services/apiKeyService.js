@@ -21,13 +21,13 @@ function hashKey(rawKey) {
   return crypto.createHash('sha256').update(rawKey).digest('hex');
 }
 
-async function createApiKey({ tenantId, userId, name, allowedIps = [] }) {
+async function createApiKey({ tenantId, userId, name, allowedIps = [], scopes = ['read'] }) {
   const rawKey = generateRawKey();
   const keyHash = hashKey(rawKey);
   const keyPrefix = rawKey.slice(0, DISPLAY_PREFIX_LENGTH);
 
   const apiKey = await prisma.apiKey.create({
-    data: { tenantId, userId, name, keyHash, keyPrefix, allowedIps },
+    data: { tenantId, userId, name, keyHash, keyPrefix, allowedIps, scopes },
   });
 
   return { rawKey, apiKey };

@@ -30,5 +30,6 @@ router.get('/', apiKeyController.listKeys);
  * @body   { name?: string, allowedIps?: string[] }
  */
 router.patch('/:id', apiKeyController.updateKey);
+router.delete('/:id', apiKeyController.revokeKey);
 
 export default router;
