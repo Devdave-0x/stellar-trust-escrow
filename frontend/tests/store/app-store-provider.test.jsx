@@ -58,3 +58,24 @@ describe('AppStoreProvider', () => {
     });
   });
 });
+
+describe('AppStoreProvider cross-tab session sync', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('drops the wallet session when another tab removes the auth token', async () => {
+    window.localStorage.setItem('ste_access_token', 'jwt-token');
+    renderWithStore(<StoreProbe />, {
+      persistedState: { wallet: { address: 'GSTORED', isConnected: true, network: 'testnet' } },
+    });
+    await waitFor(() => expect(screen.getByTestId('wallet-address')).toHaveTextContent('GSTORED'));
+
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'ste_access_token', oldValue: 'jwt-token', newValue: null }),
+    );
+
+    await waitFor(() => expect(screen.getByTestId('wallet-address')).toHaveTextContent('none'));
+  });
+});
+
