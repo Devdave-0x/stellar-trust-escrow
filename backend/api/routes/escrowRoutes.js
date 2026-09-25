@@ -20,7 +20,7 @@ import {
 import { exportBundle } from '../controllers/auditController.js';
 import { addBookmark, removeBookmark } from '../controllers/bookmarkController.js';
 import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
-import { createShareLink, revokeShareLink } from '../controllers/shareLinkController.js';
+import { createShareLink, listShareLinks, revokeShareLink } from '../controllers/shareLinkController.js';
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -271,6 +271,7 @@ router.delete('/:id/bookmark', validateEscrowId, removeBookmark);
  * @route  DELETE /api/escrows/:id/share/:token
  */
 router.post('/:id/share', validateEscrowId, createShareLink);
+router.get('/:id/share', validateEscrowId, listShareLinks);
 router.delete('/:id/share/:token', validateEscrowId, revokeShareLink);
 
 export default router;

@@ -18,6 +18,9 @@ import Avatar from '../../../components/ui/Avatar';
 import Spinner from '../../../components/ui/Spinner';
 import ErrorBoundary from '../../../components/error/ErrorBoundary';
 import EscrowReceipt, { openReceiptWindow } from '../../../components/escrow/EscrowReceipt';
+import DisputeChat from '../../../components/chat/DisputeChat';
+import ShareLinkPanel from '../../../components/escrow/ShareLinkPanel';
+import CertificateRevocationBanner from '../../../components/escrow/CertificateRevocationBanner';
 import {
   buildApproveMilestoneTx,
   buildSubmitMilestoneTx,
@@ -90,6 +93,11 @@ export default function EscrowDetailPage({ params }) {
   const { showToast } = useToast();
 
   const escrow = fetchedEscrow ?? PLACEHOLDER_ESCROW;
+  const certificate = escrow.certificate || {
+    revoked: escrow.certificateRevoked,
+    revokedAt: escrow.certificateRevokedAt,
+    reason: escrow.certificateRevocationReason,
+  };
 
   useEffect(() => {
     setLastRefreshed(new Date());
@@ -220,6 +228,7 @@ export default function EscrowDetailPage({ params }) {
           <Button
             variant="ghost"
             size="sm"
+            disabled={Boolean(certificate?.revoked || certificate?.revokedAt)}
             onClick={() =>
               openReceiptWindow({
                 escrow: { ...escrow, clientName: escrow.clientName, freelancerName: escrow.freelancerName },
@@ -227,7 +236,7 @@ export default function EscrowDetailPage({ params }) {
               })
             }
           >
-            ⤓ Download PDF
+            {certificate?.revoked || certificate?.revokedAt ? 'Certificate revoked' : '⤓ Download PDF'}
           </Button>
           <Button
             variant="ghost"
@@ -297,6 +306,14 @@ export default function EscrowDetailPage({ params }) {
           </div>
 
           {/* Terms */}
+          <CertificateRevocationBanner certificate={certificate} />
+
+          <ShareLinkPanel escrowId={id} />
+
+          <ErrorBoundary>
+            <DisputeChat escrowId={id} address={address} role={connectedRole} />
+          </ErrorBoundary>
+
           {escrow.terms && (
             <ErrorBoundary>
               <div className="card">

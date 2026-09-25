@@ -156,6 +156,14 @@ export default function DisputeChat({ escrowId, address, role, token }) {
     loadHistory(1);
   }, [loadHistory]);
 
+  // Opening a conversation is the read action for this user only.
+  useEffect(() => {
+    if (!escrowId || !address) return;
+    fetch(`${API_BASE}/api/escrows/${escrowId}/messages/read`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {});
+  }, [escrowId, address]);
+
   // ── WebSocket connection ──────────────────────────────────────────────────
   useEffect(() => {
     const url = `${WS_BASE}/disputes/${escrowId}?address=${address}&token=${token ?? ''}`;

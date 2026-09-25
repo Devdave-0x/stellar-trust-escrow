@@ -50,6 +50,9 @@ export function openReceiptWindow({ escrow, network }) {
   parts.push('</div>');
 
   parts.push('<div class="card">');
+  if (escrow.certificateRevoked || escrow.certificate?.revoked || escrow.certificate?.revokedAt) {
+    parts.push('<div style="border:1px solid #dc2626;background:#fef2f2;color:#991b1b;padding:12px;border-radius:6px;margin-bottom:12px"><strong>Certificate revoked</strong><div>This receipt must not be used as proof of escrow completion.</div></div>');
+  }
   parts.push(`<div class="grid">`);
   parts.push(`<div><p class="muted">Escrow ID</p><strong>#${escrow.id}</strong></div>`);
   parts.push(`<div><p class="muted">Status</p><strong>${escrow.status || '—'}</strong></div>`);

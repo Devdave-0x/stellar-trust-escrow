@@ -13,6 +13,7 @@ import ErrorBoundary from '../../components/error/ErrorBoundary';
 import StatCard from '../../components/ui/StatCard';
 import EmptyState from '../../components/ui/EmptyState';
 import { useWalletStore } from '../../store/app-store';
+import EscrowConversationList from '../../components/chat/EscrowConversationList';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -210,6 +211,8 @@ export default function MyProfilePage() {
       </ErrorBoundary>
 
       {/* Recently resolved */}
+      <EscrowConversationList escrows={escrows} address={address} />
+
       {recentlyResolved.length > 0 && (
         <ErrorBoundary>
           <section>

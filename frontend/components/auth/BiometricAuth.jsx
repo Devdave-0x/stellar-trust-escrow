@@ -64,6 +64,8 @@ export default function BiometricAuth({ userId, userEmail, onAuthSuccess }) {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('menu'); // 'menu' | 'password'
   const [password, setPassword] = useState('');
+  const [registrationError, setRegistrationError] = useState(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const isWebAuthnSupported =
     typeof window !== 'undefined' && window.PublicKeyCredential !== undefined;
@@ -75,6 +77,7 @@ export default function BiometricAuth({ userId, userEmail, onAuthSuccess }) {
       showToast('WebAuthn is not supported in this browser.', 'error');
       return;
     }
+    setRegistrationError(null);
     setLoading(true);
     try {
       // 1. Fetch registration options from backend
@@ -120,15 +123,24 @@ export default function BiometricAuth({ userId, userEmail, onAuthSuccess }) {
 
       showToast('Biometric credential registered successfully!', 'success');
     } catch (err) {
+      setRegistrationError({ name: err.name, message: err.message || 'Enrollment failed.' });
       if (err.name === 'NotAllowedError') {
-        showToast('Biometric prompt was dismissed or denied.', 'error');
+        showToast('Enrollment was cancelled. Try another device or retry.', 'error');
       } else {
         showToast(err.message || 'Registration failed.', 'error');
       }
     } finally {
       setLoading(false);
     }
-  }, [userId, userEmail, isWebAuthnSupported, showToast]);
+  }, [userId, userEmail, isWebAuthnSupported, showToast, retryNonce]);
+
+  const retryRegistration = useCallback(() => {
+    // A fresh invocation fetches a fresh server challenge; never reuse the
+    // challenge that failed or was cancelled by the authenticator.
+    setRegistrationError(null);
+    setRetryNonce((value) => value + 1);
+    handleRegister();
+  }, [handleRegister]);
 
   // ── Login ───────────────────────────────────────────────────────────────────
 
@@ -254,6 +266,14 @@ export default function BiometricAuth({ userId, userEmail, onAuthSuccess }) {
             <span aria-hidden="true">🔐</span>
             {loading ? 'Verifying…' : 'Login with Biometrics'}
           </button>
+
+          {registrationError && (
+            <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+              <p className="font-medium">Passkey enrollment could not be completed.</p>
+              <p className="mt-1">Try another device, make sure your screen lock is enabled, or retry to request a fresh challenge.</p>
+              <button type="button" onClick={retryRegistration} disabled={loading} className="mt-2 rounded bg-amber-600 px-3 py-1.5 font-medium text-white disabled:opacity-50">Try enrollment again</button>
+            </div>
+          )}
 
           {/* Register biometrics */}
           <button

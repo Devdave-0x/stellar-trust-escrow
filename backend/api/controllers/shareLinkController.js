@@ -9,6 +9,22 @@ function generateToken() {
   return randomBytes(24).toString('base64url');
 }
 
+/** GET /api/escrows/:id/share — list active links without revealing tokens. */
+export const listShareLinks = async (req, res) => {
+  try {
+    const userAddress = req.user?.address;
+    const escrowId = BigInt(req.params.id);
+    const escrow = await prisma.escrow.findUnique({ where: { id: escrowId }, select: { clientAddress: true, freelancerAddress: true } });
+    if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+    if (![escrow.clientAddress, escrow.freelancerAddress].includes(userAddress)) return res.status(403).json({ error: 'Only escrow participants can view share links' });
+    const links = await prisma.escrowShareLink.findMany({ where: { escrowId, revokedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true, token: true, createdBy: true, createdAt: true, expiresAt: true } });
+    res.json({ links: links.map(({ token, ...link }) => ({ ...link, tokenMasked: `${token.slice(0, 4)}…${token.slice(-4)}` })) });
+  } catch (err) {
+    logControllerError('shareLink.listShareLinks', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 /**
  * POST /api/escrows/:id/share
  * Generate a public share link for an escrow.
@@ -71,7 +87,7 @@ export const revokeShareLink = async (req, res) => {
     const escrowId = BigInt(req.params.id);
 
     const link = await prisma.escrowShareLink.findFirst({
-      where: { token, escrowId, revokedAt: null },
+      where: { OR: [{ token }, { id: token }], escrowId, revokedAt: null },
     });
 
     if (!link) return res.status(404).json({ error: 'Share link not found or already revoked' });

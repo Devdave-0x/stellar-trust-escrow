@@ -198,16 +198,22 @@ const getUnreadCount = async (req, res) => {
       select: { id: true },
     });
 
-    if (escrows.length === 0) return res.json({ count: 0 });
+    if (escrows.length === 0) return res.json({ count: 0, byEscrow: {} });
 
-    const count = await prisma.escrowMessage.count({
+    const unreadMessages = await prisma.escrowMessage.findMany({
       where: {
         escrowId: { in: escrows.map((escrow) => escrow.id) },
         NOT: { readBy: { array_contains: address } },
       },
+      select: { escrowId: true },
     });
 
-    res.json({ count });
+    const byEscrow = unreadMessages.reduce((result, message) => {
+      const key = message.escrowId.toString();
+      result[key] = (result[key] || 0) + 1;
+      return result;
+    }, {});
+    res.json({ count: unreadMessages.length, byEscrow });
   } catch (err) {
     logControllerError('escrowMessage.getUnreadCount', err, req);
     res.status(500).json({ error: err.message });
