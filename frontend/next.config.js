@@ -48,6 +48,8 @@ const nextConfig = {
 
   // ── Experimental performance features ───────────────────────────────────────
   experimental: {
+    // Compile modules from ../shared (zod schemas shared with the backend).
+    externalDir: true,
     optimizePackageImports: [
       'lucide-react',
       'recharts',

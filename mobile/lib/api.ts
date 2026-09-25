@@ -6,6 +6,7 @@
  */
 
 import axios from 'axios';
+import type { ShareLinkResolveResponse } from '../../shared/types/shareLink';
 import { storage, STORAGE_KEYS } from './storage';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -160,6 +161,12 @@ export const disputeApi = {
   list: (params?: Record<string, string | number>) =>
     api.get<PaginatedResponse<Dispute>>('/api/disputes', { params }),
   get: (escrowId: string) => api.get<Dispute>(`/api/disputes/${escrowId}`),
+};
+
+export const shareApi = {
+  /** Resolve a public escrow share link. Shape shared with the backend's zod schema. */
+  resolve: (token: string) =>
+    api.get<ShareLinkResolveResponse>(`/api/share/${encodeURIComponent(token)}`),
 };
 
 export const searchApi = {

@@ -2,8 +2,26 @@ import { randomBytes } from 'crypto';
 import { createId } from '@paralleldrive/cuid2';
 import prisma from '../../lib/prisma.js';
 import { logControllerError } from '../../config/logger.js';
+import {
+  shareLinkCreateResponseSchema,
+  shareLinkResolveResponseSchema,
+} from '../../../shared/schemas/shareLink.js';
 
 const DEFAULT_TTL_DAYS = 30;
+
+/**
+ * Send `payload` only if it matches the shared share-link schema, so clients
+ * that validate against the same schema never receive a drifted shape.
+ * A mismatch is a server bug: log it and return 500 rather than bad data.
+ */
+function sendValidated(res, schema, payload, status = 200, context = 'shareLink') {
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    logControllerError(`${context}.responseSchema`, result.error, res.req);
+    return res.status(500).json({ error: 'Share link response failed validation' });
+  }
+  return res.status(status).json(payload);
+}
 
 function generateToken() {
   return randomBytes(24).toString('base64url');
@@ -46,12 +64,18 @@ export const createShareLink = async (req, res) => {
 
     const baseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
 
-    res.status(201).json({
-      token: link.token,
-      shareUrl: `${baseUrl}/api/share/${link.token}`,
-      expiresAt: link.expiresAt,
-      createdAt: link.createdAt,
-    });
+    return sendValidated(
+      res,
+      shareLinkCreateResponseSchema,
+      {
+        token: link.token,
+        shareUrl: `${baseUrl}/api/share/${link.token}`,
+        expiresAt: link.expiresAt,
+        createdAt: link.createdAt,
+      },
+      201,
+      'shareLink.createShareLink',
+    );
   } catch (err) {
     logControllerError('shareLink.createShareLink', err, req);
     res.status(500).json({ error: err.message });
@@ -129,11 +153,17 @@ export const resolveShareLink = async (req, res) => {
 
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
 
-    res.json({
-      escrow: { ...escrow, id: escrow.id.toString() },
-      sharedAt: link.createdAt,
-      expiresAt: link.expiresAt,
-    });
+    return sendValidated(
+      res,
+      shareLinkResolveResponseSchema,
+      {
+        escrow: { ...escrow, id: escrow.id.toString() },
+        sharedAt: link.createdAt,
+        expiresAt: link.expiresAt,
+      },
+      200,
+      'shareLink.resolveShareLink',
+    );
   } catch (err) {
     logControllerError('shareLink.resolveShareLink', err, req);
     res.status(500).json({ error: err.message });
