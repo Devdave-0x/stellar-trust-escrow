@@ -1,6 +1,7 @@
 import express from 'express';
 import userController from '../controllers/userController.js';
 import referralController from '../controllers/referralController.js';
+import securityActivityController from '../controllers/securityActivityController.js';
 import {
   stellarAddressParam,
   paginationQuery,
@@ -60,6 +61,12 @@ router.get('/me/unread-messages', escrowMessageController.getUnreadCount);
  * @desc   Last 50 login attempts for the current user, newest first
  */
 router.get('/me/login-history', userController.getMyLoginHistory);
+
+/**
+ * @route  GET /api/users/me/security-activity?page=&limit=
+ * @desc   Recent passkey/MFA, password and session changes (no secrets; IPs masked)
+ */
+router.get('/me/security-activity', securityActivityController.getMySecurityActivity);
 
 router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
 router.get(

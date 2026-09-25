@@ -2,6 +2,7 @@
 
 import { usePreferences } from '../../../contexts/PreferencesContext';
 import { useTheme } from '../../../contexts/ThemeContext';
+import SecurityActivity from '../../../components/profile/SecurityActivity';
 
 const LANGUAGES = [
   { value: 'en', label: 'English' },
@@ -147,6 +148,10 @@ export default function SettingsPage() {
           checked={prefs.notifications.inApp}
           onChange={(v) => setNotifications({ inApp: v })}
         />
+      </Section>
+
+      <Section title="Security activity">
+        <SecurityActivity />
       </Section>
 
       <p className="text-xs text-gray-600 text-center">
