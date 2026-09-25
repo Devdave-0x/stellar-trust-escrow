@@ -12,6 +12,7 @@ import adminAuth, { issueAdminToken, ADMIN_TOKEN_TTL } from '../middleware/admin
 import { requireMfa } from '../middleware/mfaAuth.js';
 import adminController from '../controllers/adminController.js';
 import insuranceReviewController from '../controllers/insuranceReviewController.js';
+import analyticsFreshnessController from '../controllers/analyticsFreshnessController.js';
 import tenantController from '../controllers/tenantController.js';
 import * as featureFlagController from '../controllers/featureFlagController.js';
 import announcementController from '../controllers/announcementController.js';
@@ -45,6 +46,12 @@ router.post('/auth/login', (req, res) => {
  * @desc   Platform-wide statistics (total escrows, users, disputes)
  */
 router.get('/stats', adminController.getStats);
+
+/**
+ * @route  GET /api/admin/analytics/freshness
+ * @desc   Stale analytics snapshot series (metric, period, last generated time)
+ */
+router.get('/analytics/freshness', analyticsFreshnessController.getFreshness);
 
 // ── Users ──────────────────────────────────────────────────────────────────────
 /**

@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import { useAdminStore } from '../../store/app-store';
 import { buildAdminHeaders } from '../../store/admin';
+import StaleAnalyticsBanner from '../../components/admin/StaleAnalyticsBanner';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -408,6 +409,8 @@ export default function AdminDashboard() {
         </div>
         <p className="text-gray-400">Platform management for StellarTrustEscrow administrators.</p>
       </header>
+
+      {apiKey && <StaleAnalyticsBanner apiKey={apiKey} />}
 
       {/* API Key Login */}
       {!apiKey && (
