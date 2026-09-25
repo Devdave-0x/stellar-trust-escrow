@@ -10,6 +10,7 @@ import CardSkeleton from '../../components/ui/CardSkeleton';
 import PageTransition from '../../components/layout/PageTransition';
 import ErrorBoundary from '../../components/error/ErrorBoundary';
 import DashboardTour from '../../components/onboarding/DashboardTour';
+import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist';
 import { usePerformance } from '../../hooks/usePerformance';
 import { useI18n } from '../../i18n/index.jsx';
 import { useWalletStore } from '../../store/app-store';
@@ -123,6 +124,8 @@ export default function DashboardPage() {
               </Suspense>
             </ErrorBoundary>
           </section>
+
+          <OnboardingChecklist address={address} />
 
           <section aria-label="Recent activity feed">
             <ErrorBoundary>

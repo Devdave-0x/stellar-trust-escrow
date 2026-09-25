@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import ExportManifestViewer from './ExportManifestViewer';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
 
@@ -115,6 +116,7 @@ export default function DataExport({ address }) {
   };
 
   return (
+    <div className="space-y-6">
     <div className="card p-6 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-white mb-2">Data Export/Import</h2>
@@ -221,6 +223,8 @@ export default function DataExport({ address }) {
           </div>
         </div>
       )}
+    </div>
+    <ExportManifestViewer address={address} />
     </div>
   );
 }

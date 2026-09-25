@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import { useAdminStore } from '../../store/app-store';
 import { buildAdminHeaders } from '../../store/admin';
+import AnnouncementPreview from '../../components/admin/AnnouncementPreview';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -326,6 +327,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [announcementSegment, setAnnouncementSegment] = useState('global');
 
   useEffect(() => {
     setInputKey(apiKey);
@@ -534,6 +536,10 @@ export default function AdminDashboard() {
           )}
 
           {/* Nav cards */}
+          <section className="card p-5 mb-6 space-y-3" aria-label="Announcement audience preview controls">
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-white font-semibold">Announcement preview</h2><p className="text-xs text-gray-400">Check how a message renders for each target segment before publishing.</p></div><label className="text-sm text-gray-300">Target <select value={announcementSegment} onChange={(event) => setAnnouncementSegment(event.target.value)} className="ml-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-white"><option value="global">Global</option><option value="tenant">Tenant</option><option value="role">Role</option><option value="individual">Individual</option></select></label></div>
+            <AnnouncementPreview segment={announcementSegment} announcement={{ title: 'Service announcement', body: 'Preview how this message will appear to the selected audience.' }} />
+          </section>
           <nav aria-label="Admin sections">
             <h2 className="text-white font-semibold mb-3">Admin sections</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
