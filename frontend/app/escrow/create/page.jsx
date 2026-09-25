@@ -26,6 +26,8 @@ import Button from '../../../components/ui/Button';
 import CharCountTextarea from '../../../components/ui/CharCountTextarea';
 import FeeEstimator from '../../../components/ui/FeeEstimator';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
+import TemplateConflictModal from '../../../components/escrow/TemplateConflictModal';
+import { findTemplateConflicts, mergeTemplate } from '../../../lib/escrow/templateConflicts';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 import XLMAmountInput from '../../../components/ui/XLMAmountInput';
 import templatesData from '../../../data/templates.json';
@@ -50,23 +52,7 @@ const DEFAULT_MILESTONE = { title: '', description: '', amount: '' };
 const DESCRIPTION_MIN_LENGTH = 10;
 
 function applyTemplateToForm(currentForm, template) {
-  const milestones =
-    Array.isArray(template.milestones) && template.milestones.length > 0
-      ? template.milestones.map((milestone) => ({
-          title: milestone.title || '',
-          description: milestone.description || '',
-          amount: milestone.amount || '',
-        }))
-      : [{ ...DEFAULT_MILESTONE }];
-
-  return {
-    ...currentForm,
-    tokenAddress: template.tokenAddress || currentForm.tokenAddress || 'usdc',
-    totalAmount: template.totalAmount || '',
-    briefDescription: template.briefDescription || '',
-    deadline: template.deadline || '',
-    milestones,
-  };
+  return mergeTemplate(currentForm, template);
 }
 
 /** Returns true when the amount string represents a positive number. */
@@ -95,6 +81,8 @@ export default function CreateEscrowPage() {
   const [error, setError] = useState(null);
   const [termsHash, setTermsHash] = useState(null);
   const [templateNotice, setTemplateNotice] = useState('');
+  // Template waiting for the user to resolve conflicts with fields they filled in.
+  const [pendingTemplate, setPendingTemplate] = useState(null);
   const [appliedQueryTemplateId, setAppliedQueryTemplateId] = useState(null);
 
   // Touched state tracks which fields the user has interacted with
@@ -133,10 +121,21 @@ export default function CreateEscrowPage() {
     setAppliedQueryTemplateId(templateId);
   }, [searchParams, templateLibrary, appliedQueryTemplateId]);
 
-  const handleApplyTemplate = (template) => {
-    setFormData((previous) => applyTemplateToForm(previous, template));
+  // Touched state is left as is, so validation errors stay visible after the
+  // template is merged.
+  const commitTemplate = (template, choices) => {
+    setFormData((previous) => mergeTemplate(previous, template, choices));
     setCurrentStep(1);
     setTemplateNotice(`Applied template: ${template.name}`);
+  };
+
+  const handleApplyTemplate = (template) => {
+    const conflicts = findTemplateConflicts(formData, template);
+    if (conflicts.length === 0) {
+      commitTemplate(template);
+      return;
+    }
+    setPendingTemplate({ template, conflicts });
   };
 
   // TODO (contributor — Issue #33): implement form submission
@@ -244,6 +243,17 @@ export default function CreateEscrowPage() {
           ))}
         </ol>
       </nav>
+
+      <TemplateConflictModal
+        isOpen={Boolean(pendingTemplate)}
+        templateName={pendingTemplate?.template.name ?? ''}
+        conflicts={pendingTemplate?.conflicts ?? []}
+        onApply={(choices) => {
+          commitTemplate(pendingTemplate.template, choices);
+          setPendingTemplate(null);
+        }}
+        onCancel={() => setPendingTemplate(null)}
+      />
 
       {/* Step Content */}
       <div className="card space-y-6">
