@@ -16,6 +16,7 @@ import { handleValidationErrors } from '../../middleware/validation.js';
 import emailService from '../../services/emailService.js';
 
 const MAX_BODY_LENGTH = 5000;
+const DEFAULT_RETENTION_DAYS = 365;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,37 @@ function serializeMessage(message) {
     ...message,
     escrowId: message.escrowId.toString(),
   };
+}
+
+export function getEscrowMessageRetentionCutoff(now = new Date()) {
+  const retentionDays = Number(process.env.ESCROW_MESSAGE_RETENTION_DAYS || DEFAULT_RETENTION_DAYS);
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - retentionDays);
+  return cutoff;
+}
+
+export async function pruneExpiredEscrowMessages(now = new Date()) {
+  return prisma.escrowMessage.deleteMany({
+    where: {
+      createdAt: { lt: getEscrowMessageRetentionCutoff(now) },
+    },
+  });
+}
+
+export async function exportEscrowConversation(escrowId) {
+  const messages = await prisma.escrowMessage.findMany({
+    where: { escrowId: BigInt(escrowId) },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return messages.map((message) => ({
+    id: message.id,
+    escrowId: message.escrowId.toString(),
+    senderAddress: message.senderAddress,
+    body: message.body,
+    createdAt: message.createdAt,
+    readBy: message.readBy,
+  }));
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────

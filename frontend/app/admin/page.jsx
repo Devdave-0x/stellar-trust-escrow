@@ -30,6 +30,7 @@ import {
 import { useAdminStore } from '../../store/app-store';
 import { buildAdminHeaders } from '../../store/admin';
 import AnnouncementPreview from '../../components/admin/AnnouncementPreview';
+import AuditVerifierStatusCard from '../../components/admin/AuditVerifierStatusCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -514,6 +515,9 @@ export default function AdminDashboard() {
                       icon="👤"
                       color="text-blue-400"
                     />
+                  </div>
+                  <div className="mt-4">
+                    <AuditVerifierStatusCard status={stats.auditVerifier} />
                   </div>
                 </section>
 
