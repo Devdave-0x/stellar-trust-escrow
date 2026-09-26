@@ -284,6 +284,22 @@ pub fn emit_reputation_updated(env: &Env, address: &Address, new_score: u64) {
         .publish((ev::REPUTATION_UPDATED,), (address.clone(), new_score));
 }
 
+/// Emitted when an arbiter's reputation is updated due to dispute resolution.
+///
+/// Schema: topic=(ARBITER_REPUTATION_UPDATED,), data=(arbiter, dispute_id, reputation_delta, reason)
+pub fn emit_arbiter_reputation_updated(
+    env: &Env,
+    arbiter: &Address,
+    dispute_id: u64,
+    reputation_delta: i32,
+    reason: &String,
+) {
+    env.events().publish(
+        (ev::ARBITER_REPUTATION_UPDATED,),
+        (arbiter.clone(), dispute_id, reputation_delta, reason.clone()),
+    );
+}
+
 pub fn emit_lock_time_expired(env: &Env, escrow_id: u64, lock_time: u64) {
     env.events()
         .publish((ev::LOCK_TIME_EXPIRED, escrow_id), lock_time);

@@ -106,6 +106,7 @@ mod oracle;
 mod oracle_fallback_tests;
 mod oracle_overflow_tests;
 mod oracle_tests;
+mod ownership_transfer_invariant_tests;
 mod partial_cancel_tests;
 mod pause_tests;
 mod platform_fee_bps_tests;
