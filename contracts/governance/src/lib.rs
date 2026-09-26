@@ -30,6 +30,7 @@
 
 pub mod arbitrators;
 mod errors;
+mod escalation_payload_validation_tests;
 mod events;
 pub mod incentives;
 mod tests;
