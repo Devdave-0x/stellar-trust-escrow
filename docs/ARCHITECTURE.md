@@ -481,3 +481,5 @@ GovernanceContract → EscrowContract    (resolve dispute after panel vote)
 **WebSocket connections are authenticated.** The upgrade request is verified against the JWT before a connection is accepted (`assertWebSocketUpgradeAllowed`). Dispute chat namespaces additionally check that the connecting address is a party to that dispute.
 
 **Contract upgrades require admin auth and respect a timelock** (via `EscrowExtensions.queue_upgrade` → `execute_upgrade` after `UPGRADE_DELAY_SECONDS`). Emergency pause is available at any time via `pause(admin)` and blocks all state-mutating contract functions.
+
+**Public share links are bearer tokens.** `GET /api/share/:token` returns an allow-listed, read-only escrow view to anyone holding the token. Token entropy, expiry, tenant scoping, rate limiting and the reviewer checklist are in [`security/share-link-threat-model.md`](./security/share-link-threat-model.md).
