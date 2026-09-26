@@ -2,6 +2,10 @@
 
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useNotifications } from '../../hooks/useNotifications';
+import {
+  cloneNotificationFixtures,
+  notificationEventFixtures,
+} from '../../../shared/fixtures/notificationEvents';
 
 // Mock the API client
 jest.mock('../../lib/api/client', () => ({
@@ -14,10 +18,7 @@ jest.mock('../../lib/api/client', () => ({
 
 import api from '../../lib/api/client';
 
-const mockNotifications = [
-  { id: '1', type: 'escrow_funded', escrowId: 'e1', message: 'Escrow funded', read: false, createdAt: new Date().toISOString() },
-  { id: '2', type: 'dispute_raised', escrowId: 'e2', message: 'Dispute raised', read: true, createdAt: new Date().toISOString() },
-];
+const mockNotifications = cloneNotificationFixtures();
 
 describe('useNotifications', () => {
   let MockWebSocket;
@@ -34,8 +35,12 @@ describe('useNotifications', () => {
         this.readyState = MockWebSocket.OPEN;
         queueMicrotask(() => this.onopen?.());
       }
-      send(data) { wsSent.push(JSON.parse(data)); }
-      close() { this.onclose?.(); }
+      send(data) {
+        wsSent.push(JSON.parse(data));
+      }
+      close() {
+        this.onclose?.();
+      }
     };
 
     global.WebSocket = MockWebSocket;
@@ -58,8 +63,7 @@ describe('useNotifications', () => {
     const { result } = renderHook(() => useNotifications());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    // Only notification '1' is unread
-    expect(result.current.unreadCount).toBe(1);
+    expect(result.current.unreadCount).toBe(3);
   });
 
   it('subscribes to notifications WebSocket topic', async () => {
@@ -76,11 +80,15 @@ describe('useNotifications', () => {
     const { result } = renderHook(() => useNotifications());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    act(() => result.current.markRead('1'));
+    act(() => result.current.markRead(notificationEventFixtures.escrow.id));
 
-    expect(result.current.notifications.find((n) => n.id === '1').read).toBe(true);
-    expect(result.current.unreadCount).toBe(0);
-    expect(api.patch).toHaveBeenCalledWith('/notifications/1/read');
+    expect(
+      result.current.notifications.find((n) => n.id === notificationEventFixtures.escrow.id).read,
+    ).toBe(true);
+    expect(result.current.unreadCount).toBe(2);
+    expect(api.patch).toHaveBeenCalledWith(
+      `/notifications/${notificationEventFixtures.escrow.id}/read`,
+    );
   });
 
   it('markAllRead marks all notifications as read', async () => {
@@ -106,7 +114,11 @@ describe('useNotifications', () => {
     const { result } = renderHook(() => useNotifications());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    const newNotif = { id: '3', type: 'dispute_resolved', escrowId: 'e3', message: 'Dispute resolved', read: false, createdAt: new Date().toISOString() };
+    const newNotif = {
+      ...notificationEventFixtures.certificate,
+      id: 'notif-certificate-live',
+      read: false,
+    };
 
     act(() => {
       sockets[0].onmessage?.({
@@ -114,8 +126,8 @@ describe('useNotifications', () => {
       });
     });
 
-    expect(result.current.notifications[0]).toMatchObject({ id: '3' });
-    expect(result.current.unreadCount).toBe(2);
+    expect(result.current.notifications[0]).toMatchObject({ id: 'notif-certificate-live' });
+    expect(result.current.unreadCount).toBe(4);
   });
 
   it('handles fetch error gracefully', async () => {

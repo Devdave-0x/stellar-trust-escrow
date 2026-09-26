@@ -2,15 +2,16 @@
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import NotificationPanel from '../../../components/layout/NotificationPanel';
+import {
+  cloneNotificationFixtures,
+  notificationEventFixtures,
+} from '../../../../shared/fixtures/notificationEvents';
 
 jest.mock('../../../lib/formatRelativeTime', () => ({
   formatRelativeTime: () => '2 hours ago',
 }));
 
-const mockNotifications = [
-  { id: '1', type: 'escrow_funded', escrowId: 'e1', message: 'Escrow funded', read: false, createdAt: new Date().toISOString() },
-  { id: '2', type: 'dispute_raised', escrowId: 'e2', message: 'Dispute raised', read: true, createdAt: new Date().toISOString() },
-];
+const mockNotifications = cloneNotificationFixtures();
 
 const defaultProps = {
   notifications: mockNotifications,
@@ -26,11 +27,14 @@ describe('NotificationPanel', () => {
     render(<NotificationPanel {...defaultProps} />);
     expect(screen.getByText('Escrow funded')).toBeInTheDocument();
     expect(screen.getByText('Dispute raised')).toBeInTheDocument();
+    expect(screen.getByText('Ownership transfer requested')).toBeInTheDocument();
+    expect(screen.getByText('Protocol maintenance window scheduled')).toBeInTheDocument();
+    expect(screen.getByText('Completion certificate ready')).toBeInTheDocument();
   });
 
   it('renders relative timestamps', () => {
     render(<NotificationPanel {...defaultProps} />);
-    expect(screen.getAllByText('2 hours ago')).toHaveLength(2);
+    expect(screen.getAllByText('2 hours ago')).toHaveLength(mockNotifications.length);
   });
 
   it('shows empty state when no notifications', () => {
@@ -64,7 +68,7 @@ describe('NotificationPanel', () => {
   it('calls onMarkRead and onClose when an unread notification is clicked', () => {
     render(<NotificationPanel {...defaultProps} />);
     fireEvent.click(screen.getByText('Escrow funded'));
-    expect(defaultProps.onMarkRead).toHaveBeenCalledWith('1');
+    expect(defaultProps.onMarkRead).toHaveBeenCalledWith(notificationEventFixtures.escrow.id);
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -88,7 +92,7 @@ describe('NotificationPanel', () => {
   it('links each notification to the correct escrow page', () => {
     render(<NotificationPanel {...defaultProps} />);
     const links = screen.getAllByRole('link');
-    expect(links[0]).toHaveAttribute('href', '/escrow/e1');
-    expect(links[1]).toHaveAttribute('href', '/escrow/e2');
+    expect(links[0]).toHaveAttribute('href', '/escrow/escrow-1001');
+    expect(links[1]).toHaveAttribute('href', '/escrow/escrow-1002');
   });
 });

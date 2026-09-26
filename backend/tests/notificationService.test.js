@@ -7,6 +7,7 @@
  */
 
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { notificationEventFixtures } from '../../shared/fixtures/notificationEvents.js';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ describe('NotificationService.send', () => {
   it.each(Object.values(NotificationEvent))(
     'enqueues a job with event "%s" and the correct payload shape',
     async (event) => {
-      const data = { escrowId: ESCROW_ID, event };
+      const data = { ...notificationEventFixtures.escrow.data, escrowId: ESCROW_ID, event };
 
       await NotificationService.send(USER_ID, event, data);
 

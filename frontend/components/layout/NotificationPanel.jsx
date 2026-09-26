@@ -11,6 +11,9 @@ const EVENT_LABELS = {
   dispute_raised: 'Dispute raised',
   dispute_resolved: 'Dispute resolved',
   escrow_expired: 'Escrow expired',
+  ownership_transfer_requested: 'Ownership transfer requested',
+  announcement_published: 'Announcement published',
+  certificate_issued: 'Certificate issued',
 };
 
 const EVENT_ICONS = {
@@ -19,6 +22,9 @@ const EVENT_ICONS = {
   dispute_raised: '⚠️',
   dispute_resolved: '✅',
   escrow_expired: '⏰',
+  ownership_transfer_requested: '🔁',
+  announcement_published: '📣',
+  certificate_issued: '🏅',
 };
 
 /**
