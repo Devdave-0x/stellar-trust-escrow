@@ -32,6 +32,19 @@ This directory contains everything needed to respond to, track, and learn from i
 OPEN → ACKNOWLEDGED → INVESTIGATING → MITIGATED → RESOLVED → POST_MORTEM → CLOSED
 ```
 
+## Completing a Post-Mortem
+
+Use `templates/post-mortem.md` for SEV1, SEV2, security incidents, and recurring
+SEV3 incidents. The incident commander owns scheduling the review and assigning
+action items.
+
+1. Copy the template and name it with the incident id and date.
+2. Fill in timeline, impact, root cause, detection gaps, and recovery actions.
+3. Link dashboards, logs, deploys, and support tickets used during response.
+4. Assign every follow-up an owner and due date.
+5. Attach the completed post-mortem with `POST /api/incidents/:id/post-mortem`.
+6. Move the incident to `CLOSED` only after required follow-ups are tracked.
+
 ## API
 
 The incident system exposes a REST API (admin-auth required):

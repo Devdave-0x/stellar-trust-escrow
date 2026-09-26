@@ -43,6 +43,25 @@ The initial thresholds are intentionally conservative so CI can catch regression
 - `escrow-details`: tail latency (p97.5) <= 140 ms, throughput >= 250 req/s
 - `user-profile`: tail latency (p97.5) <= 140 ms, throughput >= 180 req/s
 
+## Comparing Results Against Baselines
+
+After each run, compare `load-tests/results/latest.json` with
+`load-tests/baselines.json` using the analyzer:
+
+```bash
+node load-tests/analyze.js
+```
+
+The analyzer writes `load-tests/results/latest.md` with pass/fail status for
+latency and throughput. Treat a failed baseline as a regression unless the PR
+intentionally changes the scenario, fixture size, or infrastructure profile.
+
+## Updating Baselines
+
+Update baselines only after reviewing at least one clean local run and one CI or
+staging run. Record the reason in the PR description and include the old and new
+p97.5 latency plus throughput values for each changed scenario.
+
 ## Nightly Automated Testing
 
 A nightly runner (`nightly-runner.js`) extends the base load test suite with:

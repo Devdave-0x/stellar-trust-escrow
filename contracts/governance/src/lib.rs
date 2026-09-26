@@ -664,6 +664,11 @@ impl GovernanceContract {
         Storage::config(&env)
     }
 
+    /// Returns all governance parameters for off-chain clients.
+    pub fn get_governance_params(env: Env) -> Result<GovConfig, GovError> {
+        Self::get_config(env)
+    }
+
     /// Returns the total number of proposals created.
     pub fn proposal_count(env: Env) -> u64 {
         env.storage()
