@@ -99,6 +99,13 @@ router.get('/users/:address/login-history', adminController.getUserLoginHistory)
 router.get('/disputes', adminController.listDisputes);
 
 /**
+ * @route  GET /api/admin/arbiters/workload
+ * @desc   Per-arbiter weekly dispute load, open disputes, resolution latency, reputation
+ * @query  weeks (1-12, default 8), tenantId (optional filter)
+ */
+router.get('/arbiters/workload', adminController.getArbiterWorkload);
+
+/**
  * @route  POST /api/admin/disputes/:id/resolve
  * @desc   Resolve an open dispute
  * @body   { clientAmount: string, freelancerAmount: string, notes: string }

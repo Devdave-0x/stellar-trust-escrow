@@ -61,6 +61,16 @@ router.get('/me/unread-messages', escrowMessageController.getUnreadCount);
  */
 router.get('/me/login-history', userController.getMyLoginHistory);
 
+/**
+ * @route  GET /api/users/me/referral | /me/referrals | /me/referrals/stats
+ * @desc   Referral code + summary, anonymised referral list, and the
+ *         dashboard drilldown (conversions, pending rewards, invalid
+ *         referrals, claim history; ?from=&to= date range).
+ */
+router.get('/me/referral', referralController.getMyReferral);
+router.get('/me/referrals', validatePagination, referralController.getMyReferrals);
+router.get('/me/referrals/stats', referralController.getMyReferralStats);
+
 router.get('/:address', validateAddress, conditionalGet(), userController.getUserProfile);
 router.get(
   '/:address/activity',

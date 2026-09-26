@@ -46,9 +46,14 @@ export const createShareLink = async (req, res) => {
 
     const baseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
 
+    // Web page (carries deep-link metadata) and the mobile app deep link.
+    const frontendUrl = process.env.FRONTEND_URL;
+
     res.status(201).json({
       token: link.token,
       shareUrl: `${baseUrl}/api/share/${link.token}`,
+      webUrl: frontendUrl ? `${frontendUrl.replace(/\/+$/, '')}/share/${link.token}` : null,
+      deepLink: `stellartrustescrow://share/${link.token}`,
       expiresAt: link.expiresAt,
       createdAt: link.createdAt,
     });

@@ -1010,7 +1010,94 @@ const getUserLoginHistory = async (req, res) => {
   }
 };
 
+// ── Arbiter workload ─────────────────────────────────────────────────────────
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_WORKLOAD_WEEKS = 12;
+
+/**
+ * GET /api/admin/arbiters/workload?weeks=&tenantId=
+ * Per-arbiter dispute load for the admin heatmap: disputes assigned per week
+ * (by escrow arbiter, bucketed by raisedAt), open disputes, average
+ * resolution latency and reputation. The window is capped at 12 weeks and
+ * results are cached for 60 s so dashboard refreshes stay bounded.
+ */
+const getArbiterWorkload = async (req, res) => {
+  try {
+    const weeks = Math.min(Math.max(parseInt(req.query.weeks, 10) || 8, 1), MAX_WORKLOAD_WEEKS);
+    const tenantId = typeof req.query.tenantId === 'string' && req.query.tenantId ? req.query.tenantId : null;
+    const cacheKey = `admin:arbiter-workload:${weeks}:${tenantId ?? 'all'}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const now = Date.now();
+    const since = new Date(now - weeks * WEEK_MS);
+    const disputes = await prisma.dispute.findMany({
+      where: { raisedAt: { gte: since }, ...(tenantId ? { tenantId } : {}) },
+      select: { escrowId: true, raisedAt: true, resolvedAt: true },
+    });
+
+    const escrows = disputes.length
+      ? await prisma.escrow.findMany({
+          where: { id: { in: disputes.map((d) => d.escrowId) } },
+          select: { id: true, arbiterAddress: true },
+        })
+      : [];
+    const arbiterByEscrow = new Map(escrows.map((e) => [e.id.toString(), e.arbiterAddress]));
+
+    const byArbiter = new Map();
+    for (const d of disputes) {
+      const arbiter = arbiterByEscrow.get(d.escrowId.toString());
+      if (!arbiter) continue; // no arbiter assigned
+      const row =
+        byArbiter.get(arbiter) ??
+        { address: arbiter, weekly: Array(weeks).fill(0), open: 0, resolved: 0, totalResolutionMs: 0 };
+      const bucket = Math.min(weeks - 1, Math.floor((d.raisedAt.getTime() - since.getTime()) / WEEK_MS));
+      row.weekly[bucket] += 1;
+      if (d.resolvedAt) {
+        row.resolved += 1;
+        row.totalResolutionMs += d.resolvedAt.getTime() - d.raisedAt.getTime();
+      } else {
+        row.open += 1;
+      }
+      byArbiter.set(arbiter, row);
+    }
+
+    const reputation = byArbiter.size
+      ? await prisma.reputationRecord.findMany({
+          where: { address: { in: [...byArbiter.keys()] } },
+          select: { address: true, totalScore: true },
+        })
+      : [];
+    const scoreByAddress = new Map(reputation.map((r) => [r.address, Number(r.totalScore)]));
+
+    const result = {
+      weeks,
+      tenantId,
+      weekStarts: Array.from({ length: weeks }, (_, i) => new Date(since.getTime() + i * WEEK_MS).toISOString()),
+      arbiters: [...byArbiter.values()]
+        .map((r) => ({
+          address: r.address,
+          weekly: r.weekly,
+          total: r.weekly.reduce((a, b) => a + b, 0),
+          open: r.open,
+          avgResolutionHours: r.resolved ? Math.round(r.totalResolutionMs / r.resolved / 36e5) : null,
+          reputation: scoreByAddress.get(r.address) ?? null,
+        }))
+        .sort((a, b) => b.total - a.total),
+      generatedAt: new Date(now).toISOString(),
+    };
+
+    await cache.set(cacheKey, result, 60);
+    res.json(result);
+  } catch (err) {
+    logControllerError('admin.getArbiterWorkload', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
+  getArbiterWorkload,
   listUsers,
   getUserDetail,
   suspendUser,
