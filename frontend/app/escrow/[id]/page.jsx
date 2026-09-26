@@ -18,6 +18,7 @@ import Avatar from '../../../components/ui/Avatar';
 import Spinner from '../../../components/ui/Spinner';
 import ErrorBoundary from '../../../components/error/ErrorBoundary';
 import EscrowReceipt, { openReceiptWindow } from '../../../components/escrow/EscrowReceipt';
+import { runOptimisticMilestoneAction } from '../../../lib/escrow/optimisticMilestone';
 import {
   buildApproveMilestoneTx,
   buildSubmitMilestoneTx,
@@ -129,45 +130,45 @@ export default function EscrowDetailPage({ params }) {
           : 'observer'
     : 'observer';
 
-  const handleApproveMilestone = async (milestoneId) => {
+  // Shows the new milestone status immediately and rolls back to the previous
+  // escrow state (with the failure reason) if signing or broadcasting fails.
+  const runMilestoneTx = async (milestoneId, optimisticStatus, buildTx, verb) => {
+    if (!address) {
+      showToast('Please connect your wallet first', 'error');
+      return;
+    }
     setIsActionLoading(true);
     try {
-      if (!address) throw new Error('Please connect your wallet first');
-      const unsignedXdr = await buildApproveMilestoneTx({
-        sourceAddress: address,
-        escrowId: BigInt(id).toString(),
-        milestoneId: Number(milestoneId),
+      const result = await runOptimisticMilestoneAction({
+        escrow: fetchedEscrow,
+        mutate,
+        milestoneId,
+        optimisticStatus,
+        action: async () => {
+          const unsignedXdr = await buildTx({
+            sourceAddress: address,
+            escrowId: BigInt(id).toString(),
+            milestoneId: Number(milestoneId),
+          });
+          const signedXdr = await signTx(unsignedXdr);
+          await broadcastTransaction(signedXdr);
+        },
       });
-      const signedXdr = await signTx(unsignedXdr);
-      await broadcastTransaction(signedXdr);
-      showToast('Milestone approved', 'success');
-      await mutate();
-    } catch (err) {
-      showToast(err.message || 'Failed to approve milestone', 'error');
+      if (result.ok) {
+        showToast(`Milestone ${verb}`, 'success');
+      } else {
+        showToast(`Milestone was not ${verb}: ${result.reason}`, 'error');
+      }
     } finally {
       setIsActionLoading(false);
     }
   };
 
-  const handleSubmitMilestone = async (milestoneId) => {
-    setIsActionLoading(true);
-    try {
-      if (!address) throw new Error('Please connect your wallet first');
-      const unsignedXdr = await buildSubmitMilestoneTx({
-        sourceAddress: address,
-        escrowId: BigInt(id).toString(),
-        milestoneId: Number(milestoneId),
-      });
-      const signedXdr = await signTx(unsignedXdr);
-      await broadcastTransaction(signedXdr);
-      showToast('Milestone submitted', 'success');
-      await mutate();
-    } catch (err) {
-      showToast(err.message || 'Failed to submit milestone', 'error');
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
+  const handleApproveMilestone = (milestoneId) =>
+    runMilestoneTx(milestoneId, 'Approved', buildApproveMilestoneTx, 'approved');
+
+  const handleSubmitMilestone = (milestoneId) =>
+    runMilestoneTx(milestoneId, 'Submitted', buildSubmitMilestoneTx, 'submitted');
 
   const handleRejectMilestone = async (milestoneId) => {
     setIsActionLoading(true);

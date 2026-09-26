@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { appReducer, createInitialAppState, loadPersistedState, persistState } from './state';
 import { getToken, setToken as persistToken, clearToken as clearPersistedToken } from '../lib/auth/token';
+import { broadcastSessionEnded, subscribeToSessionEnd } from '../lib/auth/sessionSync';
 
 const defaultState = createInitialAppState();
 
@@ -91,6 +92,18 @@ export function AppStoreProvider({ children }) {
     persistState(state, storage);
   }, [state]);
 
+  // Another tab logged out or lost its token: drop this tab's session too so
+  // RouteGuard redirects away from protected pages. Dispatches directly (not
+  // via the actions below) so the event is not re-broadcast.
+  useEffect(
+    () =>
+      subscribeToSessionEnd(() => {
+        clearPersistedToken();
+        dispatch({ type: 'WALLET/DISCONNECT' });
+      }),
+    [],
+  );
+
   const dispatchWithDevtools = (action) => {
     const nextState = appReducer(stateRef.current, action);
     dispatch(action);
@@ -115,6 +128,7 @@ export function AppStoreProvider({ children }) {
         disconnect: () => {
           clearPersistedToken();
           dispatchWithDevtools({ type: 'WALLET/DISCONNECT' });
+          broadcastSessionEnded('disconnected');
         },
         setToken: (token) => {
           persistToken(token);
@@ -123,6 +137,7 @@ export function AppStoreProvider({ children }) {
         clearToken: () => {
           clearPersistedToken();
           dispatchWithDevtools({ type: 'WALLET/CLEAR_TOKEN' });
+          broadcastSessionEnded('token-cleared');
         },
       },
       admin: {
