@@ -808,4 +808,115 @@ mod event_tests {
             assert!(topic_names.contains(&sym), "Missing event: {sym:?}");
         }
     }
+
+    // ── Arbiter reputation events (Issue #572) ───────────────────────────────
+
+    #[test]
+    fn test_arbiter_reputation_event_on_dispute_resolution() {
+        let (env, admin, contract_id, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 10_000);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &10_000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &Some(arbiter.clone()),
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let mid = client.add_milestone(
+            &client_addr,
+            &escrow_id,
+            &String::from_str(&env, "Work"),
+            &BytesN::from_array(&env, &[2; 32]),
+            &10_000,
+        );
+
+        client.submit_milestone(&freelancer, &escrow_id, &mid);
+        client.raise_dispute(&client_addr, &escrow_id, &Some(mid));
+        client.resolve_dispute(&arbiter, &escrow_id, &5_000, &5_000);
+
+        let events = contract_events(&env, &contract_id);
+        let mut found_arb_rep_event = false;
+
+        for e in events.iter() {
+            if let Some(t) = e.1.get(0) {
+                if let Ok(sym) = Symbol::try_from_val(&env, &t) {
+                    if sym == soroban_sdk::symbol_short!("arb_rep_u") {
+                        let (emitted_arbiter, _dispute_id, reputation_delta, _reason): (Address, u64, i32, String) =
+                            soroban_sdk::FromVal::from_val(&env, &e.2);
+                        assert_eq!(emitted_arbiter, arbiter, "Event arbiter should match");
+                        assert!(reputation_delta != 0, "Reputation delta should be non-zero");
+                        found_arb_rep_event = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        assert!(found_arb_rep_event, "Should emit arbiter reputation event on dispute resolution");
+    }
+
+    #[test]
+    fn test_arbiter_reputation_event_contains_required_fields() {
+        let (env, admin, contract_id, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 15_000);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &15_000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &Some(arbiter.clone()),
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let mid = client.add_milestone(
+            &client_addr,
+            &escrow_id,
+            &String::from_str(&env, "Work"),
+            &BytesN::from_array(&env, &[2; 32]),
+            &15_000,
+        );
+
+        client.submit_milestone(&freelancer, &escrow_id, &mid);
+        client.raise_dispute(&freelancer, &escrow_id, &Some(mid));
+        client.resolve_dispute(&arbiter, &escrow_id, &7_500, &7_500);
+
+        let events = contract_events(&env, &contract_id);
+        let mut found_event = false;
+
+        for e in events.iter() {
+            if let Some(t) = e.1.get(0) {
+                if let Ok(sym) = Symbol::try_from_val(&env, &t) {
+                    if sym == soroban_sdk::symbol_short!("arb_rep_u") {
+                        let (addr, _dispute_id, delta, _reason): (Address, u64, i32, String) =
+                            soroban_sdk::FromVal::from_val(&env, &e.2);
+
+                        assert_eq!(addr, arbiter, "Event should contain arbiter address");
+                        assert!(delta != 0, "Event should contain reputation delta");
+                        found_event = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        assert!(found_event, "Should find arbiter reputation update event with required fields");
+    }
 }

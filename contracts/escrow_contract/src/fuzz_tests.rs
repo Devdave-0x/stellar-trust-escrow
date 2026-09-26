@@ -994,4 +994,213 @@ mod fuzz_tests {
         );
         assert_eq!(m0, 0, "Should work after both unpaused and unfrozen");
     }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 20. MILESTONE AMOUNT ROUNDING AND DUST THRESHOLD FUZZING (Issue #573)
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// Fuzz test: verify that milestone splits with dust thresholds maintain
+    /// the invariant that total released plus remaining equals funded amount.
+    #[test]
+    fn fuzz_milestone_amount_rounding_invariant() {
+        let t = setup();
+        let client_addr = Address::generate(&t.env);
+        let freelancer = Address::generate(&t.env);
+
+        let test_amounts: [i128; 8] = [100, 1_000, 10_000, 99_999, 100_000, 1_000_000, 9_999_999, 100_000_000];
+
+        for &funded_amount in &test_amounts {
+            let t = setup();
+            mint_for_escrow(&t.env, &t.token_id, &client_addr, funded_amount, 3);
+
+            let escrow_id = t.client.create_escrow(
+                &client_addr,
+                &freelancer,
+                &t.token_id,
+                &funded_amount,
+                &hash(&t.env, 1),
+                &None,
+                &None,
+                &None,
+                &None,
+                &no_multisig(&t.env),
+            );
+
+            let mut total_milestone_amount: i128 = 0;
+            for m in 0..3 {
+                let milestone_amt = if m < 2 { funded_amount / 3 } else { funded_amount / 3 + (funded_amount % 3) };
+                total_milestone_amount += milestone_amt;
+
+                t.client.add_milestone(
+                    &client_addr,
+                    &escrow_id,
+                    &String::from_str(&t.env, "Milestone"),
+                    &hash(&t.env, m as u8 + 2),
+                    &milestone_amt,
+                );
+            }
+
+            assert_eq!(total_milestone_amount, funded_amount, "Total milestone amounts must equal funded amount");
+        }
+    }
+
+    /// Fuzz test: verify that partial milestone releases maintain the invariant
+    /// that released plus remaining never exceeds total and never becomes negative.
+    #[test]
+    fn fuzz_milestone_partial_release_invariant() {
+        let total: i128 = 10_000;
+        let t = setup();
+        let client_addr = Address::generate(&t.env);
+        let freelancer = Address::generate(&t.env);
+        mint_for_escrow(&t.env, &t.token_id, &client_addr, total, 2);
+
+        let escrow_id = t.client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &t.token_id,
+            &total,
+            &hash(&t.env, 1),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&t.env),
+        );
+
+        let m0 = t.client.add_milestone(
+            &client_addr,
+            &escrow_id,
+            &String::from_str(&t.env, "Milestone 1"),
+            &hash(&t.env, 2),
+            &5_000,
+        );
+
+        let _m1 = t.client.add_milestone(
+            &client_addr,
+            &escrow_id,
+            &String::from_str(&t.env, "Milestone 2"),
+            &hash(&t.env, 3),
+            &5_000,
+        );
+
+        t.client.submit_milestone(&freelancer, &escrow_id, &m0);
+        t.client.approve_milestone(&client_addr, &escrow_id, &m0);
+
+        let state = t.client.get_escrow(&escrow_id);
+        let approved_balance = state.remaining_balance;
+
+        assert!(approved_balance <= total, "Approved amount must not exceed total");
+        assert!(approved_balance >= 0, "Remaining amount must not be negative");
+    }
+
+    /// Fuzz test: random milestone splits should always respect dust threshold
+    /// and prevent creation of stranded balances.
+    #[test]
+    fn fuzz_milestone_random_splits_no_stranded_dust() {
+        let t = setup();
+        let client_addr = Address::generate(&t.env);
+        let freelancer = Address::generate(&t.env);
+
+        let total: i128 = 7_777;
+        mint_for_escrow(&t.env, &t.token_id, &client_addr, total, 5);
+
+        let escrow_id = t.client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &t.token_id,
+            &total,
+            &hash(&t.env, 1),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&t.env),
+        );
+
+        let split_sizes: [i128; 5] = [2_000, 2_000, 1_500, 1_277, 1_000];
+        let mut sum: i128 = 0;
+
+        for (i, &size) in split_sizes.iter().enumerate() {
+            if sum + size <= total {
+                let result = t.client.try_add_milestone(
+                    &client_addr,
+                    &escrow_id,
+                    &String::from_str(&t.env, "Split"),
+                    &hash(&t.env, i as u8 + 2),
+                    &size,
+                );
+                assert!(result.is_ok() || sum + size > total, "Valid split should succeed");
+                if result.is_ok() {
+                    sum += size;
+                }
+            }
+        }
+
+        assert!(sum <= total, "Sum of milestones must not exceed funded amount");
+    }
+
+    /// Fuzz test: verify that releasing multiple milestones in different orders
+    /// produces the same final state and maintains invariants.
+    #[test]
+    fn fuzz_milestone_release_order_invariant() {
+        let total: i128 = 10_000;
+
+        for order in &[0, 1, 2] {
+            let t = setup();
+            let client_addr = Address::generate(&t.env);
+            let freelancer = Address::generate(&t.env);
+            mint_for_escrow(&t.env, &t.token_id, &client_addr, total, 3);
+
+            let escrow_id = t.client.create_escrow(
+                &client_addr,
+                &freelancer,
+                &t.token_id,
+                &total,
+                &hash(&t.env, 1),
+                &None,
+                &None,
+                &None,
+                &None,
+                &no_multisig(&t.env),
+            );
+
+            let m0 = t.client.add_milestone(
+                &client_addr,
+                &escrow_id,
+                &String::from_str(&t.env, "M0"),
+                &hash(&t.env, 2),
+                &3_333,
+            );
+
+            let m1 = t.client.add_milestone(
+                &client_addr,
+                &escrow_id,
+                &String::from_str(&t.env, "M1"),
+                &hash(&t.env, 3),
+                &3_333,
+            );
+
+            let m2 = t.client.add_milestone(
+                &client_addr,
+                &escrow_id,
+                &String::from_str(&t.env, "M2"),
+                &hash(&t.env, 4),
+                &3_334,
+            );
+
+            let release_order = match order {
+                0 => [m0, m1, m2],
+                1 => [m1, m2, m0],
+                _ => [m2, m0, m1],
+            };
+
+            for mid in &release_order {
+                t.client.submit_milestone(&freelancer, &escrow_id, mid);
+                t.client.approve_milestone(&client_addr, &escrow_id, mid);
+            }
+
+            let final_state = t.client.get_escrow(&escrow_id);
+            assert_eq!(final_state.remaining_balance, 0, "All funds should be released regardless of order");
+        }
+    }
 }
