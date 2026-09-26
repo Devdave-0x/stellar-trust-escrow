@@ -5,6 +5,7 @@ import Badge from '../ui/Badge';
 import CopyButton from '../ui/CopyButton';
 import CurrencyAmount from '../ui/CurrencyAmount';
 import EscrowCardSkeleton from '../ui/EscrowCardSkeleton';
+import ArchivedEscrowState from './ArchivedEscrowState';
 import { useI18n } from '../../i18n/index.jsx';
 import { useRelativeTime } from '../../hooks/useRelativeTime';
 import { useRef, useMemo } from 'react';
@@ -57,7 +58,12 @@ export default function EscrowCard({
     role,
     deadline,
     assetSymbol = 'USDC',
+    archivedAt,
   } = escrow;
+
+  if (status === 'Archived' || archivedAt) {
+    return <ArchivedEscrowState escrowId={id} archivedAt={archivedAt} />;
+  }
 
   const requiresAction = actionRequired ?? ACTION_REQUIRED_STATUSES.has(status);
   const timeLabel = useRelativeTime(deadline, 60_000);
