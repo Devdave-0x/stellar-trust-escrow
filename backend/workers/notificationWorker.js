@@ -26,7 +26,35 @@ const config = {
   fromName: process.env.EMAIL_FROM_NAME || 'Stellar Trust Escrow',
   resendApiKey: process.env.RESEND_API_KEY || '',
   baseUrl: process.env.EMAIL_BASE_URL || 'http://localhost:4000',
+  tenantConcurrencyLimit: parseInt(process.env.NOTIFICATION_TENANT_CONCURRENCY || '5', 10),
+  maxRetries: parseInt(process.env.NOTIFICATION_MAX_RETRIES || '3', 10),
 };
+
+const tenantConcurrencyTracking = new Map();
+const metrics = {
+  notifications_queued: 0,
+  notifications_delivered: 0,
+  notifications_failed: 0,
+  notifications_delayed: 0,
+  tenant_throttle_count: {},
+};
+
+function getTenantConcurrentCount(tenantId) {
+  if (!tenantConcurrencyTracking.has(tenantId)) {
+    tenantConcurrencyTracking.set(tenantId, 0);
+  }
+  return tenantConcurrencyTracking.get(tenantId);
+}
+
+function incrementTenantConcurrency(tenantId) {
+  const current = getTenantConcurrentCount(tenantId);
+  tenantConcurrencyTracking.set(tenantId, current + 1);
+}
+
+function decrementTenantConcurrency(tenantId) {
+  const current = getTenantConcurrentCount(tenantId);
+  tenantConcurrencyTracking.set(tenantId, Math.max(0, current - 1));
+}
 
 function unsubscribeUrl(email) {
   const token = crypto.createHmac('sha256', process.env.EMAIL_UNSUBSCRIBE_SECRET || 'stellar-trust-escrow-email-secret').update(email).digest('hex');
@@ -53,24 +81,67 @@ async function deliver(to, subject, text, html) {
 const notificationWorker = new Worker(
   'notifications',
   async (job) => {
-    const { event, email, data } = job.data;
+    const { event, email, data, tenantId } = job.data;
     const templateFactory = TEMPLATES[event];
     if (!templateFactory) throw new Error(`No template for event: ${event}`);
 
-    const recipient = { email: email.toLowerCase().trim(), name: data.recipientName };
-    const dashboardUrl = data.dashboardUrl || `${config.baseUrl}/escrows/${data.escrowId || ''}`;
+    // Backpressure handling: tenant-level throttling
+    const effectiveTenantId = tenantId || 'default';
+    const concurrentCount = getTenantConcurrentCount(effectiveTenantId);
 
-    const content = templateFactory({ ...data, dashboardUrl })({
-      recipient,
-      unsubscribeUrl: unsubscribeUrl(recipient.email),
-      fromName: config.fromName,
-    });
+    if (concurrentCount >= config.tenantConcurrencyLimit) {
+      metrics.tenant_throttle_count[effectiveTenantId] =
+        (metrics.tenant_throttle_count[effectiveTenantId] || 0) + 1;
+      metrics.notifications_delayed += 1;
 
-    const result = await deliver(recipient.email, content.subject, content.text, content.html);
-    console.log(`[NotificationWorker] Sent ${event} to ${recipient.email}: ${result.messageId}`);
-    return result;
+      const delayMs = (job.attempt || 1) * 1000;
+      throw new Error(`Tenant ${effectiveTenantId} throttled, delaying ${delayMs}ms`);
+    }
+
+    incrementTenantConcurrency(effectiveTenantId);
+
+    try {
+      const recipient = { email: email.toLowerCase().trim(), name: data.recipientName };
+      const dashboardUrl = data.dashboardUrl || `${config.baseUrl}/escrows/${data.escrowId || ''}`;
+
+      const content = templateFactory({ ...data, dashboardUrl })({
+        recipient,
+        unsubscribeUrl: unsubscribeUrl(recipient.email),
+        fromName: config.fromName,
+      });
+
+      const result = await deliver(recipient.email, content.subject, content.text, content.html);
+      console.log(`[NotificationWorker] Sent ${event} to ${recipient.email}: ${result.messageId}`);
+
+      metrics.notifications_delivered += 1;
+      return result;
+    } catch (err) {
+      const isTransient = err.message.includes('timeout') || err.message.includes('ECONNREFUSED') || err.message.includes('throttled');
+
+      if (isTransient && (job.attempt || 1) < config.maxRetries) {
+        metrics.notifications_failed += 1;
+        console.warn(`[NotificationWorker] Transient failure for ${email}, will retry:`, err.message);
+        throw err;
+      }
+
+      metrics.notifications_failed += 1;
+      console.error(`[NotificationWorker] Failed to send ${event} to ${email}:`, err.message);
+      throw err;
+    } finally {
+      decrementTenantConcurrency(effectiveTenantId);
+    }
   },
-  { connection },
+  {
+    connection,
+    defaultJobOptions: {
+      attempts: config.maxRetries,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+    },
+  },
 );
 
+export { notificationWorker, metrics };
 export default notificationWorker;
