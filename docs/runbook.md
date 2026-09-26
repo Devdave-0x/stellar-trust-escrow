@@ -279,6 +279,8 @@ pm2 reload stellar-escrow-api
 
 Keep the old keypair available (offline, secured) until you confirm the new keypair is operating correctly.
 
+For balance thresholds, top-up commands, low-balance alert response, and wrong-network recovery, see [Relayer account funding](runbooks/relayer-funding.md).
+
 ---
 
 ## 4. Scaling Horizontally
