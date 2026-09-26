@@ -1485,7 +1485,6 @@ impl EscrowContract {
 
             if meta.released_count == meta.milestone_count && meta.milestone_count > 0 {
                 meta.status = EscrowStatus::Completed;
-                events::emit_escrow_completed(&env, escrow_id);
             }
 
             ContractStorage::save_escrow_meta(&env, &meta);
@@ -2233,6 +2232,13 @@ impl EscrowContract {
             &DataKey::EscrowsByParticipant(freelancer.clone()),
             escrow_id,
         );
+        if let Some(arbiter_address) = arbiter.clone() {
+            Self::append_to_address_index(
+                &env,
+                &DataKey::EscrowsByParticipant(arbiter_address),
+                escrow_id,
+            );
+        }
         Self::append_to_vec_index(
             &env,
             &DataKey::EscrowsByStatus(EscrowStatus::Active),
@@ -2906,6 +2912,10 @@ impl EscrowContract {
                 events::emit_funds_released(&env, escrow_id, &meta.freelancer, total_amount);
             }
 
+            if meta.status == EscrowStatus::Completed {
+                events::emit_escrow_completed(&env, escrow_id);
+            }
+
             ContractStorage::set_last_activity_timestamp(&env, escrow_id, env.ledger().timestamp());
             Ok(total_amount)
         })
@@ -3277,10 +3287,13 @@ impl EscrowContract {
                     &DataKey::EscrowsByStatus(EscrowStatus::Completed),
                     escrow_id,
                 );
-                events::emit_escrow_completed(&env, escrow_id);
             }
 
             ContractStorage::save_escrow_meta(&env, &meta);
+
+            // Emit approval before any release event so indexers observe the
+            // milestone state transition before its funds move.
+            events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
 
             if should_release {
                 token::Client::new(&env, &meta.token).transfer(
@@ -3291,7 +3304,9 @@ impl EscrowContract {
                 events::emit_funds_released(&env, escrow_id, &meta.freelancer, amount);
             }
 
-            events::emit_milestone_approved(&env, escrow_id, milestone_id, amount);
+            if meta.status == EscrowStatus::Completed {
+                events::emit_escrow_completed(&env, escrow_id);
+            }
             ContractStorage::set_last_activity_timestamp(&env, escrow_id, now);
             Ok(())
         })
@@ -5554,7 +5569,8 @@ impl EscrowContract {
         ContractStorage::load_slash_record(&env, escrow_id)
     }
 
-    /// Returns escrow IDs where `participant` is the client or freelancer.
+    /// Returns active escrow IDs where `participant` is a client, freelancer,
+    /// or configured arbiter.
     pub fn get_escrow_ids_by_participant(
         env: Env,
         participant: Address,
@@ -5567,11 +5583,27 @@ impl EscrowContract {
             .persistent()
             .get(&DataKey::EscrowsByParticipant(participant))
             .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
-        let start = (offset as usize).min(ids.len() as usize);
-        let end = (start + capped_limit).min(ids.len() as usize);
+        let start = offset as usize;
         let mut result = soroban_sdk::Vec::new(&env);
-        for i in start..end {
-            result.push_back(ids.get(i as u32).unwrap());
+        let mut active_seen = 0usize;
+        for i in 0..ids.len() {
+            let escrow_id = ids.get(i as u32).unwrap();
+            if let Some(meta) = ContractStorage::load_escrow_meta(&env, escrow_id).ok() {
+                if matches!(
+                    meta.status,
+                    EscrowStatus::Active
+                        | EscrowStatus::CancellationPending
+                        | EscrowStatus::Disputed
+                ) {
+                    if active_seen >= start && result.len() < capped_limit as u32 {
+                        result.push_back(escrow_id);
+                    }
+                    active_seen += 1;
+                }
+            }
+            if result.len() >= capped_limit as u32 {
+                break;
+            }
         }
         result
     }
