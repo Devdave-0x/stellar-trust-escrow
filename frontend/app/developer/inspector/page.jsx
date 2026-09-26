@@ -65,6 +65,24 @@ function isReadOnly(fn) {
   return fn?.stateMutability === 'view' || fn?.stateMutability === 'pure';
 }
 
+export function normaliseNetwork(value) {
+  const text = String(value || '').toLowerCase();
+  if (text.includes('mainnet') || text.includes('public')) return 'mainnet';
+  if (text.includes('futurenet')) return 'futurenet';
+  if (text.includes('testnet') || text.includes('test sdf')) return 'testnet';
+  return null;
+}
+
+export function detectNetworkFromRpc(url) {
+  return normaliseNetwork(url);
+}
+
+export function networksMatch(wallet, rpc) {
+  const walletNetwork = normaliseNetwork(wallet);
+  const rpcNetwork = detectNetworkFromRpc(rpc);
+  return !walletNetwork || !rpcNetwork || walletNetwork === rpcNetwork;
+}
+
 export default function ContractInspectorPage() {
   const [abiText, setAbiText] = useState(JSON.stringify(DEFAULT_ABI, null, 2));
   const [contractId, setContractId] = useState(
@@ -90,6 +108,9 @@ export default function ContractInspectorPage() {
   }, [abiText]);
 
   const activeFunction = functions[selectedFunctionIndex] ?? null;
+  const expectedNetwork = detectNetworkFromRpc(rpcUrl);
+  const walletNetworkName = normaliseNetwork(walletNetwork);
+  const networkMismatch = Boolean(walletNetworkName && expectedNetwork && walletNetworkName !== expectedNetwork);
 
   useEffect(() => {
     if (functions.length === 0) return;
@@ -193,6 +214,10 @@ export default function ContractInspectorPage() {
     }
     if (!walletAddress) {
       setInvokeError('Please connect your Freighter wallet before invoking a contract method.');
+      return;
+    }
+    if (networkMismatch && !isReadOnly(activeFunction)) {
+      setInvokeError(`Network mismatch: switch your wallet to ${expectedNetwork} to use this inspector.`);
       return;
     }
 
@@ -326,11 +351,17 @@ export default function ContractInspectorPage() {
               <p>
                 <strong>Network:</strong> {walletNetwork ?? 'Unknown'}
               </p>
+              <p><strong>RPC network:</strong> {expectedNetwork ?? 'Unknown'}</p>
               <p>
                 <strong>Connection:</strong> {walletAddress ? 'Connected' : 'Disconnected'}
               </p>
             </div>
           </div>
+          {networkMismatch && (
+            <div role="alert" className="rounded-2xl border border-amber-500/50 bg-amber-950/30 p-4 text-sm text-amber-200">
+              Wallet network ({walletNetworkName}) does not match the selected RPC ({expectedNetwork}). Transaction actions are blocked until you switch networks.
+            </div>
+          )}
 
           <div className="card p-6">
             <h2 className="text-xl font-semibold text-white">ABI Methods</h2>
@@ -411,7 +442,7 @@ export default function ContractInspectorPage() {
               <Button variant="secondary" size="md" onClick={() => setFieldValues({})}>
                 Reset inputs
               </Button>
-              <Button variant="primary" size="md" onClick={handleInvoke} isLoading={isInvoking}>
+              <Button variant="primary" size="md" onClick={handleInvoke} isLoading={isInvoking} disabled={networkMismatch && !isReadOnly(activeFunction)}>
                 Execute method
               </Button>
             </div>

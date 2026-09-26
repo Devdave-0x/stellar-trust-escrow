@@ -2,6 +2,8 @@
 
 import { usePreferences } from '../../../contexts/PreferencesContext';
 import { useTheme } from '../../../contexts/ThemeContext';
+import DataExport from '../../../components/settings/DataExport';
+import { useWalletStore } from '../../../store/app-store';
 
 const LANGUAGES = [
   { value: 'en', label: 'English' },
@@ -49,6 +51,7 @@ function Section({ title, children }) {
 export default function SettingsPage() {
   const { prefs, setTheme, setLanguage, setDensity, setNotifications } = usePreferences();
   const { theme: legacyTheme, toggleTheme } = useTheme();
+  const { address } = useWalletStore();
 
   function handleThemeChange(value) {
     setTheme(value);
@@ -148,6 +151,8 @@ export default function SettingsPage() {
           onChange={(v) => setNotifications({ inApp: v })}
         />
       </Section>
+
+      {address && <DataExport address={address} />}
 
       <p className="text-xs text-gray-600 text-center">
         Preferences are saved automatically and applied without a page reload.
