@@ -105,4 +105,87 @@ const getMyReferrals = async (req, res) => {
   }
 };
 
-export default { getMyReferral, getMyReferrals };
+/**
+ * Parse an optional ISO date query param; returns null when absent and
+ * throws on garbage.
+ */
+function parseDateParam(value, name) {
+  if (value === undefined || value === '') return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) throw Object.assign(new Error(`${name} must be an ISO date`), { status: 400 });
+  return date;
+}
+
+/**
+ * GET /api/users/me/referrals/stats?from=&to=
+ * Referral drilldown for the dashboard: conversions, pending rewards,
+ * invalid referrals and claim history, optionally limited to referrals
+ * created within [from, to].
+ *
+ * Status per referral:
+ *   invalid   — self-referral (can never earn a reward)
+ *   rewarded  — reward claimed (rewardedAt set); these form the claim history
+ *   converted — referred wallet has taken part in at least one escrow; reward pending
+ *   pending   — no escrow activity yet
+ */
+const getMyReferralStats = async (req, res) => {
+  try {
+    const address = req.user?.address;
+    if (!address) return res.status(401).json({ error: 'Authentication required' });
+
+    const from = parseDateParam(req.query.from, 'from');
+    const to = parseDateParam(req.query.to, 'to');
+    if (from && to && from > to) return res.status(400).json({ error: 'from must be before to' });
+
+    const referrals = await prisma.referral.findMany({
+      where: {
+        referrerAddress: address,
+        ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: { referredAddress: true, createdAt: true, rewardedAt: true },
+    });
+
+    const referred = referrals.map((r) => r.referredAddress);
+    const active = referred.length
+      ? await prisma.escrow.findMany({
+          where: { OR: [{ clientAddress: { in: referred } }, { freelancerAddress: { in: referred } }] },
+          select: { clientAddress: true, freelancerAddress: true },
+        })
+      : [];
+    const converted = new Set(active.flatMap((e) => [e.clientAddress, e.freelancerAddress]));
+
+    const items = referrals.map((r) => {
+      const status =
+        r.referredAddress === address
+          ? 'invalid'
+          : r.rewardedAt
+            ? 'rewarded'
+            : converted.has(r.referredAddress)
+              ? 'converted'
+              : 'pending';
+      return { joinedAt: r.createdAt, rewardedAt: r.rewardedAt, status };
+    });
+
+    const count = (status) => items.filter((i) => i.status === status).length;
+    res.json({
+      range: { from, to },
+      totals: {
+        referrals: items.length,
+        conversions: count('converted') + count('rewarded'),
+        pendingRewards: count('converted'),
+        invalid: count('invalid'),
+        claimed: count('rewarded'),
+      },
+      referrals: items,
+      claimHistory: items.filter((i) => i.status === 'rewarded').map((i) => ({ rewardedAt: i.rewardedAt, joinedAt: i.joinedAt })),
+    });
+  } catch (err) {
+    res.status(err.status ?? 500).json({
+      error: err.status ? err.message : `Unable to load referral stats: ${sanitizeErrorMessage(err, 'unexpected referral stats failure')}`,
+    });
+  }
+};
+
+export default { getMyReferral, getMyReferrals, getMyReferralStats };
