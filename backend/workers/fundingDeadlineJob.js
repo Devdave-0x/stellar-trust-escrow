@@ -35,17 +35,26 @@ async function notifyParticipants(escrow) {
 
 /**
  * Cancels Draft escrows whose funding_deadline has passed and notifies both parties.
+ * Detects scheduler drift by identifying escrows that were already marked Cancelled.
  *
  * @param {Date} [now] — override for testing
- * @returns {Promise<{ checked: number, cancelled: number }>}
+ * @returns {Promise<{ checked: number, cancelled: number, newlyExpired: number, alreadyExpired: number, failed: number }>}
  */
 export async function cancelExpiredDraftEscrows(now = new Date()) {
-  const expired = await prisma.escrow.findMany({
-    where: { status: 'Draft', fundingDeadline: { lt: now } },
+  const allExpiredEscrows = await prisma.escrow.findMany({
+    where: {
+      fundingDeadline: { lt: now },
+      status: { in: ['Draft', 'Cancelled'] },
+    },
   });
 
+  const draftEscrows = allExpiredEscrows.filter((e) => e.status === 'Draft');
+  const alreadyExpiredEscrows = allExpiredEscrows.filter((e) => e.status === 'Cancelled');
+
   let cancelled = 0;
-  for (const escrow of expired) {
+  let failed = 0;
+
+  for (const escrow of draftEscrows) {
     await prisma.escrow.update({
       where: { id: escrow.id },
       data: { status: 'Cancelled' },
@@ -55,12 +64,22 @@ export async function cancelExpiredDraftEscrows(now = new Date()) {
       await notifyParticipants(escrow);
     } catch (err) {
       console.error(`[FundingDeadlineJob] Failed to notify escrow ${escrow.id}:`, err.message);
+      failed += 1;
     }
 
     cancelled += 1;
   }
 
-  return { checked: expired.length, cancelled };
+  const summary = {
+    checked: allExpiredEscrows.length,
+    cancelled,
+    newlyExpired: draftEscrows.length,
+    alreadyExpired: alreadyExpiredEscrows.length,
+    failed,
+  };
+
+  console.log('[FundingDeadlineJob] Summary:', summary);
+  return summary;
 }
 
 export default { cancelExpiredDraftEscrows };
