@@ -1,11 +1,8 @@
 import { z } from 'zod';
-
-const stellarAddress = z
-  .string()
-  .regex(/^G[A-Z2-7]{55}$/, 'Invalid Stellar address');
+import { stellarAddressSchema } from './address.js';
 
 export const userAddressParamSchema = z.object({
-  address: stellarAddress,
+  address: stellarAddressSchema,
 });
 
 export const importDataSchema = z.object({
