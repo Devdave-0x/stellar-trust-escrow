@@ -24,5 +24,9 @@ export default {
     '^redis$': '<rootDir>/__mocks__/redis.js',
     // Prisma ESM client → CJS-compatible mock
     '^@prisma/client$': '<rootDir>/__mocks__/@prisma/client.js',
+    // Map lib/prisma to the Prisma mock client for tests (any relative path depth)
+    '^(\\.\\./)*lib/prisma\\.js$': '<rootDir>/__mocks__/@prisma/client.js',
+    // Map logger to a no-op mock for tests (any relative path depth)
+    '^(\\.\\./)*config/logger\\.js$': '<rootDir>/__mocks__/logger.js',
   },
 };
