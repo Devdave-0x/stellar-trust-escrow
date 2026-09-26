@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Admin bulk action safety guide (`docs/admin-bulk-actions.md`): permissions, allowed and blocked transitions, manual preview, audit log, post-action verification, and rollback strategy, guarded by `backend/tests/adminBulkDocs.test.js` (#630)
+
+- Relayer funding runbook (`docs/runbooks/relayer-funding.md`): balance checks, thresholds, scheduled balance check, testnet and production top-up, alert response, and wrong-network funding recovery (#628)
+
+- Dispute timeline data contract (`docs/dispute-timeline-contract.md`): event envelope, required fields, ordering and tie-break rules, anomaly handling, and producer/consumer compatibility rules, guarded by `backend/tests/disputeTimelineDocs.test.js` (#627)
+
+- API key management guide for integrators (`docs/api-key-management.md`): key format and storage, least privilege without scopes, zero-downtime rotation, revocation, compromised-key response, and audit monitoring (#626)
+
 - Runnable Soroban CLI simulation scripts for all major escrow lifecycle scenarios in `scripts/simulate/`: happy-path release, arbiter dispute resolution (buyer's favour), expiry refund, and mutual cancellation (#112)
 
 - GitHub Actions CI workflow with lint, backend/frontend/contract tests, and WCAG AA accessibility scan job that uploads HTML reports and blocks PRs on threshold violations (#912)
