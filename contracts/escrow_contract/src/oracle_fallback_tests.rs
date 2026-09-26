@@ -21,6 +21,11 @@ mod oracle_fallback_tests {
             env.storage().instance().set(&"ts", &timestamp);
         }
 
+        pub fn clear_price_data(env: Env) {
+            env.storage().instance().remove(&"price");
+            env.storage().instance().remove(&"ts");
+        }
+
         pub fn lastprice(env: Env, _asset: Address) -> Option<PriceData> {
             let price: i128 = env.storage().instance().get(&"price").unwrap_or(0);
             let timestamp: u64 = env.storage().instance().get(&"ts").unwrap_or(0);
@@ -123,5 +128,24 @@ mod oracle_fallback_tests {
             price, 5_000_000,
             "should return primary price when it is fresh"
         );
+    }
+
+    /// A missing primary feed must use a fresh fallback feed rather than
+    /// treating the missing value as a valid zero price.
+    #[test]
+    fn test_oracle_fallback_on_missing_primary() {
+        let (env, admin, client) = setup();
+
+        let now: u64 = 20_000;
+        let primary = register_mock_oracle(&env, 1_000_000, now - 1);
+        let fallback = register_mock_oracle(&env, 2_000_000, now - 1);
+        MockOracleClient::new(&env, &primary).clear_price_data();
+
+        client.set_oracle(&admin, &primary);
+        client.set_fallback_oracle(&admin, &fallback);
+        env.ledger().with_mut(|l| l.timestamp = now);
+
+        let asset = Address::generate(&env);
+        assert_eq!(client.get_price(&asset), 2_000_000);
     }
 }

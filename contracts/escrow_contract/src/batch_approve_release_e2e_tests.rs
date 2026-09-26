@@ -128,6 +128,35 @@ mod batch_approve_release_e2e_tests {
             count_events_with_symbol(&env, &contract_id, soroban_sdk::symbol_short!("esc_done"));
         assert_eq!(done_count, 1, "esc_done must be emitted exactly once");
 
+        // Batch consumers rely on a deterministic state transition order:
+        // approvals first, then releases, and completion last.
+        let mut first_approval = None;
+        let mut first_release = None;
+        let mut completion = None;
+        for (index, (address, topics, _)) in env.events().all().iter().enumerate() {
+            if address != contract_id {
+                continue;
+            }
+            let Some(topic) = topics.get(0) else { continue };
+            let Ok(symbol) = Symbol::try_from_val(&env, &topic) else { continue };
+            if symbol == soroban_sdk::symbol_short!("mil_apr") && first_approval.is_none() {
+                first_approval = Some(index);
+            } else if symbol == soroban_sdk::symbol_short!("funds_rel")
+                && first_release.is_none()
+            {
+                first_release = Some(index);
+            } else if symbol == soroban_sdk::symbol_short!("esc_done") {
+                completion = Some(index);
+            }
+        }
+        let first_approval = first_approval.expect("mil_apr event must be emitted");
+        let first_release = first_release.expect("funds_rel event must be emitted");
+        let completion = completion.expect("esc_done event must be emitted");
+        assert!(
+            first_approval < first_release && first_release < completion,
+            "batch events must be ordered milestone approval, funds release, completion"
+        );
+
         // Freelancer received the full total_amount.
         let freelancer_balance = token::Client::new(&env, &token_addr).balance(&freelancer);
         assert_eq!(

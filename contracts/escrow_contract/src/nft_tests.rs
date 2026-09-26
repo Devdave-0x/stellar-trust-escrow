@@ -137,4 +137,57 @@ mod nft_gated_tests {
 
         assert_eq!(escrow_id, 0u64);
     }
+
+    /// The NFT-gated receipt must be tied to the newly created escrow and
+    /// preserve the fixed-width project metadata supplied by the caller.
+    #[test]
+    fn test_nft_gate_preserves_receipt_metadata_and_escrow_association() {
+        let s = setup();
+        let nft_client = MockNftClient::new(&s.env, &s.nft_addr);
+        nft_client.set_balance(&s.caller, &7u64, &1i128);
+        let brief_hash = BytesN::from_array(&s.env, &[7u8; 32]);
+
+        let escrow_id = s.client.create_escrow_with_nft_gate(
+            &s.caller,
+            &s.nft_addr,
+            &7u64,
+            &s.freelancer,
+            &s.token_addr,
+            &500i128,
+            &brief_hash,
+            &None,
+            &None,
+            &None,
+        );
+        let state = s.client.get_escrow(&escrow_id);
+
+        assert_eq!(state.escrow_id, escrow_id);
+        assert_eq!(state.client, s.caller);
+        assert_eq!(state.freelancer, s.freelancer);
+        assert_eq!(state.brief_hash, brief_hash);
+    }
+
+    /// A receipt token held by a different account must not authorize escrow
+    /// creation for the caller, even when the NFT contract and token ID match.
+    #[test]
+    fn test_nft_gate_rejects_receipt_owned_by_different_account() {
+        let s = setup();
+        let owner = Address::generate(&s.env);
+        MockNftClient::new(&s.env, &s.nft_addr).set_balance(&owner, &7u64, &1i128);
+
+        let result = s.client.try_create_escrow_with_nft_gate(
+            &s.caller,
+            &s.nft_addr,
+            &7u64,
+            &s.freelancer,
+            &s.token_addr,
+            &500i128,
+            &s.brief_hash,
+            &None,
+            &None,
+            &None,
+        );
+
+        assert_eq!(result, Err(Ok(EscrowError::E3)));
+    }
 }

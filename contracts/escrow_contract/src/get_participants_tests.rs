@@ -34,7 +34,7 @@ mod get_participants_tests {
         let freelancer = Address::generate(env);
         let token_id = env.register_stellar_asset_contract_v2(admin.clone());
         soroban_sdk::token::StellarAssetClient::new(env, &token_id.address())
-            .mint(&escrow_client, &1_030);
+            .mint(&escrow_client, &1_060);
         let escrow_id = client.create_escrow(
             &escrow_client,
             &freelancer,
@@ -83,5 +83,80 @@ mod get_participants_tests {
 
         let result = client.try_get_participants(&999_999u64);
         assert_eq!(result, Err(Ok(EscrowError::E8)));
+    }
+
+    #[test]
+    fn test_participant_index_excludes_cancelled_escrow() {
+        let (env, admin, client) = setup();
+        let arbiter = Address::generate(&env);
+        let (buyer, seller, escrow_id) = make_escrow(&env, &admin, &client, Some(arbiter.clone()));
+
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&buyer, &0, &50)
+                .len(),
+            1
+        );
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&seller, &0, &50)
+                .len(),
+            1
+        );
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&arbiter, &0, &50)
+                .len(),
+            1
+        );
+
+        client.cancel_escrow(&buyer, &escrow_id);
+
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&buyer, &0, &50)
+                .len(),
+            0
+        );
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&seller, &0, &50)
+                .len(),
+            0
+        );
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&arbiter, &0, &50)
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_participant_index_excludes_completed_escrow() {
+        let (env, admin, client) = setup();
+        let (buyer, seller, escrow_id) = make_escrow(&env, &admin, &client, None);
+        let milestone_id = client.add_milestone(
+            &buyer,
+            &escrow_id,
+            &soroban_sdk::String::from_str(&env, "complete"),
+            &BytesN::from_array(&env, &[2; 32]),
+            &1_000,
+        );
+        client.submit_milestone(&seller, &escrow_id, &milestone_id);
+        client.approve_milestone(&buyer, &escrow_id, &milestone_id);
+
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&buyer, &0, &50)
+                .len(),
+            0
+        );
+        assert_eq!(
+            client
+                .get_escrow_ids_by_participant(&seller, &0, &50)
+                .len(),
+            0
+        );
     }
 }
