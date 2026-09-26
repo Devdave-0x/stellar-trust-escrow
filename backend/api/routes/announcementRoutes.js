@@ -11,5 +11,6 @@ router.use(authMiddleware);
  *         current user's tenant, plus any global (target=all) announcements
  */
 router.get('/active', announcementController.listActive);
+router.post('/:id/dismiss', announcementController.dismissAnnouncement);
 
 export default router;

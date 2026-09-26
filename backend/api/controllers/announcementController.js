@@ -9,6 +9,10 @@
 import prisma from '../../lib/prisma.js';
 import { withTenantScopeBypassed } from '../../lib/tenantContext.js';
 import { logControllerError } from '../../config/logger.js';
+import {
+  dismissAnnouncementForUser,
+  listActiveAnnouncements,
+} from '../services/announcementService.js';
 
 const VALID_TARGETS = ['all', 'tenant'];
 
@@ -171,19 +175,10 @@ const deleteAnnouncement = async (req, res) => {
 /** GET /api/v1/announcements/active */
 const listActive = async (req, res) => {
   try {
-    const now = new Date();
     const tenantId = req.tenant?.id;
 
     const announcements = await withTenantScopeBypassed(() =>
-      prisma.announcement.findMany({
-        where: {
-          deletedAt: null,
-          startsAt: { lte: now },
-          endsAt: { gte: now },
-          OR: [{ target: 'all' }, { target: 'tenant', tenantId }],
-        },
-        orderBy: { startsAt: 'desc' },
-      }),
+      listActiveAnnouncements({ id: req.user?.id, tenantId }),
     );
 
     res.json({ data: announcements });
@@ -193,4 +188,27 @@ const listActive = async (req, res) => {
   }
 };
 
-export default { createAnnouncement, updateAnnouncement, deleteAnnouncement, listActive };
+const dismissAnnouncement = async (req, res) => {
+  try {
+    const announcementId = parseInt(req.params.id, 10);
+    const userId = req.user?.id;
+    if (Number.isNaN(announcementId)) {
+      return res.status(400).json({ error: 'Invalid announcement id' });
+    }
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+    await withTenantScopeBypassed(() => dismissAnnouncementForUser({ announcementId, userId }));
+    res.json({ ok: true });
+  } catch (err) {
+    logControllerError('announcement.dismissAnnouncement', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export default {
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  listActive,
+  dismissAnnouncement,
+};
