@@ -32,6 +32,47 @@
       "reject": "Reject",
       "dispute": "Raise Dispute",
       "cancel": "Cancel Escrow"
+    },
+    "ownershipTransfer": {
+      "title": "Transfer ownership",
+      "description": "Hand your role in this escrow to another Stellar address. The new owner must accept before the transfer takes effect.",
+      "fields": {
+        "newOwner": "New owner address",
+        "newOwnerPlaceholder": "G…",
+        "expiresAt": "Request expires"
+      },
+      "actions": {
+        "request": "Request transfer",
+        "accept": "Accept transfer",
+        "reject": "Reject transfer",
+        "cancel": "Cancel request"
+      },
+      "status": {
+        "pending": "Awaiting acceptance",
+        "accepted": "Transfer accepted",
+        "rejected": "Transfer rejected",
+        "expired": "Request expired",
+        "cancelled": "Request cancelled"
+      },
+      "messages": {
+        "requested": "Ownership transfer requested. Waiting for the new owner to accept.",
+        "incoming": "You have been asked to take over this escrow.",
+        "accepted": "Ownership transferred. The new owner now controls this escrow role.",
+        "rejected": "The ownership transfer was rejected. You remain the owner.",
+        "expired": "This transfer request expired before it was accepted. Create a new request to try again.",
+        "cancelled": "The ownership transfer request was cancelled."
+      },
+      "confirm": {
+        "request": "Transfer ownership of this escrow to this address?",
+        "accept": "Accept ownership of this escrow? You will take on its obligations.",
+        "reject": "Reject this ownership transfer?",
+        "cancel": "Cancel this ownership transfer request?"
+      },
+      "errors": {
+        "invalidAddress": "Enter a valid Stellar address.",
+        "sameOwner": "The new owner must be a different address.",
+        "failed": "Ownership transfer failed. Please try again."
+      }
     }
   },
   "milestone": {

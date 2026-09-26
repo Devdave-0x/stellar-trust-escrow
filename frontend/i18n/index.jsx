@@ -43,8 +43,13 @@ export function I18nProvider({ children, initialLocale = defaultLocale }) {
     localStorage.setItem(STORAGE_KEY, l);
   }, []);
 
+  // Falls back to English for keys a locale has not translated yet, so users
+  // never see raw keys.
   const t = useCallback(
-    (key) => resolve(messages[locale] ?? messages[defaultLocale], key),
+    (key) => {
+      const value = resolve(messages[locale] ?? messages[defaultLocale], key);
+      return value === key ? resolve(messages[defaultLocale], key) : value;
+    },
     [locale],
   );
 
