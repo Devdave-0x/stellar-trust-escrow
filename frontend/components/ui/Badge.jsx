@@ -18,6 +18,7 @@ const STATUS_STYLES = {
   Completed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   Disputed: 'bg-red-500/20 text-red-400 border-red-500/30',
   Cancelled: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
+  Expired: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
 
   // Milestone statuses
   Pending: 'bg-gray-700/50 text-gray-400 border-gray-600/30',
@@ -50,6 +51,7 @@ const ICONS = {
   Completed: '✅',
   Disputed: '⚠️',
   Cancelled: '✕',
+  Expired: '⌛',
   Pending: '○',
   Submitted: '📤',
   Approved: '✓',

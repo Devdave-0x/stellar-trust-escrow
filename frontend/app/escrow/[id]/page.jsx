@@ -319,6 +319,7 @@ export default function EscrowDetailPage({ params }) {
           onApprove={handleApproveMilestone}
           onReject={handleRejectMilestone}
           onSubmit={handleSubmitMilestone}
+          escrowStatus={escrow.status}
         />
       </section>
 

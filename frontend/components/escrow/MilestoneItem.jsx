@@ -22,6 +22,7 @@
  * @param {Function} props.onReject(id)
  * @param {Function} props.onSubmit(id)
  * @param {boolean}  props.isLast
+ * @param {string}   [props.escrowStatus]  — escrow status; action buttons only render while 'Active'
  *
  * TODO (contributor — medium, Issue #40):
  * - Add confirmation modal before approve/reject
@@ -47,6 +48,7 @@ export default function MilestoneItem({
   onReject,
   onSubmit,
   isLast,
+  escrowStatus,
 }) {
   const [isActing, setIsActing] = useState(false);
   const { t, formatDate } = useI18n();
@@ -116,6 +118,7 @@ export default function MilestoneItem({
             <ActionButtons
               status={milestone.status}
               role={role}
+              escrowStatus={escrowStatus}
               onApprove={() => handleAction(onApprove, 'approve')}
               onReject={() => handleAction(onReject, 'reject')}
               onSubmit={() => handleAction(onSubmit, 'submit')}
@@ -132,8 +135,12 @@ export default function MilestoneItem({
 
 /**
  * Renders the correct set of action buttons based on role + status.
+ * Buttons are only rendered while the escrow is Active; expired,
+ * cancelled, disputed, or completed escrows disable milestone actions.
  */
-function ActionButtons({ status, role, onApprove, onReject, onSubmit, t }) {
+function ActionButtons({ status, role, escrowStatus, onApprove, onReject, onSubmit, t }) {
+  if (escrowStatus !== 'Active') return null;
+
   if (role === 'client' && status === 'Submitted') {
     return (
       <div className="flex gap-2">
