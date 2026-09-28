@@ -5,7 +5,7 @@ const MOCK_FREELANCER_ADDRESS = 'GA4RYZ7QV7G655EJZ5QZ2Y3D23J5M72L7K5Q3Z2Y3D23J5M
 
 const ESCROW_ID = '123456';
 
-function escrowPayload(status) {
+function escrowPayload(status, deadline = '2025-04-01T00:00:00.000Z') {
   return {
     id: ESCROW_ID,
     title: 'Smart Contract Audit',
@@ -15,7 +15,7 @@ function escrowPayload(status) {
     totalAmount: '2000',
     remainingBalance: '1500',
     createdAt: '2025-03-01T00:00:00.000Z',
-    deadline: '2025-04-01T00:00:00.000Z',
+    deadline,
     milestones: [
       {
         id: '1',
@@ -68,7 +68,7 @@ test.describe('Expired Escrow Actions E2E', () => {
     await page.goto(`/escrow/${ESCROW_ID}`, { waitUntil: 'domcontentloaded' });
 
     // Correct messaging: the Expired badge is shown
-    await expect(page.getByText('Expired')).toBeVisible();
+    await expect(page.getByRole('status', { name: 'Expired' })).toBeVisible();
 
     // Escrow-level actions are disabled for an expired escrow
     await expect(page.getByRole('button', { name: /raise dispute/i })).not.toBeVisible();
@@ -112,5 +112,53 @@ test.describe('Expired Escrow Actions E2E', () => {
     // Milestone actions are available for a Submitted milestone
     await expect(page.getByRole('button', { name: /approve/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /reject/i })).toBeVisible();
+  });
+
+  test('active escrow detail shows a ticking deadline countdown', async ({ page }) => {
+    const deadline = new Date(Date.now() + 90 * 1000).toISOString();
+    await page.route(`**/api/escrows/${ESCROW_ID}`, async (route) => {
+      await route.fulfill({ status: 200, json: escrowPayload('Active', deadline) });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate((address) => {
+      localStorage.setItem(
+        'ste-app-store',
+        JSON.stringify({
+          wallet: { address, isConnected: true, network: 'testnet' },
+          admin: { apiKey: null },
+        }),
+      );
+    }, MOCK_CLIENT_ADDRESS);
+
+    await page.goto(`/escrow/${ESCROW_ID}`, { waitUntil: 'domcontentloaded' });
+
+    const countdown = page.getByTestId('deadline-countdown');
+    await expect(countdown).toBeVisible();
+    await expect(countdown).toContainText('remaining');
+
+    const firstReadout = await countdown.textContent();
+    await expect.poll(() => countdown.textContent()).not.toBe(firstReadout);
+  });
+
+  test('expired escrow detail shows an expired countdown', async ({ page }) => {
+    await page.route(`**/api/escrows/${ESCROW_ID}`, async (route) => {
+      await route.fulfill({ status: 200, json: escrowPayload('Expired') });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate((address) => {
+      localStorage.setItem(
+        'ste-app-store',
+        JSON.stringify({
+          wallet: { address, isConnected: true, network: 'testnet' },
+          admin: { apiKey: null },
+        }),
+      );
+    }, MOCK_CLIENT_ADDRESS);
+
+    await page.goto(`/escrow/${ESCROW_ID}`, { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByTestId('deadline-countdown')).toHaveText('Expired');
   });
 });

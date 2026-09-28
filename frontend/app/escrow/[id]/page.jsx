@@ -235,6 +235,7 @@ export default function EscrowDetailPage({ params }) {
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-white">{escrow.title}</h1>
             <Badge status={escrow.status} />
+            <DeadlineCountdown deadline={escrow.deadline} />
           </div>
           <p className="text-gray-400 text-sm">Escrow #{id}</p>
           <StellarExpertLink
@@ -371,6 +372,45 @@ export default function EscrowDetailPage({ params }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+function DeadlineCountdown({ deadline }) {
+  const [now, setNow] = useState(null);
+
+  useEffect(() => {
+    const updateCountdown = () => setNow(Date.now());
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!deadline) return null;
+  if (now === null) return <span className="text-sm text-gray-500">Loading…</span>;
+
+  const remainingMs = new Date(deadline).getTime() - now;
+  if (remainingMs <= 0) {
+    return (
+      <span data-testid="deadline-countdown" className="text-sm text-red-400 font-semibold">
+        Expired
+      </span>
+    );
+  }
+
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return (
+    <span
+      data-testid="deadline-countdown"
+      className="text-sm text-amber-400 font-semibold"
+      role="timer"
+    >
+      {days}d {hours}h {minutes}m {seconds}s remaining
+    </span>
   );
 }
 
