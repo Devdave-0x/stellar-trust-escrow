@@ -468,6 +468,65 @@ describe('stellarListener', () => {
       expect(mockPrisma.processedEvent.create).toHaveBeenCalled();
     });
 
+    it('should store an empty transaction hash when the event hash is invalid', async () => {
+      const event = {
+        paging_token: 'token-bad-hash',
+        ledger_attr: '9003',
+        transaction_hash: 'not-a-valid-hash',
+        index: 0,
+        topic: ['esc_crt', { u64: '500' }],
+        data: {
+          client: 'GAAAAA...',
+          freelancer: 'GBBBBB...',
+          token: 'GCCCCCC...',
+          amount: { u128: '1000' },
+        },
+      };
+
+      mockPrisma.processedEvent.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.processedEvent.create.mockResolvedValueOnce({ id: 1 });
+
+      await stellarListener.processContractEvent(event);
+
+      expect(mockPrisma.processedEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            transactionHash: '',
+          }),
+        }),
+      );
+    });
+
+    it('should store the trimmed transaction hash when the event hash is valid', async () => {
+      const validHash = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+      const event = {
+        paging_token: 'token-good-hash',
+        ledger_attr: '9004',
+        transaction_hash: `  ${validHash}  `,
+        index: 0,
+        topic: ['esc_crt', { u64: '501' }],
+        data: {
+          client: 'GAAAAA...',
+          freelancer: 'GBBBBB...',
+          token: 'GCCCCCC...',
+          amount: { u128: '1000' },
+        },
+      };
+
+      mockPrisma.processedEvent.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.processedEvent.create.mockResolvedValueOnce({ id: 1 });
+
+      await stellarListener.processContractEvent(event);
+
+      expect(mockPrisma.processedEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            transactionHash: validHash,
+          }),
+        }),
+      );
+    });
+
     it('should gracefully handle database errors', async () => {
       const event = {
         paging_token: 'token-db-error',

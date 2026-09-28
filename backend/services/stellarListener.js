@@ -24,6 +24,7 @@
 import StellarSdk from '@stellar/stellar-sdk';
 import prisma from '../lib/prisma.js';
 import { createModuleLogger } from '../config/logger.js';
+import { isValidStellarTransactionHash } from '../../shared/validation.js';
 
 const log = createModuleLogger('service.stellarListener');
 
@@ -147,7 +148,8 @@ export async function processContractEvent(event, prism = prisma) {
 
     // Extract common fields
     const ledgerSequence = BigInt(event.ledger_attr || 0);
-    const txHash = event.transaction_hash || '';
+    const rawTxHash = event.transaction_hash || '';
+    const txHash = normalizeTransactionHash(rawTxHash);
     const eventIndex = event.index || 0;
     const eventType = extractEventType(event);
     const escrowId = extractEscrowId(event);
@@ -482,6 +484,27 @@ function parseReputationEventData(event) {
 }
 
 // ── Helper Functions ──────────────────────────────────────────────────────────
+
+/**
+ * Validate a Horizon transaction hash before it is persisted to a
+ * monitor record. Returns the trimmed hash when valid, otherwise an
+ * empty string (the event is still recorded for deduplication).
+ *
+ * @param {string} rawTxHash
+ * @returns {string}
+ */
+function normalizeTransactionHash(rawTxHash) {
+  if (isValidStellarTransactionHash(rawTxHash)) {
+    return rawTxHash.trim();
+  }
+  if (rawTxHash) {
+    log.warn({
+      message: 'invalid_transaction_hash_stored_as_empty',
+      transactionHash: rawTxHash,
+    });
+  }
+  return '';
+}
 
 function extractAddress(value) {
   if (!value) return null;

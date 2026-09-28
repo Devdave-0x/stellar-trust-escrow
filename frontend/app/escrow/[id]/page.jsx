@@ -35,6 +35,7 @@ import CurrencyAmount from '../../../components/ui/CurrencyAmount';
 import TransactionHash from '../../../components/ui/TransactionHash';
 import Avatar from '../../../components/ui/Avatar';
 import { shareContent } from '../../../lib/share';
+import { isValidStellarTransactionHash } from '../../../shared/validation';
 import {
   buildApproveMilestoneTx,
   buildSubmitMilestoneTx,
@@ -409,7 +410,7 @@ function PartyCard({ role, address, score, isYou }) {
 }
 
 function StellarExpertLink({ txHash, network }) {
-  if (!txHash) return null;
+  if (!isValidStellarTransactionHash(txHash)) return null;
 
   const isMainnet = network === 'mainnet';
   const baseUrl = isMainnet

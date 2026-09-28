@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { isValidStellarTransactionHash } from '../../shared/validation';
 
 const STEPS = [
   { id: 'signing', label: 'Awaiting Signature', icon: '✍️' },
@@ -27,6 +28,7 @@ export default function TransactionProgressIndicator({
   if (!mounted || !isOpen) return null;
 
   const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
+  const showHashLink = isValidStellarTransactionHash(transactionHash);
   const explorerUrl = `https://stellar.expert/explorer/${network}/tx/${transactionHash}`;
 
   return createPortal(
@@ -70,7 +72,7 @@ export default function TransactionProgressIndicator({
         )}
 
         {/* Hash Display */}
-        {transactionHash && !error && (
+        {showHashLink && !error && (
           <div className="mb-6 p-4 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-600 mb-2">Transaction Hash</p>
             <a

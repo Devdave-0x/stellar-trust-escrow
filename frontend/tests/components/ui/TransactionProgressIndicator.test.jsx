@@ -137,4 +137,40 @@ describe('TransactionProgressIndicator', () => {
     render(<TransactionProgressIndicator isOpen={true} currentStep="confirming" />);
     expect(screen.getByText(/up to 30 seconds/i)).toBeInTheDocument();
   });
+
+  it('does not render the hash link when the transaction hash is invalid', () => {
+    render(
+      <TransactionProgressIndicator
+        isOpen={true}
+        currentStep="broadcast"
+        transactionHash="not-a-valid-hash"
+      />,
+    );
+    expect(screen.queryByTestId('tx-hash-link')).not.toBeInTheDocument();
+  });
+
+  it('does not render the hash link when the transaction hash is too short', () => {
+    render(
+      <TransactionProgressIndicator
+        isOpen={true}
+        currentStep="broadcast"
+        transactionHash="a1b2c3d4"
+      />,
+    );
+    expect(screen.queryByTestId('tx-hash-link')).not.toBeInTheDocument();
+  });
+
+  it('renders the hash link when the transaction hash is valid', () => {
+    const hash = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+    render(
+      <TransactionProgressIndicator
+        isOpen={true}
+        currentStep="broadcast"
+        transactionHash={hash}
+      />,
+    );
+    const link = screen.getByTestId('tx-hash-link');
+    expect(link).toBeInTheDocument();
+    expect(link.href).toContain(hash);
+  });
 });
