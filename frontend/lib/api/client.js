@@ -2,14 +2,13 @@ import axios from 'axios';
 import { getOnlineStatus } from '../network';
 import { retryRequest } from './retry';
 import { getToken, clearToken } from '../auth/token';
+import { parseError } from './errorParser';
 
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: '/api',
   timeout: 10000,
 });
 
-// Auth interceptor must run before the retry wrapper sees the request, so it
-// is registered first and attaches the bearer token to every outgoing call.
 api.interceptors.request.use((config) => {
   if (!getOnlineStatus()) {
     return Promise.reject({
@@ -23,24 +22,29 @@ api.interceptors.request.use((config) => {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
-
   return config;
 });
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const apiError = parseError(error);
+
     if (error?.response?.status === 401) {
       clearToken();
       if (typeof window !== 'undefined') {
         window.location.href = '/';
       }
     }
+
+    if (error && typeof error === 'object') {
+      error.apiError = apiError;
+    }
+
     return Promise.reject(error);
   },
 );
 
-// Wrap axios requests with retry
 export const requestWithRetry = async (axiosConfig, retries = 3) => {
   return retryRequest(() => api(axiosConfig), retries);
 };

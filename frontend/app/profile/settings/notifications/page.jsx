@@ -25,6 +25,21 @@ const NOTIFICATION_EVENTS = [
     label: 'Security Events',
     description: 'When security-related actions occur on your account',
   },
+  {
+    id: 'escrow_expiring_soon',
+    label: 'Escrow Expiring Soon',
+    description: 'When an escrow is approaching its expiry time',
+  },
+  {
+    id: 'escrow_expired',
+    label: 'Escrow Expired',
+    description: 'When an escrow has expired',
+  },
+  {
+    id: 'transaction_failed',
+    label: 'Transaction Failed',
+    description: 'When an escrow transaction fails',
+  },
 ];
 
 const CHANNELS = [
