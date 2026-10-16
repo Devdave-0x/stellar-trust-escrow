@@ -667,3 +667,8 @@ MIT — see [LICENSE](LICENSE) for the full text.
 ---
 
 _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
+
+## Handsoff notes
+
+<!-- handsoff-issue-696 -->
+- #696: Add explicit error mapping for payment asset allowlist checks
