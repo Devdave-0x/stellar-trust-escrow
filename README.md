@@ -670,11 +670,14 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 ## Handsoff notes
 
-<!-- handsoff-issue-705 -->
-- #705: Add explicit error mapping for governance proposal replay prevention
+<!-- handsoff-issue-700 -->
+- #700: Add storage-growth benchmark for governance timelock execution
 
-<!-- handsoff-issue-706 -->
-- #706: Document ledger constraints for governance proposal replay prevention
+<!-- handsoff-issue-701 -->
+- #701: Add explicit error mapping for governance timelock execution
 
-<!-- handsoff-issue-707 -->
-- #707: Add fuzz coverage for governance proposal replay prevention
+<!-- handsoff-issue-702 -->
+- #702: Document ledger constraints for governance timelock execution
+
+<!-- handsoff-issue-703 -->
+- #703: Add fuzz coverage for governance timelock execution
