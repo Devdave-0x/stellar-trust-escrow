@@ -672,3 +672,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-700 -->
 - #700: Add storage-growth benchmark for governance timelock execution
+
+<!-- handsoff-issue-701 -->
+- #701: Add explicit error mapping for governance timelock execution
