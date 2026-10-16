@@ -670,14 +670,14 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 ## Handsoff notes
 
-<!-- handsoff-issue-696 -->
-- #696: Add explicit error mapping for payment asset allowlist checks
+<!-- handsoff-issue-700 -->
+- #700: Add storage-growth benchmark for governance timelock execution
 
-<!-- handsoff-issue-697 -->
-- #697: Document ledger constraints for payment asset allowlist checks
+<!-- handsoff-issue-701 -->
+- #701: Add explicit error mapping for governance timelock execution
 
-<!-- handsoff-issue-698 -->
-- #698: Add fuzz coverage for payment asset allowlist checks
+<!-- handsoff-issue-702 -->
+- #702: Document ledger constraints for governance timelock execution
 
-<!-- handsoff-issue-699 -->
-- #699: Add event completeness checks for payment asset allowlist checks
+<!-- handsoff-issue-703 -->
+- #703: Add fuzz coverage for governance timelock execution
