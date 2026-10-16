@@ -675,3 +675,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-701 -->
 - #701: Add explicit error mapping for governance timelock execution
+
+<!-- handsoff-issue-702 -->
+- #702: Document ledger constraints for governance timelock execution
