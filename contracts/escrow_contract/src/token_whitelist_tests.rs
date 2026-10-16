@@ -3,9 +3,11 @@ mod token_whitelist_tests {
     use crate::{EscrowContract, EscrowContractClient, EscrowError};
 
     use soroban_sdk::{
-        testutils::Address as _,
+        testutils::{Address as _, Ledger},
         Address, Env,
     };
+
+    use crate::{types::DataKey, ADMIN_TRANSFER_TIMELOCK_LEDGERS};
 
     fn setup() -> (Env, Address, Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -39,6 +41,9 @@ mod token_whitelist_tests {
 
         // Non-admin cannot remove token
         let result = client.try_remove_approved_token(&non_admin, &token);
+        assert!(result.is_err());
+
+        let result = client.try_set_token_whitelist_enabled(&non_admin, &true);
         assert!(result.is_err());
 
         // Admin can remove token
@@ -119,5 +124,91 @@ mod token_whitelist_tests {
             &None::<u64>,
         );
         assert!(escrow_id2 > escrow_id);
+    }
+
+    #[test]
+    fn test_allowlist_mutators_require_authorization() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        client.initialize(&admin);
+        let token = Address::generate(&env);
+
+        assert!(client.try_add_approved_token(&admin, &token).is_err());
+        assert!(client.try_remove_approved_token(&admin, &token).is_err());
+        assert!(client
+            .try_set_token_whitelist_enabled(&admin, &true)
+            .is_err());
+    }
+
+    #[test]
+    fn test_former_admin_cannot_manage_token_allowlist() {
+        let (env, admin, _, client) = setup();
+        let new_admin = Address::generate(&env);
+        let token = Address::generate(&env);
+
+        client.propose_admin(&admin, &new_admin);
+        env.ledger()
+            .set_sequence(env.ledger().sequence() + ADMIN_TRANSFER_TIMELOCK_LEDGERS + 1);
+        client.accept_admin(&new_admin);
+
+        assert!(client.try_add_approved_token(&admin, &token).is_err());
+        assert!(client.try_remove_approved_token(&admin, &token).is_err());
+        assert!(client
+            .try_set_token_whitelist_enabled(&admin, &true)
+            .is_err());
+    }
+
+    #[test]
+    fn test_approved_token_allowlist_storage_growth_budget() {
+        let (env, admin, contract_id, client) = setup();
+        let token_count = 32_u32;
+        let mut tokens = soroban_sdk::Vec::new(&env);
+
+        for _ in 0..token_count {
+            let token = Address::generate(&env);
+            client.add_approved_token(&admin, &token);
+            tokens.push_back(token);
+        }
+
+        let stored_token_keys = env.as_contract(&contract_id, || {
+            tokens
+                .iter()
+                .filter(|token| {
+                    env.storage()
+                        .instance()
+                        .has(&DataKey::ApprovedToken(token.clone()))
+                })
+                .count()
+        });
+        assert_eq!(stored_token_keys, token_count as usize);
+
+        let first_token = tokens.get(0).expect("benchmark token list is non-empty");
+        client.add_approved_token(&admin, &first_token);
+        let duplicate_did_not_grow_storage = env.as_contract(&contract_id, || {
+            tokens
+                .iter()
+                .filter(|token| {
+                    env.storage()
+                        .instance()
+                        .has(&DataKey::ApprovedToken(token.clone()))
+                })
+                .count()
+        });
+        assert_eq!(duplicate_did_not_grow_storage, token_count as usize);
+
+        client.remove_approved_token(&admin, &first_token);
+        let removed_key_count = env.as_contract(&contract_id, || {
+            tokens
+                .iter()
+                .filter(|token| {
+                    env.storage()
+                        .instance()
+                        .has(&DataKey::ApprovedToken(token.clone()))
+                })
+                .count()
+        });
+        assert_eq!(removed_key_count, token_count as usize - 1);
     }
 }

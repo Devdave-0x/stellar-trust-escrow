@@ -66,6 +66,97 @@ mod event_tests {
         soroban_sdk::FromVal::from_val(env, &val)
     }
 
+    #[test]
+    fn test_event_escrow_approval_quorum_is_indexable() {
+        let (env, admin, contract_id, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let signer_a = Address::generate(&env);
+        let signer_b = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 500);
+        let mut approvers = soroban_sdk::Vec::new(&env);
+        approvers.push_back(signer_a.clone());
+        approvers.push_back(signer_b.clone());
+        let mut weights = soroban_sdk::Vec::new(&env);
+        weights.push_back(1_u32);
+        weights.push_back(1_u32);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &500_i128,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &MultisigConfig {
+                approvers,
+                weights,
+                threshold: 2,
+            },
+        );
+
+        client.approve_release(&signer_a, &escrow_id);
+        let events = contract_events(&env, &contract_id);
+        let (_, topics, data) = events
+            .iter()
+            .find(|(_, topics, _)| {
+                has_topic_symbol(&env, topics, soroban_sdk::symbol_short!("esc_apr"))
+            })
+            .expect("esc_apr event not emitted for partial quorum");
+        assert_eq!(topic_u64(&env, &topics, 1), escrow_id);
+        let (signer, approval_count, threshold): (Address, u32, u32) =
+            soroban_sdk::FromVal::from_val(&env, &data);
+        assert_eq!(signer, signer_a);
+        assert_eq!(approval_count, 1);
+        assert_eq!(threshold, 2);
+        assert!(!events.iter().any(|(_, topics, _)| {
+            has_topic_symbol(&env, topics, soroban_sdk::symbol_short!("esc_thr"))
+        }));
+
+        let outsider = Address::generate(&env);
+        assert!(client.try_approve_release(&outsider, &escrow_id).is_err());
+        assert!(client.try_approve_release(&signer_a, &escrow_id).is_err());
+        assert_eq!(
+            contract_events(&env, &contract_id)
+                .iter()
+                .filter(|(_, topics, _)| {
+                    has_topic_symbol(&env, topics, soroban_sdk::symbol_short!("esc_apr"))
+                })
+                .count(),
+            1,
+            "rejected votes must not emit approval events"
+        );
+
+        client.approve_release(&signer_b, &escrow_id);
+        let events = contract_events(&env, &contract_id);
+        let (_, topics, data) = events
+            .iter()
+            .filter(|(_, topics, _)| {
+                has_topic_symbol(&env, topics, soroban_sdk::symbol_short!("esc_apr"))
+            })
+            .last()
+            .expect("second esc_apr event not emitted");
+        assert_eq!(topic_u64(&env, &topics, 1), escrow_id);
+        let (signer, approval_count, threshold): (Address, u32, u32) =
+            soroban_sdk::FromVal::from_val(&env, &data);
+        assert_eq!(signer, signer_b);
+        assert_eq!(approval_count, 2);
+        assert_eq!(threshold, 2);
+
+        let (_, topics, data) = events
+            .iter()
+            .find(|(_, topics, _)| {
+                has_topic_symbol(&env, topics, soroban_sdk::symbol_short!("esc_thr"))
+            })
+            .expect("esc_thr event not emitted at quorum");
+        assert_eq!(topic_u64(&env, &topics, 1), escrow_id);
+        let emitted_threshold: u32 = soroban_sdk::FromVal::from_val(&env, &data);
+        assert_eq!(emitted_threshold, 2);
+    }
+
     // ── escrow_created ────────────────────────────────────────────────────────
 
     #[test]

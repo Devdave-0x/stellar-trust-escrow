@@ -4069,6 +4069,19 @@ impl EscrowContract {
     /// freelancer and the escrow is marked `Completed`.
     ///
     /// Emits `esc_apr` per approval and `esc_thr` when the threshold is met.
+    ///
+    /// # Ledger and resource assumptions
+    /// - The config and vote list are persistent entries. The config is TTL-bumped
+    ///   when created; the vote list is TTL-bumped after each vote. Shared TTL
+    ///   policy extends entries from a 5,000-ledger threshold to 50,000 ledgers.
+    /// - Each transaction carries one caller authorization and updates the full
+    ///   vote list. Weight calculation scans the stored votes against configured
+    ///   approvers, so CPU, read/write bytes, and network resource fees grow with
+    ///   the configured signer count. Keep signer sets within Soroban transaction
+    ///   and ledger-entry limits; this path has no additional signer-count cap.
+    /// - No wall-clock deadline applies to votes. Each vote is a separate ledger
+    ///   transaction; only the threshold-crossing vote performs a token transfer,
+    ///   so its resource fee is higher and varies with network fee parameters.
     pub fn approve_release(env: Env, caller: Address, escrow_id: u64) -> Result<(), EscrowError> {
         caller.require_auth();
         ContractStorage::require_not_paused(&env)?;
