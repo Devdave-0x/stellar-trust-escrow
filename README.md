@@ -667,3 +667,8 @@ MIT — see [LICENSE](LICENSE) for the full text.
 ---
 
 _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
+
+## Handsoff notes
+
+<!-- handsoff-issue-692 -->
+- #692: Document ledger constraints for milestone approval quorum transitions
