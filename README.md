@@ -690,3 +690,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-694 -->
 - #694: Add authorization boundary coverage for payment asset allowlist checks
+
+<!-- handsoff-issue-695 -->
+- #695: Add storage-growth benchmark for payment asset allowlist checks
