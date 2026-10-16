@@ -675,3 +675,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-697 -->
 - #697: Document ledger constraints for payment asset allowlist checks
+
+<!-- handsoff-issue-698 -->
+- #698: Add fuzz coverage for payment asset allowlist checks
