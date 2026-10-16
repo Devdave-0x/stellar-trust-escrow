@@ -667,3 +667,17 @@ MIT — see [LICENSE](LICENSE) for the full text.
 ---
 
 _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
+
+## Handsoff notes
+
+<!-- handsoff-issue-700 -->
+- #700: Add storage-growth benchmark for governance timelock execution
+
+<!-- handsoff-issue-701 -->
+- #701: Add explicit error mapping for governance timelock execution
+
+<!-- handsoff-issue-702 -->
+- #702: Document ledger constraints for governance timelock execution
+
+<!-- handsoff-issue-703 -->
+- #703: Add fuzz coverage for governance timelock execution
