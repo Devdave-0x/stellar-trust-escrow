@@ -687,3 +687,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-693 -->
 - #693: Add event completeness checks for milestone approval quorum transitions
+
+<!-- handsoff-issue-694 -->
+- #694: Add authorization boundary coverage for payment asset allowlist checks
