@@ -667,3 +667,8 @@ MIT — see [LICENSE](LICENSE) for the full text.
 ---
 
 _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
+
+## Handsoff notes
+
+<!-- handsoff-issue-705 -->
+- #705: Add explicit error mapping for governance proposal replay prevention
