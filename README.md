@@ -675,3 +675,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-706 -->
 - #706: Document ledger constraints for governance proposal replay prevention
+
+<!-- handsoff-issue-707 -->
+- #707: Add fuzz coverage for governance proposal replay prevention
