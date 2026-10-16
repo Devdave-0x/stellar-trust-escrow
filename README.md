@@ -672,3 +672,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-705 -->
 - #705: Add explicit error mapping for governance proposal replay prevention
+
+<!-- handsoff-issue-706 -->
+- #706: Document ledger constraints for governance proposal replay prevention
