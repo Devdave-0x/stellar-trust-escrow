@@ -907,4 +907,287 @@ mod tests {
         let updated_balance = s.client.get_fee_balance(&s.token_id);
         assert_eq!(updated_balance, 20);
     }
+
+    // ── Arbiter decision finality ─────────────────────────────────────────────
+    //
+    // Ledger constraints for arbiter decision finality:
+    //   * TTL: the dispute entry is persistent and is bumped on every read/write
+    //     performed by `finalize_arbiter_decision`; callers must finalize within
+    //     the persistent entry's TTL window or the entry may be archived.
+    //   * Transaction size: the decision payload is a bounded `Bytes` value; the
+    //     contract rejects payloads larger than `MAX_DECISION_LEN` so a single
+    //     transaction can never exceed the ledger's size limits.
+    //   * Fee: finalization performs a single storage write and emits one event,
+    //     keeping the resource fee deterministic and independent of payload size.
+    //   * Ledger time: finalization is only valid at or after `voting_closes_at`;
+    //     before that the stable `VotingWindowOpen` error is returned.
+
+    /// Builds a dispute that is ready to be finalized by `arbiter`.
+    fn setup_finalizable_dispute(
+        s: &Setup,
+        escrow_id: u64,
+        arbiter: &soroban_sdk::Address,
+        closes_at: u64,
+    ) {
+        s.env.as_contract(&s.contract_id, || {
+            let dispute = ArbitrationDispute {
+                escrow_id,
+                voting_opens_at: 0,
+                voting_closes_at: closes_at,
+                weight_for_client: 10,
+                weight_for_freelancer: 5,
+                total_stake: 15,
+                votes: Vec::new(&s.env),
+                resolved: false,
+                client_wins: None,
+            };
+            s.env
+                .storage()
+                .persistent()
+                .set(&DataKey::Dispute(escrow_id), &dispute);
+            s.env
+                .storage()
+                .persistent()
+                .set(&DataKey::DisputeArbiter(escrow_id), arbiter);
+        });
+    }
+
+    fn decision_bytes(env: &Env, fill: u8, len: u32) -> soroban_sdk::Bytes {
+        let mut out = soroban_sdk::Bytes::new(env);
+        for _ in 0..len {
+            out.push_back(fill);
+        }
+        out
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_success_emits_complete_event() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+        let escrow_id = 42u64;
+        setup_finalizable_dispute(&s, escrow_id, &arbiter, 100);
+
+        s.env.ledger().with_mut(|l| l.timestamp = 100);
+        let decision = decision_bytes(&s.env, 0xAB, 8);
+
+        let outcome = s
+            .client
+            .finalize_arbiter_decision(&arbiter, &escrow_id, &decision);
+        assert!(outcome, "client-favoured weights must resolve to true");
+
+        // Persisted state is deterministic and complete.
+        let dispute = s.client.get_dispute(&escrow_id);
+        assert!(dispute.resolved);
+        assert_eq!(dispute.client_wins, Some(true));
+
+        // Exactly one event must be emitted, with every indexable field present.
+        let events = s.env.events().all();
+        let mut matching = 0u32;
+        for (contract, topics, data) in events.iter() {
+            if contract != s.contract_id {
+                continue;
+            }
+            let (name, id, emitted_arbiter, emitted_decision, emitted_ts, emitted_outcome): (
+                soroban_sdk::Symbol,
+                u64,
+                soroban_sdk::Address,
+                soroban_sdk::Bytes,
+                u64,
+                bool,
+            ) = soroban_sdk::FromVal::from_val(&s.env, &data);
+            if name != crate::event_names::ARBITER_DECISION_FINALIZED {
+                continue;
+            }
+            matching += 1;
+            assert_eq!(id, escrow_id);
+            assert_eq!(emitted_arbiter, arbiter);
+            assert_eq!(emitted_decision, decision);
+            assert_eq!(emitted_ts, 100);
+            assert_eq!(emitted_outcome, true);
+            assert!(!topics.is_empty(), "event must carry at least one topic");
+        }
+        assert_eq!(matching, 1, "exactly one finality event must be emitted");
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_unauthorized_arbiter() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+        let impostor = soroban_sdk::Address::generate(&s.env);
+        let escrow_id = 7u64;
+        setup_finalizable_dispute(&s, escrow_id, &arbiter, 100);
+        s.env.ledger().with_mut(|l| l.timestamp = 200);
+
+        let before = s.env.events().all().len();
+        let result = s.client.try_finalize_arbiter_decision(
+            &impostor,
+            &escrow_id,
+            &decision_bytes(&s.env, 1, 4),
+        );
+        assert_eq!(result.unwrap_err().unwrap(), ExtError::UnauthorizedArbiter);
+        assert_eq!(
+            s.env.events().all().len(),
+            before,
+            "failed finalization must not emit events"
+        );
+        assert!(!s.client.get_dispute(&escrow_id).resolved);
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_already_finalized() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+        let escrow_id = 8u64;
+        setup_finalizable_dispute(&s, escrow_id, &arbiter, 100);
+        s.env.ledger().with_mut(|l| l.timestamp = 150);
+
+        s.client
+            .finalize_arbiter_decision(&arbiter, &escrow_id, &decision_bytes(&s.env, 2, 4));
+
+        let before = s.env.events().all().len();
+        let result = s.client.try_finalize_arbiter_decision(
+            &arbiter,
+            &escrow_id,
+            &decision_bytes(&s.env, 3, 4),
+        );
+        assert_eq!(result.unwrap_err().unwrap(), ExtError::AlreadyFinalized);
+        assert_eq!(
+            s.env.events().all().len(),
+            before,
+            "repeated finalization must not emit events"
+        );
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_invalid_decision() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+        let escrow_id = 9u64;
+        setup_finalizable_dispute(&s, escrow_id, &arbiter, 100);
+        s.env.ledger().with_mut(|l| l.timestamp = 150);
+
+        let before = s.env.events().all().len();
+        let result = s.client.try_finalize_arbiter_decision(
+            &arbiter,
+            &escrow_id,
+            &soroban_sdk::Bytes::new(&s.env),
+        );
+        assert_eq!(result.unwrap_err().unwrap(), ExtError::InvalidDecision);
+        assert_eq!(s.env.events().all().len(), before);
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_missing_escrow() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+        s.env.ledger().with_mut(|l| l.timestamp = 500);
+
+        let before = s.env.events().all().len();
+        let result = s.client.try_finalize_arbiter_decision(
+            &arbiter,
+            &999u64,
+            &decision_bytes(&s.env, 4, 4),
+        );
+        assert_eq!(result.unwrap_err().unwrap(), ExtError::DisputeNotFound);
+        assert_eq!(s.env.events().all().len(), before);
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_boundary_ledger_times() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+        let escrow_id = 10u64;
+        setup_finalizable_dispute(&s, escrow_id, &arbiter, 100);
+
+        // One second before the window closes: rejected, no event.
+        s.env.ledger().with_mut(|l| l.timestamp = 99);
+        let before = s.env.events().all().len();
+        let early = s.client.try_finalize_arbiter_decision(
+            &arbiter,
+            &escrow_id,
+            &decision_bytes(&s.env, 5, 4),
+        );
+        assert_eq!(early.unwrap_err().unwrap(), ExtError::VotingWindowOpen);
+        assert_eq!(s.env.events().all().len(), before);
+
+        // Exactly at the closing timestamp: accepted.
+        s.env.ledger().with_mut(|l| l.timestamp = 100);
+        let outcome = s
+            .client
+            .finalize_arbiter_decision(&arbiter, &escrow_id, &decision_bytes(&s.env, 6, 4));
+        assert!(outcome);
+        assert!(s.client.get_dispute(&escrow_id).resolved);
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_fuzz_style_inputs() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+
+        // Deterministic pseudo-random sequence of malformed / boundary inputs.
+        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+        for i in 0..32u32 {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            let escrow_id = seed % 5;
+            let len = (seed % 64) as u32;
+            let fill = (seed >> 8) as u8;
+            let ts = seed % 300;
+
+            s.env.ledger().with_mut(|l| l.timestamp = ts);
+            let before = s.env.events().all().len();
+            let result = s.client.try_finalize_arbiter_decision(
+                &arbiter,
+                &escrow_id,
+                &decision_bytes(&s.env, fill, len),
+            );
+
+            match result {
+                Ok(_) => {
+                    // Success is only possible for a prepared, unresolved dispute
+                    // whose window has closed.
+                    let dispute = s.client.get_dispute(&escrow_id);
+                    assert!(dispute.resolved);
+                    assert!(s.env.events().all().len() > before);
+                }
+                Err(Ok(err)) => {
+                    assert!(
+                        matches!(
+                            err,
+                            ExtError::DisputeNotFound
+                                | ExtError::VotingWindowOpen
+                                | ExtError::InvalidDecision
+                                | ExtError::AlreadyFinalized
+                                | ExtError::UnauthorizedArbiter
+                        ),
+                        "unexpected error variant {err:?} at iteration {i}"
+                    );
+                    assert_eq!(
+                        s.env.events().all().len(),
+                        before,
+                        "failed finalization must not emit events"
+                    );
+                }
+                Err(_) => panic!("unexpected host error at iteration {i}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_finalize_arbiter_decision_oversized_payload_rejected() {
+        let s = setup_with_fee(0);
+        let arbiter = soroban_sdk::Address::generate(&s.env);
+        let escrow_id = 11u64;
+        setup_finalizable_dispute(&s, escrow_id, &arbiter, 100);
+        s.env.ledger().with_mut(|l| l.timestamp = 150);
+
+        let before = s.env.events().all().len();
+        let result = s.client.try_finalize_arbiter_decision(
+            &arbiter,
+            &escrow_id,
+            &decision_bytes(&s.env, 7, crate::MAX_DECISION_LEN + 1),
+        );
+        assert_eq!(result.unwrap_err().unwrap(), ExtError::InvalidDecision);
+        assert_eq!(s.env.events().all().len(), before);
+        assert!(!s.client.get_dispute(&escrow_id).resolved);
+    }
 }

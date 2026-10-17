@@ -41,4 +41,18 @@ pub enum ExtError {
     // ── Arithmetic ────────────────────────────────────────────────────────────
     /// A checked arithmetic operation (add/mul) overflowed.
     ArithmeticOverflow = 44,
+
+    // ── Arbiter decision finality ─────────────────────────────────────────────
+    /// Caller is not the registered arbiter for this escrow.
+    ArbiterOnly = 50,
+    /// The arbiter decision for this escrow has already been finalized.
+    DecisionAlreadyFinalized = 51,
+    /// The supplied decision value is not a recognized/supported outcome.
+    InvalidDecision = 52,
+    /// No escrow exists for the supplied identifier.
+    EscrowNotFound = 53,
+    /// The escrow is not in a state that permits an arbiter decision.
+    DecisionNotAllowed = 54,
+    /// The arbiter decision payload is malformed or missing required fields.
+    InvalidDecisionPayload = 55,
 }

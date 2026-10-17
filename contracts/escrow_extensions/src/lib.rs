@@ -508,6 +508,42 @@ impl EscrowExtensions {
     ///   are flagged (actual stake deduction handled by reputation contract)
     ///
     /// Anyone can call this after the window closes.
+    ///
+    /// # Ledger constraints
+    ///
+    /// * **Ledger time** — finality is gated on `env.ledger().timestamp()`.
+    ///   The decision is only accepted once `now > voting_closes_at`
+    ///   (`VotingWindowOpen` otherwise). The timestamp is the *only*
+    ///   non-deterministic input; all persisted fields derive from it and from
+    ///   the recorded votes, so replaying the same ledger yields the same
+    ///   result. `voting_closes_at` is fixed at `open_dispute` time as
+    ///   `now + VOTING_WINDOW_SECONDS` and never re-read from the clock.
+    /// * **TTL** — the dispute lives in persistent storage and is bumped via
+    ///   `bump_persistent` on every read-modify-write (open, vote, resolve).
+    ///   Instance storage (admin, fee config) is bumped via `bump_instance`.
+    ///   Both use the shared `stellar_trust_shared` TTL constants, so the
+    ///   dispute entry survives at least as long as the instance entry. A
+    ///   dispute whose entry has expired is indistinguishable from a missing
+    ///   one and maps to `DisputeNotFound`.
+    /// * **Transaction size** — the decision payload is a single `u64`
+    ///   `escrow_id`; the emitted event carries only the escrow id and the
+    ///   boolean outcome. No vote vector is serialised into the event, keeping
+    ///   the transaction well under the ledger entry-size limit regardless of
+    ///   how many votes were cast.
+    /// * **Fees** — resolution performs no token transfers and no fee
+    ///   collection; slashing only emits `voter_slashed` events for the
+    ///   reputation contract to consume. Resource fees are therefore bounded
+    ///   by the number of votes iterated, not by any value moved.
+    ///
+    /// # Errors
+    ///
+    /// Every failure maps to a stable `ExtError` variant:
+    /// - `DisputeNotFound` — no dispute stored for `escrow_id` (missing or
+    ///   expired entry).
+    /// - `VotingWindowOpen` — ledger time is still within the voting window.
+    /// - `AlreadyFinalized` — the dispute was already resolved.
+    /// - `QuorumNotReached` — no weighted votes were cast.
+    /// - `ArithmeticOverflow` — weight arithmetic overflowed.
     #[deny(clippy::arithmetic_side_effects)]
     pub fn resolve_dispute(env: Env, escrow_id: u64) -> Result<bool, ExtError> {
         let key = DataKey::Dispute(escrow_id);
@@ -522,8 +558,9 @@ impl EscrowExtensions {
             return Err(ExtError::VotingWindowOpen);
         }
         if dispute.resolved {
-            // Already resolved — return cached result
-            return Ok(dispute.client_wins.unwrap_or(false));
+            // Already finalized — reject rather than silently returning a
+            // cached value so callers get a deterministic contract error.
+            return Err(ExtError::AlreadyFinalized);
         }
 
         let total_weight = dispute
@@ -571,6 +608,89 @@ impl EscrowExtensions {
 
         env.storage().persistent().set(&key, &dispute);
         bump_persistent(&env, &key);
+
+        events::emit_dispute_resolved(&env, escrow_id, client_wins);
+        Ok(client_wins)
+    }
+
+    /// Finalizes an arbiter decision for a disputed escrow.
+    ///
+    /// This is the explicit arbiter entry point for decision finality. The
+    /// arbiter (the contract admin) records the winning side once the voting
+    /// window has closed. Unlike [`Self::resolve_dispute`], which derives the
+    /// outcome from weighted votes, this path lets the arbiter make an explicit
+    /// decision and is idempotency-safe: a second call fails with
+    /// `AlreadyFinalized` instead of silently succeeding.
+    ///
+    /// # Arguments
+    /// * `arbiter`     — must be the configured admin and `require_auth()`
+    /// * `escrow_id`   — the disputed escrow
+    /// * `client_wins` — the arbiter's decision
+    ///
+    /// # Ledger constraints
+    ///
+    /// * **Ledger time** — the decision is only accepted once
+    ///   `now > voting_closes_at`; otherwise `VotingWindowOpen`. The finality
+    ///   timestamp is not persisted separately — `voting_closes_at` plus the
+    ///   `resolved` flag fully determine finality, keeping persisted data
+    ///   deterministic.
+    /// * **TTL** — the dispute entry is persistent and bumped via
+    ///   `bump_persistent` after the write; instance storage is bumped via
+    ///   `bump_instance`. Both rely on the shared TTL constants, so the
+    ///   finalized decision outlives the transaction by the same margin as any
+    ///   other persistent dispute write.
+    /// * **Transaction size** — the payload is `(Address, u64, bool)`; the
+    ///   emitted `dispute_resolved` event carries only `escrow_id` and the
+    ///   outcome boolean. No vote data or addresses are logged, so the
+    ///   transaction stays within size limits and the event is safe to index.
+    /// * **Fees** — no token transfers occur here; fee accounting is untouched.
+    ///
+    /// # Errors
+    ///
+    /// - `NotInitialized` — contract has no admin configured.
+    /// - `UnauthorizedArbiter` — caller is not the configured arbiter.
+    /// - `DisputeNotFound` — no dispute stored for `escrow_id`.
+    /// - `VotingWindowOpen` — ledger time is still within the voting window.
+    /// - `AlreadyFinalized` — the dispute was already resolved.
+    pub fn finalize_arbiter_decision(
+        env: Env,
+        arbiter: Address,
+        escrow_id: u64,
+        client_wins: bool,
+    ) -> Result<bool, ExtError> {
+        arbiter.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ExtError::NotInitialized)?;
+        if arbiter != admin {
+            return Err(ExtError::UnauthorizedArbiter);
+        }
+
+        let key = DataKey::Dispute(escrow_id);
+        let mut dispute: ArbitrationDispute = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ExtError::DisputeNotFound)?;
+
+        if dispute.resolved {
+            return Err(ExtError::AlreadyFinalized);
+        }
+
+        let now = env.ledger().timestamp();
+        if now <= dispute.voting_closes_at {
+            return Err(ExtError::VotingWindowOpen);
+        }
+
+        dispute.resolved = true;
+        dispute.client_wins = Some(client_wins);
+
+        env.storage().persistent().set(&key, &dispute);
+        bump_persistent(&env, &key);
+        bump_instance(&env);
 
         events::emit_dispute_resolved(&env, escrow_id, client_wins);
         Ok(client_wins)
@@ -674,3 +794,6 @@ impl EscrowExtensions {
 }
 
 mod tests;
+
+#[cfg(test)]
+mod finality_tests;
