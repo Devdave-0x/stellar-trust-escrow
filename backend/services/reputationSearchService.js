@@ -40,6 +40,7 @@ export function isAvailable() {
 }
 
 const INDEX = 'reputation_records';
+const fallbackInFlight = new Map();
 
 // ── Index mapping ─────────────────────────────────────────────────────────────
 
@@ -216,20 +217,40 @@ export async function search(q, { tenantId, limit = 10, from = 0 } = {}) {
   }
 
   // ── Prisma fallback ───────────────────────────────────────────────────────
+  return runPrismaFallback(q, { tenantId, limit, from });
+}
+
+export function runPrismaFallback(
+  q,
+  { tenantId, limit = 10, from = 0 } = {},
+  database = prisma,
+) {
+  const requestKey = JSON.stringify([q || '', tenantId || '', limit, from]);
+  if (fallbackInFlight.has(requestKey)) return fallbackInFlight.get(requestKey);
+
+  const operation = (async () => {
   const where = {
     ...(tenantId && { tenantId }),
     ...(q && { address: { contains: q, mode: 'insensitive' } }),
   };
-  const [records, total] = await prisma.$transaction([
-    prisma.reputationRecord.findMany({
+  const [records, total] = await database.$transaction([
+    database.reputationRecord.findMany({
       where,
       orderBy: { totalScore: 'desc' },
       skip: from,
       take: limit,
     }),
-    prisma.reputationRecord.count({ where }),
+    database.reputationRecord.count({ where }),
   ]);
   return { hits: records.map(toDoc), total, source: 'prisma' };
+  })().finally(() => fallbackInFlight.delete(requestKey));
+
+  fallbackInFlight.set(requestKey, operation);
+  return operation;
+}
+
+export function resetFallbackState() {
+  fallbackInFlight.clear();
 }
 
 // ── Leaderboard aggregation ───────────────────────────────────────────────────
