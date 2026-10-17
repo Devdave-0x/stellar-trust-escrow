@@ -12,6 +12,7 @@ import { useFilterState } from '../../hooks/useFilterState';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const PAGE_SIZE = 12;
 const SCROLL_KEY = 'explorer-scroll-y';
+const PAGINATION_ENABLED = process.env.NEXT_PUBLIC_EXPLORER_PAGINATION_ENABLED !== 'false';
 
 const DEFAULT_FILTERS = {
   status: '',
@@ -46,6 +47,7 @@ function useInfiniteEscrows({ search, filters }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
+  const requestVersionRef = useRef(0);
 
   const buildUrl = useCallback(
     (cur) => {
@@ -76,6 +78,7 @@ function useInfiniteEscrows({ search, filters }) {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    const requestVersion = ++requestVersionRef.current;
 
     setLoading(true);
     setError(null);
@@ -89,42 +92,58 @@ function useInfiniteEscrows({ search, filters }) {
         return r.json();
       })
       .then(({ data, next_cursor, has_more, hasNextPage }) => {
+        if (requestVersion !== requestVersionRef.current) return;
         const more = has_more ?? hasNextPage ?? false;
         setEscrows((data || []).map(normaliseEscrow));
         setCursor(next_cursor ?? null);
         setHasMore(more);
       })
       .catch((err) => {
-        if (err.name !== 'AbortError') setError(err.message);
+        if (err.name !== 'AbortError' && requestVersion === requestVersionRef.current) {
+          setError(err.message);
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (requestVersion === requestVersionRef.current) setLoading(false);
+      });
 
     return () => ctrl.abort();
   }, [buildUrl]);
 
   const loadMore = useCallback(() => {
-    if (!hasMore || loadingMore || loading) return;
+    if (!PAGINATION_ENABLED || !hasMore || loadingMore || loading) return;
 
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    const requestVersion = ++requestVersionRef.current;
+    const previousCursor = cursor;
+    const previousHasMore = hasMore;
 
     setLoadingMore(true);
+    setHasMore(false);
     fetch(buildUrl(cursor), { signal: ctrl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`API error ${r.status}`);
         return r.json();
       })
       .then(({ data, next_cursor, has_more, hasNextPage }) => {
+        if (requestVersion !== requestVersionRef.current) return;
         const more = has_more ?? hasNextPage ?? false;
         setEscrows((prev) => [...prev, ...(data || []).map(normaliseEscrow)]);
         setCursor(next_cursor ?? null);
         setHasMore(more);
       })
       .catch((err) => {
-        if (err.name !== 'AbortError') setError(err.message);
+        if (err.name !== 'AbortError' && requestVersion === requestVersionRef.current) {
+          setCursor(previousCursor);
+          setHasMore(previousHasMore);
+          setError(err.message);
+        }
       })
-      .finally(() => setLoadingMore(false));
+      .finally(() => {
+        if (requestVersion === requestVersionRef.current) setLoadingMore(false);
+      });
   }, [buildUrl, cursor, hasMore, loadingMore, loading]);
 
   return { escrows, hasMore, loading, loadingMore, error, loadMore };
@@ -160,7 +179,7 @@ function ExplorerContent() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+        if (PAGINATION_ENABLED && entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
           loadMore();
         }
       },
@@ -281,7 +300,7 @@ function ExplorerContent() {
               <Spinner />
               <p className="text-sm">Loading escrows...</p>
             </div>
-          ) : error ? (
+          ) : error && escrows.length === 0 ? (
             <div className="text-center py-16" role="alert">
               <p className="text-red-400 mb-3">Failed to load escrows</p>
               <p className="text-gray-500 text-sm">{error}</p>
@@ -313,6 +332,26 @@ function ExplorerContent() {
                 <div className="flex items-center justify-center gap-3 py-8 text-gray-400">
                   <Spinner size="sm" />
                   <span className="text-sm">Loading more...</span>
+                </div>
+              )}
+
+              {error && (
+                <p className="py-3 text-center text-sm text-red-400" role="alert">
+                  Failed to load escrows
+                </p>
+              )}
+
+              {hasMore && (
+                <div className="flex justify-center py-6">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={!PAGINATION_ENABLED || loadingMore}
+                    title={PAGINATION_ENABLED ? undefined : 'Pagination is disabled by policy'}
+                    className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Load more escrows
+                  </button>
                 </div>
               )}
 

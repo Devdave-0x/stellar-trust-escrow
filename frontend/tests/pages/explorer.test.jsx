@@ -111,6 +111,28 @@ describe('ExplorerPage', () => {
     expect(await screen.findByText(/No escrows found/)).toBeInTheDocument();
   });
 
+  it('provides an explicitly gated load-more action', async () => {
+    render(<ExplorerPage />);
+    const button = await screen.findByRole('button', { name: 'Load more escrows' });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it('rolls pagination state back when loading the next cursor fails', async () => {
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: mockEscrows, next_cursor: 'cursor-2', has_more: true }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 503 });
+    render(<ExplorerPage />);
+    const button = await screen.findByRole('button', { name: 'Load more escrows' });
+    fireEvent.click(button);
+    expect(await screen.findByText('Failed to load escrows')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Load more escrows' })).toBeEnabled();
+  });
+
   it('renders stats bar', async () => {
     render(<ExplorerPage />);
     expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument();
