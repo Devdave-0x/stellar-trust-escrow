@@ -2,11 +2,15 @@ import { screen, fireEvent } from '@testing-library/react';
 import CreateEscrowPage from '../../app/escrow/create/page';
 import { useSearchParams } from 'next/navigation';
 import { renderWithAppProviders } from '../test-utils';
+import { trackCustomMetric } from '../../lib/performance';
+
+jest.mock('../../lib/performance', () => ({ trackCustomMetric: jest.fn() }));
 
 describe('CreateEscrowPage', () => {
   beforeEach(() => {
     useSearchParams.mockReturnValue(new URLSearchParams());
     localStorage.clear();
+    trackCustomMetric.mockClear();
   });
 
   it('renders page heading', () => {
@@ -94,5 +98,41 @@ describe('CreateEscrowPage', () => {
 
     expect(screen.getByDisplayValue('5000')).toBeInTheDocument();
     expect(screen.getByText('Applied template: Monthly Retainer Support')).toBeInTheDocument();
+  });
+
+  it('gates draft restore to the wallet that owns the draft', async () => {
+    localStorage.setItem(
+      'escrow-create-draft-v1',
+      JSON.stringify({ ownerAddress: 'GOWNER', formData: { milestones: [{}] } }),
+    );
+    renderWithAppProviders(<CreateEscrowPage />, {
+      wallet: { address: 'GOTHER', isConnected: true, network: 'testnet' },
+    });
+    expect(await screen.findByRole('button', { name: 'Restore draft' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Connect the wallet');
+  });
+
+  it('emits privacy-safe draft telemetry when discarded', async () => {
+    localStorage.setItem(
+      'escrow-create-draft-v1',
+      JSON.stringify({ ownerAddress: 'GPRIVATE', formData: { milestones: [{}] } }),
+    );
+    renderWithAppProviders(<CreateEscrowPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard draft' }));
+    expect(trackCustomMetric).toHaveBeenCalledWith('escrow-draft-recovery', 0, {
+      outcome: 'discarded',
+    });
+    expect(JSON.stringify(trackCustomMetric.mock.calls)).not.toContain('GPRIVATE');
+  });
+
+  it('marks draft transitions as removable motion', async () => {
+    localStorage.setItem(
+      'escrow-create-draft-v1',
+      JSON.stringify({ ownerAddress: 'GOWNER', formData: { milestones: [{}] } }),
+    );
+    renderWithAppProviders(<CreateEscrowPage />);
+    expect(await screen.findByRole('button', { name: 'Discard draft' })).toHaveClass(
+      'motion-reduce:transition-none',
+    );
   });
 });
