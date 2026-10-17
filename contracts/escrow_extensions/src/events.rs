@@ -73,9 +73,22 @@ pub fn emit_vote_cast(env: &Env, escrow_id: u64, voter: &Address, stake: u64, fo
 }
 
 /// Emitted when a dispute is resolved.
-pub fn emit_dispute_resolved(env: &Env, escrow_id: u64, client_wins: bool) {
-    env.events()
-        .publish((event_names::DISPUTE_RESOLVED, escrow_id), client_wins);
+///
+/// Payload is fully populated so downstream indexers can deterministically
+/// reconstruct the arbiter decision without extra lookups:
+/// topic: (DISPUTE_RESOLVED, escrow_id)
+/// data: (arbiter, client_wins, resolved_at)
+pub fn emit_dispute_resolved(
+    env: &Env,
+    escrow_id: u64,
+    arbiter: &Address,
+    client_wins: bool,
+    resolved_at: u64,
+) {
+    env.events().publish(
+        (event_names::DISPUTE_RESOLVED, escrow_id),
+        (arbiter.clone(), client_wins, resolved_at),
+    );
 }
 
 /// Emitted when a voter is slashed for being on the losing side by > 90%.
