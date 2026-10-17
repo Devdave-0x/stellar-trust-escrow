@@ -297,6 +297,7 @@ function ExplorerContent() {
           ) : (
             <>
               <div
+                id="explorer-results"
                 className={`grid gap-4 ${showFilters ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'}`}
                 onClick={handleEscrowClick}
               >
@@ -304,6 +305,10 @@ function ExplorerContent() {
                   <EscrowCard key={escrow.id} escrow={escrow} />
                 ))}
               </div>
+
+              <p className="sr-only" role="status" aria-live="polite">
+                {escrows.length} escrows loaded{loadingMore ? ', loading more' : ''}.
+              </p>
 
               {/* Sentinel element — triggers next page load when scrolled into view */}
               <div ref={sentinelRef} className="h-1" aria-hidden="true" />
@@ -313,6 +318,20 @@ function ExplorerContent() {
                 <div className="flex items-center justify-center gap-3 py-8 text-gray-400">
                   <Spinner size="sm" />
                   <span className="text-sm">Loading more...</span>
+                </div>
+              )}
+
+              {hasMore && (
+                <div className="flex justify-center py-6">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    aria-controls="explorer-results"
+                    className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {loadingMore ? 'Loading more escrows' : 'Load more escrows'}
+                  </button>
                 </div>
               )}
 

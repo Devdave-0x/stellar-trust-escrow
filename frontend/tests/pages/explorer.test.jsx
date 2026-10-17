@@ -111,6 +111,17 @@ describe('ExplorerPage', () => {
     expect(await screen.findByText(/No escrows found/)).toBeInTheDocument();
   });
 
+  it('announces loaded results and exposes keyboard pagination', async () => {
+    render(<ExplorerPage />);
+    expect(await screen.findByRole('status')).toHaveTextContent('4 escrows loaded');
+    const loadMore = screen.getByRole('button', { name: 'Load more escrows' });
+    loadMore.focus();
+    expect(loadMore).toHaveFocus();
+    fireEvent.keyDown(loadMore, { key: 'Enter' });
+    fireEvent.click(loadMore);
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
   it('renders stats bar', async () => {
     render(<ExplorerPage />);
     expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument();

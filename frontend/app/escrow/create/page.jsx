@@ -39,6 +39,7 @@ import {
   isValidStellarAddress,
   computeTermsHash,
 } from '../../../lib/stellar';
+import { trackCustomMetric } from '../../../lib/performance';
 
 const STEPS = [
   { id: 1, label: 'Counterparty' },
@@ -50,6 +51,7 @@ const STEPS = [
 const DEFAULT_MILESTONE = { title: '', description: '', amount: '' };
 
 const DESCRIPTION_MIN_LENGTH = 10;
+const DRAFT_KEY = 'escrow-create-draft-v1';
 
 function applyTemplateToForm(currentForm, template) {
   return mergeTemplate(currentForm, template);
@@ -84,11 +86,42 @@ export default function CreateEscrowPage() {
   // Template waiting for the user to resolve conflicts with fields they filled in.
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [appliedQueryTemplateId, setAppliedQueryTemplateId] = useState(null);
+  const [savedDraft, setSavedDraft] = useState(null);
 
   // Touched state tracks which fields the user has interacted with
   const [touched, setTouched] = useState({ totalAmount: false, briefDescription: false });
 
   const { showToast } = useToast();
+
+  useEffect(() => {
+    try {
+      const draft = JSON.parse(window.localStorage.getItem(DRAFT_KEY));
+      if (draft?.formData && Array.isArray(draft.formData.milestones)) setSavedDraft(draft);
+    } catch {
+      window.localStorage.removeItem(DRAFT_KEY);
+    }
+  }, []);
+
+  const canRestoreDraft = Boolean(
+    savedDraft && isConnected && address && savedDraft.ownerAddress === address,
+  );
+
+  const handleRestoreDraft = () => {
+    if (!canRestoreDraft) {
+      trackCustomMetric('escrow-draft-recovery', 0, { outcome: 'permission_denied' });
+      return;
+    }
+    setFormData(savedDraft.formData);
+    setCurrentStep(Math.min(4, Math.max(1, savedDraft.currentStep || 1)));
+    setSavedDraft(null);
+    trackCustomMetric('escrow-draft-recovery', 0, { outcome: 'restored' });
+  };
+
+  const handleDiscardDraft = () => {
+    window.localStorage.removeItem(DRAFT_KEY);
+    setSavedDraft(null);
+    trackCustomMetric('escrow-draft-recovery', 0, { outcome: 'discarded' });
+  };
 
   useEffect(() => {
     if (!formData.termsDocument) {
@@ -209,6 +242,40 @@ export default function CreateEscrowPage() {
         onApplyTemplate={handleApplyTemplate}
         compact
       />
+
+      {savedDraft && (
+        <section
+          aria-labelledby="draft-recovery-title"
+          className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 p-4 transition-opacity motion-reduce:transition-none"
+        >
+          <h2 id="draft-recovery-title" className="font-semibold text-white">
+            Saved escrow draft
+          </h2>
+          {!canRestoreDraft && (
+            <p id="draft-permission-help" className="mt-1 text-sm text-amber-300" role="status">
+              Connect the wallet that created this draft to restore it.
+            </p>
+          )}
+          <div className="mt-3 flex gap-3">
+            <button
+              type="button"
+              onClick={handleRestoreDraft}
+              disabled={!canRestoreDraft}
+              aria-describedby={!canRestoreDraft ? 'draft-permission-help' : undefined}
+              className="rounded bg-indigo-600 px-3 py-2 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+            >
+              Restore draft
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-200 transition-colors motion-reduce:transition-none"
+            >
+              Discard draft
+            </button>
+          </div>
+        </section>
+      )}
 
       {templateNotice && (
         <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-emerald-300 text-sm">
