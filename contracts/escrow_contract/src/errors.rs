@@ -94,6 +94,12 @@ pub enum EcErr {
     DuplicateMilestoneId = 86,
     /// The computed creation nonce for this escrow has already been used.
     CreationNonceAlreadyUsed = 87,
+    /// Escrow deadline has not yet passed but the action requires it to have passed.
+    DeadlineNotReached = 88,
+    /// Escrow deadline has passed and the requested action is no longer permitted.
+    DeadlineExpired = 89,
+    /// Caller lacks the required authorization for a privileged deadline-enforcement path.
+    DeadlineUnauthorized = 90,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
