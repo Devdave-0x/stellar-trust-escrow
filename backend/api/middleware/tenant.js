@@ -1,6 +1,19 @@
 import prisma from '../../lib/prisma.js';
 import { DEFAULT_TENANT_SLUG, runWithTenantContext } from '../../lib/tenantContext.js';
 
+export function readTenantResolutionConfig(env = process.env) {
+  const failureMode = env.TENANT_RESOLUTION_FAILURE_MODE || 'fail_closed';
+  if (!['fail_closed', 'default_tenant'].includes(failureMode)) {
+    throw new Error('TENANT_RESOLUTION_FAILURE_MODE must be fail_closed or default_tenant');
+  }
+  const defaultTenantId = env.DEFAULT_TENANT_ID || 'tenant_default';
+  const defaultTenantSlug = env.DEFAULT_TENANT_SLUG || DEFAULT_TENANT_SLUG;
+  if (failureMode === 'default_tenant' && (!defaultTenantId.trim() || !defaultTenantSlug.trim())) {
+    throw new Error('Default tenant id and slug are required for default_tenant mode');
+  }
+  return { failureMode, defaultTenantId, defaultTenantSlug };
+}
+
 function buildTenantEmptyState({ title, description, action }) {
   return {
     title,
@@ -75,6 +88,7 @@ async function findTenant(req) {
 }
 
 export default async function tenantMiddleware(req, res, next) {
+  const config = readTenantResolutionConfig();
   try {
     const tenant = await findTenant(req);
 
@@ -111,6 +125,19 @@ export default async function tenantMiddleware(req, res, next) {
 
     return runWithTenantContext(tenant, () => next());
   } catch (err) {
+    if (config.failureMode === 'default_tenant') {
+      const tenant = {
+        id: config.defaultTenantId,
+        slug: config.defaultTenantSlug,
+        name: 'Default Tenant',
+        status: 'active',
+        degraded: true,
+      };
+      req.tenant = tenant;
+      res.locals.tenant = tenant;
+      res.setHeader('X-Tenant-Resolution', 'degraded');
+      return runWithTenantContext(tenant, () => next());
+    }
     return next(err);
   }
 }
