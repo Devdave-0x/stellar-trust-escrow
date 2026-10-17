@@ -8,12 +8,230 @@
  */
 
 import { Worker } from 'bullmq';
+import { createHash, randomUUID } from 'crypto';
 import {
   connection,
   stellarEventsQueue,
   deadLetterQueue,
   queueMetrics,
 } from '../lib/queueConfig.js';
+import { logger } from '../lib/logger.js';
+import { getRedisClient } from '../lib/redis.js';
+import { getCircuitBreaker } from '../lib/circuitBreaker.js';
+import {
+  checkpointRecoveryAttempts,
+  checkpointRecoverySuccess,
+  checkpointRecoveryFailure,
+  checkpointRecoveryDuration,
+  checkpointLagLedgers,
+  checkpointRecoveryDuplicates,
+} from '../lib/metrics.js';
+
+/**
+ * Bounded enum of checkpoint recovery failure reasons. Keeping this list small
+ * prevents unbounded label cardinality in metrics.
+ */
+const RECOVERY_REASONS = Object.freeze({
+  INVALID_DATA: 'invalid_data',
+  UNKNOWN_EVENT: 'unknown_event',
+  DB_ERROR: 'db_error',
+  LOCK_CONTENTION: 'lock_contention',
+  DEGRADED: 'degraded',
+  UNKNOWN: 'unknown',
+});
+
+const RECOVERY_LOCK_TTL_SECONDS = parseInt(
+  process.env.CHECKPOINT_RECOVERY_LOCK_TTL_SECONDS || '60',
+  10,
+);
+
+/**
+ * Maps an arbitrary error to a bounded recovery reason.
+ * @param {Error} error
+ * @returns {string}
+ */
+const mapRecoveryReason = (error) => {
+  if (!error) return RECOVERY_REASONS.UNKNOWN;
+  if (error.code === 'CHECKPOINT_DEGRADED') return RECOVERY_REASONS.DEGRADED;
+  if (error.code === 'CHECKPOINT_LOCK_CONTENTION') return RECOVERY_REASONS.LOCK_CONTENTION;
+  if (error.code === 'CHECKPOINT_INVALID_DATA') return RECOVERY_REASONS.INVALID_DATA;
+  if (error.code === 'CHECKPOINT_UNKNOWN_EVENT') return RECOVERY_REASONS.UNKNOWN_EVENT;
+  if (error.code === 'CHECKPOINT_DB_ERROR') return RECOVERY_REASONS.DB_ERROR;
+  const message = String(error.message || '').toLowerCase();
+  if (message.includes('invalid event data') || message.includes('missing topic')) {
+    return RECOVERY_REASONS.INVALID_DATA;
+  }
+  if (message.includes('unknown event type')) return RECOVERY_REASONS.UNKNOWN_EVENT;
+  if (message.includes('lock') || message.includes('contention')) {
+    return RECOVERY_REASONS.LOCK_CONTENTION;
+  }
+  if (
+    message.includes('econnrefused') ||
+    message.includes('connection') ||
+    message.includes('database') ||
+    message.includes('prisma')
+  ) {
+    return RECOVERY_REASONS.DB_ERROR;
+  }
+  return RECOVERY_REASONS.UNKNOWN;
+};
+
+/**
+ * Derives a deterministic idempotency key from the checkpoint cursor.
+ * Contains no secrets — only ledger, event index and tx hash.
+ * @param {Object} cursor
+ * @returns {string}
+ */
+const deriveIdempotencyKey = (cursor) => {
+  const ledger = cursor?.ledger ?? 'unknown';
+  const eventIndex = cursor?.eventIndex ?? 0;
+  const txHash = cursor?.txHash ?? '';
+  return createHash('sha256')
+    .update(`${ledger}:${eventIndex}:${txHash}`)
+    .digest('hex');
+};
+
+/**
+ * Checks whether optional infrastructure is available. Returns a reason string
+ * when degraded, or null when healthy.
+ * @returns {string|null}
+ */
+const detectDegradedInfrastructure = () => {
+  try {
+    const breaker = getCircuitBreaker && getCircuitBreaker('checkpoint-recovery');
+    if (breaker && typeof breaker.isOpen === 'function' && breaker.isOpen()) {
+      return RECOVERY_REASONS.DEGRADED;
+    }
+  } catch {
+    // Circuit breaker unavailable — treat as degraded.
+    return RECOVERY_REASONS.DEGRADED;
+  }
+
+  try {
+    const redis = getRedisClient && getRedisClient();
+    if (!redis || redis.status === 'end' || redis.status === 'close') {
+      return RECOVERY_REASONS.DEGRADED;
+    }
+  } catch {
+    return RECOVERY_REASONS.DEGRADED;
+  }
+
+  return null;
+};
+
+/**
+ * Acquires an idempotency lock for the given key using Redis SET NX with TTL.
+ * Returns true when acquired, false when the key already exists.
+ * @param {string} key
+ * @returns {Promise<boolean>}
+ */
+const acquireIdempotencyLock = async (key) => {
+  const redis = getRedisClient();
+  const result = await redis.set(`checkpoint:recovery:${key}`, '1', {
+    NX: true,
+    EX: RECOVERY_LOCK_TTL_SECONDS,
+  });
+  return result === 'OK';
+};
+
+/**
+ * Releases the idempotency lock on failure so retries can proceed.
+ * @param {string} key
+ */
+const releaseIdempotencyLock = async (key) => {
+  try {
+    const redis = getRedisClient();
+    await redis.del(`checkpoint:recovery:${key}`);
+  } catch (err) {
+    logger.warn('checkpoint_recovery_lock_release_failed', {
+      reason: RECOVERY_REASONS.DEGRADED,
+      error: err?.message,
+    });
+  }
+};
+
+/**
+ * Runs checkpoint recovery with telemetry, idempotency and graceful degradation.
+ * @param {Object} params
+ * @param {Object} params.cursor - { ledger, eventIndex, txHash }
+ * @param {string} [params.workerId]
+ * @param {Function} params.apply - Applies the recovery effect
+ * @returns {Promise<Object>} stable result object
+ */
+const runCheckpointRecovery = async ({ cursor, workerId, apply }) => {
+  const correlationId = randomUUID();
+  const idempotencyKey = deriveIdempotencyKey(cursor);
+  const startedAt = Date.now();
+
+  checkpointRecoveryAttempts.inc({ reason: 'none' });
+
+  const degradedReason = detectDegradedInfrastructure();
+  if (degradedReason) {
+    checkpointRecoveryFailure.inc({ reason: degradedReason });
+    logger.warn('checkpoint_recovery_degraded', {
+      correlationId,
+      workerId,
+      ledger: cursor?.ledger,
+      reason: degradedReason,
+    });
+    return { status: 'degraded', reason: degradedReason };
+  }
+
+  let acquired = false;
+  try {
+    acquired = await acquireIdempotencyLock(idempotencyKey);
+  } catch (err) {
+    checkpointRecoveryFailure.inc({ reason: RECOVERY_REASONS.DEGRADED });
+    logger.warn('checkpoint_recovery_degraded', {
+      correlationId,
+      workerId,
+      ledger: cursor?.ledger,
+      reason: RECOVERY_REASONS.DEGRADED,
+      error: err?.message,
+    });
+    return { status: 'degraded', reason: RECOVERY_REASONS.DEGRADED };
+  }
+
+  if (!acquired) {
+    checkpointRecoveryDuplicates.inc();
+    logger.info('checkpoint_recovery_duplicate', {
+      correlationId,
+      workerId,
+      ledger: cursor?.ledger,
+      key: idempotencyKey,
+    });
+    return { status: 'duplicate', key: idempotencyKey };
+  }
+
+  try {
+    await apply();
+    checkpointRecoverySuccess.inc();
+    checkpointRecoveryDuration.observe(Date.now() - startedAt);
+    if (typeof cursor?.ledger === 'number') {
+      checkpointLagLedgers.set(cursor.ledger);
+    }
+    logger.info('checkpoint_recovery_success', {
+      correlationId,
+      workerId,
+      ledger: cursor?.ledger,
+      key: idempotencyKey,
+    });
+    return { status: 'success', key: idempotencyKey };
+  } catch (err) {
+    const reason = mapRecoveryReason(err);
+    checkpointRecoveryFailure.inc({ reason });
+    checkpointRecoveryDuration.observe(Date.now() - startedAt);
+    await releaseIdempotencyLock(idempotencyKey);
+    logger.error('checkpoint_recovery_failure', {
+      correlationId,
+      workerId,
+      ledger: cursor?.ledger,
+      reason,
+      error: err?.message,
+    });
+    throw err;
+  }
+};
 
 /**
  * Processes a single Stellar event
@@ -45,8 +263,25 @@ const processStellarEvent = async (job) => {
 
     await job.updateProgress(75);
 
-    // Update last processed ledger
-    await updateLastProcessedLedger(ledger);
+    // Update last processed ledger via checkpoint recovery (idempotent,
+    // telemetry-instrumented, gracefully degrading).
+    const recoveryResult = await runCheckpointRecovery({
+      cursor: {
+        ledger,
+        eventIndex: job.data.eventIndex ?? 0,
+        txHash: event.txHash ?? event.transactionHash ?? '',
+      },
+      workerId: job.data.workerId,
+      apply: () => updateLastProcessedLedger(ledger),
+    });
+
+    if (recoveryResult.status === 'degraded') {
+      logger.warn('checkpoint_recovery_skipped', {
+        workerId: job.data.workerId,
+        ledger,
+        reason: recoveryResult.reason,
+      });
+    }
 
     await job.updateProgress(100);
 
@@ -279,4 +514,8 @@ export {
   updateLastProcessedLedger,
   processDeadLetterEvent,
   logPermanentFailure,
+  runCheckpointRecovery,
+  deriveIdempotencyKey,
+  mapRecoveryReason,
+  RECOVERY_REASONS,
 };
