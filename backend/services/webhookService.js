@@ -157,8 +157,13 @@ async function getDeliveryHistory({ subscriptionId, createdBy, page = 1, limit =
   };
 }
 
-async function queueSubscriptionWebhook(subscription, payload, eventType) {
-  const delivery = await prisma.webhookDelivery.create({
+async function queueSubscriptionWebhook(
+  subscription,
+  payload,
+  eventType,
+  { database = prisma, enqueue = enqueueWebhookDelivery } = {},
+) {
+  const delivery = await database.webhookDelivery.create({
     data: {
       subscription: { connect: { id: subscription.id } },
       eventType,
@@ -166,6 +171,9 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
       status: 'pending',
     },
   });
+  if (!delivery?.id) {
+    throw new Error('Webhook delivery persistence returned no delivery id');
+  }
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const signedPayload = buildWebhookPayload(
@@ -183,12 +191,12 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
     [EVENT_TYPE_HEADER]: eventType,
   };
 
-  await prisma.webhookDelivery.update({
+  await database.webhookDelivery.update({
     where: { id: delivery.id },
     data: { payload: signedPayload },
   });
 
-  await enqueueWebhookDelivery(delivery.id, subscription.url, signedPayload, headers, {
+  await enqueue(delivery.id, subscription.url, signedPayload, headers, {
     attempts: DEFAULT_RETRY_ATTEMPTS,
     backoff: { type: 'exponential', delay: DEFAULT_BACKOFF_DELAY_MS },
   });
@@ -223,6 +231,7 @@ export {
   rotateSecret,
   getDeliveryHistory,
   queueEventWebhooks,
+  queueSubscriptionWebhook,
   signPayload,
   verifySignature,
   buildWebhookPayload,

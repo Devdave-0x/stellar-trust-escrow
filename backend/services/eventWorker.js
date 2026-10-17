@@ -15,6 +15,23 @@ import {
   queueMetrics,
 } from '../lib/queueConfig.js';
 
+export function validateCheckpointRecoveryConfig(env = process.env) {
+  const retryLimit = Number(env.INDEXER_CHECKPOINT_RETRY_LIMIT ?? 3);
+  const retryDelayMs = Number(env.INDEXER_CHECKPOINT_RETRY_DELAY_MS ?? 1000);
+
+  if (!Number.isSafeInteger(retryLimit) || retryLimit < 0 || retryLimit > 20) {
+    throw new Error('INDEXER_CHECKPOINT_RETRY_LIMIT must be an integer between 0 and 20');
+  }
+  if (!Number.isSafeInteger(retryDelayMs) || retryDelayMs < 0 || retryDelayMs > 60_000) {
+    throw new Error('INDEXER_CHECKPOINT_RETRY_DELAY_MS must be an integer between 0 and 60000');
+  }
+  if (retryLimit === 0 && retryDelayMs !== 0) {
+    throw new Error('INDEXER_CHECKPOINT_RETRY_DELAY_MS must be 0 when retries are disabled');
+  }
+
+  return { retryLimit, retryDelayMs };
+}
+
 /**
  * Processes a single Stellar event
  * @param {Object} job - BullMQ job containing event data
@@ -211,6 +228,7 @@ const logPermanentFailure = async (originalJob, error, attemptsMade) => {
  * Create and configure the main event processing worker
  */
 export const createEventWorker = () => {
+  validateCheckpointRecoveryConfig();
   const worker = new Worker('stellar-events', processStellarEvent, {
     connection,
     concurrency: parseInt(process.env.QUEUE_CONCURRENCY || '5'),

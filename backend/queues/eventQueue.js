@@ -43,6 +43,53 @@ const eventDLQ = new Queue('blockchain-events-dlq', {
   connection: redisConnection,
 });
 
+const redriveInFlight = new Map();
+const redrivenJobs = new Set();
+
+function emitRedriveTelemetry(event, details = {}) {
+  logger.info({ service: 'event-dlq-redrive', event, ...details });
+}
+
+export function redriveFailedEvent(
+  jobId,
+  { sourceQueue = eventDLQ, targetQueue = eventQueue } = {},
+) {
+  const normalizedJobId = String(jobId || '').trim();
+  if (!normalizedJobId) return Promise.reject(new Error('jobId is required'));
+  if (redrivenJobs.has(normalizedJobId)) {
+    return Promise.resolve({ status: 'duplicate', jobId: normalizedJobId });
+  }
+  if (redriveInFlight.has(normalizedJobId)) return redriveInFlight.get(normalizedJobId);
+
+  const operation = (async () => {
+    emitRedriveTelemetry('started', { jobId: normalizedJobId });
+    const failedJob = await sourceQueue.getJob(normalizedJobId);
+    if (!failedJob) {
+      emitRedriveTelemetry('skipped', { jobId: normalizedJobId, reason: 'not_found' });
+      return { status: 'not_found', jobId: normalizedJobId };
+    }
+
+    await targetQueue.add('process-event', failedJob.data.originalJobData ?? failedJob.data, {
+      jobId: `redrive-${normalizedJobId}`,
+    });
+    await failedJob.remove();
+    redrivenJobs.add(normalizedJobId);
+    emitRedriveTelemetry('completed', { jobId: normalizedJobId });
+    return { status: 'redriven', jobId: normalizedJobId };
+  })()
+    .catch((error) => {
+      emitRedriveTelemetry('failed', {
+        jobId: normalizedJobId,
+        errorType: error.name || 'Error',
+      });
+      throw error;
+    })
+    .finally(() => redriveInFlight.delete(normalizedJobId));
+
+  redriveInFlight.set(normalizedJobId, operation);
+  return operation;
+}
+
 /**
  * Worker that processes blockchain events
  *
@@ -218,6 +265,8 @@ export function __resetForTests() {
   if (process.env.NODE_ENV === 'test') {
     eventQueue.__resetForTests?.();
     eventDLQ.__resetForTests?.();
+    redriveInFlight.clear();
+    redrivenJobs.clear();
   }
 }
 
@@ -229,5 +278,6 @@ export default {
   getFailedEvents,
   getJobDetails,
   clearDLQ,
+  redriveFailedEvent,
   __resetForTests,
 };
