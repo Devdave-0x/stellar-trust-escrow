@@ -8,6 +8,7 @@ import SearchFilters from '../../components/explorer/SearchFilters';
 import EmptyState from '../../components/ui/EmptyState';
 import ErrorBoundary from '../../components/error/ErrorBoundary';
 import { useFilterState } from '../../hooks/useFilterState';
+import { trackCustomMetric } from '../../lib/performance';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const PAGE_SIZE = 12;
@@ -21,6 +22,13 @@ const DEFAULT_FILTERS = {
   dateTo: '',
   sort: '',
 };
+
+export function buildPaginationTelemetry(outcome, loadedCount) {
+  return {
+    outcome: ['success', 'failure', 'cancelled'].includes(outcome) ? outcome : 'failure',
+    loadedCount: Math.max(0, Number(loadedCount) || 0),
+  };
+}
 
 function normaliseEscrow(e) {
   return {
@@ -110,6 +118,7 @@ function useInfiniteEscrows({ search, filters }) {
     abortRef.current = ctrl;
 
     setLoadingMore(true);
+    const startedAt = performance.now();
     fetch(buildUrl(cursor), { signal: ctrl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`API error ${r.status}`);
@@ -120,9 +129,21 @@ function useInfiniteEscrows({ search, filters }) {
         setEscrows((prev) => [...prev, ...(data || []).map(normaliseEscrow)]);
         setCursor(next_cursor ?? null);
         setHasMore(more);
+        trackCustomMetric('explorer-cursor-pagination', performance.now() - startedAt, {
+          ...buildPaginationTelemetry('success', (data || []).length),
+        });
       })
       .catch((err) => {
-        if (err.name !== 'AbortError') setError(err.message);
+        if (err.name !== 'AbortError') {
+          setError(err.message);
+          trackCustomMetric('explorer-cursor-pagination', performance.now() - startedAt, {
+            ...buildPaginationTelemetry('failure', 0),
+          });
+        } else {
+          trackCustomMetric('explorer-cursor-pagination', performance.now() - startedAt, {
+            ...buildPaginationTelemetry('cancelled', 0),
+          });
+        }
       })
       .finally(() => setLoadingMore(false));
   }, [buildUrl, cursor, hasMore, loadingMore, loading]);
@@ -310,7 +331,7 @@ function ExplorerContent() {
 
               {/* Loading more indicator */}
               {loadingMore && (
-                <div className="flex items-center justify-center gap-3 py-8 text-gray-400">
+                <div className="flex items-center justify-center gap-3 py-8 text-gray-400 motion-reduce:[&_svg]:animate-none">
                   <Spinner size="sm" />
                   <span className="text-sm">Loading more...</span>
                 </div>

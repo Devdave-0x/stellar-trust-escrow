@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import ExplorerPage from '../../app/explorer/page';
+import ExplorerPage, { buildPaginationTelemetry } from '../../app/explorer/page';
 
 // EscrowCard uses useI18n which requires I18nProvider — mock it for tests.
 jest.mock(
@@ -53,6 +53,16 @@ describe('ExplorerPage', () => {
   it('renders page heading', async () => {
     render(<ExplorerPage />);
     expect(await screen.findByRole('heading', { name: 'Escrow Explorer' })).toBeInTheDocument();
+  });
+
+  it('builds bounded pagination telemetry without cursor or wallet data', () => {
+    expect(buildPaginationTelemetry('success', 12)).toEqual({
+      outcome: 'success',
+      loadedCount: 12,
+    });
+    expect(JSON.stringify(buildPaginationTelemetry('unexpected', -1))).toBe(
+      '{"outcome":"failure","loadedCount":0}',
+    );
   });
 
   it('renders search input', async () => {
