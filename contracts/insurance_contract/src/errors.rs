@@ -47,4 +47,38 @@ pub enum InsuranceError {
     // ── Deadline ─────────────────────────────────────────────────────────────
     InvalidDeadline = 18,
     ClaimExpired = 19,
+
+    // ── Staking ───────────────────────────────────────────────────────────────
+    /// Reentrancy detected
+    Reentrancy = 20,
+    /// No active stake for this address
+    NoStakeFound = 21,
+    /// Unstake amount exceeds staked balance
+    InsufficientStake = 22,
+    /// Slash proposal not found
+    SlashProposalNotFound = 23,
+    /// Slash proposal is not in Approved state
+    SlashProposalNotApproved = 24,
+    /// slash_bps exceeds the configured maximum (40%)
+    SlashExceedsCap = 25,
+    /// slash_bps must be > 0
+    InvalidSlashBps = 26,
+    /// Nothing to yield-claim
+    NoYieldAvailable = 27,
+
+    // ── Arithmetic ────────────────────────────────────────────────────────────
+    /// A checked arithmetic operation (add/mul) overflowed.
+    ArithmeticOverflow = 28,
+
+    // ── Premium Accounting ────────────────────────────────────────────────────
+    /// Premium amount must be strictly positive
+    PremiumAmountInvalid = 29,
+    /// Checked arithmetic overflow while accumulating premium totals
+    PremiumOverflow = 30,
+    /// Premium amount exceeds the available balance
+    PremiumInsufficientBalance = 31,
+    /// Caller is not permitted to record or withdraw premium
+    PremiumUnauthorized = 32,
+    /// Premium accounting has not been initialized
+    PremiumNotInitialized = 33,
 }

@@ -73,3 +73,84 @@ pub fn emit_governor_removed(env: &Env, governor: &Address) {
     env.events()
         .publish((symbol_short!("ins_grm"),), governor.clone());
 }
+
+/// Emitted when tokens are staked.
+pub fn emit_staked(env: &Env, staker: &Address, amount: i128) {
+    env.events()
+        .publish((symbol_short!("ins_stk"), staker.clone()), amount);
+}
+
+/// Emitted when tokens are unstaked.
+pub fn emit_unstaked(env: &Env, staker: &Address, amount: i128) {
+    env.events()
+        .publish((symbol_short!("ins_ust"), staker.clone()), amount);
+}
+
+/// Emitted when yield is claimed.
+pub fn emit_yield_claimed(env: &Env, staker: &Address, amount: i128) {
+    env.events()
+        .publish((symbol_short!("ins_yld"), staker.clone()), amount);
+}
+
+/// Emitted when platform fees are added to the yield pool.
+pub fn emit_fee_added(env: &Env, amount: i128) {
+    env.events().publish((symbol_short!("ins_fee"),), amount);
+}
+
+/// Emitted when a slash proposal is submitted.
+pub fn emit_slash_proposed(env: &Env, slash_id: u32, proposer: &Address, slash_bps: u32) {
+    env.events().publish(
+        (symbol_short!("ins_slp"), slash_id),
+        (proposer.clone(), slash_bps),
+    );
+}
+
+/// Emitted when a slash is executed.
+pub fn emit_slash_executed(env: &Env, slash_id: u32, slash_bps: u32, slashed: i128) {
+    env.events()
+        .publish((symbol_short!("ins_sle"), slash_id), (slash_bps, slashed));
+}
+
+/// Emitted when a premium payment is recorded against an account.
+///
+/// Schema (stable, for downstream indexers):
+/// - topic: `(ins_prm, premium_id)` where `premium_id` is the stable u32 identifier
+/// - data: `(account, amount, timestamp)` where `account` is the paying actor,
+///   `amount` is the premium amount in stroops, and `timestamp` is the ledger
+///   timestamp (`env.ledger().timestamp()`) at emission time.
+///
+/// The payload is fully deterministic and contains no secrets.
+pub fn emit_premium_recorded(
+    env: &Env,
+    premium_id: u32,
+    account: &Address,
+    amount: i128,
+    timestamp: u64,
+) {
+    env.events().publish(
+        (symbol_short!("ins_prm"), premium_id),
+        (account.clone(), amount, timestamp),
+    );
+}
+
+/// Emitted when a recorded premium is withdrawn by its account.
+///
+/// Schema (stable, for downstream indexers):
+/// - topic: `(ins_pwd, premium_id)` where `premium_id` is the stable u32 identifier
+/// - data: `(account, amount, timestamp)` where `account` is the withdrawing actor,
+///   `amount` is the withdrawn premium amount in stroops, and `timestamp` is the
+///   ledger timestamp (`env.ledger().timestamp()`) at emission time.
+///
+/// The payload is fully deterministic and contains no secrets.
+pub fn emit_premium_withdrawn(
+    env: &Env,
+    premium_id: u32,
+    account: &Address,
+    amount: i128,
+    timestamp: u64,
+) {
+    env.events().publish(
+        (symbol_short!("ins_pwd"), premium_id),
+        (account.clone(), amount, timestamp),
+    );
+}
