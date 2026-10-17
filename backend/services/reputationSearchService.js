@@ -21,16 +21,32 @@ import prisma from '../lib/prisma.js';
 
 let _client = null;
 
+export function readReputationSearchConfig(env = process.env) {
+  const requestTimeout = Number(env.REPUTATION_SEARCH_TIMEOUT_MS ?? 5000);
+  const syncBatchSize = Number(env.REPUTATION_SEARCH_SYNC_BATCH ?? 500);
+  if (!Number.isSafeInteger(requestTimeout) || requestTimeout < 100 || requestTimeout > 30000) {
+    throw new Error('REPUTATION_SEARCH_TIMEOUT_MS must be an integer between 100 and 30000');
+  }
+  if (!Number.isSafeInteger(syncBatchSize) || syncBatchSize < 1 || syncBatchSize > 2000) {
+    throw new Error('REPUTATION_SEARCH_SYNC_BATCH must be an integer between 1 and 2000');
+  }
+  if (env.ELASTICSEARCH_API_KEY && !env.ELASTICSEARCH_URL) {
+    throw new Error('ELASTICSEARCH_URL is required when ELASTICSEARCH_API_KEY is configured');
+  }
+  return { requestTimeout, syncBatchSize };
+}
+
 function getClient() {
   if (_client) return _client;
   const url = process.env.ELASTICSEARCH_URL;
   if (!url) return null;
+  const { requestTimeout } = readReputationSearchConfig();
   _client = new Client({
     node: url,
     ...(process.env.ELASTICSEARCH_API_KEY && {
       auth: { apiKey: process.env.ELASTICSEARCH_API_KEY },
     }),
-    requestTimeout: 5000,
+    requestTimeout,
   });
   return _client;
 }
@@ -136,25 +152,24 @@ export async function bulkSync(records) {
 
 // ── Full re-sync from Prisma ──────────────────────────────────────────────────
 
-const SYNC_BATCH = 500;
-
 export async function syncFromPrisma() {
   if (!isAvailable()) return 0;
   await ensureIndex();
 
+  const { syncBatchSize } = readReputationSearchConfig();
   let synced = 0;
   let cursor = undefined;
 
   for (;;) {
     const batch = await prisma.reputationRecord.findMany({
-      take: SYNC_BATCH,
+      take: syncBatchSize,
       ...(cursor && { skip: 1, cursor: { address: cursor } }),
       orderBy: { address: 'asc' },
     });
     if (batch.length === 0) break;
     synced += await bulkSync(batch);
     cursor = batch[batch.length - 1].address;
-    if (batch.length < SYNC_BATCH) break;
+    if (batch.length < syncBatchSize) break;
   }
 
   console.log(`[ReputationSearch] syncFromPrisma: synced ${synced} records`);

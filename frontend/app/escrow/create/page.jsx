@@ -50,6 +50,23 @@ const STEPS = [
 const DEFAULT_MILESTONE = { title: '', description: '', amount: '' };
 
 const DESCRIPTION_MIN_LENGTH = 10;
+const DRAFT_KEY = 'escrow-create-draft-v1';
+
+export async function readEscrowDraft(storage, signal) {
+  await Promise.resolve();
+  if (signal?.aborted) return null;
+  const rawDraft = storage.getItem(DRAFT_KEY);
+  if (!rawDraft) return null;
+  try {
+    const draft = JSON.parse(rawDraft);
+    if (draft.version !== 1 || !draft.formData || !Array.isArray(draft.formData.milestones)) {
+      return null;
+    }
+    return draft;
+  } catch {
+    return null;
+  }
+}
 
 function applyTemplateToForm(currentForm, template) {
   return mergeTemplate(currentForm, template);
@@ -84,11 +101,43 @@ export default function CreateEscrowPage() {
   // Template waiting for the user to resolve conflicts with fields they filled in.
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [appliedQueryTemplateId, setAppliedQueryTemplateId] = useState(null);
+  const [pendingDraft, setPendingDraft] = useState(null);
+  const [draftReady, setDraftReady] = useState(false);
 
   // Touched state tracks which fields the user has interacted with
   const [touched, setTouched] = useState({ totalAmount: false, briefDescription: false });
 
   const { showToast } = useToast();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    readEscrowDraft(window.localStorage, controller.signal).then((draft) => {
+      if (!controller.signal.aborted) {
+        setPendingDraft(draft);
+        setDraftReady(true);
+      }
+    });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady || pendingDraft) return;
+    window.localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ version: 1, currentStep, formData, savedAt: new Date().toISOString() }),
+    );
+  }, [currentStep, draftReady, formData, pendingDraft]);
+
+  const restoreDraft = () => {
+    setFormData(pendingDraft.formData);
+    setCurrentStep(Math.min(4, Math.max(1, pendingDraft.currentStep || 1)));
+    setPendingDraft(null);
+  };
+
+  const discardDraft = () => {
+    window.localStorage.removeItem(DRAFT_KEY);
+    setPendingDraft(null);
+  };
 
   useEffect(() => {
     if (!formData.termsDocument) {
@@ -209,6 +258,27 @@ export default function CreateEscrowPage() {
         onApplyTemplate={handleApplyTemplate}
         compact
       />
+
+      {pendingDraft && (
+        <section
+          aria-labelledby="draft-recovery-title"
+          aria-live="polite"
+          className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 p-4"
+        >
+          <h2 id="draft-recovery-title" className="font-semibold text-white">
+            Recover your escrow draft?
+          </h2>
+          <p className="mt-1 text-sm text-gray-300">A draft saved on this device is available.</p>
+          <div className="mt-3 flex gap-3">
+            <button type="button" onClick={restoreDraft} className="rounded bg-indigo-600 px-3 py-2 text-sm text-white">
+              Restore draft
+            </button>
+            <button type="button" onClick={discardDraft} className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-200">
+              Discard draft
+            </button>
+          </div>
+        </section>
+      )}
 
       {templateNotice && (
         <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-emerald-300 text-sm">

@@ -1,5 +1,5 @@
 import { screen, fireEvent } from '@testing-library/react';
-import CreateEscrowPage from '../../app/escrow/create/page';
+import CreateEscrowPage, { readEscrowDraft } from '../../app/escrow/create/page';
 import { useSearchParams } from 'next/navigation';
 import { renderWithAppProviders } from '../test-utils';
 
@@ -94,5 +94,49 @@ describe('CreateEscrowPage', () => {
 
     expect(screen.getByDisplayValue('5000')).toBeInTheDocument();
     expect(screen.getByText('Applied template: Monthly Retainer Support')).toBeInTheDocument();
+  });
+
+  it('announces and restores a saved draft with keyboard-accessible controls', async () => {
+    localStorage.setItem(
+      'escrow-create-draft-v1',
+      JSON.stringify({
+        version: 1,
+        currentStep: 1,
+        formData: {
+          freelancerAddress: 'GRESTORED',
+          tokenAddress: 'usdc',
+          totalAmount: '25',
+          briefDescription: '',
+          deadline: '',
+          milestones: [{ title: '', description: '', amount: '' }],
+          termsDocument: '',
+        },
+      }),
+    );
+    renderWithAppProviders(<CreateEscrowPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Recover your escrow draft?' })).toBeVisible();
+    const restore = screen.getByRole('button', { name: 'Restore draft' });
+    restore.focus();
+    fireEvent.keyDown(restore, { key: 'Enter' });
+    fireEvent.click(restore);
+    expect(screen.getByDisplayValue('GRESTORED')).toBeInTheDocument();
+  });
+
+  it('discards malformed drafts without blocking the form', async () => {
+    localStorage.setItem('escrow-create-draft-v1', '{malformed');
+    renderWithAppProviders(<CreateEscrowPage />);
+    expect(await screen.findByRole('heading', { name: 'Create New Escrow' })).toBeVisible();
+    expect(screen.queryByText('Recover your escrow draft?')).not.toBeInTheDocument();
+  });
+
+  it('ignores a stale draft read after cancellation', async () => {
+    localStorage.setItem(
+      'escrow-create-draft-v1',
+      JSON.stringify({ version: 1, formData: { milestones: [] } }),
+    );
+    const controller = new AbortController();
+    controller.abort();
+    await expect(readEscrowDraft(localStorage, controller.signal)).resolves.toBeNull();
   });
 });
