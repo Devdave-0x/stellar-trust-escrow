@@ -1,5 +1,8 @@
 import prisma from '../../lib/prisma.js';
 import { DEFAULT_TENANT_SLUG, runWithTenantContext } from '../../lib/tenantContext.js';
+import { createModuleLogger } from '../../config/logger.js';
+
+const log = createModuleLogger('tenantMiddleware');
 
 function buildTenantEmptyState({ title, description, action }) {
   return {
@@ -20,7 +23,7 @@ function extractHostname(req) {
   return rawHost.split(',')[0].trim().split(':')[0].toLowerCase();
 }
 
-async function findTenant(req) {
+async function findTenant(req, database = prisma) {
   const tenantId = req.headers['x-tenant-id'];
   const tenantSlug = req.headers['x-tenant-slug'];
   const hostname = extractHostname(req);
@@ -37,7 +40,7 @@ async function findTenant(req) {
   }
 
   if (or.length > 0) {
-    const matchedTenant = await prisma.tenant.findFirst({
+    const matchedTenant = await database.tenant.findFirst({
       where: { OR: or },
       select: {
         id: true,
@@ -57,7 +60,7 @@ async function findTenant(req) {
     return null;
   }
 
-  return prisma.tenant.findFirst({
+  return database.tenant.findFirst({
     where: { slug: DEFAULT_TENANT_SLUG },
     select: {
       id: true,
@@ -74,11 +77,13 @@ async function findTenant(req) {
   });
 }
 
-export default async function tenantMiddleware(req, res, next) {
+export function createTenantMiddleware({ database = prisma, logger = log } = {}) {
+  return async function tenantMiddleware(req, res, next) {
   try {
-    const tenant = await findTenant(req);
+    const tenant = await findTenant(req, database);
 
     if (!tenant) {
+      logger.warn({ message: 'tenant_resolution_failed', outcome: 'not_found' });
       return res.status(404).json({
         error: 'Tenant not found',
         emptyState: buildTenantEmptyState({
@@ -91,6 +96,7 @@ export default async function tenantMiddleware(req, res, next) {
     }
 
     if (tenant.status !== 'active') {
+      logger.warn({ message: 'tenant_resolution_failed', outcome: 'inactive' });
       const message = tenant.status === 'suspended' ? 'Tenant suspended' : 'Tenant is not active';
       return res.status(403).json({
         error: message,
@@ -108,9 +114,17 @@ export default async function tenantMiddleware(req, res, next) {
     req.tenant = tenant;
     res.locals.tenant = tenant;
     res.setHeader('X-Tenant-Slug', tenant.slug);
+    logger.debug({ message: 'tenant_context_started', outcome: 'active' });
 
     return runWithTenantContext(tenant, () => next());
   } catch (err) {
+    logger.error({ message: 'tenant_resolution_failed', outcome: 'dependency_error', errorType: err.name || 'Error' });
     return next(err);
   }
+  };
 }
+
+const tenantMiddleware = createTenantMiddleware();
+
+export { findTenant };
+export default tenantMiddleware;

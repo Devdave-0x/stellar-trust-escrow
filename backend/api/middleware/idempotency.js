@@ -39,6 +39,21 @@ const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 // In-flight lock TTL — short enough to self-heal on crash
 const LOCK_TTL_SECONDS = 30;
 
+export function readIdempotencyConfig(env = process.env) {
+  const responseTtlSeconds = Number(env.IDEMPOTENCY_TTL_SECONDS ?? IDEMPOTENCY_TTL_SECONDS);
+  const lockTtlSeconds = Number(env.IDEMPOTENCY_LOCK_TTL_SECONDS ?? LOCK_TTL_SECONDS);
+  if (!Number.isSafeInteger(responseTtlSeconds) || responseTtlSeconds < 60 || responseTtlSeconds > 604800) {
+    throw new Error('IDEMPOTENCY_TTL_SECONDS must be an integer between 60 and 604800');
+  }
+  if (!Number.isSafeInteger(lockTtlSeconds) || lockTtlSeconds < 1 || lockTtlSeconds > 300) {
+    throw new Error('IDEMPOTENCY_LOCK_TTL_SECONDS must be an integer between 1 and 300');
+  }
+  if (lockTtlSeconds >= responseTtlSeconds) {
+    throw new Error('IDEMPOTENCY_LOCK_TTL_SECONDS must be shorter than IDEMPOTENCY_TTL_SECONDS');
+  }
+  return { responseTtlSeconds, lockTtlSeconds };
+}
+
 /**
  * Build a namespaced Redis key for an idempotency entry.
  *
@@ -66,6 +81,7 @@ function buildLockKey(key) {
  * @returns {import('express').RequestHandler}
  */
 export function idempotencyMiddleware() {
+  const { responseTtlSeconds, lockTtlSeconds } = readIdempotencyConfig();
   return async (req, res, next) => {
     // Only apply to mutating methods
     if (req.method !== 'POST' && req.method !== 'PATCH') return next();
@@ -100,7 +116,7 @@ export function idempotencyMiddleware() {
       }
 
       // ── Acquire in-flight lock ─────────────────────────────────────────────
-      await cache.set(lockKey, '1', LOCK_TTL_SECONDS);
+      await cache.set(lockKey, '1', lockTtlSeconds);
 
       // ── Intercept res.json to cache the response ───────────────────────────
       const originalJson = res.json.bind(res);
@@ -113,7 +129,7 @@ export function idempotencyMiddleware() {
             await cache.set(
               key,
               { status: res.statusCode, body, completedAt: new Date().toISOString() },
-              IDEMPOTENCY_TTL_SECONDS,
+              responseTtlSeconds,
             );
             log.debug({ message: 'idempotency_cached', key, status: res.statusCode });
           } catch (cacheErr) {
