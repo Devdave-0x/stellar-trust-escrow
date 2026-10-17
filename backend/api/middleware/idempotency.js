@@ -38,6 +38,17 @@ const log = createModuleLogger('idempotency');
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 // In-flight lock TTL — short enough to self-heal on crash
 const LOCK_TTL_SECONDS = 30;
+const activeRequests = new Set();
+
+function logLifecycle(level, event, req, details = {}) {
+  log[level]({
+    message: event,
+    method: req.method,
+    route: req.path,
+    tenantScoped: Boolean(req.tenant?.id || req.tenant?.slug),
+    ...details,
+  });
+}
 
 /**
  * Build a namespaced Redis key for an idempotency entry.
@@ -83,16 +94,26 @@ export function idempotencyMiddleware() {
       // ── Check for a completed cached response ──────────────────────────────
       const cached = await cache.get(key);
       if (cached !== null && cached !== undefined) {
-        log.debug({ message: 'idempotency_cache_hit', key });
+        logLifecycle('debug', 'idempotency_cache_hit', req, { status: cached.status });
         res.setHeader('Idempotency-Key', idempKey);
         res.setHeader('X-Idempotency-Replayed', 'true');
         return res.status(cached.status).json(cached.body);
       }
 
       // ── Check for an in-flight lock ────────────────────────────────────────
+      if (activeRequests.has(key)) {
+        logLifecycle('warn', 'idempotency_in_flight', req);
+        return res.status(409).json({
+          error: 'A request with this Idempotency-Key is already being processed. Retry after a moment.',
+          code: 'IDEMPOTENCY_IN_FLIGHT',
+        });
+      }
+      activeRequests.add(key);
+
       const locked = await cache.get(lockKey);
       if (locked) {
-        log.warn({ message: 'idempotency_in_flight', key });
+        activeRequests.delete(key);
+        logLifecycle('warn', 'idempotency_in_flight', req);
         return res.status(409).json({
           error: 'A request with this Idempotency-Key is already being processed. Retry after a moment.',
           code: 'IDEMPOTENCY_IN_FLIGHT',
@@ -107,6 +128,7 @@ export function idempotencyMiddleware() {
       res.json = async (body) => {
         // Release lock and cache the response only on success
         await cache.invalidate(lockKey).catch(() => null);
+        activeRequests.delete(key);
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
@@ -115,9 +137,11 @@ export function idempotencyMiddleware() {
               { status: res.statusCode, body, completedAt: new Date().toISOString() },
               IDEMPOTENCY_TTL_SECONDS,
             );
-            log.debug({ message: 'idempotency_cached', key, status: res.statusCode });
+            logLifecycle('debug', 'idempotency_cached', req, { status: res.statusCode });
           } catch (cacheErr) {
-            log.warn({ message: 'idempotency_cache_write_failed', key, error: cacheErr.message });
+            logLifecycle('warn', 'idempotency_cache_write_failed', req, {
+              errorType: cacheErr.name || 'Error',
+            });
           }
         } else {
           // Non-2xx responses are not cached so the client can retry with corrections
@@ -130,12 +154,18 @@ export function idempotencyMiddleware() {
 
       next();
     } catch (err) {
-      log.error({ message: 'idempotency_middleware_error', key, error: err.message });
+      activeRequests.delete(key);
+      logLifecycle('warn', 'idempotency_degraded', req, { errorType: err.name || 'Error' });
       // Release lock if anything went wrong before the handler ran
       await cache.invalidate(lockKey).catch(() => null);
-      next(err);
+      res.setHeader('X-Idempotency-Status', 'degraded');
+      next();
     }
   };
+}
+
+export function resetIdempotencyState() {
+  activeRequests.clear();
 }
 
 export default idempotencyMiddleware;
