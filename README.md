@@ -690,3 +690,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-782 -->
 - #782: Add upgrade compatibility tests for escrow deadline enforcement
+
+<!-- handsoff-issue-783 -->
+- #783: Add invariant tests for emergency pause authorization
