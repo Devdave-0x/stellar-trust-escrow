@@ -42,8 +42,11 @@ export function useWalletSession() {
   const { escrowState } = useEscrow();
 
   const [pendingNetwork, setPendingNetwork] = useState<string | null>(null);
+  const [optimisticNetwork, setOptimisticNetwork] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+  const serverNetworkRef = useRef(currentNetwork);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -51,6 +54,13 @@ export function useWalletSession() {
       mountedRef.current = false;
     };
   }, []);
+
+  // Track the latest server-confirmed network so a rollback never discards a
+  // newer server update that arrived while a switch was in flight.
+  useEffect(() => {
+    serverNetworkRef.current = currentNetwork;
+    setOptimisticNetwork((prev) => (prev !== null && prev === currentNetwork ? null : prev));
+  }, [currentNetwork]);
 
   const permission = useMemo(
     () =>
@@ -80,18 +90,29 @@ export function useWalletSession() {
         return false;
       }
 
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+
       setError(null);
       setPendingNetwork(networkId);
+      setOptimisticNetwork(networkId);
       try {
         await switchNetwork(networkId);
         return true;
       } catch {
-        if (mountedRef.current) {
+        if (mountedRef.current && requestIdRef.current === requestId) {
+          // Roll back only if this is still the latest request and the server
+          // has not already confirmed a different network in the meantime.
+          setOptimisticNetwork((prev) =>
+            prev === networkId && serverNetworkRef.current !== networkId
+              ? null
+              : prev,
+          );
           setError('network-change-failed');
         }
         return false;
       } finally {
-        if (mountedRef.current) {
+        if (mountedRef.current && requestIdRef.current === requestId) {
           setPendingNetwork(null);
         }
       }
@@ -99,9 +120,11 @@ export function useWalletSession() {
     [connected, role, escrowState, supportedNetworks, switchNetwork],
   );
 
+  const effectiveNetwork = optimisticNetwork ?? currentNetwork;
+
   return {
     address,
-    currentNetwork,
+    currentNetwork: effectiveNetwork,
     pendingNetwork,
     error,
     permission,

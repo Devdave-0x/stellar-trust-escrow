@@ -107,6 +107,105 @@ describe("useWalletSession network changes", () => {
     expect(result.current.error).toBeNull();
   });
 
+  describe("recovery-safe optimistic updates", () => {
+    it("applies the optimistic chain immediately before the switch resolves", async () => {
+      let resolveSwitch: () => void = () => {};
+      wallet.switchChain = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSwitch = resolve;
+          }),
+      );
+
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+
+      let pending: Promise<void> = Promise.resolve();
+      act(() => {
+        pending = result.current.switchNetwork(137);
+      });
+
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      await act(async () => {
+        resolveSwitch();
+        await pending;
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("rolls back to the previous chain when the switch is rejected", async () => {
+      wallet.switchChain = vi.fn(async () => {
+        throw new Error("User rejected the request");
+      });
+
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(result.current.chainId).toBe(1);
+      expect(result.current.error).toBe("User rejected the request");
+    });
+
+    it("does not clobber a newer server chain update when a switch fails", async () => {
+      let rejectSwitch: (reason: Error) => void = () => {};
+      wallet.switchChain = vi.fn(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectSwitch = reject;
+          }),
+      );
+
+      const { result, rerender } = renderHook(
+        ({ serverChainId }: { serverChainId: ChainId }) =>
+          useWalletSession({ wallet, serverChainId }),
+        { initialProps: { serverChainId: 1 } },
+      );
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+
+      let pending: Promise<void> = Promise.resolve();
+      act(() => {
+        pending = result.current.switchNetwork(137);
+      });
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      // A newer authoritative server update arrives while the switch is in flight.
+      rerender({ serverChainId: 137 });
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      await act(async () => {
+        rejectSwitch(new Error("User rejected the request"));
+        await pending;
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBe("User rejected the request");
+    });
+
+    it("rolls back to the server chain when there is no active session", async () => {
+      wallet.switchChain = vi.fn(async () => {
+        throw new Error("User rejected the request");
+      });
+
+      const { result } = renderHook(() =>
+        useWalletSession({ wallet, serverChainId: 137 }),
+      );
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      await act(async () => {
+        await result.current.switchNetwork(1);
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBe("User rejected the request");
+    });
+  });
+
   describe("permission-aware action gating", () => {
     function renderWithAccess(role: Role, escrowState: EscrowState) {
       return renderHook(() =>
