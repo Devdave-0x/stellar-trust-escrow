@@ -907,4 +907,124 @@ mod tests {
         let updated_balance = s.client.get_fee_balance(&s.token_id);
         assert_eq!(updated_balance, 20);
     }
+
+    // ── Issue #724: Authorization boundary coverage for arbiter decision finality ──
+
+    /// Reads the raw `PendingUpgrade` entry directly from storage so tests can
+    /// assert that failed authorization paths never mutate persisted state.
+    fn pending_upgrade_hash(s: &Setup) -> Option<BytesN<32>> {
+        s.env.as_contract(&s.contract_id, || {
+            s.env
+                .storage()
+                .instance()
+                .get::<DataKey, crate::PendingUpgrade>(&DataKey::PendingUpgrade)
+                .map(|p| p.new_wasm_hash)
+        })
+    }
+
+    /// (a) Success path: the stored admin can queue and cancel an upgrade, and
+    /// the persisted `PendingUpgrade` entry tracks each transition exactly.
+    #[test]
+    fn test_arbiter_finality_admin_success_path() {
+        let s = setup_with_fee(0);
+        let hash = BytesN::from_array(&s.env, &[0x5A; 32]);
+
+        // No pending upgrade before any privileged call.
+        assert!(pending_upgrade_hash(&s).is_none());
+
+        // Admin queues the upgrade — state is persisted deterministically.
+        let executable_after = s.client.queue_upgrade(&s.admin, &hash);
+        assert_eq!(pending_upgrade_hash(&s), Some(hash.clone()));
+        let pending = s.client.get_pending_upgrade().unwrap();
+        assert_eq!(pending.new_wasm_hash, hash);
+        assert_eq!(pending.executable_after, executable_after);
+
+        // Admin cancels the upgrade — state is cleared deterministically.
+        s.client.cancel_upgrade(&s.admin);
+        assert!(pending_upgrade_hash(&s).is_none());
+        assert!(s.client.get_pending_upgrade().is_none());
+    }
+
+    /// (b) Missing auth: a caller that is not the stored admin is rejected with
+    /// `AdminOnly` and the `PendingUpgrade` entry is left untouched.
+    #[test]
+    fn test_arbiter_finality_missing_auth_rejected() {
+        let s = setup_with_fee(0);
+        let hash = BytesN::from_array(&s.env, &[0x6B; 32]);
+        let non_admin = soroban_sdk::Address::generate(&s.env);
+
+        // Queue with the real admin so we can observe that failures don't clear it.
+        s.client.queue_upgrade(&s.admin, &hash);
+        assert_eq!(pending_upgrade_hash(&s), Some(hash.clone()));
+
+        // A non-admin cannot queue a second upgrade.
+        let other_hash = BytesN::from_array(&s.env, &[0x6C; 32]);
+        let queue_result = s.client.try_queue_upgrade(&non_admin, &other_hash);
+        assert_eq!(queue_result.unwrap_err().unwrap(), ExtError::AdminOnly);
+        assert_eq!(
+            pending_upgrade_hash(&s),
+            Some(hash.clone()),
+            "failed queue must not mutate PendingUpgrade"
+        );
+
+        // A non-admin cannot cancel the pending upgrade.
+        let cancel_result = s.client.try_cancel_upgrade(&non_admin);
+        assert_eq!(cancel_result.unwrap_err().unwrap(), ExtError::AdminOnly);
+        assert_eq!(
+            pending_upgrade_hash(&s),
+            Some(hash),
+            "failed cancel must not clear PendingUpgrade"
+        );
+    }
+
+    /// (c) Stale auth: with no mocked authorizations at all, `require_auth`
+    /// fails and the privileged call reverts without mutating storage.
+    #[test]
+    fn test_arbiter_finality_stale_auth_reverts() {
+        let s = setup_with_fee(0);
+        let hash = BytesN::from_array(&s.env, &[0x7D; 32]);
+
+        // Drop all mocked authorizations so require_auth cannot succeed.
+        s.env.mock_auths(&[]);
+
+        let result = s.client.try_queue_upgrade(&s.admin, &hash);
+        assert!(
+            result.is_err(),
+            "queue_upgrade must revert when auth is unavailable"
+        );
+        assert!(
+            pending_upgrade_hash(&s).is_none(),
+            "reverted queue must not persist PendingUpgrade"
+        );
+        assert!(s.client.get_pending_upgrade().is_none());
+    }
+
+    /// (d) Incorrect auth: a different address that is not the stored admin is
+    /// rejected with `AdminOnly` and storage is unchanged.
+    #[test]
+    fn test_arbiter_finality_incorrect_auth_rejected() {
+        let s = setup_with_fee(0);
+        let hash = BytesN::from_array(&s.env, &[0x8E; 32]);
+        let impostor = soroban_sdk::Address::generate(&s.env);
+
+        // Impostor cannot queue an upgrade.
+        let queue_result = s.client.try_queue_upgrade(&impostor, &hash);
+        assert_eq!(queue_result.unwrap_err().unwrap(), ExtError::AdminOnly);
+        assert!(
+            pending_upgrade_hash(&s).is_none(),
+            "impostor queue must not persist PendingUpgrade"
+        );
+
+        // Admin queues, then the impostor cannot cancel it.
+        s.client.queue_upgrade(&s.admin, &hash);
+        assert_eq!(pending_upgrade_hash(&s), Some(hash.clone()));
+
+        let cancel_result = s.client.try_cancel_upgrade(&impostor);
+        assert_eq!(cancel_result.unwrap_err().unwrap(), ExtError::AdminOnly);
+        assert_eq!(
+            pending_upgrade_hash(&s),
+            Some(hash),
+            "impostor cancel must not clear PendingUpgrade"
+        );
+    }
 }
