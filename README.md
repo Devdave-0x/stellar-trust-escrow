@@ -690,3 +690,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-790 -->
 - #790: Add upgrade compatibility tests for emergency pause authorization
+
+<!-- handsoff-issue-791 -->
+- #791: Add invariant tests for payment asset allowlist checks
