@@ -684,3 +684,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-776 -->
 - #776: Add storage-growth benchmark for partial release amount rounding
+
+<!-- handsoff-issue-777 -->
+- #777: Add explicit error mapping for partial release amount rounding
