@@ -687,3 +687,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-789 -->
 - #789: Add event completeness checks for emergency pause authorization
+
+<!-- handsoff-issue-790 -->
+- #790: Add upgrade compatibility tests for emergency pause authorization
