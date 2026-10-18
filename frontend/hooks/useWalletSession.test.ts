@@ -1,0 +1,375 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { useWalletSession } from "./useWalletSession";
+
+type ChainId = number;
+type Role = "admin" | "operator" | "viewer";
+type EscrowState = "funded" | "released" | "disputed" | "closed";
+
+interface MockWallet {
+  chainId: ChainId;
+  connected: boolean;
+  switchChain: (chainId: ChainId) => Promise<void>;
+  on: (event: string, handler: (payload: unknown) => void) => void;
+  off: (event: string, handler: (payload: unknown) => void) => void;
+}
+
+const SUPPORTED_CHAINS: ChainId[] = [1, 137];
+
+function createMockWallet(initialChainId: ChainId = 1): MockWallet {
+  const listeners = new Map<string, Set<(payload: unknown) => void>>();
+  const wallet: MockWallet = {
+    chainId: initialChainId,
+    connected: true,
+    switchChain: vi.fn(async (chainId: ChainId) => {
+      if (!SUPPORTED_CHAINS.includes(chainId)) {
+        throw new Error("Unsupported chain");
+      }
+      wallet.chainId = chainId;
+      listeners.get("chainChanged")?.forEach((handler) => handler(chainId));
+    }),
+    on: (event, handler) => {
+      if (!listeners.has(event)) listeners.set(event, new Set());
+      listeners.get(event)!.add(handler);
+    },
+    off: (event, handler) => {
+      listeners.get(event)?.delete(handler);
+    },
+  };
+  return wallet;
+}
+
+function mockReducedMotion(matches: boolean) {
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const mql = {
+    matches,
+    media: "(prefers-reduced-motion: reduce)",
+    onchange: null,
+    addEventListener: (_type: string, handler: (event: MediaQueryListEvent) => void) => {
+      listeners.add(handler);
+    },
+    removeEventListener: (_type: string, handler: (event: MediaQueryListEvent) => void) => {
+      listeners.delete(handler);
+    },
+    addListener: (handler: (event: MediaQueryListEvent) => void) => listeners.add(handler),
+    removeListener: (handler: (event: MediaQueryListEvent) => void) => listeners.delete(handler),
+    dispatchEvent: () => true,
+  };
+
+  vi.stubGlobal("matchMedia", vi.fn(() => mql));
+
+  return {
+    mql,
+    setMatches(next: boolean) {
+      mql.matches = next;
+      listeners.forEach((handler) =>
+        handler({ matches: next } as MediaQueryListEvent),
+      );
+    },
+  };
+}
+
+describe("useWalletSession network changes", () => {
+  let wallet: MockWallet;
+
+  beforeEach(() => {
+    wallet = createMockWallet(1);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("updates the session chain on a successful network switch", async () => {
+    const { result } = renderHook(() => useWalletSession({ wallet }));
+
+    await waitFor(() => expect(result.current.chainId).toBe(1));
+
+    await act(async () => {
+      await result.current.switchNetwork(137);
+    });
+
+    expect(wallet.switchChain).toHaveBeenCalledWith(137);
+    expect(result.current.chainId).toBe(137);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("surfaces an error and keeps the previous chain for unsupported networks", async () => {
+    const { result } = renderHook(() => useWalletSession({ wallet }));
+
+    await waitFor(() => expect(result.current.chainId).toBe(1));
+
+    await act(async () => {
+      await result.current.switchNetwork(9999);
+    });
+
+    expect(result.current.chainId).toBe(1);
+    expect(result.current.error).toBe("Unsupported chain");
+  });
+
+  it("does not attempt a switch when the wallet is disconnected", async () => {
+    wallet.connected = false;
+    const { result } = renderHook(() => useWalletSession({ wallet }));
+
+    await act(async () => {
+      await result.current.switchNetwork(137);
+    });
+
+    expect(wallet.switchChain).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("Wallet not connected");
+  });
+
+  it("settles on the last requested chain during rapid switching", async () => {
+    const { result } = renderHook(() => useWalletSession({ wallet }));
+
+    await waitFor(() => expect(result.current.chainId).toBe(1));
+
+    await act(async () => {
+      await Promise.all([
+        result.current.switchNetwork(137),
+        result.current.switchNetwork(1),
+        result.current.switchNetwork(137),
+      ]);
+    });
+
+    expect(result.current.chainId).toBe(137);
+    expect(result.current.error).toBeNull();
+  });
+
+  describe("reduced-motion feedback", () => {
+    it("animates the network change feedback when motion is allowed", async () => {
+      mockReducedMotion(false);
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.prefersReducedMotion).toBe(false);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.networkChangeFeedback).toEqual({
+        chainId: 137,
+        animate: true,
+      });
+    });
+
+    it("suppresses animation while preserving feedback when reduced motion is preferred", async () => {
+      mockReducedMotion(true);
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.prefersReducedMotion).toBe(true);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBeNull();
+      expect(result.current.networkChangeFeedback).toEqual({
+        chainId: 137,
+        animate: false,
+      });
+    });
+
+    it("reacts to a live reduced-motion preference change", async () => {
+      const motion = mockReducedMotion(false);
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.prefersReducedMotion).toBe(false);
+
+      act(() => {
+        motion.setMatches(true);
+      });
+
+      await waitFor(() => expect(result.current.prefersReducedMotion).toBe(true));
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(result.current.networkChangeFeedback).toEqual({
+        chainId: 137,
+        animate: false,
+      });
+    });
+
+    it("keeps reduced-motion feedback on a failed switch without animating", async () => {
+      mockReducedMotion(true);
+      wallet.switchChain = vi.fn(async () => {
+        throw new Error("User rejected the request");
+      });
+
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(result.current.chainId).toBe(1);
+      expect(result.current.error).toBe("User rejected the request");
+      expect(result.current.networkChangeFeedback).toEqual({
+        chainId: 1,
+        animate: false,
+      });
+    });
+  });
+
+  describe("recovery-safe optimistic updates", () => {
+    it("applies the optimistic chain immediately before the switch resolves", async () => {
+      let resolveSwitch: () => void = () => {};
+      wallet.switchChain = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSwitch = resolve;
+          }),
+      );
+
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+
+      let pending: Promise<void> = Promise.resolve();
+      act(() => {
+        pending = result.current.switchNetwork(137);
+      });
+
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      await act(async () => {
+        resolveSwitch();
+        await pending;
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("rolls back to the previous chain when the switch is rejected", async () => {
+      wallet.switchChain = vi.fn(async () => {
+        throw new Error("User rejected the request");
+      });
+
+      const { result } = renderHook(() => useWalletSession({ wallet }));
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(result.current.chainId).toBe(1);
+      expect(result.current.error).toBe("User rejected the request");
+    });
+
+    it("does not clobber a newer server chain update when a switch fails", async () => {
+      let rejectSwitch: (reason: Error) => void = () => {};
+      wallet.switchChain = vi.fn(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectSwitch = reject;
+          }),
+      );
+
+      const { result, rerender } = renderHook(
+        ({ serverChainId }: { serverChainId: ChainId }) =>
+          useWalletSession({ wallet, serverChainId }),
+        { initialProps: { serverChainId: 1 } },
+      );
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+
+      let pending: Promise<void> = Promise.resolve();
+      act(() => {
+        pending = result.current.switchNetwork(137);
+      });
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      // A newer authoritative server update arrives while the switch is in flight.
+      rerender({ serverChainId: 137 });
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      await act(async () => {
+        rejectSwitch(new Error("User rejected the request"));
+        await pending;
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBe("User rejected the request");
+    });
+
+    it("rolls back to the server chain when there is no active session", async () => {
+      wallet.switchChain = vi.fn(async () => {
+        throw new Error("User rejected the request");
+      });
+
+      const { result } = renderHook(() =>
+        useWalletSession({ wallet, serverChainId: 137 }),
+      );
+      await waitFor(() => expect(result.current.chainId).toBe(137));
+
+      await act(async () => {
+        await result.current.switchNetwork(1);
+      });
+
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBe("User rejected the request");
+    });
+  });
+
+  describe("permission-aware action gating", () => {
+    function renderWithAccess(role: Role, escrowState: EscrowState) {
+      return renderHook(() =>
+        useWalletSession({ wallet, role, escrowState }),
+      );
+    }
+
+    it("allows the network change for an authorized role in an actionable escrow state", async () => {
+      const { result } = renderWithAccess("operator", "funded");
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.canChangeNetwork).toBe(true);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(wallet.switchChain).toHaveBeenCalledWith(137);
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("blocks the network change for a role without permission", async () => {
+      const { result } = renderWithAccess("viewer", "funded");
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.canChangeNetwork).toBe(false);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(wallet.switchChain).not.toHaveBeenCalled();
+      expect(result.current.chainId).toBe(1);
+      expect(result.current.error).toBe("Insufficient permissions");
+    });
+
+    it("blocks the network change in a non-actionable escrow state", async () => {
+      const { result } = renderWithAccess("admin", "closed");
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.canChangeNetwork).toBe(false);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(wallet.switchChain).not.toHaveBeenCalled();
+      expect(result.current.chainId).toBe(1);
+      expect(result.current.error).toBe("Insufficient permissions");
+    });
+  });
+});
