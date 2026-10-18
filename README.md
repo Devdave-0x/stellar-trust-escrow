@@ -687,3 +687,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-781 -->
 - #781: Add fuzz coverage for escrow deadline enforcement
+
+<!-- handsoff-issue-782 -->
+- #782: Add upgrade compatibility tests for escrow deadline enforcement
