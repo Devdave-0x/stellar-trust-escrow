@@ -11,6 +11,58 @@ const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
 const DEFAULT_RETRY_ATTEMPTS = 5;
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
 
+const DEDUP_OUTCOMES = Object.freeze({
+  DELIVERED: 'delivered',
+  DEDUPLICATED: 'deduplicated',
+  FAILED: 'failed',
+});
+
+const dedupMetrics = {
+  delivered: 0,
+  deduplicated: 0,
+  failed: 0,
+};
+
+function recordDedupMetric(outcome) {
+  if (Object.prototype.hasOwnProperty.call(dedupMetrics, outcome)) {
+    dedupMetrics[outcome] += 1;
+  }
+}
+
+function getDedupMetrics() {
+  return { ...dedupMetrics };
+}
+
+function resetDedupMetrics() {
+  dedupMetrics.delivered = 0;
+  dedupMetrics.deduplicated = 0;
+  dedupMetrics.failed = 0;
+}
+
+/**
+ * Emit a bounded, deterministic telemetry log for a deduplication outcome.
+ *
+ * Only non-sensitive identifiers (delivery id, subscription id, event type)
+ * and the outcome are logged. Payloads, URLs, signatures, and secrets are
+ * never included.
+ */
+function logDedupOutcome(outcome, { deliveryId, subscriptionId, eventType, reason } = {}) {
+  recordDedupMetric(outcome);
+  const entry = {
+    scope: 'webhook.dedup',
+    outcome,
+    deliveryId: deliveryId ?? null,
+    subscriptionId: subscriptionId ?? null,
+    eventType: eventType ?? null,
+    ...(reason ? { reason } : {}),
+  };
+  if (outcome === DEDUP_OUTCOMES.FAILED) {
+    console.warn(JSON.stringify(entry));
+  } else {
+    console.info(JSON.stringify(entry));
+  }
+}
+
 function selectSubscriptionFields(includeActive = false) {
   return {
     id: true,
@@ -188,9 +240,25 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
     data: { payload: signedPayload },
   });
 
-  await enqueueWebhookDelivery(delivery.id, subscription.url, signedPayload, headers, {
-    attempts: DEFAULT_RETRY_ATTEMPTS,
-    backoff: { type: 'exponential', delay: DEFAULT_BACKOFF_DELAY_MS },
+  try {
+    await enqueueWebhookDelivery(delivery.id, subscription.url, signedPayload, headers, {
+      attempts: DEFAULT_RETRY_ATTEMPTS,
+      backoff: { type: 'exponential', delay: DEFAULT_BACKOFF_DELAY_MS },
+    });
+  } catch (error) {
+    logDedupOutcome(DEDUP_OUTCOMES.FAILED, {
+      deliveryId: delivery.id,
+      subscriptionId: subscription.id,
+      eventType,
+      reason: 'enqueue_failed',
+    });
+    throw error;
+  }
+
+  logDedupOutcome(DEDUP_OUTCOMES.DELIVERED, {
+    deliveryId: delivery.id,
+    subscriptionId: subscription.id,
+    eventType,
   });
 
   return delivery;
@@ -204,6 +272,10 @@ async function queueEventWebhooks(eventType, payload) {
   );
 
   if (subscriptions.length === 0) {
+    logDedupOutcome(DEDUP_OUTCOMES.DEDUPLICATED, {
+      eventType,
+      reason: 'no_subscriptions',
+    });
     return { queued: 0 };
   }
 
@@ -226,6 +298,9 @@ export {
   signPayload,
   verifySignature,
   buildWebhookPayload,
+  getDedupMetrics,
+  resetDedupMetrics,
+  DEDUP_OUTCOMES,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
   DELIVERY_ID_HEADER,
