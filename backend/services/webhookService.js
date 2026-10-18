@@ -11,6 +11,56 @@ const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
 const DEFAULT_RETRY_ATTEMPTS = 5;
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
 const DEDUP_TTL_SECONDS = 60 * 60 * 24;
+const DEDUP_ENABLED = true;
+
+/**
+ * Validate webhook delivery deduplication runtime settings.
+ *
+ * Fails fast with an actionable, deterministic message when the deduplication
+ * configuration is invalid or contradictory. Messages never include secrets.
+ *
+ * @param {object} [config] - Deduplication settings to validate.
+ * @param {boolean} [config.enabled] - Whether deduplication is enabled.
+ * @param {number} [config.ttlSeconds] - Deduplication window in seconds.
+ * @returns {{enabled: boolean, ttlSeconds: number}} The validated settings.
+ * @throws {Error} When the configuration is invalid or contradictory.
+ */
+function validateDedupConfig(config = {}) {
+  const enabled = config.enabled ?? DEDUP_ENABLED;
+  const ttlSeconds = config.ttlSeconds ?? DEDUP_TTL_SECONDS;
+
+  if (typeof enabled !== 'boolean') {
+    throw new Error(
+      `Invalid webhook deduplication config: "enabled" must be a boolean, received ${typeof enabled}.`,
+    );
+  }
+
+  if (typeof ttlSeconds !== 'number' || !Number.isFinite(ttlSeconds)) {
+    throw new Error(
+      'Invalid webhook deduplication config: "ttlSeconds" must be a finite number.',
+    );
+  }
+
+  if (!Number.isInteger(ttlSeconds)) {
+    throw new Error(
+      'Invalid webhook deduplication config: "ttlSeconds" must be an integer number of seconds.',
+    );
+  }
+
+  if (ttlSeconds <= 0) {
+    throw new Error(
+      'Invalid webhook deduplication config: "ttlSeconds" must be greater than 0.',
+    );
+  }
+
+  if (enabled && ttlSeconds <= 0) {
+    throw new Error(
+      'Contradictory webhook deduplication config: deduplication is enabled but the window ("ttlSeconds") is not positive.',
+    );
+  }
+
+  return { enabled, ttlSeconds };
+}
 
 function selectSubscriptionFields(includeActive = false) {
   return {
@@ -97,16 +147,22 @@ function buildDedupKey(eventType, payload) {
  *
  * @param {string} eventType - The webhook event type.
  * @param {object|string} payload - The event payload.
+ * @param {object} [config] - Deduplication settings (validated before use).
  * @returns {Promise<{duplicate: boolean, degraded: boolean}>}
  */
-async function claimDeliveryDedup(eventType, payload) {
+async function claimDeliveryDedup(eventType, payload, config) {
+  const { enabled, ttlSeconds } = validateDedupConfig(config);
+  if (!enabled) {
+    return { duplicate: false, degraded: false };
+  }
+
   const store = prisma?.webhookDedup ?? null;
   if (!store || typeof store.create !== 'function') {
     return { duplicate: false, degraded: true };
   }
 
   const key = buildDedupKey(eventType, payload);
-  const expiresAt = new Date(Date.now() + DEDUP_TTL_SECONDS * 1000);
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
   try {
     await store.create({
@@ -237,8 +293,8 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
   return delivery;
 }
 
-async function queueEventWebhooks(eventType, payload) {
-  const dedup = await claimDeliveryDedup(eventType, payload);
+async function queueEventWebhooks(eventType, payload, dedupConfig) {
+  const dedup = await claimDeliveryDedup(eventType, payload, dedupConfig);
   if (dedup.duplicate) {
     return { queued: 0, duplicate: true, degraded: false };
   }
@@ -268,28 +324,26 @@ async function queueEventWebhooks(eventType, payload) {
 }
 
 export {
-  createSubscription,
-  listSubscriptions,
-  deleteSubscription,
-  rotateSecret,
-  getDeliveryHistory,
-  queueEventWebhooks,
-  signPayload,
-  verifySignature,
-  buildWebhookPayload,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
   DELIVERY_ID_HEADER,
   EVENT_TYPE_HEADER,
-};
-
-export default {
+  DEFAULT_RETRY_ATTEMPTS,
+  DEFAULT_BACKOFF_DELAY_MS,
+  DEDUP_TTL_SECONDS,
+  DEDUP_ENABLED,
+  validateDedupConfig,
+  buildWebhookPayload,
+  generateSecret,
+  signPayload,
+  verifySignature,
+  buildDedupKey,
+  claimDeliveryDedup,
   createSubscription,
   listSubscriptions,
   deleteSubscription,
   rotateSecret,
   getDeliveryHistory,
+  queueSubscriptionWebhook,
   queueEventWebhooks,
-  signPayload,
-  verifySignature,
 };
