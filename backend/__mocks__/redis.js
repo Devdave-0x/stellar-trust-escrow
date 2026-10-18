@@ -18,6 +18,10 @@ const mockClient = {
   setNX: jest.fn().mockResolvedValue('OK'),
   // Atomic compare-and-delete used to release a dedup lock only if owned.
   eval: jest.fn().mockResolvedValue(1),
+  // Atomic set-if-not-exists with expiry, used for tenant context
+  // idempotency guards. Returns 'OK' when the key was set, null when it
+  // already existed (i.e. the effect was already applied).
+  set: jest.fn().mockResolvedValue('OK'),
 };
 
 // Expose the shared client so tests can simulate optional dedup

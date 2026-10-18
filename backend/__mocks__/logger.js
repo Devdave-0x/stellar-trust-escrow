@@ -17,4 +17,8 @@ export const logger = noOpLogger;
 
 export const logControllerError = () => {};
 
+export const runWithRequestContext = (context, fn) => requestContext.run(context, fn);
+
+export const getRequestContext = () => requestContext.getStore();
+
 export default noOpLogger;

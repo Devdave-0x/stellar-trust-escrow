@@ -1,6 +1,11 @@
 import prisma from '../../lib/prisma.js';
 import { DEFAULT_TENANT_SLUG, runWithTenantContext } from '../../lib/tenantContext.js';
 
+const TENANT_LOOKUP_CACHE_TTL_MS = 5000;
+const TENANT_LOOKUP_CACHE_MAX_ENTRIES = 500;
+const tenantLookupCache = new Map();
+const tenantLookupInFlight = new Map();
+
 function buildTenantEmptyState({ title, description, action }) {
   return {
     title,
@@ -18,6 +23,38 @@ function extractHostname(req) {
   if (!rawHost) return null;
 
   return rawHost.split(',')[0].trim().split(':')[0].toLowerCase();
+}
+
+function buildLookupKey(req) {
+  const tenantId = req.headers['x-tenant-id'];
+  const tenantSlug = req.headers['x-tenant-slug'];
+  const hostname = extractHostname(req);
+
+  const normalizedId = typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : '';
+  const normalizedSlug =
+    typeof tenantSlug === 'string' && tenantSlug.trim() ? tenantSlug.trim().toLowerCase() : '';
+  const normalizedHost =
+    hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' ? hostname : '';
+
+  return `${normalizedId}|${normalizedSlug}|${normalizedHost}`;
+}
+
+function readCachedTenant(key) {
+  const entry = tenantLookupCache.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    tenantLookupCache.delete(key);
+    return undefined;
+  }
+  return entry.tenant;
+}
+
+function writeCachedTenant(key, tenant) {
+  if (tenantLookupCache.size >= TENANT_LOOKUP_CACHE_MAX_ENTRIES) {
+    const oldestKey = tenantLookupCache.keys().next().value;
+    if (oldestKey !== undefined) tenantLookupCache.delete(oldestKey);
+  }
+  tenantLookupCache.set(key, { tenant, expiresAt: Date.now() + TENANT_LOOKUP_CACHE_TTL_MS });
 }
 
 async function findTenant(req) {
@@ -74,9 +111,31 @@ async function findTenant(req) {
   });
 }
 
+async function resolveTenant(req) {
+  const key = buildLookupKey(req);
+
+  const cached = readCachedTenant(key);
+  if (cached !== undefined) return cached;
+
+  const inFlight = tenantLookupInFlight.get(key);
+  if (inFlight) return inFlight;
+
+  const lookup = findTenant(req)
+    .then((tenant) => {
+      writeCachedTenant(key, tenant);
+      return tenant;
+    })
+    .finally(() => {
+      tenantLookupInFlight.delete(key);
+    });
+
+  tenantLookupInFlight.set(key, lookup);
+  return lookup;
+}
+
 export default async function tenantMiddleware(req, res, next) {
   try {
-    const tenant = await findTenant(req);
+    const tenant = await resolveTenant(req);
 
     if (!tenant) {
       return res.status(404).json({
