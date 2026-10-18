@@ -13,6 +13,11 @@ const mockClient = {
   sMembers: jest.fn().mockResolvedValue([]),
   scan: jest.fn().mockResolvedValue({ cursor: 0, keys: [] }),
   on: jest.fn(),
+  // Atomic set-if-not-exists used for webhook delivery deduplication.
+  // Returns 'OK' when the key was set, null when it already existed.
+  setNX: jest.fn().mockResolvedValue('OK'),
+  // Atomic compare-and-delete used to release a dedup lock only if owned.
+  eval: jest.fn().mockResolvedValue(1),
 };
 
 export const createClient = jest.fn(() => mockClient);
