@@ -687,3 +687,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-785 -->
 - #785: Add storage-growth benchmark for emergency pause authorization
+
+<!-- handsoff-issue-786 -->
+- #786: Add explicit error mapping for emergency pause authorization
