@@ -39,4 +39,19 @@ export const resetRedisMock = () => {
   mockClient.del.mockResolvedValue(1);
 };
 
+// Simulate optional Redis infrastructure being unavailable so graceful
+// degradation paths in oracle price ingestion can be exercised deterministically.
+export const simulateRedisUnavailable = () => {
+  const unavailable = () => Promise.reject(new Error('redis unavailable'));
+  mockClient.connect.mockImplementation(unavailable);
+  mockClient.get.mockImplementation(unavailable);
+  mockClient.set.mockImplementation(unavailable);
+  mockClient.del.mockImplementation(unavailable);
+  mockClient.setNX.mockImplementation(unavailable);
+  mockClient.exists.mockImplementation(unavailable);
+  mockClient.multi.mockImplementation(() => {
+    throw new Error('redis unavailable');
+  });
+};
+
 export const createClient = jest.fn(() => mockClient);

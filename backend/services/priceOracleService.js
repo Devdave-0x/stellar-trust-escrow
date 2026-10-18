@@ -10,6 +10,7 @@ const METRIC_OUTCOMES = Object.freeze({
   INVALID_DATA: `${METRIC_PREFIX}.invalid_data`,
   STALE_DATA: `${METRIC_PREFIX}.stale_data`,
   DUPLICATE: `${METRIC_PREFIX}.duplicate`,
+  DEGRADED: `${METRIC_PREFIX}.degraded`,
 });
 
 // Maximum age (ms) before a price snapshot is considered stale.
@@ -17,6 +18,9 @@ const DEFAULT_MAX_PRICE_AGE_MS = 5 * 60 * 1000;
 
 // How long a completed ingestion result is remembered for dedupe (ms).
 const DEFAULT_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+
+// Stable status returned when optional oracle infrastructure is unavailable.
+const DEGRADED_STATUS = 'degraded';
 
 function createCorrelationId() {
   return crypto.randomBytes(8).toString('hex');
@@ -84,6 +88,18 @@ class PriceOracleService {
     }
   }
 
+  _buildDegradedResult({ correlationId, safeSource, reason }) {
+    return {
+      status: DEGRADED_STATUS,
+      degraded: true,
+      price: null,
+      timestamp: null,
+      reason,
+      source: safeSource,
+      correlationId,
+    };
+  }
+
   async ingestPrice({ source, symbol, idempotencyKey } = {}) {
     const correlationId = createCorrelationId();
     const safeSource = sanitizeSource(source);
@@ -134,6 +150,21 @@ class PriceOracleService {
   }
 
   async _ingestOnce({ source, symbol, correlationId, safeSource, baseFields }) {
+    // Optional infrastructure (fetchPrice) may be missing entirely; degrade
+    // gracefully instead of throwing so callers get a stable response shape.
+    if (typeof this.fetchPrice !== 'function') {
+      this._emitMetric(METRIC_OUTCOMES.DEGRADED, { source: safeSource });
+      this._log('warn', 'oracle price ingestion degraded', {
+        ...baseFields,
+        reason: 'fetch_unavailable',
+      });
+      return this._buildDegradedResult({
+        correlationId,
+        safeSource,
+        reason: 'fetch_unavailable',
+      });
+    }
+
     let raw;
     try {
       raw = await this.fetchPrice({ source, symbol });
@@ -184,4 +215,5 @@ module.exports = {
   METRIC_OUTCOMES,
   DEFAULT_MAX_PRICE_AGE_MS,
   DEFAULT_IDEMPOTENCY_TTL_MS,
+  DEGRADED_STATUS,
 };

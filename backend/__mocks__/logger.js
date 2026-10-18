@@ -49,4 +49,15 @@ export const resetLogEntries = () => {
 
 export const createCapturingModuleLogger = () => capturingLogger;
 
+// Graceful-degradation tests need to assert that a degraded response was
+// surfaced without leaking secrets. Expose a helper that returns a sanitized
+// snapshot of captured entries so assertions stay deterministic.
+export const getLogSnapshot = () =>
+  logEntries.map(({ level, message, meta, correlationId }) => ({
+    level,
+    message,
+    meta: meta && typeof meta === 'object' ? { ...meta } : meta,
+    correlationId,
+  }));
+
 export default noOpLogger;
