@@ -722,10 +722,19 @@ paths:
     post:
       tags: [Payments]
       summary: Create a Stripe Checkout session
-      description: Requires KYC Approved status and the JWT wallet address must match the request body.
+      description: Requires KYC Approved status, a matching JWT wallet address, and a unique idempotency key. Retrying the same request with the same key returns the original checkout response.
       operationId: createCheckout
       security:
         - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated 8-128 character URL-safe key. Reuse only for an identical retry.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
       requestBody:
         required: true
         content:
@@ -747,8 +756,12 @@ paths:
                   description: Optional — associates payment with an escrow
                   example: escrow_abc123
       responses:
-        '201':
+        '200':
           description: Checkout session created
+          headers:
+            Idempotent-Replayed:
+              description: Present and true when this response is a replay of an earlier accepted request.
+              schema: { type: string, enum: ['true'] }
           content:
             application/json:
               schema:
@@ -769,6 +782,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: Wallet address mismatch or KYC not approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency key was reused with different checkout parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Replay-protection capacity is temporarily exhausted
           content:
             application/json:
               schema:

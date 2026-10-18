@@ -38,6 +38,7 @@ mod types;
 pub use errors::InsuranceError;
 pub use types::{
     Claim, ClaimStatus, DataKey, FundInfo, FundStats, SlashProposal, SlashStatus, StakeRecord,
+    ReserveSnapshot,
 };
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
@@ -437,6 +438,11 @@ impl InsuranceContract {
         Storage::save_stats(&env, &stats);
 
         events::emit_contributed(&env, &contributor, amount);
+        events::emit_reserve_contributed(
+            &env,
+            &contributor,
+            &reserve_snapshot(&stats, amount),
+        );
         Ok(())
     }
 
@@ -615,6 +621,12 @@ impl InsuranceContract {
         Storage::save_stats(&env, &stats);
 
         events::emit_payout(&env, claim_id, &claim.claimant, amount);
+        events::emit_reserve_paid(
+            &env,
+            claim_id,
+            &claim.claimant,
+            &reserve_snapshot(&stats, amount),
+        );
         Ok(())
     }
 
@@ -1085,12 +1097,31 @@ impl InsuranceContract {
     }
 }
 
+/// Builds a post-operation accounting snapshot for reserve events. A tracked
+/// reserve below zero is an accounting invariant breach and must never be
+/// published as a valid solvency state.
+fn reserve_snapshot(stats: &FundStats, amount: i128) -> ReserveSnapshot {
+    assert!(
+        stats.total_contributed >= stats.total_paid_out,
+        "reserve accounting invariant violated"
+    );
+    ReserveSnapshot {
+        amount,
+        tracked_reserve: stats.total_contributed - stats.total_paid_out,
+        total_contributed: stats.total_contributed,
+        total_paid_out: stats.total_paid_out,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[allow(unused_imports)]
     use crate::{SlashStatus, StakeRecord};
-    use soroban_sdk::{testutils::Address as _, token, Env, String};
+    use soroban_sdk::{
+        testutils::{Address as _, Events as _},
+        symbol_short, token, Address, Env, IntoVal, String, TryFromVal, Val,
+    };
 
     struct Setup {
         env: Env,
@@ -1160,6 +1191,21 @@ mod tests {
         assert_eq!(info.total_contributed, 500);
         assert_eq!(info.current_balance, 500);
         assert_eq!(s.client.get_contribution(&contributor), 500);
+
+        let reserve_event_topic: Val = symbol_short!("ins_rin").into_val(&s.env);
+        let reserve_event = s
+            .env
+            .events()
+            .all()
+            .iter()
+            .find(|event| event.1.get(0).map(|topic| topic.get_payload())
+                == Some(reserve_event_topic.get_payload()))
+            .expect("reserve contribution event");
+        let snapshot = ReserveSnapshot::try_from_val(&s.env, &reserve_event.2).unwrap();
+        assert_eq!(snapshot.amount, 500);
+        assert_eq!(snapshot.tracked_reserve, 500);
+        assert_eq!(snapshot.total_contributed, 500);
+        assert_eq!(snapshot.total_paid_out, 0);
     }
 
     #[test]
@@ -1170,6 +1216,11 @@ mod tests {
 
         let result = s.client.try_contribute(&contributor, &5_i128);
         assert!(result.is_err());
+        let reserve_event_topic: Val = symbol_short!("ins_rin").into_val(&s.env);
+        assert!(s.env.events().all().iter().all(|event| {
+            event.1.get(0).map(|topic| topic.get_payload())
+                != Some(reserve_event_topic.get_payload())
+        }));
     }
 
     // ── Claims ────────────────────────────────────────────────────────────────
@@ -1323,6 +1374,22 @@ mod tests {
 
         let claim = s.client.get_claim(&id);
         assert_eq!(claim.status, ClaimStatus::Paid);
+
+        let reserve_event_topic: Val = symbol_short!("ins_rout").into_val(&s.env);
+        let reserve_event = s
+            .env
+            .events()
+            .all()
+            .iter()
+            .find(|event| event.1.get(0).map(|topic| topic.get_payload())
+                == Some(reserve_event_topic.get_payload()))
+            .expect("reserve payout event");
+        let (_recipient, snapshot): (Address, ReserveSnapshot) =
+            TryFromVal::try_from_val(&s.env, &reserve_event.2).unwrap();
+        assert_eq!(snapshot.amount, 1_000);
+        assert_eq!(snapshot.tracked_reserve, 4_000);
+        assert_eq!(snapshot.total_contributed, 5_000);
+        assert_eq!(snapshot.total_paid_out, 1_000);
     }
 
     #[test]
@@ -1344,6 +1411,11 @@ mod tests {
 
         let result = s.client.try_execute_payout(&id);
         assert!(result.is_err());
+        let reserve_event_topic: Val = symbol_short!("ins_rout").into_val(&s.env);
+        assert!(s.env.events().all().iter().all(|event| {
+            event.1.get(0).map(|topic| topic.get_payload())
+                != Some(reserve_event_topic.get_payload())
+        }));
     }
 
     // ── Admin config ──────────────────────────────────────────────────────────

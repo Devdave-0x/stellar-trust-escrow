@@ -147,6 +147,15 @@ export const milestonesCompletedTotal = new client.Counter({
   registers: [register],
 });
 
+// Bounded outcomes only; never label with wallet addresses, idempotency keys,
+// payment amounts, Stripe IDs, or other high-cardinality/sensitive values.
+export const paymentCheckoutReplayTotal = new client.Counter({
+  name: 'payment_checkout_replay_total',
+  help: 'Payment checkout idempotency and replay-protection outcomes',
+  labelNames: ['outcome'], // created | in_flight | replayed | conflict | rejected | failed
+  registers: [register],
+});
+
 export const activeEscrowsGauge = new client.Gauge({
   name: 'active_escrows',
   help: 'Current number of active escrows',

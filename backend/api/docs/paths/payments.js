@@ -5,6 +5,12 @@
  *     tags: [Payments]
  *     summary: Create a Stripe Checkout session
  *     description: Initiates a fiat on-ramp via Stripe. Requires the user to have an Approved KYC status.
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: true
+ *         description: Client-generated 8-128 character URL-safe key. Reuse only for retries of the identical request.
+ *         schema: { type: string, minLength: 8, maxLength: 128 }
  *     requestBody:
  *       required: true
  *       content:
@@ -48,7 +54,7 @@
  *                   format: uri
  *                   example: "https://checkout.stripe.com/pay/cs_test_abc123..."
  *       400:
- *         description: Missing fields or KYC not approved
+ *         description: Missing fields or invalid idempotency key
  *         content:
  *           application/json:
  *             schema:
@@ -58,6 +64,8 @@
  *                 value: { error: "KYC verification required before making payments" }
  *       429:
  *         $ref: '#/components/responses/TooManyRequests'
+ *       409:
+ *         description: Idempotency key was reused with different checkout parameters
  *       500:
  *         $ref: '#/components/responses/InternalError'
  *

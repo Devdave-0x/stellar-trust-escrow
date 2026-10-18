@@ -40,9 +40,10 @@ async function getXlmUsdPrice() {
  * @param {string} opts.address  - Stellar address of the payer
  * @param {number} opts.amountUsd - Amount in USD (dollars, not cents)
  * @param {string} [opts.escrowId] - Optional escrow to fund
+ * @param {string} [opts.idempotencyKey] - Opaque Stripe idempotency key
  * @returns {{ sessionId, url, paymentId }}
  */
-async function createCheckoutSession({ address, amountUsd, escrowId }) {
+async function createCheckoutSession({ address, amountUsd, escrowId, idempotencyKey }) {
   const stripe = await getStripeClient();
   const amountCents = Math.round(amountUsd * 100);
   const tenantId = getCurrentTenantId();
@@ -70,10 +71,15 @@ async function createCheckoutSession({ address, amountUsd, escrowId }) {
     },
     success_url: `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.FRONTEND_URL}/payment/cancel`,
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
-  const payment = await prisma.payment.create({
-    data: {
+  // Stripe may return the same session to separate API workers for an
+  // idempotent request. Upsert makes the local persistence path match that
+  // guarantee instead of racing on the unique stripe_session_id constraint.
+  const payment = await prisma.payment.upsert({
+    where: { stripeSessionId: session.id },
+    update: {},
+    create: {
       address,
       escrowId: escrowId ? BigInt(escrowId) : null,
       stripeSessionId: session.id,

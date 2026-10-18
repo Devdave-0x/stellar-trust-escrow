@@ -122,6 +122,20 @@ pub struct FundStats {
     pub governor_count: u32,
 }
 
+/// Deterministic accounting snapshot emitted whenever the insurance reserve
+/// changes through a contribution or claim payout. Indexers can reconstruct
+/// the tracked reserve without querying contract storage at every ledger.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReserveSnapshot {
+    /// Delta applied by the operation, in token base units.
+    pub amount: i128,
+    /// `total_contributed - total_paid_out` after the operation.
+    pub tracked_reserve: i128,
+    pub total_contributed: i128,
+    pub total_paid_out: i128,
+}
+
 // ── Staking types ─────────────────────────────────────────────────────────────
 
 /// Per-staker record.

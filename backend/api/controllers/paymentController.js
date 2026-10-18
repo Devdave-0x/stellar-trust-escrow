@@ -1,9 +1,69 @@
 import { getLogger, logControllerError } from '../../config/logger.js';
+import { createHash } from 'node:crypto';
 import paymentService from '../../services/paymentService.js';
 import kycService from '../../services/kycService.js';
 import { getAuthenticatedWalletAddress } from '../middleware/authorization.js';
+import { paymentCheckoutReplayTotal } from '../../lib/metrics.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
+const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+const MAX_IDEMPOTENCY_ENTRIES = 1_000;
+
+/** @type {Map<string, { fingerprint: string, promise: Promise<object>, result?: object, expiresAt: number }>} */
+const checkoutIdempotency = new Map();
+
+function digest(value) {
+  return createHash('sha256').update(value).digest('hex').slice(0, 24);
+}
+
+function getIdempotencyKey(req) {
+  const value = req.get?.('Idempotency-Key') ?? req.headers?.['idempotency-key'];
+  return Array.isArray(value) ? undefined : value?.trim();
+}
+
+function cleanupExpiredIdempotencyEntries(now = Date.now()) {
+  for (const [key, entry] of checkoutIdempotency) {
+    // Never expire an in-flight operation: doing so would allow a concurrent
+    // retry to create a second Stripe checkout while the first is unresolved.
+    if (entry.result && entry.expiresAt <= now) checkoutIdempotency.delete(key);
+  }
+  // A bounded map prevents arbitrary clients from growing process memory.
+  while (checkoutIdempotency.size >= MAX_IDEMPOTENCY_ENTRIES) {
+    const completedKey = [...checkoutIdempotency.entries()].find(([, entry]) => entry.result)?.[0];
+    if (!completedKey) return false;
+    checkoutIdempotency.delete(completedKey);
+  }
+  return true;
+}
+
+function observeCheckoutReplay(outcome, req, correlationId) {
+  paymentCheckoutReplayTotal.inc({ outcome });
+  getLogger().info({
+    message: 'payment.checkout_replay_protection',
+    outcome,
+    correlationId,
+    requestId: req.id,
+  });
+}
+
+function sendCheckoutResult(res, result, replayed) {
+  if (replayed && typeof res.setHeader === 'function') {
+    res.setHeader('Idempotent-Replayed', 'true');
+  }
+  res.json(result);
+}
+
+function checkoutError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+/** Test-only reset for deterministic concurrent-request coverage. */
+export function __resetCheckoutIdempotencyForTest() {
+  checkoutIdempotency.clear();
+}
 
 function requireOwnedWallet(req, res) {
   const walletAddress = getAuthenticatedWalletAddress(req);
@@ -34,17 +94,69 @@ const createCheckout = async (req, res) => {
       return res.status(400).json({ error: 'amountUsd must be a positive number' });
     }
 
-    // KYC gate — require Approved status for fiat on-ramp
-    const kyc = await kycService.getStatus(address);
-    if (kyc?.status !== 'Approved') {
-      return res.status(403).json({ error: 'KYC verification required before funding via fiat' });
+    const idempotencyKey = getIdempotencyKey(req);
+    if (!idempotencyKey || !IDEMPOTENCY_KEY_RE.test(idempotencyKey)) {
+      observeCheckoutReplay('rejected', req, 'invalid');
+      return res.status(400).json({
+        error: 'A valid Idempotency-Key header (8-128 URL-safe characters) is required.',
+      });
     }
 
-    const result = await paymentService.createCheckoutSession({ address, amountUsd, escrowId });
-    res.json(result);
+    const fingerprint = digest(`${address}|${amountUsd}|${escrowId ?? ''}`);
+    const correlationId = digest(`${walletAddress}|${idempotencyKey}`);
+    const entryKey = `${walletAddress}:${idempotencyKey}`;
+    const hasCapacity = cleanupExpiredIdempotencyEntries();
+    const existing = checkoutIdempotency.get(entryKey);
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        observeCheckoutReplay('conflict', req, correlationId);
+        return res.status(409).json({
+          error: 'Idempotency-Key was already used for a different checkout request.',
+        });
+      }
+      observeCheckoutReplay(existing.result ? 'replayed' : 'in_flight', req, correlationId);
+      const result = existing.result ?? (await existing.promise);
+      return sendCheckoutResult(res, result, true);
+    }
+    if (!hasCapacity) {
+      observeCheckoutReplay('rejected', req, correlationId);
+      return res.status(503).json({ error: 'Checkout replay protection is at capacity; retry shortly.' });
+    }
+
+    // Scope the Stripe key to the authenticated wallet and request fingerprint.
+    // The raw caller key is never logged or sent to metrics.
+    const stripeIdempotencyKey = `checkout:${digest(`${walletAddress}|${idempotencyKey}|${fingerprint}`)}`;
+    const promise = (async () => {
+      // KYC is inside the coalesced work so overlapping requests receive the
+      // same deterministic result and do not reach payment creation twice.
+      const kyc = await kycService.getStatus(address);
+      if (kyc?.status !== 'Approved') {
+        throw checkoutError(403, 'KYC verification required before funding via fiat');
+      }
+      return paymentService.createCheckoutSession({
+        address,
+        amountUsd,
+        escrowId,
+        idempotencyKey: stripeIdempotencyKey,
+      });
+    })();
+    const entry = { fingerprint, promise, expiresAt: Date.now() + IDEMPOTENCY_TTL_MS };
+    checkoutIdempotency.set(entryKey, entry);
+
+    try {
+      const result = await promise;
+      entry.result = result;
+      observeCheckoutReplay('created', req, correlationId);
+      return sendCheckoutResult(res, result, false);
+    } catch (err) {
+      checkoutIdempotency.delete(entryKey);
+      observeCheckoutReplay(err.statusCode ? 'rejected' : 'failed', req, correlationId);
+      throw err;
+    }
   } catch (err) {
-    logControllerError('payment.createCheckout', err, req);
-    res.status(500).json({ error: err.message });
+    const status = err.statusCode || 500;
+    if (status >= 500) logControllerError('payment.createCheckout', err, req);
+    res.status(status).json({ error: err.message });
   }
 };
 

@@ -5,11 +5,21 @@
 
 use soroban_sdk::{symbol_short, Address, Env};
 
+use crate::ReserveSnapshot;
+
 /// Emitted when tokens are contributed to the fund.
 /// topic: (ins_dep, contributor)  data: amount
 pub fn emit_contributed(env: &Env, contributor: &Address, amount: i128) {
     env.events()
         .publish((symbol_short!("ins_dep"), contributor.clone()), amount);
+}
+
+/// Emitted after a successful contribution with the post-operation reserve
+/// accounting needed for deterministic solvency indexing.
+/// topic: (ins_rin, contributor) data: ReserveSnapshot
+pub fn emit_reserve_contributed(env: &Env, contributor: &Address, snapshot: &ReserveSnapshot) {
+    env.events()
+        .publish((symbol_short!("ins_rin"), contributor.clone()), snapshot.clone());
 }
 
 /// Emitted when a new claim is submitted.
@@ -50,6 +60,21 @@ pub fn emit_payout(env: &Env, claim_id: u32, claimant: &Address, amount: i128) {
     env.events().publish(
         (symbol_short!("ins_pay"), claim_id),
         (claimant.clone(), amount),
+    );
+}
+
+/// Emitted after a successful payout with the post-operation reserve
+/// accounting needed for deterministic solvency indexing.
+/// topic: (ins_rout, claim_id) data: (claimant, ReserveSnapshot)
+pub fn emit_reserve_paid(
+    env: &Env,
+    claim_id: u32,
+    claimant: &Address,
+    snapshot: &ReserveSnapshot,
+) {
+    env.events().publish(
+        (symbol_short!("ins_rout"), claim_id),
+        (claimant.clone(), snapshot.clone()),
     );
 }
 
