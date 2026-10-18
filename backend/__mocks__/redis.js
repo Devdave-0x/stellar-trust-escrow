@@ -13,6 +13,15 @@ const mockClient = {
   sMembers: jest.fn().mockResolvedValue([]),
   scan: jest.fn().mockResolvedValue({ cursor: 0, keys: [] }),
   on: jest.fn(),
+  // Idempotency primitives used by oracle price ingestion.
+  setNX: jest.fn().mockResolvedValue(true),
+  exists: jest.fn().mockResolvedValue(0),
+  multi: jest.fn(() => ({
+    set: jest.fn().mockReturnThis(),
+    del: jest.fn().mockReturnThis(),
+    expire: jest.fn().mockReturnThis(),
+    exec: jest.fn().mockResolvedValue([]),
+  })),
 };
 
 export const createClient = jest.fn(() => mockClient);
