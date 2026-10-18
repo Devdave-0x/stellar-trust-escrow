@@ -684,3 +684,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-784 -->
 - #784: Add authorization boundary coverage for emergency pause authorization
+
+<!-- handsoff-issue-785 -->
+- #785: Add storage-growth benchmark for emergency pause authorization
