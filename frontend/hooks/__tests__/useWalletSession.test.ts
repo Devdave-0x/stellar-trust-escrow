@@ -142,4 +142,96 @@ describe('useWalletSession network changes', () => {
     expect(result.current.networkError).toBeNull();
     expect(result.current.session?.chainId).toBe(42161);
   });
+
+  it('exposes an accessible live-region announcement for network changes', async () => {
+    const wallet = createMockWallet();
+    const resolveSession = jest.fn(async (chainId: number) => ({ chainId, address: '0xabc' }));
+
+    const { result } = renderHook(() =>
+      useWalletSession({ wallet, resolveSession }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => {
+      await wallet.emitNetworkChange(137);
+    });
+
+    await waitFor(() => expect(result.current.networkStatus).toBe('ready'));
+    expect(result.current.networkAnnouncement).toMatch(/network/i);
+    expect(result.current.networkAnnouncement).toMatch(/137/);
+    expect(result.current.networkAnnouncement).not.toMatch(/0xabc/);
+  });
+
+  it('announces a failure without leaking error internals or secrets', async () => {
+    const wallet = createMockWallet();
+    const resolveSession = jest
+      .fn()
+      .mockResolvedValueOnce({ chainId: 1, address: '0xabc' })
+      .mockRejectedValueOnce(new Error('rpc unavailable'));
+
+    const { result } = renderHook(() =>
+      useWalletSession({ wallet, resolveSession }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => {
+      await wallet.emitNetworkChange(42161);
+    });
+
+    await waitFor(() => expect(result.current.networkStatus).toBe('error'));
+    expect(result.current.networkAnnouncement).toMatch(/network/i);
+    expect(result.current.networkAnnouncement).toMatch(/failed/i);
+    expect(result.current.networkAnnouncement).not.toMatch(/0xabc/);
+  });
+
+  it('announces an empty state when the wallet reports no chain', async () => {
+    const wallet = createMockWallet();
+    const resolveSession = jest.fn(async (chainId: number) => ({ chainId, address: '0xabc' }));
+
+    const { result } = renderHook(() =>
+      useWalletSession({ wallet, resolveSession }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => {
+      await wallet.emitNetworkChange(null);
+    });
+
+    await waitFor(() => expect(result.current.networkStatus).toBe('empty'));
+    expect(result.current.networkAnnouncement).toMatch(/network/i);
+    expect(result.current.networkAnnouncement).toMatch(/no chain|disconnected/i);
+  });
+
+  it('exposes a keyboard-activatable retry handler for failed network changes', async () => {
+    const wallet = createMockWallet();
+    const resolveSession = jest
+      .fn()
+      .mockResolvedValueOnce({ chainId: 1, address: '0xabc' })
+      .mockRejectedValueOnce(new Error('rpc unavailable'))
+      .mockResolvedValueOnce({ chainId: 42161, address: '0xabc' });
+
+    const { result } = renderHook(() =>
+      useWalletSession({ wallet, resolveSession }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => {
+      await wallet.emitNetworkChange(42161);
+    });
+    await waitFor(() => expect(result.current.networkStatus).toBe('error'));
+
+    expect(typeof result.current.retryNetworkChange).toBe('function');
+
+    await act(async () => {
+      await result.current.retryNetworkChange();
+    });
+
+    await waitFor(() => expect(result.current.networkStatus).toBe('ready'));
+    expect(result.current.networkAnnouncement).toMatch(/network/i);
+    expect(result.current.networkAnnouncement).toMatch(/42161/);
+  });
 });

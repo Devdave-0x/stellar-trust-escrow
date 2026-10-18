@@ -31,6 +31,19 @@ export interface UseWalletSessionResult extends WalletSessionState {
   retry: () => Promise<void>;
   /** Clear any failure/empty state back to idle. */
   reset: () => void;
+  /**
+   * Screen-reader friendly announcement for the current network-change state.
+   * Empty string when there is nothing to announce (idle).
+   */
+  announcement: string;
+  /**
+   * Keyboard handler for network-change controls. Activates the focused
+   * control on Enter/Space and retries on 'r' when a change has failed.
+   */
+  handleNetworkKeyDown: (
+    event: { key: string; preventDefault?: () => void },
+    network?: string,
+  ) => void;
 }
 
 const INITIAL_STATE: WalletSessionState = {
@@ -45,6 +58,27 @@ function toErrorMessage(err: unknown): string {
     return err.message;
   }
   return 'Unable to change wallet network. Please try again.';
+}
+
+function buildAnnouncement(state: WalletSessionState): string {
+  switch (state.status) {
+    case 'loading':
+      return state.pendingNetwork
+        ? `Switching wallet network to ${state.pendingNetwork}.`
+        : 'Switching wallet network.';
+    case 'success':
+      return state.network
+        ? `Wallet network changed to ${state.network}.`
+        : 'Wallet network changed.';
+    case 'failure':
+      return state.error
+        ? `Network change failed: ${state.error}`
+        : 'Network change failed.';
+    case 'empty':
+      return 'No network selected. Choose a network to continue.';
+    default:
+      return '';
+  }
 }
 
 export function useWalletSession(
@@ -158,7 +192,39 @@ export function useWalletSession(
     }));
   }, []);
 
-  return { ...state, requestNetworkChange, retry, reset };
+  const handleNetworkKeyDown = useCallback(
+    (
+      event: { key: string; preventDefault?: () => void },
+      network?: string,
+    ) => {
+      const { key } = event;
+      if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
+        event.preventDefault?.();
+        if (network) {
+          void runSwitch(network);
+        } else if (state.status === 'failure' && state.pendingNetwork) {
+          void runSwitch(state.pendingNetwork);
+        }
+        return;
+      }
+      if ((key === 'r' || key === 'R') && state.status === 'failure') {
+        event.preventDefault?.();
+        void retry();
+      }
+    },
+    [runSwitch, retry, state.status, state.pendingNetwork],
+  );
+
+  const announcement = buildAnnouncement(state);
+
+  return {
+    ...state,
+    requestNetworkChange,
+    retry,
+    reset,
+    announcement,
+    handleNetworkKeyDown,
+  };
 }
 
 export default useWalletSession;
