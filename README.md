@@ -684,3 +684,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-774 -->
 - #774: Add fuzz coverage for milestone approval quorum transitions
+
+<!-- handsoff-issue-775 -->
+- #775: Add authorization boundary coverage for partial release amount rounding
