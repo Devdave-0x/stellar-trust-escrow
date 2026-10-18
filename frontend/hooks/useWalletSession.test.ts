@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWalletSession } from "./useWalletSession";
 
 type ChainId = number;
+type Role = "admin" | "operator" | "viewer";
+type EscrowState = "funded" | "released" | "disputed" | "closed";
 
 interface MockWallet {
   chainId: ChainId;
@@ -103,5 +105,70 @@ describe("useWalletSession network changes", () => {
 
     expect(result.current.chainId).toBe(137);
     expect(result.current.error).toBeNull();
+  });
+
+  describe("permission-aware action gating", () => {
+    function renderWithAccess(role: Role, escrowState: EscrowState) {
+      return renderHook(() =>
+        useWalletSession({ wallet, role, escrowState }),
+      );
+    }
+
+    it("allows the network change for an authorized role in an actionable escrow state", async () => {
+      const { result } = renderWithAccess("operator", "funded");
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.canChangeNetwork).toBe(true);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(wallet.switchChain).toHaveBeenCalledWith(137);
+      expect(result.current.chainId).toBe(137);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("blocks the network change for a role without permission", async () => {
+      const { result } = renderWithAccess("viewer", "funded");
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.canChangeNetwork).toBe(false);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(wallet.switchChain).not.toHaveBeenCalled();
+      expect(result.current.chainId).toBe(1);
+      expect(result.current.error).toBe("Insufficient permissions");
+    });
+
+    it("blocks the network change when the escrow state is not actionable", async () => {
+      const { result } = renderWithAccess("admin", "closed");
+
+      await waitFor(() => expect(result.current.chainId).toBe(1));
+      expect(result.current.canChangeNetwork).toBe(false);
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(wallet.switchChain).not.toHaveBeenCalled();
+      expect(result.current.chainId).toBe(1);
+      expect(result.current.error).toBe("Escrow state does not allow network changes");
+    });
+
+    it("blocks the network change when the wallet is disconnected even with permission", async () => {
+      wallet.connected = false;
+      const { result } = renderWithAccess("admin", "funded");
+
+      await act(async () => {
+        await result.current.switchNetwork(137);
+      });
+
+      expect(wallet.switchChain).not.toHaveBeenCalled();
+      expect(result.current.error).toBe("Wallet not connected");
+    });
   });
 });
