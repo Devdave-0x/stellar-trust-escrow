@@ -17,4 +17,9 @@ export const logger = noOpLogger;
 
 export const logControllerError = () => {};
 
+export const getCorrelationId = () => requestContext.getStore()?.correlationId;
+
+export const withCorrelationId = (correlationId, fn) =>
+  requestContext.run({ ...(requestContext.getStore() || {}), correlationId }, fn);
+
 export default noOpLogger;
