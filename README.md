@@ -690,3 +690,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-778 -->
 - #778: Document ledger constraints for partial release amount rounding
+
+<!-- handsoff-issue-779 -->
+- #779: Add event completeness checks for partial release amount rounding
