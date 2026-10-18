@@ -24,4 +24,19 @@ const mockClient = {
   })),
 };
 
+// Reset every mock (including per-call `multi()` chains) so concurrency tests
+// start from a deterministic state between overlapping-worker scenarios.
+export const resetRedisMock = () => {
+  for (const value of Object.values(mockClient)) {
+    if (value && typeof value.mockClear === 'function') {
+      value.mockClear();
+    }
+  }
+  mockClient.setNX.mockResolvedValue(true);
+  mockClient.exists.mockResolvedValue(0);
+  mockClient.get.mockResolvedValue(null);
+  mockClient.set.mockResolvedValue('OK');
+  mockClient.del.mockResolvedValue(1);
+};
+
 export const createClient = jest.fn(() => mockClient);
