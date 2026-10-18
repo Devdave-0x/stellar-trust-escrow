@@ -684,3 +684,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-813 -->
 - #813: Add background-resume handling for mobile wallet reconnect flow
+
+<!-- handsoff-issue-815 -->
+- #815: Add performance budgets for mobile wallet reconnect flow
