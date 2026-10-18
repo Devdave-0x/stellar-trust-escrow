@@ -4,6 +4,8 @@ import EscrowDetailPage from '../../app/escrow/[id]/page';
 
 // Mock useEscrow so tests don't hit the network.
 const mockMutate = jest.fn().mockResolvedValue(undefined);
+const mockSignTx = jest.fn();
+let mockWalletAddress = null;
 
 jest.mock('../../hooks/useEscrow', () => ({
   useEscrow: () => ({
@@ -12,6 +14,10 @@ jest.mock('../../hooks/useEscrow', () => ({
     error: null,
     mutate: mockMutate,
   }),
+}));
+
+jest.mock('../../hooks/useWallet', () => ({
+  useWallet: () => ({ address: mockWalletAddress, signTx: mockSignTx }),
 }));
 
 // Mock components that require context providers not set up in tests.
@@ -41,6 +47,8 @@ const params = { id: '1' };
 
 beforeEach(() => {
   mockMutate.mockClear();
+  mockSignTx.mockClear();
+  mockWalletAddress = null;
 });
 
 describe('EscrowDetailPage', () => {
@@ -65,12 +73,15 @@ describe('EscrowDetailPage', () => {
     expect(screen.getByText('1,500 USDC')).toBeInTheDocument();
   });
 
-  it('renders Raise Dispute button for active escrow', () => {
+  it('shows active-escrow actions but disables them for an observer', () => {
     renderWithAppProviders(<EscrowDetailPage params={params} />);
-    expect(screen.getByRole('button', { name: /Raise Dispute/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Raise Dispute/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Cancel Escrow/ })).toBeDisabled();
+    expect(screen.getByText(/Only the client or freelancer may raise a dispute/)).toBeInTheDocument();
   });
 
   it('opens dispute modal when Raise Dispute is clicked', () => {
+    mockWalletAddress = 'GABCD...1234';
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     fireEvent.click(screen.getByRole('button', { name: /Raise Dispute/ }));
     expect(screen.getByText('Raise Dispute')).toBeInTheDocument();
@@ -79,6 +90,7 @@ describe('EscrowDetailPage', () => {
   });
 
   it('closes dispute modal when Cancel is clicked', () => {
+    mockWalletAddress = 'GABCD...1234';
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     fireEvent.click(screen.getByRole('button', { name: /Raise Dispute/ }));
     fireEvent.click(screen.getByText('Cancel'));
@@ -89,6 +101,14 @@ describe('EscrowDetailPage', () => {
   it('renders milestones section', () => {
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     expect(screen.getByRole('heading', { name: 'Milestones' })).toBeInTheDocument();
+  });
+
+  it('renders the payment-token availability state', () => {
+    renderWithAppProviders(<EscrowDetailPage params={params} />);
+
+    expect(screen.getByTestId('payment-token-availability')).toHaveTextContent(
+      /Available for escrow actions/,
+    );
   });
 
   it('renders all 3 milestones', () => {

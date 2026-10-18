@@ -53,6 +53,96 @@ beforeEach(() => {
 });
 
 describe('paymentController authorization', () => {
+  it('creates a checkout normally when replay protection is available', async () => {
+    const req = {
+      body: { address: ADDRESS_A, amountUsd: 10, escrowId: 'escrow-1' },
+      user: { address: ADDRESS_A },
+    };
+    const res = createMockRes();
+    const checkout = { id: 'cs_123', url: 'https://checkout.example/session' };
+
+    kycServiceMock.getStatus.mockResolvedValue({ status: 'Approved' });
+    paymentServiceMock.createCheckoutSession.mockResolvedValue(checkout);
+
+    await paymentController.createCheckout(req, res);
+
+    expect(paymentServiceMock.createCheckoutSession).toHaveBeenCalledWith({
+      address: ADDRESS_A,
+      amountUsd: 10,
+      escrowId: 'escrow-1',
+    });
+    expect(res.body).toEqual(checkout);
+  });
+
+  it('returns a stable retryable response when replay protection is unavailable', async () => {
+    const req = {
+      body: { address: ADDRESS_A, amountUsd: 10 },
+      user: { address: ADDRESS_A },
+      requestId: 'request-123',
+    };
+    const res = createMockRes();
+
+    kycServiceMock.getStatus.mockResolvedValue({ status: 'Approved' });
+    paymentServiceMock.createCheckoutSession.mockRejectedValue(
+      Object.assign(new Error('cache connection refused: secret=do-not-log'), {
+        code: 'REDIS_UNAVAILABLE',
+      }),
+    );
+
+    await paymentController.createCheckout(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.body).toEqual({
+      error: 'Payment submission is temporarily unavailable. Retry with the same Idempotency-Key.',
+      code: 'PAYMENT_REPLAY_PROTECTION_DEGRADED',
+      retryable: true,
+    });
+    expect(JSON.stringify(res.body)).not.toContain('do-not-log');
+    expect(loggerMock.getLogger().mock.results[0].value.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'payment.replay_protection_degraded',
+        code: 'REDIS_UNAVAILABLE',
+        requestId: 'request-123',
+      }),
+    );
+  });
+
+  it('supports an explicit degraded signal from the replay protection adapter', async () => {
+    const req = {
+      body: { address: ADDRESS_A, amountUsd: 10 },
+      user: { address: ADDRESS_A },
+    };
+    const res = createMockRes();
+
+    kycServiceMock.getStatus.mockResolvedValue({ status: 'Approved' });
+    paymentServiceMock.createCheckoutSession.mockRejectedValue(
+      Object.assign(new Error('optional dependency unavailable'), {
+        replayProtectionUnavailable: true,
+      }),
+    );
+
+    await paymentController.createCheckout(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.body.code).toBe('PAYMENT_REPLAY_PROTECTION_DEGRADED');
+  });
+
+  it('preserves the existing response for a non-replay payment failure', async () => {
+    const req = {
+      body: { address: ADDRESS_A, amountUsd: 10 },
+      user: { address: ADDRESS_A },
+    };
+    const res = createMockRes();
+
+    kycServiceMock.getStatus.mockResolvedValue({ status: 'Approved' });
+    paymentServiceMock.createCheckoutSession.mockRejectedValue(new Error('Stripe rejected the request'));
+
+    await paymentController.createCheckout(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.body).toEqual({ error: 'Stripe rejected the request' });
+  });
+
   it('rejects checkout when the requested wallet does not match the JWT wallet', async () => {
     const req = {
       body: { address: ADDRESS_A, amountUsd: 10 },

@@ -18,6 +18,7 @@ import Avatar from '../../../components/ui/Avatar';
 import Spinner from '../../../components/ui/Spinner';
 import ErrorBoundary from '../../../components/error/ErrorBoundary';
 import EscrowReceipt, { openReceiptWindow } from '../../../components/escrow/EscrowReceipt';
+import { getPaymentTokenAvailability } from './paymentTokenAvailability';
 import {
   buildApproveMilestoneTx,
   buildSubmitMilestoneTx,
@@ -128,6 +129,7 @@ export default function EscrowDetailPage({ params }) {
           ? 'arbiter'
           : 'observer'
     : 'observer';
+  const paymentTokenAvailability = getPaymentTokenAvailability(escrow, address);
 
   const handleApproveMilestone = async (milestoneId) => {
     setIsActionLoading(true);
@@ -241,14 +243,36 @@ export default function EscrowDetailPage({ params }) {
           >
             🖨 Print
           </Button>
-          {escrow.status === 'Active' && (
+          {paymentTokenAvailability.isActive && (
             <>
-              <Button variant="danger" size="sm" onClick={() => setDisputeOpen(true)}>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setDisputeOpen(true)}
+                disabled={!paymentTokenAvailability.canRaiseDispute}
+                aria-describedby={!paymentTokenAvailability.canRaiseDispute ? 'raise-dispute-gate' : undefined}
+              >
                 ⚠ Raise Dispute
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setCancelOpen(true)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setCancelOpen(true)}
+                disabled={!paymentTokenAvailability.canCancel}
+                aria-describedby={!paymentTokenAvailability.canCancel ? 'cancel-escrow-gate' : undefined}
+              >
                 Cancel Escrow
               </Button>
+              {!paymentTokenAvailability.canRaiseDispute && (
+                <span id="raise-dispute-gate" className="sr-only">
+                  {paymentTokenAvailability.disputeReason}
+                </span>
+              )}
+              {!paymentTokenAvailability.canCancel && (
+                <span id="cancel-escrow-gate" className="sr-only">
+                  {paymentTokenAvailability.cancelReason}
+                </span>
+              )}
             </>
           )}
         </div>
@@ -275,6 +299,8 @@ export default function EscrowDetailPage({ params }) {
             <InfoCell label="Created" value={escrow.createdAt} />
             <InfoCell label="Deadline" value={escrow.deadline || 'None'} />
           </div>
+
+          <PaymentTokenAvailability availability={paymentTokenAvailability} />
 
           {/* Transaction Hash */}
           {escrow.transactionHash && (
@@ -469,6 +495,24 @@ function InfoCell({ label, value, isAmount = false }) {
         <p className="text-white font-semibold mt-1">{value}</p>
       )}
     </div>
+  );
+}
+
+function PaymentTokenAvailability({ availability }) {
+  const available = availability.isTokenAvailable;
+  return (
+    <section className="card flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" data-testid="payment-token-availability">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-200">Payment token availability</h2>
+        <p className="text-xs text-gray-500">{availability.token}</p>
+      </div>
+      <span
+        className={available ? 'text-sm text-emerald-400' : 'text-sm text-amber-300'}
+        role="status"
+      >
+        {available ? 'Available for escrow actions' : 'Temporarily unavailable'}
+      </span>
+    </section>
   );
 }
 

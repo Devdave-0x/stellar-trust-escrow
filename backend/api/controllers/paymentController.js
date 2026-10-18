@@ -5,6 +5,40 @@ import { getAuthenticatedWalletAddress } from '../middleware/authorization.js';
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
+// Payment creation is safe to retry only while the optional replay-protection
+// store is healthy. Keep these infrastructure identifiers narrow so unrelated
+// provider failures preserve the existing error behaviour.
+const REPLAY_PROTECTION_UNAVAILABLE_CODES = new Set([
+  'IDEMPOTENCY_STORE_UNAVAILABLE',
+  'REPLAY_PROTECTION_UNAVAILABLE',
+  'REDIS_UNAVAILABLE',
+]);
+
+export function isReplayProtectionUnavailable(error) {
+  return Boolean(
+    error?.replayProtectionUnavailable ||
+      REPLAY_PROTECTION_UNAVAILABLE_CODES.has(error?.code) ||
+      REPLAY_PROTECTION_UNAVAILABLE_CODES.has(error?.cause?.code),
+  );
+}
+
+function sendReplayProtectionDegraded(res, error, req) {
+  // Do not log raw idempotency keys, checkout payloads, or provider errors:
+  // those can contain credentials or customer data. The code is sufficient
+  // for an operator to correlate this with replay-store telemetry.
+  getLogger().warn({
+    message: 'payment.replay_protection_degraded',
+    code: error?.code || error?.cause?.code || 'REPLAY_PROTECTION_UNAVAILABLE',
+    requestId: req.requestId,
+  });
+
+  return res.status(503).json({
+    error: 'Payment submission is temporarily unavailable. Retry with the same Idempotency-Key.',
+    code: 'PAYMENT_REPLAY_PROTECTION_DEGRADED',
+    retryable: true,
+  });
+}
+
 function requireOwnedWallet(req, res) {
   const walletAddress = getAuthenticatedWalletAddress(req);
   if (!walletAddress) {
@@ -43,6 +77,9 @@ const createCheckout = async (req, res) => {
     const result = await paymentService.createCheckoutSession({ address, amountUsd, escrowId });
     res.json(result);
   } catch (err) {
+    if (isReplayProtectionUnavailable(err)) {
+      return sendReplayProtectionDegraded(res, err, req);
+    }
     logControllerError('payment.createCheckout', err, req);
     res.status(500).json({ error: err.message });
   }
