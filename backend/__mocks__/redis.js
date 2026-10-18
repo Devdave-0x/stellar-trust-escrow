@@ -20,4 +20,9 @@ const mockClient = {
   eval: jest.fn().mockResolvedValue(1),
 };
 
+// Expose the shared client so tests can simulate optional dedup
+// infrastructure being unavailable (e.g. connection refused) and assert
+// graceful degradation without reaching into module internals.
+export const __mockClient = mockClient;
+
 export const createClient = jest.fn(() => mockClient);

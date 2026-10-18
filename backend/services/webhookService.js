@@ -10,6 +10,7 @@ const DELIVERY_ID_HEADER = 'X-Webhook-Delivery-Id';
 const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
 const DEFAULT_RETRY_ATTEMPTS = 5;
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
+const DEDUP_TTL_SECONDS = 60 * 60 * 24;
 
 function selectSubscriptionFields(includeActive = false) {
   return {
@@ -78,6 +79,46 @@ function verifySignature(secret, timestamp, payload, receivedSignature) {
   const expectedBuf = Buffer.from(expectedHex, 'hex');
   const receivedBuf = Buffer.from(receivedHex, 'hex');
   return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+}
+
+function buildDedupKey(eventType, payload) {
+  const normalized = typeof payload === 'string' ? payload : JSON.stringify(payload ?? null);
+  const digest = crypto.createHash('sha256').update(`${eventType}:${normalized}`).digest('hex');
+  return `webhook:dedup:${eventType}:${digest}`;
+}
+
+/**
+ * Attempt to claim a deduplication slot for a webhook event.
+ *
+ * Deduplication relies on optional infrastructure (a Redis-backed store). When
+ * that store is unavailable we degrade gracefully: the delivery is treated as
+ * not-a-duplicate so webhooks keep flowing, and the degraded state is reported
+ * to the caller so it can be surfaced deterministically.
+ *
+ * @param {string} eventType - The webhook event type.
+ * @param {object|string} payload - The event payload.
+ * @returns {Promise<{duplicate: boolean, degraded: boolean}>}
+ */
+async function claimDeliveryDedup(eventType, payload) {
+  const store = prisma?.webhookDedup ?? null;
+  if (!store || typeof store.create !== 'function') {
+    return { duplicate: false, degraded: true };
+  }
+
+  const key = buildDedupKey(eventType, payload);
+  const expiresAt = new Date(Date.now() + DEDUP_TTL_SECONDS * 1000);
+
+  try {
+    await store.create({
+      data: { key, eventType, expiresAt },
+    });
+    return { duplicate: false, degraded: false };
+  } catch (error) {
+    if (error && error.code === 'P2002') {
+      return { duplicate: true, degraded: false };
+    }
+    return { duplicate: false, degraded: true };
+  }
 }
 
 async function createSubscription({ url, eventTypes, createdBy }) {
@@ -197,6 +238,11 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
 }
 
 async function queueEventWebhooks(eventType, payload) {
+  const dedup = await claimDeliveryDedup(eventType, payload);
+  if (dedup.duplicate) {
+    return { queued: 0, duplicate: true, degraded: false };
+  }
+
   const subscriptions = await withTenantScopeBypassed(() =>
     prisma.webhookSubscription.findMany({
       where: { eventTypes: { has: eventType }, isActive: true },
@@ -204,7 +250,7 @@ async function queueEventWebhooks(eventType, payload) {
   );
 
   if (subscriptions.length === 0) {
-    return { queued: 0 };
+    return { queued: 0, duplicate: false, degraded: dedup.degraded };
   }
 
   const queued = [];
@@ -213,7 +259,12 @@ async function queueEventWebhooks(eventType, payload) {
     queued.push({ subscriptionId: subscription.id, deliveryId: delivery.id });
   }
 
-  return { queued: queued.length, deliveries: queued };
+  return {
+    queued: queued.length,
+    deliveries: queued,
+    duplicate: false,
+    degraded: dedup.degraded,
+  };
 }
 
 export {
