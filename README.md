@@ -687,3 +687,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-777 -->
 - #777: Add explicit error mapping for partial release amount rounding
+
+<!-- handsoff-issue-778 -->
+- #778: Document ledger constraints for partial release amount rounding
