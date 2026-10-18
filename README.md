@@ -684,3 +684,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-792 -->
 - #792: Add upgrade compatibility tests for payment asset allowlist checks
+
+<!-- handsoff-issue-793 -->
+- #793: Add upgrade compatibility tests for insurance premium accounting
