@@ -684,3 +684,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-788 -->
 - #788: Add fuzz coverage for emergency pause authorization
+
+<!-- handsoff-issue-789 -->
+- #789: Add event completeness checks for emergency pause authorization
