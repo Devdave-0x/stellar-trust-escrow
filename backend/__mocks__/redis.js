@@ -13,6 +13,10 @@ const mockClient = {
   sMembers: jest.fn().mockResolvedValue([]),
   scan: jest.fn().mockResolvedValue({ cursor: 0, keys: [] }),
   on: jest.fn(),
+  // Atomic set-if-not-exists used for idempotency locks.
+  setNX: jest.fn().mockResolvedValue(true),
+  // Atomic compare-and-delete used to release idempotency locks safely.
+  eval: jest.fn().mockResolvedValue(1),
 };
 
 export const createClient = jest.fn(() => mockClient);

@@ -63,6 +63,23 @@ function logDedupOutcome(outcome, { deliveryId, subscriptionId, eventType, reaso
   }
 }
 
+/**
+ * Derive a deterministic idempotency key for a webhook delivery.
+ *
+ * The key is scoped to a subscription + event type + payload so that retries
+ * and concurrent requests carrying the same logical event collapse onto a
+ * single delivery. The payload is hashed (never logged) so the key is stable
+ * and free of secrets.
+ */
+function buildIdempotencyKey(subscriptionId, eventType, payload) {
+  const normalizedPayload = typeof payload === 'string' ? payload : JSON.stringify(payload ?? null);
+  const digest = crypto
+    .createHash('sha256')
+    .update(`${subscriptionId}\u0000${eventType}\u0000${normalizedPayload}`)
+    .digest('hex');
+  return `${subscriptionId}:${eventType}:${digest}`;
+}
+
 function selectSubscriptionFields(includeActive = false) {
   return {
     id: true,
@@ -210,14 +227,63 @@ async function getDeliveryHistory({ subscriptionId, createdBy, page = 1, limit =
 }
 
 async function queueSubscriptionWebhook(subscription, payload, eventType) {
-  const delivery = await prisma.webhookDelivery.create({
-    data: {
-      subscription: { connect: { id: subscription.id } },
+  const idempotencyKey = buildIdempotencyKey(subscription.id, eventType, payload);
+
+  // Idempotency guard: if a delivery for this logical event already exists,
+  // reuse it instead of creating a duplicate effect. This makes retries and
+  // concurrent requests collapse onto a single delivery.
+  const existing = await prisma.webhookDelivery.findFirst({
+    where: {
+      subscription: { id: subscription.id },
       eventType,
-      payload: payload,
-      status: 'pending',
+      idempotencyKey,
     },
+    select: { id: true, status: true },
   });
+
+  if (existing) {
+    logDedupOutcome(DEDUP_OUTCOMES.DEDUPLICATED, {
+      deliveryId: existing.id,
+      subscriptionId: subscription.id,
+      eventType,
+      reason: 'duplicate_delivery',
+    });
+    return { id: existing.id, status: existing.status, deduplicated: true };
+  }
+
+  let delivery;
+  try {
+    delivery = await prisma.webhookDelivery.create({
+      data: {
+        subscription: { connect: { id: subscription.id } },
+        eventType,
+        payload: payload,
+        idempotencyKey,
+        status: 'pending',
+      },
+    });
+  } catch (error) {
+    // Concurrent request won the race and created the delivery first. Treat
+    // the unique-constraint violation as a deduplicated outcome.
+    if (error && error.code === 'P2002') {
+      const winner = await prisma.webhookDelivery.findFirst({
+        where: {
+          subscription: { id: subscription.id },
+          eventType,
+          idempotencyKey,
+        },
+        select: { id: true, status: true },
+      });
+      logDedupOutcome(DEDUP_OUTCOMES.DEDUPLICATED, {
+        deliveryId: winner?.id ?? null,
+        subscriptionId: subscription.id,
+        eventType,
+        reason: 'concurrent_duplicate',
+      });
+      return { id: winner?.id ?? null, status: winner?.status ?? 'pending', deduplicated: true };
+    }
+    throw error;
+  }
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const signedPayload = buildWebhookPayload(
@@ -289,31 +355,22 @@ async function queueEventWebhooks(eventType, payload) {
 }
 
 export {
-  createSubscription,
-  listSubscriptions,
-  deleteSubscription,
-  rotateSecret,
-  getDeliveryHistory,
-  queueEventWebhooks,
-  signPayload,
-  verifySignature,
-  buildWebhookPayload,
-  getDedupMetrics,
-  resetDedupMetrics,
-  DEDUP_OUTCOMES,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
   DELIVERY_ID_HEADER,
   EVENT_TYPE_HEADER,
-};
-
-export default {
+  DEDUP_OUTCOMES,
+  buildIdempotencyKey,
+  buildWebhookPayload,
   createSubscription,
-  listSubscriptions,
   deleteSubscription,
-  rotateSecret,
+  getDedupMetrics,
   getDeliveryHistory,
+  listSubscriptions,
   queueEventWebhooks,
+  queueSubscriptionWebhook,
+  resetDedupMetrics,
+  rotateSecret,
   signPayload,
   verifySignature,
 };

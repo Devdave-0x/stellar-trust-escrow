@@ -3,6 +3,7 @@ import respond from '../../lib/respond.js';
 
 const MAX_EVENT_TYPES = 20;
 const ALLOWED_SCHEMES = ['https:'];
+const MAX_IDEMPOTENCY_KEY_LENGTH = 255;
 
 function isValidWebhookUrl(raw) {
   try {
@@ -11,6 +12,15 @@ function isValidWebhookUrl(raw) {
   } catch {
     return false;
   }
+}
+
+function normalizeIdempotencyKey(raw) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > MAX_IDEMPOTENCY_KEY_LENGTH) return undefined;
+  return trimmed;
 }
 
 const subscribe = async (req, res) => {
@@ -34,10 +44,24 @@ const subscribe = async (req, res) => {
       );
     }
 
+    const idempotencyKey = normalizeIdempotencyKey(
+      req.get?.('Idempotency-Key') ?? req.headers?.['idempotency-key'],
+    );
+
+    if (idempotencyKey === undefined) {
+      return respond.error(
+        res,
+        400,
+        'VALIDATION_ERROR',
+        `Idempotency-Key must be a string of at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`,
+      );
+    }
+
     const result = await webhookService.createSubscription({
       url,
       eventTypes: eventTypes.slice(0, MAX_EVENT_TYPES),
       createdBy: req.user?.address || null,
+      idempotencyKey,
     });
 
     return respond.success(res, result, { created: true });
