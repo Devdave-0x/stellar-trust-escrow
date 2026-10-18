@@ -845,6 +845,127 @@ mod event_tests {
         assert_eq!(raised_by, client_addr);
     }
 
+    // ── escrow deadline enforcement / extension events ────────────────────────
+
+    #[test]
+    fn test_event_escrow_extended_topics_and_payload() {
+        let (env, admin, contract_id, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 500);
+
+        env.ledger().set_timestamp(1_000);
+        let old_deadline: u64 = 2_000;
+        let new_deadline: u64 = 5_000;
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &500_i128,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &Some(old_deadline),
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.confirm_extension(&client_addr, &escrow_id, &new_deadline);
+
+        let events = contract_events(&env, &contract_id);
+        let (_, topics, data) = events
+            .iter()
+            .find(|(_, t, _)| has_topic_symbol(&env, t, soroban_sdk::symbol_short!("esc_ext")))
+            .expect("esc_ext event not emitted");
+
+        assert_eq!(topics.len(), 2, "esc_ext must carry exactly two topics");
+        assert_eq!(topic_u64(&env, &topics, 1), escrow_id);
+
+        let (emitted_old, emitted_new): (Option<u64>, u64) =
+            soroban_sdk::FromVal::from_val(&env, &data);
+        assert_eq!(emitted_old, Some(old_deadline));
+        assert_eq!(emitted_new, new_deadline);
+    }
+
+    #[test]
+    fn test_event_escrow_extended_without_prior_deadline() {
+        let (env, admin, contract_id, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 500);
+
+        env.ledger().set_timestamp(1_000);
+        let new_deadline: u64 = 4_000;
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &500_i128,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.confirm_extension(&client_addr, &escrow_id, &new_deadline);
+
+        let events = contract_events(&env, &contract_id);
+        let (_, topics, data) = events
+            .iter()
+            .find(|(_, t, _)| has_topic_symbol(&env, t, soroban_sdk::symbol_short!("esc_ext")))
+            .expect("esc_ext event not emitted");
+
+        assert_eq!(topics.len(), 2, "esc_ext must carry exactly two topics");
+        assert_eq!(topic_u64(&env, &topics, 1), escrow_id);
+
+        let (emitted_old, emitted_new): (Option<u64>, u64) =
+            soroban_sdk::FromVal::from_val(&env, &data);
+        assert_eq!(emitted_old, None);
+        assert_eq!(emitted_new, new_deadline);
+    }
+
+    #[test]
+    fn test_event_escrow_extended_not_emitted_on_failure() {
+        let (env, admin, contract_id, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 500);
+
+        env.ledger().set_timestamp(1_000);
+        let old_deadline: u64 = 2_000;
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &500_i128,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &Some(old_deadline),
+            &None,
+            &no_multisig(&env),
+        );
+
+        // A non-positive extension must be rejected with E36 and emit nothing.
+        let err = client
+            .try_confirm_extension(&client_addr, &escrow_id, &old_deadline)
+            .unwrap_err();
+        assert!(matches!(err, Ok(EscrowError::E36)));
+
+        let events = contract_events(&env, &contract_id);
+        assert!(
+            !events
+                .iter()
+                .any(|(_, t, _)| has_topic_symbol(&env, t, soroban_sdk::symbol_short!("esc_ext"))),
+            "failed extension must not emit esc_ext"
+        );
+    }
+
     // ── event ordering / indexing ─────────────────────────────────────────────
 
     #[test]

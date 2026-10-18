@@ -94,6 +94,16 @@ pub enum EcErr {
     DuplicateMilestoneId = 86,
     /// The computed creation nonce for this escrow has already been used.
     CreationNonceAlreadyUsed = 87,
+    /// Milestone approval quorum transition rejected: not enough approvals yet.
+    MilestoneQuorumNotReached = 88,
+    /// Milestone approval quorum transition rejected: approver already approved.
+    MilestoneAlreadyApproved = 89,
+    /// Milestone approval quorum transition rejected: milestone is not in an
+    /// approval-pending state (e.g. already approved or not found).
+    MilestoneInvalidState = 90,
+    /// Milestone approval quorum transition rejected: caller is not an
+    /// authorized approver for this escrow.
+    MilestoneUnauthorizedApprover = 91,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
