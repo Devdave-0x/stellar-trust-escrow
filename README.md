@@ -681,3 +681,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-703 -->
 - #703: Add fuzz coverage for governance timelock execution
+
+<!-- handsoff-issue-805 -->
+- #805: Add recovery-safe optimistic updates to escrow creation draft recovery
