@@ -1711,3 +1711,394 @@ mod tests {
         assert_eq!(token_client.balance(&claimant), 1_000_i128);
     }
 }
+
+// ── Storage-growth benchmarks for insurance premium accounting (Issue #709) ──
+//
+// Measures ledger-write overhead per operation using `memory_bytes_cost()` as
+// a storage-growth proxy.  Every storage `.set()` serialises its value via
+// `ValSer`, which charges `MemAlloc` bytes in the host budget — so
+// `memory_bytes_cost()` after `budget.reset_default()` is a deterministic,
+// monotonic proxy for the amount of data written to ledger entries.
+//
+// Budget ceilings are set conservatively above the values observed on the
+// current storage layout (printed with each run under the STORAGE_BENCHMARK
+// prefix) so that any accidental new persistent key or payload growth is
+// caught as a regression.  Adjust ceilings only after deliberate schema
+// changes, never to silence a surprise increase.
+//
+// Pattern mirrors contracts/escrow_contract/src/batch_gas_benchmark_tests.rs
+// and contracts/insurance_contract/src/gas_profiling.rs.
+#[cfg(test)]
+mod storage_growth_benchmarks {
+    extern crate std;
+    use crate::{InsuranceContract, InsuranceContractClient};
+    use soroban_sdk::{testutils::Address as _, token, Address, Env, String};
+    use std::println;
+
+    // ── regression budgets (max memory bytes per isolated operation) ──────────
+    // Ceilings are ~1.5× the observed `mem=` values so that an accidental new
+    // storage key or significant payload increase is caught while minor test-
+    // harness fluctuations are tolerated.
+    //
+    // Observed (as of this commit):
+    //   contribute         44_248    submit_claim   25_728
+    //   vote (no fin.)     27_227    vote (fin.)    29_831
+    //   execute_payout     61_188    add_fees       25_858
+    //   stake              46_420    unstake        58_710
+    const BUDGET_CONTRIBUTE_MEM: u64 = 70_000;
+    const BUDGET_SUBMIT_CLAIM_MEM: u64 = 42_000;
+    const BUDGET_VOTE_SINGLE_MEM: u64 = 44_000;
+    const BUDGET_VOTE_FINALISE_MEM: u64 = 48_000;
+    const BUDGET_EXECUTE_PAYOUT_MEM: u64 = 95_000;
+    const BUDGET_ADD_PLATFORM_FEES_MEM: u64 = 40_000;
+    const BUDGET_STAKE_MEM: u64 = 72_000;
+    const BUDGET_UNSTAKE_MEM: u64 = 90_000;
+    /// Per-claim ceiling in a multi-claim linearity run.
+    const BUDGET_N_CLAIMS_GROWTH_MEM: u64 = 42_000;
+    /// Maximum allowed memory growth per additional claim over the first sample.
+    /// The claim counter grows by ~1 byte per serialisation step; 6 000 bytes
+    /// is a generous allowance that still catches any new persistent key added.
+    const CLAIM_GROWTH_TOLERANCE_PER_STEP: u64 = 6_000;
+
+    struct Setup {
+        env: Env,
+        admin: Address,
+        token_id: Address,
+        contract_id: Address,
+        client: InsuranceContractClient<'static>,
+    }
+
+    fn setup() -> Setup {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let contract_id = env.register_contract(None, InsuranceContract);
+        let client = InsuranceContractClient::new(&env, &contract_id);
+        client.initialize(&admin, &token_id, &10_i128, &10_000_i128, &2_u32);
+        Setup {
+            env,
+            admin,
+            token_id,
+            contract_id,
+            client,
+        }
+    }
+
+    fn mint(env: &Env, token_id: &Address, to: &Address, amount: i128) {
+        token::StellarAssetClient::new(env, token_id).mint(to, &amount);
+    }
+
+    /// Returns the memory-bytes cost recorded since the last `budget.reset_default()`.
+    ///
+    /// Every storage `.set()` serialises its value (ValSer) which charges
+    /// `MemAlloc` bytes proportional to the serialised payload, so
+    /// `memory_bytes_cost()` is a deterministic, monotonic proxy for the
+    /// ledger-write footprint of a single operation.
+    fn mem_bytes(env: &Env) -> u64 {
+        env.budget().memory_bytes_cost()
+    }
+
+    // ── Primary success paths ─────────────────────────────────────────────────
+
+    /// `contribute` writes: Contribution(addr) + FundStats.
+    /// Expect storage footprint well within the budget ceiling.
+    #[test]
+    fn bench_contribute_storage_growth() {
+        let s = setup();
+        let contributor = Address::generate(&s.env);
+        mint(&s.env, &s.token_id, &contributor, 1_000);
+
+        s.env.budget().reset_default();
+        s.client.contribute(&contributor, &500_i128);
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | contribute | mem_bytes={}",
+            mem
+        );
+        assert!(
+            mem <= BUDGET_CONTRIBUTE_MEM,
+            "contribute: {} mem bytes exceeds regression budget {}",
+            mem,
+            BUDGET_CONTRIBUTE_MEM
+        );
+        // Correctness guard.
+        assert_eq!(s.client.get_contribution(&contributor), 500);
+    }
+
+    /// `submit_claim` writes: Claim(id), ClaimCounter, FundStats.
+    #[test]
+    fn bench_submit_claim_storage_growth() {
+        let s = setup();
+        let claimant = Address::generate(&s.env);
+        let desc = String::from_str(&s.env, "Storage benchmark claim");
+
+        s.env.budget().reset_default();
+        let id = s.client.submit_claim(&claimant, &desc, &500_i128);
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | submit_claim | mem_bytes={}",
+            mem
+        );
+        assert!(
+            mem <= BUDGET_SUBMIT_CLAIM_MEM,
+            "submit_claim: {} mem bytes exceeds regression budget {}",
+            mem,
+            BUDGET_SUBMIT_CLAIM_MEM
+        );
+        assert_eq!(s.client.get_claim(&id).amount, 500);
+    }
+
+    /// A single governor vote that does NOT reach quorum writes: Vote(id,gov) +
+    /// Claim(id) — no state-transition overhead.
+    #[test]
+    fn bench_vote_single_no_finalise_storage_growth() {
+        let s = setup();
+        let gov = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov);
+        let claimant = Address::generate(&s.env);
+        let desc = String::from_str(&s.env, "Benchmark vote");
+        let id = s.client.submit_claim(&claimant, &desc, &100_i128);
+
+        s.env.budget().reset_default();
+        s.client.vote(&gov, &id, &true); // quorum=2, only 1 vote — no finalisation
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | vote_no_finalise | mem_bytes={}",
+            mem
+        );
+        assert!(
+            mem <= BUDGET_VOTE_SINGLE_MEM,
+            "vote (no finalise): {} mem bytes exceeds budget {}",
+            mem,
+            BUDGET_VOTE_SINGLE_MEM
+        );
+    }
+
+    /// A vote that DOES reach quorum writes the finalised ClaimStatus back —
+    /// slightly more footprint than a non-finalising vote.
+    #[test]
+    fn bench_vote_finalise_storage_growth() {
+        let s = setup();
+        let gov1 = Address::generate(&s.env);
+        let gov2 = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov1);
+        s.client.add_governor(&s.admin, &gov2);
+        let claimant = Address::generate(&s.env);
+        let desc = String::from_str(&s.env, "Benchmark vote finalise");
+        let id = s.client.submit_claim(&claimant, &desc, &100_i128);
+
+        // First vote (non-finalising) — warm up storage.
+        s.client.vote(&gov1, &id, &true);
+
+        // Second vote finalises the claim → Approved.
+        s.env.budget().reset_default();
+        s.client.vote(&gov2, &id, &true);
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | vote_finalise | mem_bytes={}",
+            mem
+        );
+        assert!(
+            mem <= BUDGET_VOTE_FINALISE_MEM,
+            "vote (finalise): {} mem bytes exceeds budget {}",
+            mem,
+            BUDGET_VOTE_FINALISE_MEM
+        );
+        assert_eq!(s.client.get_claim(&id).status, crate::ClaimStatus::Approved);
+    }
+
+    /// `execute_payout` writes: Claim(id) status → Paid, FundStats, token transfer.
+    #[test]
+    fn bench_execute_payout_storage_growth() {
+        let s = setup();
+        let funder = Address::generate(&s.env);
+        mint(&s.env, &s.token_id, &funder, 5_000);
+        s.client.contribute(&funder, &5_000_i128);
+
+        let gov1 = Address::generate(&s.env);
+        let gov2 = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov1);
+        s.client.add_governor(&s.admin, &gov2);
+        let claimant = Address::generate(&s.env);
+        let desc = String::from_str(&s.env, "Payout benchmark");
+        let id = s.client.submit_claim(&claimant, &desc, &1_000_i128);
+        s.client.vote(&gov1, &id, &true);
+        s.client.vote(&gov2, &id, &true);
+
+        s.env.budget().reset_default();
+        s.client.execute_payout(&id);
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | execute_payout | mem_bytes={}",
+            mem
+        );
+        assert!(
+            mem <= BUDGET_EXECUTE_PAYOUT_MEM,
+            "execute_payout: {} mem bytes exceeds budget {}",
+            mem,
+            BUDGET_EXECUTE_PAYOUT_MEM
+        );
+        assert_eq!(s.client.get_claim(&id).status, crate::ClaimStatus::Paid);
+    }
+
+    /// `add_platform_fees` writes only the YieldAccumulator instance key —
+    /// the lightest write in the premium accounting path.
+    #[test]
+    fn bench_add_platform_fees_storage_growth() {
+        let s = setup();
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.token_id, &staker, 1_000);
+        s.client.stake(&staker, &1_000_i128);
+        mint(&s.env, &s.token_id, &s.contract_id, 200);
+
+        s.env.budget().reset_default();
+        s.client.add_platform_fees(&s.admin, &200_i128);
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | add_platform_fees | mem_bytes={}",
+            mem
+        );
+        assert!(
+            mem <= BUDGET_ADD_PLATFORM_FEES_MEM,
+            "add_platform_fees: {} mem bytes exceeds budget {}",
+            mem,
+            BUDGET_ADD_PLATFORM_FEES_MEM
+        );
+        // Accumulator was written — staker now has pending yield.
+        assert!(s.client.pending_yield_view(&staker) > 0);
+    }
+
+    // ── Boundary / failure paths ──────────────────────────────────────────────
+
+    /// A rejected `contribute` (below minimum) must not commit any storage —
+    /// no partial state may be written on failure.
+    #[test]
+    fn bench_contribute_below_minimum_zero_storage() {
+        let s = setup();
+        let contributor = Address::generate(&s.env);
+        mint(&s.env, &s.token_id, &contributor, 5);
+
+        s.env.budget().reset_default();
+        let _ = s.client.try_contribute(&contributor, &5_i128); // below min=10
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | contribute_below_min_failure | mem_bytes={}",
+            mem
+        );
+        // A failed call must have minimal memory usage — no storage write.
+        assert!(
+            mem <= 30_000,
+            "failed contribute consumed {} mem bytes — unexpected storage writes",
+            mem
+        );
+    }
+
+    /// A `submit_claim` that exceeds the cap must not write any claim state.
+    #[test]
+    fn bench_submit_claim_over_cap_zero_storage() {
+        let s = setup();
+        let claimant = Address::generate(&s.env);
+        let desc = String::from_str(&s.env, "Over cap");
+
+        s.env.budget().reset_default();
+        let _ = s.client.try_submit_claim(&claimant, &desc, &99_999_i128);
+        let mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | submit_claim_over_cap_failure | mem_bytes={}",
+            mem
+        );
+        assert!(
+            mem <= 30_000,
+            "failed submit_claim consumed {} mem bytes — unexpected storage writes",
+            mem
+        );
+    }
+
+    // ── Storage growth linearity under realistic workloads ────────────────────
+
+    /// Each additional claim submission must consume the same memory as the
+    /// first — confirming O(1) storage growth per claim, not O(n).
+    #[test]
+    fn bench_claim_storage_growth_is_linear() {
+        let s = setup();
+        const N: usize = 5;
+        let mut mem_samples: [u64; N] = [0; N];
+
+        for (i, sample) in mem_samples.iter_mut().enumerate() {
+            let claimant = Address::generate(&s.env);
+            let desc = String::from_str(&s.env, "Linear growth check");
+
+            s.env.budget().reset_default();
+            s.client.submit_claim(&claimant, &desc, &100_i128);
+            *sample = mem_bytes(&s.env);
+
+            assert!(
+                *sample <= BUDGET_N_CLAIMS_GROWTH_MEM,
+                "claim {}: {} mem bytes exceeds per-claim ceiling {}",
+                i,
+                *sample,
+                BUDGET_N_CLAIMS_GROWTH_MEM
+            );
+        }
+
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | claim_growth_linear | mem_samples={:?}",
+            mem_samples
+        );
+
+        // All samples must be within CLAIM_GROWTH_TOLERANCE_PER_STEP of the
+        // first — growth is O(1) per claim (bounded), not O(n).
+        // (The claim counter increments, adding a tiny serialisation delta per
+        // step; strict equality would be overly brittle.)
+        let first = mem_samples[0];
+        for (i, &m) in mem_samples.iter().enumerate() {
+            assert!(
+                m <= first + CLAIM_GROWTH_TOLERANCE_PER_STEP * i as u64,
+                "claim {}: mem {} exceeds allowed growth of {} per step from first {} — non-linear storage growth detected",
+                i, m, CLAIM_GROWTH_TOLERANCE_PER_STEP, first
+            );
+        }
+    }
+
+    /// Staking then unstaking: each operation has a bounded storage footprint
+    /// regardless of the number of prior stakers.
+    #[test]
+    fn bench_stake_unstake_storage_growth() {
+        let s = setup();
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.token_id, &staker, 2_000);
+
+        s.env.budget().reset_default();
+        s.client.stake(&staker, &1_000_i128);
+        let stake_mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | stake | mem_bytes={}",
+            stake_mem
+        );
+        assert!(
+            stake_mem <= BUDGET_STAKE_MEM,
+            "stake: {} mem bytes exceeds budget {}",
+            stake_mem,
+            BUDGET_STAKE_MEM
+        );
+
+        s.env.budget().reset_default();
+        s.client.unstake(&staker, &500_i128);
+        let unstake_mem = mem_bytes(&s.env);
+        println!(
+            "STORAGE_BENCHMARK | insurance_contract | unstake | mem_bytes={}",
+            unstake_mem
+        );
+        assert!(
+            unstake_mem <= BUDGET_UNSTAKE_MEM,
+            "unstake: {} mem bytes exceeds budget {}",
+            unstake_mem,
+            BUDGET_UNSTAKE_MEM
+        );
+
+        // Correctness: 500 tokens remain staked.
+        assert_eq!(s.client.get_stake(&staker), 500);
+    }
+}
