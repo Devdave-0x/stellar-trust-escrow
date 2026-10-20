@@ -1710,4 +1710,255 @@ mod tests {
         let token_client = token::Client::new(&s.env, &s.token_id);
         assert_eq!(token_client.balance(&claimant), 1_000_i128);
     }
+
+    // ── Authorization boundary coverage for insurance premium accounting (Issue #708) ─
+    //
+    // These tests verify that every privileged path governing insurance premium
+    // accounting (admin config of the fund, governor-gated payouts, and premium
+    // intake) rejects missing, stale, and incorrect authorization. Assertions use
+    // exact error codes so regressions are caught deterministically.
+
+    /// Registers the contract but does NOT initialize it, leaving every admin
+    /// and governor gate in the "missing authorization" state.
+    fn setup_uninitialized() -> (Env, Address, Address, InsuranceContractClient<'static>) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_contract.address();
+        let contract_id = env.register_contract(None, InsuranceContract);
+        let client = InsuranceContractClient::new(&env, &contract_id);
+        (env, admin, token_id, client)
+    }
+
+    // ── add_platform_fees: admin-only premium/yield accounting ──────────────────
+
+    #[test]
+    fn test_add_platform_fees_admin_success() {
+        // Primary success path: admin accrues yield into the pool accounting and
+        // the staker's entitlement updates deterministically.
+        let s = setup();
+        let staker = Address::generate(&s.env);
+        mint(&s.env, &s.admin, &s.token_id, &staker, 1_000);
+        s.client.stake(&staker, &1_000_i128);
+
+        // Admin deposits 400 premium tokens into the contract, then accounts for
+        // them via the yield accumulator (transfer happens separately per design).
+        mint(&s.env, &s.admin, &s.token_id, &s.contract_id, 400);
+        s.client.add_platform_fees(&s.admin, &400_i128);
+
+        // The sole staker is now entitled to the full 400 units of premium yield.
+        assert_eq!(s.client.pending_yield_view(&staker), 400);
+    }
+
+    #[test]
+    fn test_add_platform_fees_non_admin_rejected() {
+        // Incorrect authorization: an address with no role cannot account fees.
+        let s = setup();
+        let stranger = Address::generate(&s.env);
+        let result = s.client.try_add_platform_fees(&stranger, &100_i128);
+        assert_eq!(result, Err(Ok(InsuranceError::AdminOnly)));
+    }
+
+    #[test]
+    fn test_add_platform_fees_governor_wrong_role_rejected() {
+        // Incorrect authorization: a governor is not an admin and must be rejected.
+        let s = setup();
+        let gov = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov);
+        let result = s.client.try_add_platform_fees(&gov, &100_i128);
+        assert_eq!(result, Err(Ok(InsuranceError::AdminOnly)));
+    }
+
+    #[test]
+    fn test_add_platform_fees_uninitialized_rejected() {
+        // Missing authorization: no admin is set, so the admin gate fails.
+        let (_env, admin, _token, client) = setup_uninitialized();
+        let result = client.try_add_platform_fees(&admin, &100_i128);
+        assert_eq!(result, Err(Ok(InsuranceError::NotInitialized)));
+    }
+
+    #[test]
+    fn test_add_platform_fees_zero_amount_rejected() {
+        // Boundary: zero premium must not move the yield accumulator.
+        let s = setup();
+        let result = s.client.try_add_platform_fees(&s.admin, &0_i128);
+        assert_eq!(result, Err(Ok(InsuranceError::InvalidAmount)));
+    }
+
+    #[test]
+    fn test_add_platform_fees_negative_amount_rejected() {
+        // Boundary: a negative amount must never reduce the yield accumulator.
+        let s = setup();
+        let result = s.client.try_add_platform_fees(&s.admin, &(-1_i128));
+        assert_eq!(result, Err(Ok(InsuranceError::InvalidAmount)));
+    }
+
+    // ── set_max_slash_bps: admin-only slash cap accounting ───────────────────────
+
+    #[test]
+    fn test_set_max_slash_bps_admin_success() {
+        // Primary success path: admin lowers the cap and the new boundary is
+        // enforced on the next proposal, so stale (higher) proposals are rejected.
+        let s = setup();
+        s.client.set_max_slash_bps(&s.admin, &1_000_u32); // 10% ceiling
+
+        let gov = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov);
+
+        let reason = String::from_str(&s.env, "Within new cap");
+        // 1000 bps is allowed under the newly configured cap.
+        s.client.propose_slash(&gov, &1_000_u32, &reason);
+
+        // 1500 bps now exceeds the lowered cap and must be rejected.
+        let over_reason = String::from_str(&s.env, "Above new cap");
+        let result = s.client.try_propose_slash(&gov, &1_500_u32, &over_reason);
+        assert_eq!(result, Err(Ok(InsuranceError::SlashExceedsCap)));
+    }
+
+    #[test]
+    fn test_set_max_slash_bps_non_admin_rejected() {
+        // Incorrect authorization.
+        let s = setup();
+        let stranger = Address::generate(&s.env);
+        let result = s.client.try_set_max_slash_bps(&stranger, &2_000_u32);
+        assert_eq!(result, Err(Ok(InsuranceError::AdminOnly)));
+    }
+
+    #[test]
+    fn test_set_max_slash_bps_uninitialized_rejected() {
+        // Missing authorization: no admin set.
+        let (_env, admin, _token, client) = setup_uninitialized();
+        let result = client.try_set_max_slash_bps(&admin, &2_000_u32);
+        assert_eq!(result, Err(Ok(InsuranceError::NotInitialized)));
+    }
+
+    #[test]
+    fn test_set_max_slash_bps_zero_rejected() {
+        // Boundary: a zero slash cap is meaningless and must be rejected.
+        let s = setup();
+        let result = s.client.try_set_max_slash_bps(&s.admin, &0_u32);
+        assert_eq!(result, Err(Ok(InsuranceError::InvalidSlashBps)));
+    }
+
+    #[test]
+    fn test_set_max_slash_bps_over_cap_rejected() {
+        // Boundary: the absolute 4000 bps ceiling cannot be exceeded.
+        let s = setup();
+        let result = s.client.try_set_max_slash_bps(&s.admin, &4_001_u32);
+        assert_eq!(result, Err(Ok(InsuranceError::InvalidSlashBps)));
+    }
+
+    // ── Uninitialized admin gates: missing authorization for premium config ─────
+
+    #[test]
+    fn test_set_claim_cap_uninitialized_rejected() {
+        let (_env, admin, _token, client) = setup_uninitialized();
+        let result = client.try_set_claim_cap(&admin, &5_000_i128);
+        assert_eq!(result, Err(Ok(InsuranceError::NotInitialized)));
+    }
+
+    #[test]
+    fn test_set_quorum_uninitialized_rejected() {
+        let (_env, admin, _token, client) = setup_uninitialized();
+        let result = client.try_set_quorum(&admin, &3_u32);
+        assert_eq!(result, Err(Ok(InsuranceError::NotInitialized)));
+    }
+
+    #[test]
+    fn test_add_governor_uninitialized_rejected() {
+        let (env, admin, _token, client) = setup_uninitialized();
+        let gov = Address::generate(&env);
+        let result = client.try_add_governor(&admin, &gov);
+        assert_eq!(result, Err(Ok(InsuranceError::NotInitialized)));
+    }
+
+    #[test]
+    fn test_contribute_uninitialized_rejected() {
+        // Premium intake must not accept funds before initialization.
+        let (env, admin, token_id, client) = setup_uninitialized();
+        let contributor = Address::generate(&env);
+        mint(&env, &admin, &token_id, &contributor, 500);
+        let result = client.try_contribute(&contributor, &500_i128);
+        assert_eq!(result, Err(Ok(InsuranceError::NotInitialized)));
+    }
+
+    // ── Governor management: incorrect authorization ───────────────────────────
+
+    #[test]
+    fn test_add_governor_non_admin_rejected() {
+        let s = setup();
+        let stranger = Address::generate(&s.env);
+        let new_gov = Address::generate(&s.env);
+        let result = s.client.try_add_governor(&stranger, &new_gov);
+        assert_eq!(result, Err(Ok(InsuranceError::AdminOnly)));
+    }
+
+    #[test]
+    fn test_remove_governor_non_admin_rejected() {
+        // Incorrect authorization must not mutate governor accounting.
+        let s = setup();
+        let gov = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov);
+        let stranger = Address::generate(&s.env);
+        let result = s.client.try_remove_governor(&stranger, &gov);
+        assert_eq!(result, Err(Ok(InsuranceError::AdminOnly)));
+        // State is unchanged: the governor remains registered.
+        assert!(s.client.is_governor(&gov));
+    }
+
+    // ── Stale authorization: a removed governor loses every privileged path ─────
+
+    #[test]
+    fn test_removed_governor_cannot_vote() {
+        // Stale authorization: the address WAS a governor but has been revoked.
+        let s = setup();
+        let gov = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov);
+
+        let claimant = Address::generate(&s.env);
+        let desc = String::from_str(&s.env, "Premium payout claim");
+        let claim_id = s.client.submit_claim(&claimant, &desc, &100_i128);
+
+        // A single vote at quorum 2 leaves the claim Pending (no finalisation).
+        s.client.vote(&gov, &claim_id, &true);
+
+        // Admin revokes the governor role; the prior auth is now stale.
+        s.client.remove_governor(&s.admin, &gov);
+        assert!(!s.client.is_governor(&gov));
+
+        let result = s.client.try_vote(&gov, &claim_id, &true);
+        assert_eq!(result, Err(Ok(InsuranceError::NotGovernor)));
+    }
+
+    #[test]
+    fn test_removed_governor_cannot_propose_slash() {
+        let s = setup();
+        let gov = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov);
+        s.client.remove_governor(&s.admin, &gov);
+
+        let reason = String::from_str(&s.env, "Stale governor");
+        let result = s.client.try_propose_slash(&gov, &500_u32, &reason);
+        assert_eq!(result, Err(Ok(InsuranceError::NotGovernor)));
+    }
+
+    #[test]
+    fn test_removed_governor_cannot_vote_slash() {
+        let s = setup();
+        let gov1 = Address::generate(&s.env);
+        let gov2 = Address::generate(&s.env);
+        s.client.add_governor(&s.admin, &gov1);
+        s.client.add_governor(&s.admin, &gov2);
+
+        // gov1 creates a slash proposal while still authorized...
+        let reason = String::from_str(&s.env, "Slash to vote on");
+        let slash_id = s.client.propose_slash(&gov1, &500_u32, &reason);
+
+        // ...then is revoked before voting. The prior auth is now stale.
+        s.client.remove_governor(&s.admin, &gov1);
+
+        let result = s.client.try_vote_slash(&gov1, &slash_id, &true);
+        assert_eq!(result, Err(Ok(InsuranceError::NotGovernor)));
+    }
 }
