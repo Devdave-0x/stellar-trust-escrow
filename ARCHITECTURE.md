@@ -186,6 +186,57 @@ components/
 
 ---
 
+## Mobile Wallet Reconnect Flow
+
+When a user returns to the app on a mobile device, the frontend attempts to silently reconnect the previously authorized wallet session before prompting for a fresh signature. This section documents the supported platforms and the known behavior under constrained conditions.
+
+### Supported Platforms
+
+| Platform              | Minimum version | Notes                                                        |
+| --------------------- | --------------- | ------------------------------------------------------------ |
+| iOS (Safari)          | iOS 15+         | Wallet connect via deep link; WebView-based wallets supported |
+| iOS (in-app WebView)  | iOS 15+         | Requires the host app to allow external deep links          |
+| Android (Chrome)      | Android 10+     | Chrome 90+ recommended for stable WebCrypto/IndexedDB       |
+| Android (in-app WebView)| Android 10+   | Deep-link handoff depends on the host app's intent filters  |
+| Desktop browsers      | Evergreen       | Chrome, Firefox, Safari, Edge (latest two majors)            |
+
+**Constraints:**
+
+- The reconnect flow relies on `localStorage`/`IndexedDB` to persist the last authorized public key. Private keys never leave the wallet.
+- Browsers in private/incognito mode may clear storage between sessions; reconnect will fall back to a full connect prompt.
+- WebViews that block third-party storage or deep links cannot complete the reconnect handoff and must use the manual connect path.
+
+### Primary Success Path
+
+```
+1. App loads on a returning mobile device
+2. Frontend reads the persisted public key + session marker from storage
+3. Frontend asks the wallet (via deep link / injected provider) to re-authorize
+4. Wallet returns the same public key without a new signature prompt
+5. Session is restored; the user lands on the previously viewed page
+```
+
+### Failure and Boundary Paths
+
+**1. Network loss mid-reconnect**
+
+- If the network drops while the wallet handoff is in flight, the reconnect attempt times out (deterministic timeout, no retry storm).
+- The UI surfaces a non-secret error (e.g. "Could not reconnect wallet — check your connection") and offers a manual retry.
+- No partial session is persisted; the next load starts a clean reconnect attempt.
+
+**2. Expired or stale session**
+
+- If the persisted session marker is older than the wallet's authorization window, the wallet rejects the silent re-authorization.
+- The frontend clears the stale marker and falls back to the standard connect prompt.
+- Errors are logged without the public key or any signature material.
+
+**3. App backgrounding / resume**
+
+- If the OS suspends the app during the deep-link handoff, the resume handler re-checks the session state before assuming success.
+- A suspended-then-resumed handoff that never completed is treated as a failed reconnect and routed to the manual connect path.
+
+---
+
 ## Environment Configuration
 
 ```
