@@ -702,3 +702,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-877 -->
 - #877: Verify meta-transaction nonces cannot be replayed or skipped unexpectedly
+
+<!-- handsoff-issue-878 -->
+- #878: Keep emitted lifecycle events aligned with committed state changes
