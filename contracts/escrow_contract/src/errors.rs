@@ -104,6 +104,8 @@ pub enum EcErr {
     /// Milestone approval quorum transition rejected: caller is not an
     /// authorized approver for this escrow.
     MilestoneUnauthorizedApprover = 91,
+    /// Milestone description exceeds the maximum allowed length (MAX_MILESTONE_DESCRIPTION_LEN bytes).
+    MilestoneDescriptionTooLong = 92,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
