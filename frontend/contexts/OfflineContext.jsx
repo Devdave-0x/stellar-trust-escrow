@@ -15,7 +15,53 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 
 const DB_NAME = 'ste-offline';
 const DB_VERSION = 1;
-const STORES = { escrows: 'escrows', profile: 'profile', mutations: 'mutations' };
+const STORES = {
+  escrows: 'escrows',
+  profile: 'profile',
+  mutations: 'mutations',
+  draft: 'draft',
+};
+
+// ── Offline draft allowlist ───────────────────────────────────────────────────
+// Only these non-sensitive escrow form fields may ever be persisted for
+// offline recovery. Anything else (auth tokens, secret keys, signatures,
+// wallet credentials, etc.) is dropped before it reaches storage.
+export const DRAFT_FIELD_ALLOWLIST = Object.freeze([
+  'title',
+  'description',
+  'amount',
+  'currency',
+  'buyerAddress',
+  'sellerAddress',
+  'arbiterAddress',
+  'milestones',
+  'deadline',
+  'category',
+  'notes',
+]);
+
+// Keys that must never be persisted, even if they appear in the allowlist
+// (defense in depth against future allowlist mistakes).
+const SENSITIVE_KEY_PATTERN =
+  /(token|secret|private|signature|signed|mnemonic|seed|password|passphrase|credential|apikey|api_key|auth)/i;
+
+/**
+ * Filter an arbitrary draft object down to the permitted, non-sensitive
+ * fields. Returns a new plain object; never mutates the input.
+ */
+export function sanitizeDraft(draft) {
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return {};
+  const safe = {};
+  for (const key of DRAFT_FIELD_ALLOWLIST) {
+    if (SENSITIVE_KEY_PATTERN.test(key)) continue;
+    if (Object.prototype.hasOwnProperty.call(draft, key)) {
+      const value = draft[key];
+      if (value === undefined) continue;
+      safe[key] = value;
+    }
+  }
+  return safe;
+}
 
 // ── IndexedDB helpers ─────────────────────────────────────────────────────────
 
@@ -35,6 +81,9 @@ function openDb() {
           keyPath: 'id',
           autoIncrement: true,
         });
+      }
+      if (!db.objectStoreNames.contains(STORES.draft)) {
+        db.createObjectStore(STORES.draft, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -84,6 +133,8 @@ async function dbDelete(storeName, key) {
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
+const DRAFT_ID = 'escrow-form';
+
 const OfflineContext = createContext(null);
 
 export function OfflineProvider({ children }) {
@@ -93,6 +144,7 @@ export function OfflineProvider({ children }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [cachedEscrows, setCachedEscrows] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [draft, setDraft] = useState({});
   const syncRef = useRef(false);
 
   // ── Online/offline detection ───────────────────────────────────────────────
@@ -107,7 +159,7 @@ export function OfflineProvider({ children }) {
     };
   }, []);
 
-  // ── Load cached escrows on mount ───────────────────────────────────────────
+  // ── Load cached escrows and offline draft on mount ─────────────────────────
   useEffect(() => {
     dbGetAll(STORES.escrows)
       .then(setCachedEscrows)
@@ -115,6 +167,30 @@ export function OfflineProvider({ children }) {
     dbGetAll(STORES.mutations)
       .then((m) => setPendingCount(m.length))
       .catch(() => {});
+    dbGetAll(STORES.draft)
+      .then((rows) => {
+        const stored = rows.find((r) => r.id === DRAFT_ID);
+        // Filter again on read so only permitted fields are restored.
+        setDraft(stored ? sanitizeDraft(stored.data) : {});
+      })
+      .catch(() => {});
+  }, []);
+
+  // ── Persist a sanitized offline draft ──────────────────────────────────────
+  const saveDraft = useCallback(async (nextDraft) => {
+    const safe = sanitizeDraft(nextDraft);
+    setDraft(safe);
+    await dbPut(STORES.draft, {
+      id: DRAFT_ID,
+      data: safe,
+      _savedAt: Date.now(),
+    }).catch(() => {});
+    return safe;
+  }, []);
+
+  const clearDraft = useCallback(async () => {
+    setDraft({});
+    await dbDelete(STORES.draft, DRAFT_ID).catch(() => {});
   }, []);
 
   // ── Cache escrow data ──────────────────────────────────────────────────────
@@ -175,9 +251,12 @@ export function OfflineProvider({ children }) {
         isSyncing,
         cachedEscrows,
         pendingCount,
+        draft,
         cacheEscrows,
         queueMutation,
         syncMutations,
+        saveDraft,
+        clearDraft,
       }}
     >
       {children}
