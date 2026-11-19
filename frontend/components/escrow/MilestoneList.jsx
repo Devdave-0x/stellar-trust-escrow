@@ -71,18 +71,26 @@ export default function MilestoneList({ milestones = [], role, onApprove, onReje
           with color indicating overall progress
         */}
         <div className="space-y-3">
-          {milestones.map((milestone, index) => (
-            <MilestoneItem
-              key={milestone.id}
-              milestone={milestone}
-              index={index}
-              role={role}
-              onApprove={onApprove}
-              onReject={onReject}
-              onSubmit={onSubmit}
-              isLast={index === milestones.length - 1}
-            />
-          ))}
+          {milestones.map((milestone, index) => {
+            const milestoneLabel = `milestone ${index + 1}: ${milestone.title}`;
+            return (
+              <MilestoneItem
+                key={milestone.id}
+                milestone={milestone}
+                index={index}
+                role={role}
+                onApprove={onApprove}
+                onReject={onReject}
+                onSubmit={onSubmit}
+                isLast={index === milestones.length - 1}
+                actionLabels={{
+                  approve: `Approve ${milestoneLabel}`,
+                  reject: `Reject ${milestoneLabel}`,
+                  submit: `Submit ${milestoneLabel}`,
+                }}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
