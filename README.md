@@ -693,3 +693,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-779 -->
 - #779: Add event completeness checks for partial release amount rounding
+
+<!-- handsoff-issue-887 -->
+- #887: Bind proposal payload hashes to their declared action type
