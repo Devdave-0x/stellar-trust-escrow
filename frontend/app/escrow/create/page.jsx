@@ -34,10 +34,11 @@ import templatesData from '../../../data/templates.json';
 import { useToast } from '../../../contexts/ToastContext';
 import { useWallet } from '../../../hooks/useWallet';
 import {
-  buildCreateEscrowTx,
+  buildCreateEscrowWithTermsHashTx,
   broadcastTransaction,
   isValidStellarAddress,
   computeTermsHash,
+  validateWalletNetwork,
 } from '../../../lib/stellar';
 
 const STEPS = [
@@ -66,10 +67,12 @@ export default function CreateEscrowPage() {
   const searchParams = useSearchParams();
   const templateLibrary = templatesData.templates || [];
 
-  const { address, isConnected, signTx } = useWallet();
+  const { address, isConnected, signTx, network: walletNetwork } = useWallet();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
+    clientAddress: '',
     freelancerAddress: '',
+    arbiterAddress: '',
     tokenAddress: 'usdc',
     totalAmount: '',
     briefDescription: '',
@@ -77,7 +80,10 @@ export default function CreateEscrowPage() {
     milestones: [{ ...DEFAULT_MILESTONE }],
     termsDocument: '',
   });
+  const DRAFT_STORAGE_KEY = 'escrow-create-draft-v1';
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [txPhase, setTxPhase] = useState('idle');
+  const [txHash, setTxHash] = useState(null);
   const [error, setError] = useState(null);
   const [termsHash, setTermsHash] = useState(null);
   const [templateNotice, setTemplateNotice] = useState('');
@@ -103,6 +109,27 @@ export default function CreateEscrowPage() {
       cancelled = true;
     };
   }, [formData.termsDocument]);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+      if (saved) {
+        setFormData((prev) => ({ ...prev, ...JSON.parse(saved) }));
+      }
+    } catch {
+      // ignore corrupted drafts
+    }
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(formData));
+  }, [formData]);
+
+  useEffect(() => {
+    if (address && !formData.clientAddress) {
+      setFormData((data) => ({ ...data, clientAddress: address }));
+    }
+  }, [address, formData.clientAddress]);
 
   useEffect(() => {
     const templateId = searchParams.get('template');
@@ -138,17 +165,82 @@ export default function CreateEscrowPage() {
     setPendingTemplate({ template, conflicts });
   };
 
-  // TODO (contributor — Issue #33): implement form submission
+  const participantErrors = (() => {
+    const errors = {};
+    if (formData.clientAddress && !isValidStellarAddress(formData.clientAddress)) {
+      errors.clientAddress = 'Client address is invalid.';
+    }
+    if (formData.freelancerAddress && !isValidStellarAddress(formData.freelancerAddress)) {
+      errors.freelancerAddress = 'Freelancer address is invalid.';
+    }
+    if (formData.arbiterAddress && !isValidStellarAddress(formData.arbiterAddress)) {
+      errors.arbiterAddress = 'Arbiter address is invalid.';
+    }
+    const participants = [
+      formData.clientAddress,
+      formData.freelancerAddress,
+      formData.arbiterAddress,
+    ].filter(Boolean);
+    const unique = new Set(participants);
+    if (unique.size !== participants.length) {
+      errors.participants = 'Participant addresses must be unique.';
+    }
+    return errors;
+  })();
+
+  const canSubmit =
+    isConnected &&
+    isValidStellarAddress(formData.clientAddress) &&
+    isValidStellarAddress(formData.freelancerAddress) &&
+    isPositiveAmount(formData.totalAmount) &&
+    Object.keys(participantErrors).length === 0;
+
   const handleSubmit = async () => {
+    if (!canSubmit) {
+      setError('Fix validation errors before submitting.');
+      return;
+    }
+    if (!isConnected || !address) {
+      setError('Connect your wallet before submitting.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
+    setTxPhase('simulating');
+    setTxHash(null);
+
     try {
-      // termsHash is pre-computed by the useEffect above whenever termsDocument changes.
-      // Pass it to buildCreateEscrowWithTermsHashTx once Issue #33 wires up the full flow.
-      void termsHash;
-      throw new Error('Not implemented — see Issue #33');
+      const check = validateWalletNetwork(walletNetwork || process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet');
+      if (!check.ok) throw new Error(check.error);
+
+      const briefHash = termsHash ?? (await computeTermsHash(formData.briefDescription || 'escrow'));
+      const unsignedXdr = await buildCreateEscrowWithTermsHashTx({
+        sourceAddress: formData.clientAddress || address,
+        freelancerAddress: formData.freelancerAddress,
+        tokenAddress: process.env.NEXT_PUBLIC_USDC_CONTRACT || formData.tokenAddress,
+        amount: String(Math.round(Number(formData.totalAmount) * 1e7)),
+        briefHash,
+        termsHash: termsHash ?? undefined,
+        arbiter: formData.arbiterAddress || null,
+        deadline: formData.deadline ? Math.floor(new Date(formData.deadline).getTime() / 1000) : null,
+      });
+
+      setTxPhase('signing');
+      const signedXdr = await signTx(unsignedXdr);
+      setTxPhase('submitting');
+      const result = await broadcastTransaction(signedXdr);
+      setTxPhase(result.status === 'SUCCESS' ? 'confirmed' : 'pending');
+      setTxHash(result.hash || result.txHash);
+      if (result.escrowId) {
+        sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+        router.push(`/escrow/${result.escrowId}`);
+      }
     } catch (err) {
       const message = err.message || 'Failed to create escrow';
+      const rejected =
+        message.toLowerCase().includes('user') || message.toLowerCase().includes('reject');
+      setTxPhase(rejected ? 'wallet_rejected' : 'simulation_failed');
       setError(message);
     } finally {
       setIsSubmitting(false);
@@ -273,9 +365,18 @@ export default function CreateEscrowPage() {
             onUpdate={updateMilestone}
           />
         )}
-        {currentStep === 3 && <StepReview formData={formData} termsHash={termsHash} />}
+        {currentStep === 3 && (
+          <StepReview formData={formData} termsHash={termsHash} network={process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet'} />
+        )}
         {currentStep === 4 && (
-          <StepSign onSubmit={handleSubmit} isSubmitting={isSubmitting} error={error} />
+          <StepSign
+            formData={formData}
+            txPhase={txPhase}
+            txHash={txHash}
+            isSubmitting={isSubmitting}
+            error={error}
+            network={process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet'}
+          />
         )}
       </div>
 
@@ -293,7 +394,7 @@ export default function CreateEscrowPage() {
             Next →
           </Button>
         ) : (
-          <Button variant="primary" onClick={handleSubmit} isLoading={isSubmitting}>
+          <Button variant="primary" onClick={handleSubmit} isLoading={isSubmitting} disabled={!canSubmit}>
             Sign & Create Escrow
           </Button>
         )}
@@ -313,12 +414,29 @@ function StepCounterparty({ formData, setFormData, setTouched, amountError, desc
       <h2 className="text-lg font-semibold text-white">Counterparty & Funds</h2>
 
       <StellarAddressInput
+        id="client-address"
+        label="Client Stellar Address"
+        placeholder="GABCD1234..."
+        value={formData.clientAddress}
+        onChange={(val) => setFormData((data) => ({ ...data, clientAddress: val }))}
+        required
+      />
+
+      <StellarAddressInput
         id="freelancer-address"
         label="Freelancer Stellar Address"
         placeholder="GABCD1234..."
         value={formData.freelancerAddress}
         onChange={(val) => setFormData((data) => ({ ...data, freelancerAddress: val }))}
         required
+      />
+
+      <StellarAddressInput
+        id="arbiter-address"
+        label="Arbiter Stellar Address (optional)"
+        placeholder="GABCD1234..."
+        value={formData.arbiterAddress}
+        onChange={(val) => setFormData((data) => ({ ...data, arbiterAddress: val }))}
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -490,7 +608,7 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
 /**
  * Step 3: Review summary before signing.
  */
-function StepReview({ formData, termsHash }) {
+function StepReview({ formData, termsHash, network }) {
   const token = String(formData.tokenAddress || 'USDC').toUpperCase();
 
   return (
@@ -498,8 +616,19 @@ function StepReview({ formData, termsHash }) {
       <h2 className="text-lg font-semibold text-white">Review Details</h2>
       <div className="bg-gray-800 rounded-lg p-4 text-sm text-gray-400 space-y-2">
         <p>
+          Network: <span className="text-white">{network}</span>
+        </p>
+        <p>
+          Client: <span className="text-white">{formData.clientAddress || '—'}</span>
+        </p>
+        <p>
           Freelancer: <span className="text-white">{formData.freelancerAddress || '—'}</span>
         </p>
+        {formData.arbiterAddress && (
+          <p>
+            Arbiter: <span className="text-white">{formData.arbiterAddress}</span>
+          </p>
+        )}
         <p>
           Total Amount:{' '}
           <span className="text-white">
@@ -536,25 +665,55 @@ function StepReview({ formData, termsHash }) {
  * Step 4: Sign with Freighter.
  * TODO (contributor — Issue #33): build and sign the Soroban transaction
  */
-function StepSign({ error }) {
+function StepSign({ formData, txPhase, txHash, isSubmitting, error, network }) {
+  const token = String(formData.tokenAddress || 'USDC').toUpperCase();
+  const phaseLabel = {
+    idle: 'Ready to simulate, sign, and submit.',
+    simulating: 'Simulating contract call…',
+    signing: 'Waiting for wallet approval…',
+    submitting: 'Submitting signed transaction…',
+    pending: 'Transaction pending confirmation…',
+    confirmed: 'Transaction confirmed on ledger.',
+    wallet_rejected: 'Wallet rejected the transaction. Your form inputs were preserved.',
+    simulation_failed: 'Simulation failed. You can fix inputs and retry.',
+  }[txPhase];
+
   return (
     <div className="space-y-4 text-center">
       <h2 className="text-lg font-semibold text-white">Sign & Submit</h2>
-      <p className="text-gray-400 text-sm">
-        Clicking the button below will open your Freighter wallet to sign the transaction. Your
-        funds will be locked on-chain once confirmed.
-      </p>
+      <div
+        className="bg-gray-800 rounded-lg p-4 text-left text-sm text-gray-300 space-y-1"
+        aria-live="polite"
+      >
+        <p>
+          Network: <span className="text-white">{network}</span>
+        </p>
+        <p>
+          Token / amount:{' '}
+          <span className="text-white">
+            {formData.totalAmount || '0'} {token}
+          </span>
+        </p>
+      </div>
+      <p className="text-gray-400 text-sm">{phaseLabel}</p>
       <div className="mx-auto max-w-md">
         <FeeEstimator className="mt-4" />
       </div>
+      {txHash && (
+        <p className="text-xs text-emerald-300 font-mono break-all" data-testid="tx-hash">
+          Ledger tx: {txHash}
+        </p>
+      )}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm" role="alert">
           {error}
         </div>
       )}
-      <p className="text-xs text-amber-400">
-        🚧 Freighter integration is not yet implemented — see Issue #33
-      </p>
+      {isSubmitting && (
+        <p className="text-xs text-gray-500" aria-live="polite">
+          Please keep this tab open while the transaction is processing.
+        </p>
+      )}
     </div>
   );
 }
