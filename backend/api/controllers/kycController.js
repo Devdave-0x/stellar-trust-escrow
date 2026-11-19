@@ -4,6 +4,23 @@ import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
+const KYC_ARTIFACT_RETENTION_DAYS = parseInt(process.env.KYC_ARTIFACT_RETENTION_DAYS || '90', 10);
+
+/** Delete or anonymize KYC review artifacts past retention while keeping audit metadata. */
+export async function purgeExpiredKycArtifacts(prismaClient, now = new Date()) {
+  const cutoff = new Date(now.getTime() - KYC_ARTIFACT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const expired = await prismaClient.kycVerification.findMany({
+    where: { updatedAt: { lt: cutoff }, status: { in: ['Declined'] } },
+    select: { id: true, address: true },
+  });
+  if (expired.length === 0) return { purged: 0 };
+  await prismaClient.kycVerification.updateMany({
+    where: { id: { in: expired.map((r) => r.id) } },
+    data: { reviewResult: null, rejectLabels: [] },
+  });
+  return { purged: expired.length, cutoff: cutoff.toISOString() };
+}
+
 /** Shared 500 handler: logs the error against `route` and sends a JSON error response. */
 const handleKycError = (route, err, req, res) => {
   logControllerError(route, err, req);

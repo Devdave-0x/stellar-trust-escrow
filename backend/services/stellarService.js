@@ -15,6 +15,15 @@ const NETWORK = process.env.STELLAR_NETWORK || 'testnet';
 
 export const NETWORK_PASSPHRASE = NETWORK === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
+const STELLAR_ADDRESS_RE = /G[A-Z2-7]{55}/g;
+const XDR_BLOB_RE = /[A-Za-z0-9+/]{40,}={0,2}/g;
+
+export function redactTransactionLogFields(input = '') {
+  return String(input)
+    .replace(STELLAR_ADDRESS_RE, 'G[redacted-wallet]')
+    .replace(XDR_BLOB_RE, '[redacted-payload]');
+}
+
 /** @returns {SorobanRpc.Server} */
 const getServer = () =>
   new SorobanRpc.Server(RPC_URL, { allowHttp: RPC_URL.startsWith('http://') });
@@ -38,6 +47,8 @@ const submitTransaction = async (signedXdr) => {
 
       if (sendResult.status === 'ERROR') {
         span.setAttribute('stellar.tx.status', 'FAILED');
+        const safeMessage = redactTransactionLogFields(sendResult.errorResultXdr || 'submit_error');
+        console.warn('[stellarService] transaction rejected:', safeMessage);
         return {
           hash: sendResult.hash,
           status: 'FAILED',

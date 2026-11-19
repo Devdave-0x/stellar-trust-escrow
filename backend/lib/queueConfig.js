@@ -29,6 +29,14 @@ class InMemoryQueue {
     return { waiting: this.jobs.length, active: 0, completed: 0, failed: 0, delayed: 0 };
   }
 
+  async getActiveCount() {
+    return 0;
+  }
+
+  async getWaitingCount() {
+    return this.jobs.length;
+  }
+
   async getWaiting() {
     return [...this.jobs];
   }
@@ -197,6 +205,19 @@ export const setupQueueEventListeners = () => {
 /**
  * Graceful shutdown for queues
  */
+export async function drainActiveQueueJobs(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const [active, waiting] = await Promise.all([
+      stellarEventsQueue.getActiveCount(),
+      stellarEventsQueue.getWaitingCount(),
+    ]);
+    if (active === 0 && waiting === 0) return { drained: true, active, waiting };
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return { drained: false };
+}
+
 export const closeQueues = async () => {
   try {
     await stellarEventsQueue.close();
