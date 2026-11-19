@@ -699,3 +699,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-876 -->
 - #876: Require an explicit network identifier in signed transaction payloads
+
+<!-- handsoff-issue-877 -->
+- #877: Verify meta-transaction nonces cannot be replayed or skipped unexpectedly
