@@ -10,6 +10,7 @@ import { secureStorage, STORAGE_KEYS } from '../lib/storage';
 import { api } from '../lib/api';
 
 const JWT_KEY = 'auth_jwt';
+const REFRESH_TOKEN_KEY = 'auth_refresh_token';
 const KEYPAIR_SECRET_KEY = 'stellar_keypair_secret';
 
 export const jwtAuth = {
@@ -48,9 +49,16 @@ export const jwtAuth = {
     try {
       const response = await api.post('/api/auth/verify', { address, signature });
       const token = response.data.token;
+      const refreshToken = response.data.refreshToken;
 
       // Store JWT in SecureStore with ALWAYS accessibility (requires device unlock)
       await secureStorage.setWithAccessibility(JWT_KEY, token, 'ALWAYS');
+
+      // Store refresh token in SecureStore as well; never in plain async storage.
+      if (refreshToken) {
+        await this.setRefreshToken(refreshToken);
+      }
+
       return token;
     } catch (err) {
       throw new Error(`Signature verification failed: ${err}`);
@@ -74,10 +82,66 @@ export const jwtAuth = {
   },
 
   /**
-   * Clear the stored JWT (logout).
+   * Store a refresh token in SecureStore (encrypted at rest, requires device unlock).
+   */
+  async setRefreshToken(refreshToken: string): Promise<void> {
+    await secureStorage.setWithAccessibility(REFRESH_TOKEN_KEY, refreshToken, 'ALWAYS');
+  },
+
+  /**
+   * Retrieve the stored refresh token from SecureStore.
+   */
+  async getRefreshToken(): Promise<string | null> {
+    return secureStorage.get(REFRESH_TOKEN_KEY);
+  },
+
+  /**
+   * Rotate the stored refresh token: exchange the current refresh token for a new
+   * access token + refresh token, then atomically replace the stored refresh token.
+   * Returns the new access token, or null if rotation fails (stored material is cleared).
+   */
+  async rotateRefreshToken(): Promise<string | null> {
+    const currentRefreshToken = await this.getRefreshToken();
+    if (!currentRefreshToken) {
+      return null;
+    }
+
+    try {
+      const response = await api.post('/api/auth/refresh', {
+        refreshToken: currentRefreshToken,
+      });
+      const token = response.data.token;
+      const newRefreshToken = response.data.refreshToken;
+
+      if (!token || !newRefreshToken) {
+        throw new Error('Malformed refresh response');
+      }
+
+      // Replace stored refresh token (rotation) and update the access token.
+      await this.setRefreshToken(newRefreshToken);
+      await secureStorage.setWithAccessibility(JWT_KEY, token, 'ALWAYS');
+      return token;
+    } catch {
+      // Rotation failed: the old refresh token is no longer trustworthy.
+      await this.clearToken();
+      return null;
+    }
+  },
+
+  /**
+   * Clear all stored auth material (JWT and refresh token) on logout.
    */
   async clearToken(): Promise<void> {
     await secureStorage.delete(JWT_KEY);
+    await secureStorage.delete(REFRESH_TOKEN_KEY);
+  },
+
+  /**
+   * Clear all stored auth material on account change (logout + keypair secret).
+   */
+  async clearAuthForAccountChange(): Promise<void> {
+    await this.clearToken();
+    await secureStorage.delete(KEYPAIR_SECRET_KEY);
   },
 
   /**
@@ -85,6 +149,12 @@ export const jwtAuth = {
    * Returns null if re-auth fails (user should be redirected to connect screen).
    */
   async silentRefresh(address: string): Promise<string | null> {
+    // Prefer rotating the existing refresh token; fall back to full re-auth.
+    const rotated = await this.rotateRefreshToken();
+    if (rotated) {
+      return rotated;
+    }
+
     try {
       const message = await this.requestNonce(address);
       const token = await this.verifyAndGetToken(address, message);

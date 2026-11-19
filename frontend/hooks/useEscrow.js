@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 
@@ -15,11 +15,47 @@ const DEFAULT_PAGE_LIMIT = 20;
 const USER_ESCROWS_LIMIT = 50;
 
 /**
+ * Extract the ledger/sequence marker from an escrow payload, if present.
+ * Different endpoints expose this under slightly different names, so we
+ * probe the common ones and fall back to null when nothing is available.
+ */
+function getLedgerMarker(escrow) {
+  if (!escrow || typeof escrow !== 'object') return null;
+  const candidates = [
+    escrow.ledger,
+    escrow.ledger_sequence,
+    escrow.ledgerSequence,
+    escrow.last_ledger,
+    escrow.lastLedger,
+  ];
+  for (const value of candidates) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+/**
  * Fetch a single escrow by ID.
  * Polls every 30 seconds; pauses automatically when the page is hidden.
  *
+ * After a transaction reaches a final ledger, call `refreshAfterConfirmation`
+ * to invalidate/refetch the escrow query so the UI never shows stale indexed
+ * state. Indexer lag (the indexed escrow trailing the latest confirmed ledger)
+ * is surfaced separately via `isIndexerLagging` so the UI can render it
+ * distinctly. Out-of-order responses are guarded against: an older ledger is
+ * never allowed to overwrite a newer one.
+ *
  * @param {number|string} id — escrow_id
- * @returns {{ escrow: object|null, isLoading: boolean, error: Error|null, mutate: Function }}
+ * @returns {{
+ *   escrow: object|null,
+ *   isLoading: boolean,
+ *   error: Error|null,
+ *   mutate: Function,
+ *   refreshAfterConfirmation: Function,
+ *   isIndexerLagging: boolean,
+ *   confirmedLedger: number|null,
+ *   indexedLedger: number|null,
+ * }}
  */
 export function useEscrow(id) {
   const { data, error, isLoading, mutate } = useSWR(
@@ -30,7 +66,82 @@ export function useEscrow(id) {
       refreshWhenHidden: false, // pause polling when page is not visible
     },
   );
-  return { escrow: data, isLoading, error, mutate };
+
+  // Latest confirmed ledger observed for this escrow (set after a tx confirms).
+  const [confirmedLedger, setConfirmedLedger] = useState(null);
+  // The most recent escrow snapshot we've accepted, guarded by ledger order.
+  const [escrow, setEscrow] = useState(null);
+  const lastAcceptedLedgerRef = useRef(null);
+
+  // Apply incoming SWR data, but never let an older ledger overwrite a newer
+  // one (out-of-order responses / stale caches).
+  useEffect(() => {
+    if (!data) return;
+    const incomingLedger = getLedgerMarker(data);
+    const lastAccepted = lastAcceptedLedgerRef.current;
+
+    if (
+      incomingLedger !== null &&
+      lastAccepted !== null &&
+      incomingLedger < lastAccepted
+    ) {
+      // Stale update — ignore it so the status doesn't revert.
+      return;
+    }
+
+    if (incomingLedger !== null) {
+      lastAcceptedLedgerRef.current = incomingLedger;
+    }
+    setEscrow(data);
+  }, [data]);
+
+  // Reset guards when the escrow id changes.
+  useEffect(() => {
+    lastAcceptedLedgerRef.current = null;
+    setEscrow(null);
+    setConfirmedLedger(null);
+  }, [id]);
+
+  const indexedLedger = getLedgerMarker(escrow);
+
+  const isIndexerLagging =
+    confirmedLedger !== null &&
+    (indexedLedger === null || indexedLedger < confirmedLedger);
+
+  /**
+   * Invalidate and refetch the escrow query after a transaction reaches a
+   * final ledger. Optionally records the confirmed ledger so indexer lag can
+   * be detected until the indexer catches up.
+   *
+   * @param {{ ledger?: number, ledgerSequence?: number }} [confirmation]
+   */
+  const refreshAfterConfirmation = useCallback(
+    async (confirmation) => {
+      const ledger =
+        typeof confirmation === 'number'
+          ? confirmation
+          : confirmation?.ledger ?? confirmation?.ledgerSequence ?? null;
+
+      if (typeof ledger === 'number' && Number.isFinite(ledger)) {
+        setConfirmedLedger((prev) => (prev === null || ledger > prev ? ledger : prev));
+      }
+
+      // Invalidate the cache entry and force a fresh fetch.
+      return mutate(undefined, { revalidate: true });
+    },
+    [mutate],
+  );
+
+  return {
+    escrow,
+    isLoading,
+    error,
+    mutate,
+    refreshAfterConfirmation,
+    isIndexerLagging,
+    confirmedLedger,
+    indexedLedger,
+  };
 }
 
 /**
