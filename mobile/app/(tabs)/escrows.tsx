@@ -2,8 +2,16 @@
  * My Escrows Tab — filterable list of the user's escrows.
  */
 
-import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useUserEscrows } from '../../hooks/useEscrows';
@@ -14,15 +22,50 @@ import type { Escrow } from '../../lib/api';
 const ROLES = ['all', 'client', 'freelancer'] as const;
 const STATUSES = ['All', 'Active', 'Completed', 'Disputed', 'Cancelled'] as const;
 
+/**
+ * Stable sort key: newest first by createdAt, tie-broken by id so that
+ * pagination boundaries never reorder or drop items.
+ */
+function compareEscrows(a: Escrow, b: Escrow): number {
+  const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  if (aTime !== bTime) return bTime - aTime;
+  return String(a.id).localeCompare(String(b.id));
+}
+
+/**
+ * Merge paginated pages into a single list, deduplicating on escrow id
+ * while preserving a stable ordering.
+ */
+export function mergeEscrowPages(pages: Escrow[][]): Escrow[] {
+  const byId = new Map<string, Escrow>();
+  for (const page of pages) {
+    for (const escrow of page) {
+      const key = String(escrow.id);
+      if (!byId.has(key)) byId.set(key, escrow);
+    }
+  }
+  return Array.from(byId.values()).sort(compareEscrows);
+}
+
 export default function EscrowsScreen() {
   const address = useWalletStore((s) => s.address)!;
   const [role, setRole] = useState<(typeof ROLES)[number]>('all');
   const [status, setStatus] = useState<(typeof STATUSES)[number]>('All');
 
-  const { data, isLoading, refetch } = useUserEscrows(address, role);
-  const escrows: Escrow[] = (data?.data ?? []).filter(
-    (e) => status === 'All' || e.status === status,
+  const { data, isLoading, refetch, isLoadingMore, hasMore, loadMore } = useUserEscrows(
+    address,
+    role,
   );
+
+  const escrows: Escrow[] = useMemo(() => {
+    const merged = mergeEscrowPages(data?.pages ?? []);
+    return merged.filter((e) => status === 'All' || e.status === status);
+  }, [data, status]);
+
+  const handleEndReached = useCallback(() => {
+    if (hasMore && !isLoadingMore) loadMore();
+  }, [hasMore, isLoadingMore, loadMore]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -62,6 +105,22 @@ export default function EscrowsScreen() {
           <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#6366f1" />
         }
         renderItem={({ item }) => <EscrowCard escrow={item} userAddress={address} />}
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          escrows.length > 0 ? (
+            <View style={styles.footer}>
+              {isLoadingMore ? (
+                <>
+                  <ActivityIndicator size="small" color="#6366f1" />
+                  <Text style={styles.footerText}>Loading more…</Text>
+                </>
+              ) : !hasMore ? (
+                <Text style={styles.footerText}>No more escrows</Text>
+              ) : null}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
@@ -97,4 +156,12 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, color: '#9ca3af', fontWeight: '500' },
   chipTextActive: { color: '#fff' },
   list: { padding: 16, paddingBottom: 32 },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  footerText: { fontSize: 13, color: '#9ca3af', fontWeight: '500' },
 });
