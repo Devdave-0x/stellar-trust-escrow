@@ -23,52 +23,13 @@ import {
   buildApproveMilestoneTx,
   buildSubmitMilestoneTx,
   buildRaiseDisputeTx,
+  buildAddMilestoneTx,
   broadcastTransaction,
 } from '../../../lib/stellar';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const STELLAR_NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK;
 
-const PLACEHOLDER_ESCROW = {
-  id: 1,
-  title: 'Smart Contract Audit',
-  status: 'Active',
-  txHash: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
-  clientAddress: 'GABCD...1234',
-  freelancerAddress: 'GXYZ...5678',
-  totalAmount: '2,000 USDC',
-  remainingBalance: '1,500 USDC',
-  createdAt: '2025-03-01',
-  deadline: '2025-04-01',
-  transactionHash: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2',
-  terms: '',
-  evidenceHashes: [],
-  arbiterAddress: null,
-  disputeDescription: null,
-  milestones: [
-    {
-      id: 0,
-      title: 'Codebase Review',
-      amount: '500 USDC',
-      status: 'Approved',
-      submittedAt: '2025-03-05',
-    },
-    {
-      id: 1,
-      title: 'Vulnerability Report',
-      amount: '1,000 USDC',
-      status: 'Submitted',
-      submittedAt: '2025-03-12',
-    },
-    {
-      id: 2,
-      title: 'Final Sign-off',
-      amount: '500 USDC',
-      status: 'Pending',
-      submittedAt: null,
-    },
-  ],
-};
 
 function stellarExpertUrl(hash, type = 'tx') {
   const net = STELLAR_NETWORK === 'mainnet' ? 'public' : 'testnet';
@@ -85,12 +46,10 @@ export default function EscrowDetailPage({ params }) {
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
 
-  const { escrow: fetchedEscrow, isLoading, mutate } = useEscrow(id);
+  const { escrow: fetchedEscrow, isLoading, error, mutate } = useEscrow(id);
   const { address, signTx } = useWallet();
   const relativeTime = useRelativeTime(lastRefreshed);
   const { showToast } = useToast();
-
-  const escrow = fetchedEscrow ?? PLACEHOLDER_ESCROW;
 
   useEffect(() => {
     setLastRefreshed(new Date());
@@ -120,15 +79,16 @@ export default function EscrowDetailPage({ params }) {
     }
   };
 
-  const connectedRole = address
-    ? address === escrow.clientAddress
-      ? 'client'
-      : address === escrow.freelancerAddress
-        ? 'freelancer'
-        : address === escrow.arbiterAddress
-          ? 'arbiter'
-          : 'observer'
-    : 'observer';
+  const resolveRole = (escrowData) =>
+    address
+      ? address === escrowData.clientAddress
+        ? 'client'
+        : address === escrowData.freelancerAddress
+          ? 'freelancer'
+          : address === escrowData.arbiterAddress
+            ? 'arbiter'
+            : 'observer'
+      : 'observer';
 
   // Shows the new milestone status immediately and rolls back to the previous
   // escrow state (with the failure reason) if signing or broadcasting fails.
@@ -195,6 +155,33 @@ export default function EscrowDetailPage({ params }) {
     }
   };
 
+
+  const handleAddMilestone = async ({ title, descriptionHash, amount }) => {
+    if (!address) {
+      showToast('Please connect your wallet first', 'error');
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      const unsignedXdr = await buildAddMilestoneTx({
+        sourceAddress: address,
+        escrowId: BigInt(id).toString(),
+        title,
+        descriptionHash,
+        amount,
+      });
+      const signedXdr = await signTx(unsignedXdr);
+      await broadcastTransaction(signedXdr);
+      showToast('Milestone added', 'success');
+      await mutate();
+    } catch (err) {
+      showToast(err.message || 'Failed to add milestone', 'error');
+      throw err;
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
   if (isLoading && !fetchedEscrow) {
     return (
       <div className="flex items-center justify-center min-h-[40vh] text-gray-400">
@@ -202,6 +189,40 @@ export default function EscrowDetailPage({ params }) {
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="max-w-lg mx-auto space-y-4 text-center py-16">
+        <h1 className="text-xl font-semibold text-white">Unable to load escrow</h1>
+        <p className="text-gray-400 text-sm">{error.message || 'The request failed.'}</p>
+        <div className="flex justify-center gap-3">
+          <Button variant="secondary" onClick={handleRefresh} disabled={isRefreshing}>
+            {isRefreshing ? 'Retrying…' : 'Retry'}
+          </Button>
+          <Button variant="ghost" onClick={() => window.history.back()}>
+            Go back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!fetchedEscrow) {
+    return (
+      <div className="max-w-lg mx-auto space-y-4 text-center py-16">
+        <h1 className="text-xl font-semibold text-white">Escrow not found</h1>
+        <p className="text-gray-400 text-sm">No escrow exists for #{id}.</p>
+        <Button variant="secondary" onClick={() => window.history.back()}>
+          Back to explorer
+        </Button>
+      </div>
+    );
+  }
+
+  const escrow = fetchedEscrow;
+  const connectedRole = resolveRole(escrow);
+  const canAddMilestone =
+    connectedRole === 'client' && ['Active', 'Funded', 'InProgress'].includes(escrow.status);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -373,6 +394,8 @@ export default function EscrowDetailPage({ params }) {
                 onApprove={handleApproveMilestone}
                 onReject={handleRejectMilestone}
                 onSubmit={handleSubmitMilestone}
+                onAddMilestone={canAddMilestone ? handleAddMilestone : undefined}
+                canAdd={canAddMilestone}
               />
             </section>
           </ErrorBoundary>
