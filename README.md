@@ -702,3 +702,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-885 -->
 - #885: Prevent governance votes after proposal finalization
+
+<!-- handsoff-issue-886 -->
+- #886: Test quorum arithmetic at the exact threshold boundary
