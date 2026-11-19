@@ -31,6 +31,23 @@ const _NETWORK_PASSPHRASE =
     ? 'Public Global Stellar Network ; September 2015'
     : 'Test SDF Network ; September 2015';
 
+export function validateWalletNetwork(walletNetwork) {
+  const expected = _NETWORK;
+  const actual = String(walletNetwork || '').toLowerCase();
+  if (!actual) {
+    return { ok: false, expected, actual: 'unknown', error: 'Wallet network unavailable' };
+  }
+  if (actual !== expected) {
+    return {
+      ok: false,
+      expected,
+      actual,
+      error: `Wallet network (${actual}) does not match configured contract network (${expected})`,
+    };
+  }
+  return { ok: true, network: expected };
+}
+
 /**
  * Builds an unsigned `create_escrow` Soroban transaction XDR.
  *
