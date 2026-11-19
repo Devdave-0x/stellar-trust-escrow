@@ -699,3 +699,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-884 -->
 - #884: Specify governance proposal execution behavior when target calls fail
+
+<!-- handsoff-issue-885 -->
+- #885: Prevent governance votes after proposal finalization
