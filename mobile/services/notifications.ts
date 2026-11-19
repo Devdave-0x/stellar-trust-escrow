@@ -18,6 +18,9 @@ import { Platform } from 'react-native';
 import { storage, STORAGE_KEYS } from '../lib/storage';
 import { api } from '../lib/api';
 
+// Storage key tracking which account the current push token is associated with.
+const PUSH_TOKEN_ACCOUNT_KEY = 'PUSH_TOKEN_ACCOUNT';
+
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -63,6 +66,28 @@ export async function registerForPushNotifications(stellarAddress: string): Prom
   const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 
   const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+
+  const storedToken = storage.get(STORAGE_KEYS.PUSH_TOKEN);
+  const storedAccount = storage.get(PUSH_TOKEN_ACCOUNT_KEY);
+
+  // Idempotent: same token already registered for this account — skip backend call.
+  if (storedToken === token && storedAccount === stellarAddress) {
+    return token;
+  }
+
+  // Account switch or reinstall: remove the stale association before re-registering.
+  if (storedToken && storedAccount && storedAccount !== stellarAddress) {
+    try {
+      await api.delete('/api/notifications/push-token', {
+        address: storedAccount,
+        token: storedToken,
+      });
+    } catch (err) {
+      // Non-fatal — best-effort cleanup of the previous account's registration
+      console.warn('[Notifications] Failed to unregister previous token:', err);
+    }
+  }
+
   storage.set(STORAGE_KEYS.PUSH_TOKEN, token);
 
   // Register token with backend so it can send targeted pushes
@@ -72,12 +97,37 @@ export async function registerForPushNotifications(stellarAddress: string): Prom
       token,
       platform: Platform.OS,
     });
+    storage.set(PUSH_TOKEN_ACCOUNT_KEY, stellarAddress);
   } catch (err) {
     // Non-fatal — token stored locally, backend registration is best-effort
     console.warn('[Notifications] Failed to register token with backend:', err);
   }
 
   return token;
+}
+
+/**
+ * Unregisters the device's push token for the given account and clears the
+ * local token-to-account association. Call on logout.
+ */
+export async function unregisterForPushNotifications(stellarAddress: string): Promise<void> {
+  const token = storage.get(STORAGE_KEYS.PUSH_TOKEN);
+  const storedAccount = storage.get(PUSH_TOKEN_ACCOUNT_KEY);
+
+  if (token && storedAccount === stellarAddress) {
+    try {
+      await api.delete('/api/notifications/push-token', {
+        address: stellarAddress,
+        token,
+      });
+    } catch (err) {
+      // Non-fatal — local association is still cleared below
+      console.warn('[Notifications] Failed to unregister token with backend:', err);
+    }
+  }
+
+  storage.remove(STORAGE_KEYS.PUSH_TOKEN);
+  storage.remove(PUSH_TOKEN_ACCOUNT_KEY);
 }
 
 /**

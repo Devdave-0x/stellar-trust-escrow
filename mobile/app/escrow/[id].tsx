@@ -93,6 +93,57 @@ import EmptyState from '../../components/ui/EmptyState';
 import { truncateAddress, stroopsToXlm, explorerUrl } from '../../lib/stellar';
 import { authenticate, isBiometricEnabled } from '../../services/biometrics';
 
+const DUE_SOON_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+export type DeadlineStatus = 'expired' | 'due-soon' | 'upcoming';
+
+export interface DeadlineLabel {
+  status: DeadlineStatus;
+  label: string;
+}
+
+/**
+ * Convert a contract ledger timestamp to a Date.
+ * Contract timestamps are seconds since epoch (UTC); values already in
+ * milliseconds are passed through unchanged.
+ */
+export function ledgerTimestampToDate(timestamp: number | string): Date {
+  const value = typeof timestamp === 'string' ? Number(timestamp) : timestamp;
+  // Values below 1e12 are seconds since epoch; larger values are milliseconds.
+  const ms = value < 1e12 ? value * 1000 : value;
+  return new Date(ms);
+}
+
+/**
+ * Format a contract deadline for display, classifying it as expired,
+ * due soon (within 24h), or upcoming. Formatting uses the device timezone.
+ */
+export function formatDeadlineLabel(
+  timestamp: number | string,
+  now: number = Date.now(),
+): DeadlineLabel {
+  const date = ledgerTimestampToDate(timestamp);
+  const diff = date.getTime() - now;
+
+  if (diff <= 0) {
+    return { status: 'expired', label: 'Expired' };
+  }
+
+  const formatted = date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  if (diff <= DUE_SOON_THRESHOLD_MS) {
+    return { status: 'due-soon', label: `Due soon — ${formatted}` };
+  }
+
+  return { status: 'upcoming', label: formatted };
+}
+
 export default function EscrowDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const address = useWalletStore((s) => s.address);
@@ -193,8 +244,14 @@ export default function EscrowDetailScreen() {
             Remaining: {stroopsToXlm(escrow.remainingBalance)} XLM
           </Text>
           {escrow.deadline && (
-            <Text style={styles.deadline}>
-              Deadline: {new Date(escrow.deadline).toLocaleDateString()}
+            <Text
+              style={[
+                styles.deadline,
+                formatDeadlineLabel(escrow.deadline).status === 'expired' && styles.deadlineExpired,
+                formatDeadlineLabel(escrow.deadline).status === 'due-soon' && styles.deadlineDueSoon,
+              ]}
+            >
+              Deadline: {formatDeadlineLabel(escrow.deadline).label}
             </Text>
           )}
         </Card>
@@ -328,6 +385,8 @@ const styles = StyleSheet.create({
   amount: { fontSize: 32, fontWeight: '800', color: '#f9fafb', marginBottom: 4 },
   remaining: { fontSize: 13, color: '#6b7280' },
   deadline: { fontSize: 13, color: '#f59e0b', marginTop: 4 },
+  deadlineExpired: { color: '#ef4444' },
+  deadlineDueSoon: { color: '#f59e0b' },
   partiesCard: { marginBottom: 20 },
   partyRow: {
     flexDirection: 'row',
