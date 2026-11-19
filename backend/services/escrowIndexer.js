@@ -36,6 +36,23 @@ const getEscrowId = (event) => parseBigInt(event.topic?.[1]);
 const getMilestoneIndex = (value) => Number(parseBigInt(value));
 const hasEventValue = (event) => Array.isArray(event.value) && event.value.length > 0;
 
+/** Ledger → tx hash → operation index ordering (not RPC arrival order). */
+export function compareChainEventOrder(a, b) {
+  const ledgerA = Number(a.ledger ?? 0);
+  const ledgerB = Number(b.ledger ?? 0);
+  if (ledgerA !== ledgerB) return ledgerA - ledgerB;
+  const txA = String(a.txHash ?? '');
+  const txB = String(b.txHash ?? '');
+  if (txA !== txB) return txA.localeCompare(txB);
+  const opA = Number(a.id ?? a.eventIndex ?? 0);
+  const opB = Number(b.id ?? b.eventIndex ?? 0);
+  return opA - opB;
+}
+
+export function sortEventsByChainOrder(events) {
+  return [...events].sort(compareChainEventOrder);
+}
+
 // ── Redis ─────────────────────────────────────────────────────────────────────
 
 let _redis = null;
@@ -52,11 +69,84 @@ function getRedis() {
   return _redis;
 }
 
-async function persistCursor(ledger) {
-  await prisma.indexerState.update({
+async function persistCursor(ledger, txClient = prisma) {
+  await txClient.indexerState.update({
     where: { id: 1 },
     data: { lastProcessedLedger: BigInt(ledger) },
   });
+}
+
+/**
+ * Advance the indexer cursor only when every event in the batch projected successfully.
+ */
+export async function commitIndexerCheckpoint(ledger, processedCount) {
+  if (processedCount <= 0) return;
+  await prisma.$transaction([
+    prisma.indexerState.update({
+      where: { id: 1 },
+      data: { lastProcessedLedger: BigInt(ledger) },
+    }),
+  ]);
+}
+
+const RECONCILE_MAX = parseInt(process.env.INDEXER_RECONCILE_MAX || '50', 10);
+
+/**
+ * Bounded reconciliation when on-chain status disagrees with the DB projection.
+ */
+export async function reconcileIndexedEscrowState(escrowId, chainStatus, { ledger, txHash } = {}) {
+  const existing = await prisma.escrow.findUnique({
+    where: { id: escrowId },
+    select: { status: true, createdLedger: true },
+  });
+  if (!existing) {
+    return { repaired: false, reason: 'not_indexed', escrowId: String(escrowId), ledger, txHash };
+  }
+  if (existing.status === chainStatus) {
+    return { repaired: false, reason: 'match', escrowId: String(escrowId), ledger, txHash };
+  }
+  if (
+    existing.createdLedger != null &&
+    ledger != null &&
+    BigInt(ledger) < existing.createdLedger
+  ) {
+    return {
+      repaired: false,
+      reason: 'stale_chain_read',
+      escrowId: String(escrowId),
+      ledger,
+      indexedLedger: Number(existing.createdLedger),
+      txHash,
+    };
+  }
+  await prisma.escrow.updateMany({
+    where: { id: escrowId },
+    data: { status: chainStatus },
+  });
+  return {
+    repaired: true,
+    escrowId: String(escrowId),
+    from: existing.status,
+    to: chainStatus,
+    ledger,
+    txHash,
+  };
+}
+
+export async function reconcileIndexedEscrows(readChainStatus, escrowIds = []) {
+  const ids = escrowIds.slice(0, RECONCILE_MAX);
+  const results = [];
+  for (const escrowId of ids) {
+    const chain = await readChainStatus(escrowId);
+    if (!chain) continue;
+    results.push(
+      await reconcileIndexedEscrowState(escrowId, chain.status, {
+        ledger: chain.ledger,
+        txHash: chain.txHash,
+      }),
+    );
+  }
+  return results;
 }
 
 // ── ScVal helpers (raw JSON values from eventIndexer shape) ───────────────────
@@ -343,15 +433,27 @@ async function processWithRetry(event) {
  * @returns {Promise<number>} latest ledger sequence
  */
 export async function fetchAndProcessEvents(fromLedger) {
-  const events = await getContractEvents(fromLedger, CONTRACT_ID);
+  const events = sortEventsByChainOrder(await getContractEvents(fromLedger, CONTRACT_ID));
   const latest = await getLatestLedger();
+  let batchHighLedger = fromLedger;
 
-  for (const event of events) {
-    await processWithRetry(event);
-  }
-
-  if (events.length > 0) {
-    log.info({ message: 'indexer_events_processed', count: events.length, latestLedger: latest });
+  try {
+    for (const event of events) {
+      await processWithRetry(event);
+      batchHighLedger = Math.max(batchHighLedger, Number(event.ledger ?? fromLedger));
+    }
+    await commitIndexerCheckpoint(batchHighLedger, events.length);
+    if (events.length > 0) {
+      log.info({
+        message: 'indexer_events_processed',
+        count: events.length,
+        latestLedger: latest,
+        committedLedger: batchHighLedger,
+      });
+    }
+  } catch (err) {
+    log.error({ message: 'indexer_batch_projection_failed', error: err.message });
+    throw err;
   }
 
   return latest;
@@ -380,7 +482,6 @@ export async function startIndexer() {
       const latest = await fetchAndProcessEvents(cursor);
       if (latest > cursor) {
         cursor = latest;
-        await persistCursor(cursor);
       }
       backoff = 1000;
     } catch (err) {
@@ -397,6 +498,11 @@ export async function startIndexer() {
 export default {
   startIndexer,
   fetchAndProcessEvents,
+  compareChainEventOrder,
+  sortEventsByChainOrder,
+  commitIndexerCheckpoint,
+  reconcileIndexedEscrowState,
+  reconcileIndexedEscrows,
   dispatchEvent,
   handleEscrowCreated,
   handleMilestoneAdded,
