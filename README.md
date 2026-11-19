@@ -696,3 +696,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-880 -->
 - #880: Validate bridge attestations against the configured source chain and contract
+
+<!-- handsoff-issue-881 -->
+- #881: Prevent a bridge attestation from minting or registering the same transfer twice
