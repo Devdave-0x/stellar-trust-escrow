@@ -230,33 +230,109 @@ mod solvency_invariant_tests {
 
         let before = s.client.get_fund_info();
 
-        // Attempt unstake of 0 must be rejected (no stake exists), balance unchanged.
-        let _ = s.client.try_unstake(&contributor, &0_i128);
+        // Attempt unstake of 0 must be rejected (no stake exists), balance unchanged
+        let result = s.client.try_unstake(&contributor, &0_i128);
+        assert!(result.is_err(), "Zero unstake must be rejected");
         assert_solvency(&s);
 
         let after = s.client.get_fund_info();
         assert_eq!(before.current_balance, after.current_balance);
     }
 
-    /// Test invariant: pool remains solvent after max claim submission
+    /// Test invariant: simultaneous claims within reserves are all honored
     #[test]
-    fn test_max_claim_solvency() {
+    fn test_simultaneous_claims_within_reserves() {
         let s = setup();
         let contributor = Address::generate(&s.env);
-        let claimant = Address::generate(&s.env);
+        let governor1 = Address::generate(&s.env);
+        let governor2 = Address::generate(&s.env);
+        let claimant1 = Address::generate(&s.env);
+        let claimant2 = Address::generate(&s.env);
 
-        // Contribute max amount
-        mint(&s.env, &s.admin, &s.token_id, &contributor, 20_000);
-        s.client.contribute(&contributor, &15_000_i128);
+        // Fund the pool with enough reserves to cover both claims
+        mint(&s.env, &s.admin, &s.token_id, &contributor, 10_000);
+        s.client.contribute(&contributor, &5_000_i128);
         assert_solvency(&s);
 
-        // Submit claim at max cap
-        let desc = String::from_str(&s.env, "Max claim");
-        s.client.submit_claim(&claimant, &desc, &10_000_i128);
+        s.client.add_governor(&s.admin, &governor1);
+        s.client.add_governor(&s.admin, &governor2);
+
+        // Submit two overlapping claims that together fit within reserves
+        let desc1 = String::from_str(&s.env, "Overlapping loss A");
+        let claim1_id = s.client.submit_claim(&claimant1, &desc1, &1_000_i128);
+        let desc2 = String::from_str(&s.env, "Overlapping loss B");
+        let claim2_id = s.client.submit_claim(&claimant2, &desc2, &1_500_i128);
         assert_solvency(&s);
 
-        let info = s.client.get_fund_info();
-        assert_eq!(info.total_contributed, 15_000);
-        assert!(info.current_balance >= 0);
+        // Approve both claims
+        s.client.vote(&governor1, &claim1_id, &true);
+        s.client.vote(&governor2, &claim1_id, &true);
+        s.client.vote(&governor1, &claim2_id, &true);
+        s.client.vote(&governor2, &claim2_id, &true);
+        assert_solvency(&s);
+
+        // Execute both payouts; both must be honored
+        let initial_balance = s.client.get_fund_info().current_balance;
+        s.client.execute_payout(&claim1_id);
+        assert_solvency(&s);
+        s.client.execute_payout(&claim2_id);
+        assert_solvency(&s);
+
+        let final_info = s.client.get_fund_info();
+        assert_eq!(final_info.current_balance, initial_balance - 2_500);
+        assert_eq!(final_info.total_paid_out, 2_500);
+    }
+
+    /// Test invariant: overlapping claims exceeding reserves cannot overdraw the pool
+    #[test]
+    fn test_simultaneous_claims_exceeding_reserves() {
+        let s = setup();
+        let contributor = Address::generate(&s.env);
+        let governor1 = Address::generate(&s.env);
+        let governor2 = Address::generate(&s.env);
+        let claimant1 = Address::generate(&s.env);
+        let claimant2 = Address::generate(&s.env);
+
+        // Fund the pool with limited reserves
+        mint(&s.env, &s.admin, &s.token_id, &contributor, 2_000);
+        s.client.contribute(&contributor, &1_000_i128);
+        assert_solvency(&s);
+
+        s.client.add_governor(&s.admin, &governor1);
+        s.client.add_governor(&s.admin, &governor2);
+
+        // Submit two overlapping claims that together exceed reserves
+        let desc1 = String::from_str(&s.env, "Overlapping loss A");
+        let claim1_id = s.client.submit_claim(&claimant1, &desc1, &800_i128);
+        let desc2 = String::from_str(&s.env, "Overlapping loss B");
+        let claim2_id = s.client.submit_claim(&claimant2, &desc2, &800_i128);
+        assert_solvency(&s);
+
+        // Approve both claims
+        s.client.vote(&governor1, &claim1_id, &true);
+        s.client.vote(&governor2, &claim1_id, &true);
+        s.client.vote(&governor1, &claim2_id, &true);
+        s.client.vote(&governor2, &claim2_id, &true);
+        assert_solvency(&s);
+
+        // First payout succeeds and drains most of the reserves
+        s.client.execute_payout(&claim1_id);
+        assert_solvency(&s);
+
+        let after_first = s.client.get_fund_info();
+        assert_eq!(after_first.current_balance, 200);
+
+        // Second payout must be refused: it would overdraw the pool
+        let result = s.client.try_execute_payout(&claim2_id);
+        assert!(
+            result.is_err(),
+            "Payout exceeding reserves must be refused"
+        );
+
+        // Solvency invariant holds: reserves never went negative
+        assert_solvency(&s);
+        let final_info = s.client.get_fund_info();
+        assert_eq!(final_info.current_balance, 200);
+        assert_eq!(final_info.total_paid_out, 800);
     }
 }
