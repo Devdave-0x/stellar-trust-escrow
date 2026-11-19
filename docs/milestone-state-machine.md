@@ -100,18 +100,33 @@ milestone itself — no further status changes occur after those states.
 
 ## Transition Reference Table
 
-| From        | To          | Function                              | Auth required        |
-| ----------- | ----------- | ------------------------------------- | -------------------- |
-| _(none)_    | `Pending`   | `add_milestone`                       | Client               |
-| `Pending`   | `Submitted` | `submit_milestone`                    | Freelancer           |
-| `Rejected`  | `Submitted` | `submit_milestone`                    | Freelancer           |
-| `Submitted` | `Approved`  | `approve_milestone`                   | Client               |
-| `Submitted` | `Rejected`  | `reject_milestone`                    | Client               |
-| `Pending`   | `Disputed`  | `raise_dispute` (with `milestone_id`) | Client or Freelancer |
-| `Submitted` | `Disputed`  | `raise_dispute` (with `milestone_id`) | Client or Freelancer |
+This table is the reviewable source of truth for every public mutation that
+changes a milestone's status. It is kept in sync with the transition-matrix
+test in `contracts/escrow_contract/src/test.rs`
+(`test_milestone_transition_matrix`), which asserts each allowed transition
+succeeds and each disallowed transition returns `InvalidMilestoneState` (14).
+
+| From        | To          | Function                              | Caller role          | Effects                                                                 |
+| ----------- | ----------- | ------------------------------------- | -------------------- | ----------------------------------------------------------------------- |
+| _(none)_    | `Pending`   | `add_milestone`                       | Client               | Creates milestone, `status = Pending`, sequential id, escrow must be `Active` |
+| `Pending`   | `Submitted` | `submit_milestone`                    | Freelancer           | Sets `submitted_at`, emits `mil_sub`                                     |
+| `Rejected`  | `Submitted` | `submit_milestone`                    | Freelancer           | Sets `submitted_at`, emits `mil_sub`                                     |
+| `Submitted` | `Approved`  | `approve_milestone`                   | Client               | Transfers `amount` to freelancer, sets `resolved_at`, increments `approved_count`, may set escrow `Completed`, emits `mil_apr` + `funds_rel` |
+| `Submitted` | `Rejected`  | `reject_milestone`                    | Client               | Sets `resolved_at`, emits `mil_rej`; freelancer may resubmit             |
+| `Pending`   | `Disputed`  | `raise_dispute` (with `milestone_id`) | Client or Freelancer | Sets milestone `Disputed`, sets escrow `Disputed`, funds frozen          |
+| `Submitted` | `Disputed`  | `raise_dispute` (with `milestone_id`) | Client or Freelancer | Sets milestone `Disputed`, sets escrow `Disputed`, funds frozen          |
 
 `Approved` and `Disputed` have no outgoing transitions — they are
-terminal states for the milestone record.
+terminal states for the milestone record. `resolve_dispute` resolves the
+escrow but leaves disputed milestones `Disputed` in storage.
+
+### Disallowed transitions
+
+Any `submit_milestone`, `approve_milestone`, or `reject_milestone` call
+from a state not listed above returns `InvalidMilestoneState` (14).
+`raise_dispute` with a `milestone_id` whose milestone is `Approved`,
+`Rejected`, or already `Disputed` leaves the milestone status unchanged
+(the escrow-level status is still set to `Disputed`).
 
 ---
 
@@ -236,24 +251,18 @@ for mid in 0..meta.milestone_count {
 }
 ```
 
-Cancellation is **blocked** when any milestone is in `Submitted` or
-`Approved` state. This prevents the client from cancelling after the
-freelancer has submitted work or after funds have been approved but not
-yet released.
-
-States that **do not** block cancellation: `Pending`, `Rejected`, `Disputed`.
+Cancellation is **blocked** while any milestone is `Submitted` or
+`Approved`. `Pending`, `Rejected`, and `Disputed` milestones do not block
+cancellation.
 
 ---
 
 ## Terminal States
 
-| State       | Terminal? | Reason                                                       |
-| ----------- | --------- | ------------------------------------------------------------ |
-| `Pending`   | No        | Can transition to `Submitted` or `Disputed`.                 |
-| `Submitted` | No        | Can transition to `Approved`, `Rejected`, or `Disputed`.     |
-| `Approved`  | Yes       | Funds have been released. No further transitions.            |
-| `Rejected`  | No        | Freelancer can resubmit → `Submitted`.                       |
-| `Disputed`  | Yes       | Milestone is frozen. Resolution happens at the escrow level. |
-
-`Approved` and `Disputed` are terminal for the milestone record. Once a
-milestone reaches either state, its `status` field will not change again.
+| State      | Terminal? | Reason                                                              |
+| ---------- | --------- | ------------------------------------------------------------------- |
+| `Pending`  | No        | Can move to `Submitted` or `Disputed`.                              |
+| `Submitted`| No        | Can move to `Approved`, `Rejected`, or `Disputed`.                  |
+| `Approved` | Yes       | Funds released; no further milestone transitions.                   |
+| `Rejected` | No        | Freelancer may resubmit → `Submitted`.                              |
+| `Disputed` | Yes       | Frozen; `resolve_dispute` resolves escrow but leaves status intact. |
