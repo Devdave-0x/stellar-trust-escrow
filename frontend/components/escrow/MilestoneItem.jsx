@@ -3,41 +3,21 @@
  *
  * Renders a single milestone row with its status, amount,
  * and contextual action buttons based on the viewer's role.
- *
- * Action matrix:
- *  ┌──────────────┬─────────────────────────────────────────────┐
- *  │ Status       │ Client can         │ Freelancer can         │
- *  ├──────────────┼────────────────────┼────────────────────────┤
- *  │ Pending      │ —                  │ Submit Work            │
- *  │ Submitted    │ Approve / Reject   │ —                      │
- *  │ Approved     │ — (funds released) │ —                      │
- *  │ Rejected     │ —                  │ Submit Work (retry)    │
- *  └──────────────┴────────────────────┴────────────────────────┘
- *
- * @param {object}   props
- * @param {object}   props.milestone
- * @param {number}   props.index           — for display numbering
- * @param {'client'|'freelancer'|'observer'} props.role
- * @param {Function} props.onApprove(id)
- * @param {Function} props.onReject(id)
- * @param {Function} props.onSubmit(id)
- * @param {boolean}  props.isLast
- *
- * TODO (contributor — medium, Issue #40):
- * - Add confirmation modal before approve/reject
- * - Show tx hash link (Stellar Expert) after approval
- * - Add "View deliverable" link (IPFS hash)
- * - Handle loading state while tx is pending
  */
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import CurrencyAmount from '../ui/CurrencyAmount';
 import { useI18n } from '../../i18n/index.jsx';
 import { useToast } from '../../contexts/ToastContext';
+import {
+  contentGatewayUrl,
+  isPublishedDescriptionHash,
+  resolveVerifiedDescription,
+} from '../../lib/verifyDescriptionHash';
 
 export default function MilestoneItem({
   milestone,
@@ -49,8 +29,24 @@ export default function MilestoneItem({
   isLast,
 }) {
   const [isActing, setIsActing] = useState(false);
+  const [description, setDescription] = useState({ status: 'idle' });
   const { t, formatDate } = useI18n();
   const { showToast } = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isPublishedDescriptionHash(milestone.descriptionHash)) {
+      setDescription({ status: 'missing' });
+      return undefined;
+    }
+    setDescription({ status: 'loading' });
+    resolveVerifiedDescription(milestone.descriptionHash).then((result) => {
+      if (!cancelled) setDescription(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [milestone.descriptionHash]);
 
   const handleAction = async (actionFn, actionName) => {
     setIsActing(true);
@@ -65,7 +61,6 @@ export default function MilestoneItem({
     }
   };
 
-  // Determine which status icon to show in the timeline dot
   const dotColor =
     milestone.status === 'Approved'
       ? 'bg-emerald-500'
@@ -77,7 +72,6 @@ export default function MilestoneItem({
 
   return (
     <div className="relative flex gap-4">
-      {/* Timeline dot + connector */}
       <div className="flex flex-col items-center">
         <div
           className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ring-2 ring-gray-900 ${dotColor}`}
@@ -85,10 +79,8 @@ export default function MilestoneItem({
         {!isLast && <div className="w-px flex-1 bg-gray-800 mt-1 min-h-[24px]" />}
       </div>
 
-      {/* Content */}
       <div className="flex-1 pb-4">
         <div className="card space-y-3">
-          {/* Header */}
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
@@ -109,9 +101,8 @@ export default function MilestoneItem({
             </div>
           </div>
 
-          {/* TODO (contributor — Issue #40): show description / IPFS link */}
+          <DescriptionPanel description={description} hash={milestone.descriptionHash} />
 
-          {/* Action Buttons */}
           {!isActing ? (
             <ActionButtons
               status={milestone.status}
@@ -130,9 +121,48 @@ export default function MilestoneItem({
   );
 }
 
-/**
- * Renders the correct set of action buttons based on role + status.
- */
+function DescriptionPanel({ description, hash }) {
+  if (description.status === 'loading' || description.status === 'idle') {
+    return <p className="text-xs text-gray-600">Verifying description…</p>;
+  }
+  if (description.status === 'missing') {
+    return <p className="text-xs text-gray-600">Description not published on-chain.</p>;
+  }
+  if (description.status === 'mismatch') {
+    return (
+      <p className="text-xs text-red-400" role="alert">
+        Description hash mismatch — off-chain content was rejected.
+      </p>
+    );
+  }
+  if (description.status === 'timeout') {
+    return (
+      <div className="text-xs text-amber-400 space-y-1">
+        <p>Description gateway timed out. Escrow actions remain available.</p>
+        {contentGatewayUrl(hash) && (
+          <a
+            href={contentGatewayUrl(hash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-400 hover:text-indigo-300 underline"
+          >
+            Retry via gateway
+          </a>
+        )}
+      </div>
+    );
+  }
+  if (description.status === 'ok') {
+    return (
+      <div className="text-xs text-gray-300 space-y-1">
+        <p className="whitespace-pre-wrap">{description.text}</p>
+        <p className="font-mono break-all text-gray-500">{hash}</p>
+      </div>
+    );
+  }
+  return <p className="text-xs text-gray-600">Description unavailable.</p>;
+}
+
 function ActionButtons({ status, role, onApprove, onReject, onSubmit, t }) {
   if (role === 'client' && status === 'Submitted') {
     return (

@@ -2,19 +2,41 @@ import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { renderWithAppProviders } from '../test-utils';
 import EscrowDetailPage from '../../app/escrow/[id]/page';
 
-// Mock useEscrow so tests don't hit the network.
 const mockMutate = jest.fn().mockResolvedValue(undefined);
+const liveEscrow = {
+  id: 1,
+  title: 'Smart Contract Audit',
+  status: 'Active',
+  txHash: 'abc123',
+  clientAddress: 'GCLIENT',
+  freelancerAddress: 'GFREELANCER',
+  totalAmount: '2,000 USDC',
+  remainingBalance: '1,500 USDC',
+  createdAt: '2025-03-01',
+  deadline: '2025-04-01',
+  transactionHash: 'txhash',
+  terms: '',
+  evidenceHashes: [],
+  arbiterAddress: null,
+  disputeDescription: null,
+  milestones: [
+    { id: 0, title: 'Codebase Review', amount: '500 USDC', status: 'Approved', submittedAt: '2025-03-05' },
+    { id: 1, title: 'Vulnerability Report', amount: '1,000 USDC', status: 'Submitted', submittedAt: '2025-03-12' },
+    { id: 2, title: 'Final Sign-off', amount: '500 USDC', status: 'Pending', submittedAt: null },
+  ],
+};
+
+let escrowMock = {
+  escrow: liveEscrow,
+  isLoading: false,
+  error: null,
+  mutate: mockMutate,
+};
 
 jest.mock('../../hooks/useEscrow', () => ({
-  useEscrow: () => ({
-    escrow: null, // page falls back to PLACEHOLDER_ESCROW
-    isLoading: false,
-    error: null,
-    mutate: mockMutate,
-  }),
+  useEscrow: () => escrowMock,
 }));
 
-// Mock components that require context providers not set up in tests.
 jest.mock(
   '../../components/ui/CurrencyAmount',
   () =>
@@ -41,12 +63,42 @@ const params = { id: '1' };
 
 beforeEach(() => {
   mockMutate.mockClear();
+  escrowMock = {
+    escrow: liveEscrow,
+    isLoading: false,
+    error: null,
+    mutate: mockMutate,
+  };
 });
 
 describe('EscrowDetailPage', () => {
-  it('renders escrow title', () => {
+  it('renders escrow title from API data', () => {
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     expect(screen.getByText('Smart Contract Audit')).toBeInTheDocument();
+  });
+
+  it('shows loading state', () => {
+    escrowMock = { escrow: null, isLoading: true, error: null, mutate: mockMutate };
+    renderWithAppProviders(<EscrowDetailPage params={params} />);
+    expect(screen.getByText(/Loading escrow/)).toBeInTheDocument();
+  });
+
+  it('shows error with retry', () => {
+    escrowMock = {
+      escrow: null,
+      isLoading: false,
+      error: new Error('boom'),
+      mutate: mockMutate,
+    };
+    renderWithAppProviders(<EscrowDetailPage params={params} />);
+    expect(screen.getByText(/Unable to load escrow/)).toBeInTheDocument();
+    expect(screen.getByText('Retry')).toBeInTheDocument();
+  });
+
+  it('shows not-found for unknown id', () => {
+    escrowMock = { escrow: null, isLoading: false, error: null, mutate: mockMutate };
+    renderWithAppProviders(<EscrowDetailPage params={params} />);
+    expect(screen.getByText(/Escrow not found/)).toBeInTheDocument();
   });
 
   it('renders escrow status badge', () => {
@@ -74,7 +126,6 @@ describe('EscrowDetailPage', () => {
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     fireEvent.click(screen.getByRole('button', { name: /Raise Dispute/ }));
     expect(screen.getByText('Raise Dispute')).toBeInTheDocument();
-    // 'Escrow #1' appears in both the page subtitle and the modal header
     expect(screen.getAllByText(/Escrow #1/).length).toBeGreaterThan(0);
   });
 
@@ -82,7 +133,6 @@ describe('EscrowDetailPage', () => {
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     fireEvent.click(screen.getByRole('button', { name: /Raise Dispute/ }));
     fireEvent.click(screen.getByText('Cancel'));
-    // Modal should close - the backdrop should be gone
     expect(screen.queryByText(/freeze all funds/)).not.toBeInTheDocument();
   });
 
@@ -104,7 +154,6 @@ describe('EscrowDetailPage', () => {
     expect(screen.getByText('Freelancer')).toBeInTheDocument();
   });
 
-  // Auto-refresh tests
   describe('auto-refresh', () => {
     it('shows last updated timestamp on mount', () => {
       renderWithAppProviders(<EscrowDetailPage params={params} />);
@@ -126,11 +175,9 @@ describe('EscrowDetailPage', () => {
 
     it('updates the last updated timestamp after a manual refresh', async () => {
       renderWithAppProviders(<EscrowDetailPage params={params} />);
-
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Refresh escrow data/ }));
       });
-
       await waitFor(() => expect(mockMutate).toHaveBeenCalledTimes(1));
       expect(screen.getByTestId('last-refreshed')).toHaveTextContent(/Last updated:/);
     });

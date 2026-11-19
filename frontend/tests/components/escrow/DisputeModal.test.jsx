@@ -64,3 +64,19 @@ describe('DisputeModal', () => {
     expect(screen.getByText('Confirm Dispute')).toBeInTheDocument();
   });
 });
+
+jest.mock('../../../lib/uploadEvidence', () => ({
+  uploadDisputeEvidence: jest.fn(),
+}));
+
+const { uploadDisputeEvidence } = require('../../../lib/uploadEvidence');
+
+describe('DisputeModal evidence upload', () => {
+  it('shows evidence file input', async () => {
+    uploadDisputeEvidence.mockResolvedValue('QmEvidenceHash');
+    renderWithAppProviders(
+      <DisputeModal isOpen onClose={jest.fn()} escrowId={42} />,
+    );
+    expect(screen.getByLabelText(/Evidence file/)).toBeInTheDocument();
+  });
+});
