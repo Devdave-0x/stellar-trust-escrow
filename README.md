@@ -693,3 +693,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-779 -->
 - #779: Add event completeness checks for partial release amount rounding
+
+<!-- handsoff-issue-880 -->
+- #880: Validate bridge attestations against the configured source chain and contract
