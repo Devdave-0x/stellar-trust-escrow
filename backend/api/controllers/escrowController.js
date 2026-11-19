@@ -52,6 +52,15 @@ const VALID_SORT_FIELDS = ['createdAt', 'totalAmount', 'status'];
 const VALID_SORT_ORDERS = ['asc', 'desc'];
 const VALID_ESCROW_STATUSES = new Set(['Draft', 'Active', 'Completed', 'Disputed', 'Cancelled']);
 
+export function buildStaleEscrowMutationError(currentStatus, expectedVersion) {
+  return {
+    code: 'ESCROW_CONFLICT',
+    error: 'Escrow state changed on chain; refresh before retrying.',
+    currentStatus,
+    expectedVersion,
+  };
+}
+
 const CSV_EXPORT_COLUMNS = [
   'id',
   'title',
@@ -462,11 +471,22 @@ const updateEscrowMetadata = async (req, res) => {
       return res.status(400).json({ error: patchValidation.error });
     }
 
+    const { expectedStatus, expectedVersion } = req.body ?? {};
     const escrow = await prisma.escrow.findUnique({
       where: { id },
-      select: { metadata: true, clientAddress: true, freelancerAddress: true },
+      select: { metadata: true, clientAddress: true, freelancerAddress: true, status: true, updatedAt: true },
     });
     if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+
+    if (expectedStatus && escrow.status !== expectedStatus) {
+      return res.status(409).json(buildStaleEscrowMutationError(escrow.status, expectedVersion));
+    }
+    if (
+      expectedVersion &&
+      new Date(escrow.updatedAt).toISOString() !== new Date(expectedVersion).toISOString()
+    ) {
+      return res.status(409).json(buildStaleEscrowMutationError(escrow.status, expectedVersion));
+    }
 
     const callerAddress = req.user?.address;
     const isAdmin = req.user?.role === 'admin' || req.user?.roles?.includes('admin');
