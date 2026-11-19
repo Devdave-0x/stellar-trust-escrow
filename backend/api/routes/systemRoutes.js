@@ -24,4 +24,6 @@ router.use(requireAdmin);
  */
 router.get('/shutdown-status', systemController.getShutdownStatus);
 
+router.get('/readiness', systemController.getReadiness);
+
 export default router;

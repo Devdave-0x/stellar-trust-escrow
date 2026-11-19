@@ -74,6 +74,25 @@ async function logMigration(version, name) {
   );
 }
 
+/** Apply a list of migrations idempotently (safe to rerun after partial failure). */
+export async function applyMigrationsIdempotent(migrations = [], { dryRun = false } = {}) {
+  await ensureMigrationLog();
+  const applied = new Set(await getApplied());
+  const client = dryRun ? createDryRunPrisma(prisma) : prisma;
+  const executed = [];
+  for (const migration of migrations) {
+    if (applied.has(migration.version)) continue;
+    if (typeof migration.up === 'function') {
+      await migration.up(client);
+    }
+    if (!dryRun) {
+      await logMigration(migration.version, migration.name);
+    }
+    executed.push(migration.version);
+  }
+  return { executed };
+}
+
 async function unlogMigration(version) {
   await prisma.$executeRawUnsafe(
     `UPDATE _migration_log SET rolled_back = TRUE WHERE version = $1`,

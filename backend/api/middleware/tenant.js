@@ -77,9 +77,28 @@ async function findTenant(req, database = prisma) {
   });
 }
 
+export function resolveAuthenticatedTenantId(req) {
+  return req.user?.tenantId || req.auth?.tenantId || null;
+}
+
+/** Reject header/query tenant spoofing when auth already defines tenant scope. */
+export function assertTenantFromAuthenticatedContext(req, res) {
+  const authTenant = resolveAuthenticatedTenantId(req);
+  const headerTenant = typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : null;
+  if (authTenant && headerTenant && headerTenant !== authTenant) {
+    res.status(403).json({
+      error: 'Tenant mismatch',
+      code: 'TENANT_CONTEXT_CONFLICT',
+    });
+    return false;
+  }
+  return true;
+}
+
 export function createTenantMiddleware({ database = prisma, logger = log } = {}) {
   return async function tenantMiddleware(req, res, next) {
   try {
+    if (!assertTenantFromAuthenticatedContext(req, res)) return;
     const tenant = await findTenant(req, database);
 
     if (!tenant) {
