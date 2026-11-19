@@ -693,3 +693,12 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-779 -->
 - #779: Add event completeness checks for partial release amount rounding
+
+<!-- handsoff-issue-880 -->
+- #880: Validate bridge attestations against the configured source chain and contract
+
+<!-- handsoff-issue-881 -->
+- #881: Prevent a bridge attestation from minting or registering the same transfer twice
+
+<!-- handsoff-issue-882 -->
+- #882: Keep pending wrapped assets unusable until bridge finalization
