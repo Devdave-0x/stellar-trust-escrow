@@ -693,3 +693,15 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-779 -->
 - #779: Add event completeness checks for partial release amount rounding
+
+<!-- handsoff-issue-883 -->
+- #883: Test bridge settlement when the external proof is delayed or unavailable
+
+<!-- handsoff-issue-884 -->
+- #884: Specify governance proposal execution behavior when target calls fail
+
+<!-- handsoff-issue-885 -->
+- #885: Prevent governance votes after proposal finalization
+
+<!-- handsoff-issue-886 -->
+- #886: Test quorum arithmetic at the exact threshold boundary
