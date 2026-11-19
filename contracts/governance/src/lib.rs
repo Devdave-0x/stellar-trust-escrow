@@ -1182,7 +1182,7 @@ impl GovernanceContract {
         {
             return Err(GovError::NotArbitrator);
         }
-        arbitrators::registry_add(&env, &arbitrator);
+        arbitrators::registry_add(&env, &arbitrator).map_err(|_| GovError::InvalidParameter)?;
         Ok(())
     }
 
@@ -1198,7 +1198,7 @@ impl GovernanceContract {
         if caller != admin {
             return Err(GovError::AdminOnly);
         }
-        arbitrators::registry_remove(&env, &arbitrator);
+        arbitrators::registry_remove(&env, &arbitrator).map_err(|_| GovError::InvalidParameter)?;
         Ok(())
     }
 
@@ -1265,6 +1265,6 @@ impl GovernanceContract {
 
     /// Returns whether `address` is in the selection registry.
     pub fn is_in_registry(env: Env, address: Address) -> bool {
-        arbitrators::registry_contains(&env, &address)
+        arbitrators::registry_contains(&env, &address).unwrap_or(false)
     }
 }

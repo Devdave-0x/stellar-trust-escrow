@@ -130,25 +130,27 @@ fn save_panel(env: &Env, panel: &ArbitratorPanel) {
 // ── Registry management ───────────────────────────────────────────────────────
 
 /// Add `arb` to the registry. No-op if already present.
-pub fn registry_add(env: &Env, arb: &Address) {
+pub fn registry_add(env: &Env, arb: &Address) -> Result<(), ArbError> {
     let mut list = get_registry(env);
     for i in 0..list.len() {
-        if list.get(i).unwrap() == *arb {
-            return;
+        let entry = list.get(i).ok_or(ArbError::InvalidSlotIndex)?;
+        if entry == *arb {
+            return Ok(());
         }
     }
     list.push_back(arb.clone());
     set_registry(env, &list);
     env.events()
         .publish((symbol_short!("arb_add"), arb.clone()), ());
+    Ok(())
 }
 
 /// Remove `arb` from the registry.
-pub fn registry_remove(env: &Env, arb: &Address) {
+pub fn registry_remove(env: &Env, arb: &Address) -> Result<(), ArbError> {
     let list = get_registry(env);
     let mut new_list: Vec<Address> = Vec::new(env);
     for i in 0..list.len() {
-        let a = list.get(i).unwrap();
+        let a = list.get(i).ok_or(ArbError::InvalidSlotIndex)?;
         if a != *arb {
             new_list.push_back(a);
         }
@@ -156,17 +158,19 @@ pub fn registry_remove(env: &Env, arb: &Address) {
     set_registry(env, &new_list);
     env.events()
         .publish((symbol_short!("arb_rem"), arb.clone()), ());
+    Ok(())
 }
 
 /// Returns `true` if `arb` is in the registry.
-pub fn registry_contains(env: &Env, arb: &Address) -> bool {
+pub fn registry_contains(env: &Env, arb: &Address) -> Result<bool, ArbError> {
     let list = get_registry(env);
     for i in 0..list.len() {
-        if list.get(i).unwrap() == *arb {
-            return true;
+        let entry = list.get(i).ok_or(ArbError::InvalidSlotIndex)?;
+        if entry == *arb {
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
 // ── Dispute panel selection ───────────────────────────────────────────────────
@@ -343,7 +347,7 @@ fn rotate_slot(
     // Collect current panel members (to avoid re-selecting them)
     let mut current_members: Vec<Address> = Vec::new(env);
     for i in 0..panel.slots.len() {
-        let s = panel.slots.get(i).unwrap();
+        let s = panel.slots.get(i).ok_or(ArbError::InvalidSlotIndex)?;
         if s.status != SlotStatus::Rotated {
             current_members.push_back(s.arbitrator.clone());
         }
@@ -482,12 +486,12 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             let a = Address::generate(&env);
-            registry_add(&env, &a);
-            assert!(registry_contains(&env, &a));
+            registry_add(&env, &a).unwrap();
+            assert!(registry_contains(&env, &a).unwrap());
             assert_eq!(get_registry(&env).len(), 1);
 
-            registry_remove(&env, &a);
-            assert!(!registry_contains(&env, &a));
+            registry_remove(&env, &a).unwrap();
+            assert!(!registry_contains(&env, &a).unwrap());
             assert_eq!(get_registry(&env).len(), 0);
         });
     }
@@ -497,8 +501,8 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             let a = Address::generate(&env);
-            registry_add(&env, &a);
-            registry_add(&env, &a);
+            registry_add(&env, &a).unwrap();
+            registry_add(&env, &a).unwrap();
             assert_eq!(get_registry(&env).len(), 1);
         });
     }
@@ -511,8 +515,8 @@ mod arb_tests {
         env.as_contract(&id, || {
             let a = Address::generate(&env);
             let b = Address::generate(&env);
-            registry_add(&env, &a);
-            registry_add(&env, &b);
+            registry_add(&env, &a).unwrap();
+            registry_add(&env, &b).unwrap();
             // Only 2 arbitrators — need 3
             assert!(select_panel(&env, 1).is_none());
         });
@@ -523,7 +527,7 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             for _ in 0..5 {
-                registry_add(&env, &Address::generate(&env));
+                registry_add(&env, &Address::generate(&env)).unwrap();
             }
             let panel = select_panel(&env, 99).unwrap();
             assert_eq!(panel.slots.len(), PANEL_SIZE);
@@ -543,7 +547,7 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             for _ in 0..3 {
-                registry_add(&env, &Address::generate(&env));
+                registry_add(&env, &Address::generate(&env)).unwrap();
             }
             let panel = select_panel(&env, 1).unwrap();
             for i in 0..panel.slots.len() {
@@ -560,7 +564,7 @@ mod arb_tests {
                 let mut v = soroban_sdk::Vec::new(&env);
                 for _ in 0..3 {
                     let a = Address::generate(&env);
-                    registry_add(&env, &a);
+                    registry_add(&env, &a).unwrap();
                     v.push_back(a);
                 }
                 v
@@ -581,7 +585,7 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             for _ in 0..3 {
-                registry_add(&env, &Address::generate(&env));
+                registry_add(&env, &Address::generate(&env)).unwrap();
             }
             let panel = select_panel(&env, 10).unwrap();
             let arb = panel.slots.get(0).unwrap().arbitrator;
@@ -599,7 +603,7 @@ mod arb_tests {
         env.as_contract(&id, || {
             // 4 arbitrators so rotation has a replacement
             for _ in 0..4 {
-                registry_add(&env, &Address::generate(&env));
+                registry_add(&env, &Address::generate(&env)).unwrap();
             }
             let panel = select_panel(&env, 20).unwrap();
             let original = panel.slots.get(0).unwrap().arbitrator.clone();
@@ -619,7 +623,7 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             for _ in 0..4 {
-                registry_add(&env, &Address::generate(&env));
+                registry_add(&env, &Address::generate(&env)).unwrap();
             }
             select_panel(&env, 30).unwrap();
             // Deadline hasn't passed yet
@@ -633,7 +637,7 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             for _ in 0..4 {
-                registry_add(&env, &Address::generate(&env));
+                registry_add(&env, &Address::generate(&env)).unwrap();
             }
             select_panel(&env, 40).unwrap();
 
@@ -653,12 +657,22 @@ mod arb_tests {
         let (env, id) = mk_env();
         env.as_contract(&id, || {
             for _ in 0..3 {
-                registry_add(&env, &Address::generate(&env));
+                registry_add(&env, &Address::generate(&env)).unwrap();
             }
             select_panel(&env, 50).unwrap();
             let outsider = Address::generate(&env);
             let result = accept_arbitration(&env, 50, &outsider);
             assert_eq!(result, Err(ArbError::NotPanelMember));
         });
+    }
+
+    #[test]
+    fn test_registry_missing_index_returns_invalid_slot_index() {
+        let env = Env::default();
+        let list: Vec<Address> = Vec::new(&env);
+        assert_eq!(
+            list.get(0).ok_or(ArbError::InvalidSlotIndex),
+            Err(ArbError::InvalidSlotIndex),
+        );
     }
 }
