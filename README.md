@@ -693,3 +693,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-779 -->
 - #779: Add event completeness checks for partial release amount rounding
+
+<!-- handsoff-issue-883 -->
+- #883: Test bridge settlement when the external proof is delayed or unavailable
