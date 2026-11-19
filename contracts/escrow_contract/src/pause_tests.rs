@@ -247,4 +247,44 @@ mod pause_tests {
         assert!(has_paused, "paused event must be emitted");
         assert!(has_unpaused, "unpaused event must be emitted");
     }
+
+  #[test]
+  fn test_emergency_pause_authorization_rejects_escrow_privileged_roles() {
+        let (env, admin, _, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 1030);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &1000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &Some(arbiter.clone()),
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+        let _ = escrow_id;
+
+        for role in [&client_addr, &freelancer, &arbiter] {
+            let result = client.try_pause(role, &String::from_str(&env, "unauthorized"));
+            assert!(result.is_err(), "role {:?} must not pause", role);
+        }
+        assert!(!client.is_paused());
+
+        client.pause(&admin, &String::from_str(&env, "maintenance"));
+        assert!(client.is_paused());
+
+        let has_paused_event = env.events().all().iter().any(|event| {
+            let topics = event.1;
+            !topics.is_empty()
+                && Symbol::try_from_val(&env, &topics.get_unchecked(0)).ok()
+                    == Some(soroban_sdk::symbol_short!("paused"))
+        });
+        assert!(has_paused_event, "authorized pause must emit a single auditable event");
+    }
 }
