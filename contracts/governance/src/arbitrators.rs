@@ -667,12 +667,41 @@ mod arb_tests {
     }
 
     #[test]
-    fn test_registry_missing_index_returns_invalid_slot_index() {
+    fn test_registry_contains_missing_index_returns_typed_error() {
+        // Mirrors registry_contains: a missing Vec entry maps to InvalidSlotIndex
+        // rather than panicking via unwrap (#695).
         let env = Env::default();
         let list: Vec<Address> = Vec::new(&env);
-        assert_eq!(
-            list.get(0).ok_or(ArbError::InvalidSlotIndex),
-            Err(ArbError::InvalidSlotIndex),
-        );
+        let result: Result<bool, ArbError> = list
+            .get(0)
+            .ok_or(ArbError::InvalidSlotIndex)
+            .map(|entry| entry == Address::generate(&env));
+        assert_eq!(result, Err(ArbError::InvalidSlotIndex));
+    }
+
+    #[test]
+    fn test_registry_remove_missing_index_returns_typed_error() {
+        // Mirrors registry_remove: a missing Vec entry maps to InvalidSlotIndex
+        // rather than panicking via unwrap (#696).
+        let env = Env::default();
+        let list: Vec<Address> = Vec::new(&env);
+        let result: Result<(), ArbError> = list.get(0).ok_or(ArbError::InvalidSlotIndex).map(|_| ());
+        assert_eq!(result, Err(ArbError::InvalidSlotIndex));
+    }
+
+    #[test]
+    fn test_registry_contains_and_remove_success_path() {
+        let (env, id) = mk_env();
+        env.as_contract(&id, || {
+            let a = Address::generate(&env);
+            let b = Address::generate(&env);
+            registry_add(&env, &a).unwrap();
+            registry_add(&env, &b).unwrap();
+            assert_eq!(registry_contains(&env, &a).unwrap(), true);
+            assert_eq!(registry_contains(&env, &Address::generate(&env)).unwrap(), false);
+            registry_remove(&env, &a).unwrap();
+            assert_eq!(registry_contains(&env, &a).unwrap(), false);
+            assert_eq!(registry_contains(&env, &b).unwrap(), true);
+        });
     }
 }
