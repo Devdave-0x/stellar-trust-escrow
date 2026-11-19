@@ -699,3 +699,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-888 -->
 - #888: Verify insurance claims cannot exceed the eligible contribution basis
+
+<!-- handsoff-issue-889 -->
+- #889: Make insurance payout retries idempotent after an uncertain response
