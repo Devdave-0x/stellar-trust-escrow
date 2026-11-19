@@ -696,3 +696,6 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 
 <!-- handsoff-issue-875 -->
 - #875: Prevent admin pause from blocking user withdrawals needed for safety
+
+<!-- handsoff-issue-876 -->
+- #876: Require an explicit network identifier in signed transaction payloads
