@@ -62,6 +62,37 @@ import { useWalletStore } from '../store/app-store';
 
 const FREIGHTER_INSTALL_URL = 'https://www.freighter.app/';
 
+/**
+ * Error thrown when the user intentionally rejects/cancels a wallet action.
+ * Callers can check `err.isCancellation === true` (or `instanceof`) to
+ * preserve form state and avoid showing a misleading chain-failure alert.
+ */
+export class WalletCancellationError extends Error {
+  constructor(message = 'Transaction signing was cancelled.') {
+    super(message);
+    this.name = 'WalletCancellationError';
+    this.isCancellation = true;
+  }
+}
+
+/**
+ * Detects whether an error from Freighter represents an intentional user
+ * rejection/cancellation rather than a genuine signing failure.
+ */
+export function isUserRejection(err) {
+  if (!err) return false;
+  if (err.isCancellation === true) return true;
+
+  const code = err.code ?? err.error?.code ?? err.status;
+  if (code === 4001 || code === '4001') return true;
+
+  const message = String(err.message ?? err.error?.message ?? err ?? '');
+  return /user (rejected|declined|cancell?ed)|rejected by user|request rejected|user closed/i.test(
+    message,
+  );
+}
+=======
+
 export function useWallet() {
   const {
     address,
@@ -162,11 +193,10 @@ export function useWallet() {
 
         return signedXdr;
       } catch (err) {
-        const message =
-          err.message === 'User rejected signing'
-            ? 'Transaction signing was cancelled.'
-            : `Signing failed: ${err.message}`;
-        throw new Error(message);
+        if (isUserRejection(err)) {
+          throw new WalletCancellationError();
+        }
+        throw new Error(`Signing failed: ${err.message}`);
       }
     },
     [isConnected, network, address],

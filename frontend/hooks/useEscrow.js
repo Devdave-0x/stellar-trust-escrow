@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 
@@ -15,11 +15,35 @@ const DEFAULT_PAGE_LIMIT = 20;
 const USER_ESCROWS_LIMIT = 50;
 
 /**
+ * Build a stable key identifying a single wallet action so that repeated
+ * invocations (double-clicks, re-renders, refreshes) can be deduplicated.
+ *
+ * @param {{ escrowId?: number|string, action?: string, milestoneId?: number|string }} parts
+ * @returns {string}
+ */
+export function walletActionKey({ escrowId, action, milestoneId } = {}) {
+  return [escrowId ?? '', action ?? '', milestoneId ?? ''].join(':');
+}
+
+/**
  * Fetch a single escrow by ID.
  * Polls every 30 seconds; pauses automatically when the page is hidden.
  *
+ * Also exposes `submitWalletAction`, a wrapper that locks the given action
+ * while its transaction is pending so double-clicks and refreshes cannot
+ * submit the same wallet action twice. The lock is cleared and the escrow is
+ * refreshed (via `mutate`) once the transaction confirms or fails.
+ *
  * @param {number|string} id — escrow_id
- * @returns {{ escrow: object|null, isLoading: boolean, error: Error|null, mutate: Function }}
+ * @returns {{
+ *   escrow: object|null,
+ *   isLoading: boolean,
+ *   error: Error|null,
+ *   mutate: Function,
+ *   pendingActions: Set<string>,
+ *   isActionPending: (parts: object) => boolean,
+ *   submitWalletAction: (parts: object, submit: Function) => Promise<any>,
+ * }}
  */
 export function useEscrow(id) {
   const { data, error, isLoading, mutate } = useSWR(
@@ -30,7 +54,55 @@ export function useEscrow(id) {
       refreshWhenHidden: false, // pause polling when page is not visible
     },
   );
-  return { escrow: data, isLoading, error, mutate };
+
+  // In-flight wallet actions keyed by walletActionKey(). A ref backs the
+  // synchronous guard (state updates are async and would let a fast
+  // double-click slip through), while state drives re-renders for the UI.
+  const inFlightRef = useRef(new Set());
+  const [pendingActions, setPendingActions] = useState(() => new Set());
+
+  const isActionPending = useCallback(
+    (parts) => inFlightRef.current.has(walletActionKey(parts)),
+    [],
+  );
+
+  const submitWalletAction = useCallback(
+    async (parts, submit) => {
+      const key = walletActionKey(parts);
+      // Already pending (e.g. double-click or a refresh that re-triggers the
+      // action): ignore the duplicate and do not submit another transaction.
+      if (inFlightRef.current.has(key)) return undefined;
+
+      inFlightRef.current.add(key);
+      setPendingActions(new Set(inFlightRef.current));
+
+      try {
+        const result = await submit();
+        return result;
+      } finally {
+        // Reconcile after confirmation or failure: release the lock and
+        // refresh the escrow so the UI settles on a clear final state.
+        inFlightRef.current.delete(key);
+        setPendingActions(new Set(inFlightRef.current));
+        try {
+          await mutate();
+        } catch {
+          // Refresh failures must not mask the original submit outcome.
+        }
+      }
+    },
+    [mutate],
+  );
+
+  return {
+    escrow: data,
+    isLoading,
+    error,
+    mutate,
+    pendingActions,
+    isActionPending,
+    submitWalletAction,
+  };
 }
 
 /**
