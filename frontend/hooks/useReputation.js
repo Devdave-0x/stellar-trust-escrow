@@ -14,6 +14,8 @@
 
 'use client';
 
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 const BADGE_THRESHOLDS = {
   ELITE: 1000,
   EXPERT: 500,
@@ -42,30 +44,136 @@ function buildReputationError(reason) {
 }
 
 /**
- * @param {string|null} address — Stellar public key
- * @returns {{ reputation: object|null, badge: string, isLoading: boolean, error: Error|null }}
+ * Resolves the configured reputation API base URL.
+ * Falls back to an empty string when no configuration is present.
  *
- * TODO (contributor — Issue #39): replace stub with SWR fetch
+ * @returns {string}
+ */
+function getApiBaseUrl() {
+  const base =
+    typeof process !== 'undefined' && process.env
+      ? process.env.NEXT_PUBLIC_API_URL
+      : undefined;
+  return typeof base === 'string' ? base.replace(/\/+$/, '') : '';
+}
+
+/**
+ * @param {string|null} address — Stellar public key
+ * @returns {{
+ *   reputation: object|null,
+ *   badge: string,
+ *   isLoading: boolean,
+ *   error: Error|null,
+ *   isUnavailable: boolean,
+ * }}
  */
 export function useReputation(address) {
-  if (!address) {
-    return {
-      reputation: null,
-      badge: 'NEW',
-      isLoading: false,
-      error: null,
-    };
-  }
-
   const trimmedAddress = typeof address === 'string' ? address.trim() : '';
-  const error = trimmedAddress
-    ? buildReputationError('reputation service integration is not implemented yet')
-    : buildReputationError('a valid Stellar address is required');
+
+  const [reputation, setReputation] = useState(null);
+  const [isLoading, setIsLoading] = useState(Boolean(trimmedAddress));
+  const [error, setError] = useState(null);
+  const [isUnavailable, setIsUnavailable] = useState(false);
+
+  const requestIdRef = useRef(0);
+
+  const load = useCallback(async (targetAddress) => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
+    setReputation(null);
+    setError(null);
+    setIsUnavailable(false);
+    setIsLoading(true);
+
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) {
+      if (requestIdRef.current !== requestId) return;
+      setIsLoading(false);
+      setIsUnavailable(true);
+      setError(buildReputationError('reputation source is not configured'));
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${baseUrl}/reputation/${encodeURIComponent(targetAddress)}`,
+        { headers: { Accept: 'application/json' } }
+      );
+
+      if (requestIdRef.current !== requestId) return;
+
+      if (response.status === 404) {
+        setIsLoading(false);
+        setIsUnavailable(true);
+        setError(buildReputationError('no reputation record found'));
+        return;
+      }
+
+      if (!response.ok) {
+        setIsLoading(false);
+        setIsUnavailable(true);
+        setError(
+          buildReputationError(`reputation source responded with ${response.status}`)
+        );
+        return;
+      }
+
+      const data = await response.json();
+
+      if (requestIdRef.current !== requestId) return;
+
+      if (!data || typeof data !== 'object' || typeof data.score !== 'number') {
+        setIsLoading(false);
+        setIsUnavailable(true);
+        setError(buildReputationError('reputation record is missing or malformed'));
+        return;
+      }
+
+      setIsLoading(false);
+      setIsUnavailable(false);
+      setError(null);
+      setReputation(data);
+    } catch (err) {
+      if (requestIdRef.current !== requestId) return;
+      setIsLoading(false);
+      setIsUnavailable(true);
+      setError(
+        buildReputationError(
+          err && err.message ? err.message : 'reputation source is offline'
+        )
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!trimmedAddress) {
+      requestIdRef.current += 1;
+      setReputation(null);
+      setIsLoading(false);
+      setError(null);
+      setIsUnavailable(false);
+      return;
+    }
+
+    load(trimmedAddress);
+
+    return () => {
+      // Invalidate any in-flight request for this address.
+      requestIdRef.current += 1;
+    };
+  }, [trimmedAddress, load]);
+
+  const badge =
+    reputation && typeof reputation.score === 'number'
+      ? getBadgeFromScore(reputation.score)
+      : 'NEW';
 
   return {
-    reputation: null,
-    badge: 'NEW',
-    isLoading: false,
+    reputation,
+    badge,
+    isLoading,
     error,
+    isUnavailable,
   };
 }

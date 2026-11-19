@@ -1,8 +1,34 @@
 /**
  * Footer Component
- * TODO (contributor — easy, Issue #38): add real links and contract address display
+ * Links to the deployed contract on Stellar Expert are built from the
+ * active network configuration so testnet/mainnet point to the matching
+ * explorer. Unknown networks render a safe disabled state (no link).
  */
+import { getNetworkConfig } from '@/lib/network';
+
+const EXPLORER_BASE_URLS = {
+  testnet: 'https://stellar.expert/explorer/testnet',
+  mainnet: 'https://stellar.expert/explorer/public',
+  public: 'https://stellar.expert/explorer/public',
+};
+
+function resolveExplorerBaseUrl(network) {
+  if (!network || typeof network !== 'string') return null;
+  const key = network.toLowerCase();
+  return EXPLORER_BASE_URLS[key] || null;
+}
+
 export default function Footer() {
+  const config = getNetworkConfig();
+  const network = config?.network;
+  const contractId = config?.contractId;
+  const explorerBaseUrl = resolveExplorerBaseUrl(network);
+
+  const contractHref =
+    explorerBaseUrl && contractId
+      ? `${explorerBaseUrl}/contract/${contractId}`
+      : null;
+
   return (
     <footer className="border-t border-gray-800 py-6 mt-12">
       <div className="container mx-auto px-4 max-w-7xl flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-gray-500">
@@ -17,10 +43,23 @@ export default function Footer() {
           <a href="/docs" className="hover:text-white transition-colors">
             Docs
           </a>
-          {/* TODO (contributor): link to deployed contract on Stellar Expert */}
-          <span className="text-gray-700">Contract: —</span>
+          {contractHref ? (
+            <a
+              href={contractHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors"
+            >
+              Contract: {contractId}
+            </a>
+          ) : (
+            <span className="text-gray-700" aria-disabled="true">
+              Contract: —
+            </span>
+          )}
         </div>
       </div>
     </footer>
   );
 }
+</｜｜DSML｜｜ parameter>
