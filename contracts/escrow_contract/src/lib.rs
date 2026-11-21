@@ -9799,3 +9799,214 @@ mod tests {
         }
     }
 }
+
+
+// BEGIN REGRESSION TESTS FOR #855 #856 #857 #861
+#[cfg(test)]
+mod issues_855_856_857_861_tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
+
+    fn setup() -> (
+        Env,
+        Address,
+        Address,
+        EscrowContractClient<'static>,
+        Address,
+        Address,
+        Address,
+    ) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let contract = EscrowContractClient::new(&env, &contract_id);
+        contract.initialize(&admin);
+        // Isolate principal conservation from platform-fee accounting.
+        // This scenario intentionally uses a zero-fee tier; rent is excluded.
+        let mut zero_fee_tiers = Vec::new(&env);
+        zero_fee_tiers.push_back(FeeTier { min_total_amount: 0, fee_bps: 0 });
+        contract.set_platform_fee_tiers(&admin, &zero_fee_tiers);
+        let buyer = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &10_000);
+        (env, admin, contract_id, contract, buyer, freelancer, token_id)
+    }
+
+    fn policy(env: &Env, signers: &[Address], weights: &[u32], threshold: u32) -> MultisigConfig {
+        let mut approvers = Vec::new(env);
+        let mut configured_weights = Vec::new(env);
+        for signer in signers {
+            approvers.push_back(signer.clone());
+        }
+        for weight in weights {
+            configured_weights.push_back(*weight);
+        }
+        MultisigConfig { approvers, weights: configured_weights, threshold }
+    }
+
+    fn create(
+        env: &Env,
+        contract: &EscrowContractClient,
+        buyer: &Address,
+        freelancer: &Address,
+        token_id: &Address,
+        config: &MultisigConfig,
+        arbiter: &Option<Address>,
+    ) -> u64 {
+        contract.create_escrow(
+            buyer, freelancer, token_id, &1_000,
+            &BytesN::from_array(env, &[71; 32]), arbiter,
+            &None, &None, &None, config,
+        )
+    }
+
+    /// Funds include the escrow principal only: prepaid storage rent is excluded.
+    /// Measure actual token transfers since funding, including platform fees.
+    fn assert_conserved(
+        contract: &EscrowContractClient,
+        token_client: &token::Client<'_>,
+        escrow_id: u64,
+        buyer: &Address,
+        freelancer: &Address,
+        treasury: &Address,
+        baseline: (i128, i128, i128),
+    ) {
+        let state = contract.get_escrow(&escrow_id);
+        let refunded = token_client.balance(buyer) - baseline.0;
+        let released = token_client.balance(freelancer) - baseline.1;
+        let fees = token_client.balance(treasury) - baseline.2;
+        assert!(refunded >= 0 && released >= 0 && fees >= 0);
+        assert_eq!(
+            1_000_i128,
+            refunded + released + fees + state.remaining_balance,
+            "funding must equal refunds + payouts + fees + still locked",
+        );
+    }
+
+    #[test]
+    fn weighted_signer_creation_rejects_duplicates_overflow_and_unreachable_thresholds() {
+        let (env, _admin, _contract_id, contract, buyer, freelancer, token_id) = setup();
+        let other = Address::generate(&env);
+        let valid = policy(&env, &[buyer.clone(), other.clone()], &[100, 200], 300);
+        assert_eq!(ContractStorage::validate_multisig_config(1_000, &valid), Ok(()));
+
+        let duplicate = policy(&env, &[buyer.clone(), buyer.clone()], &[1, 1], 2);
+        let overflow = policy(&env, &[buyer.clone(), other.clone()], &[u32::MAX, 1], 1);
+        let unreachable = policy(&env, &[buyer.clone(), other.clone()], &[1, 1], 3);
+        let zero_threshold = policy(&env, &[buyer.clone(), other.clone()], &[1, 1], 0);
+        for bad in [&duplicate, &overflow, &unreachable, &zero_threshold] {
+            assert_eq!(
+                contract.try_create_escrow(
+                    &buyer, &freelancer, &token_id, &1_000,
+                    &BytesN::from_array(&env, &[71; 32]), &None,
+                    &None, &None, &None, bad,
+                ),
+                Err(Ok(EscrowError::InvalidMultisigConfig)),
+            );
+            assert_eq!(contract.escrow_count(), 0, "invalid creation must not write escrow");
+        }
+
+        // The inclusive u32 limit and threshold == total weight are valid.
+        let max_total = policy(&env, &[buyer.clone(), other], &[u32::MAX - 1, 1], u32::MAX);
+        assert_eq!(ContractStorage::validate_multisig_config(1_000, &max_total), Ok(()));
+        let id = create(&env, &contract, &buyer, &freelancer, &token_id, &valid, &None);
+        let state = contract.get_escrow(&id);
+        assert_eq!(state.multisig_threshold, 300);
+        assert_eq!(state.multisig_weights, valid.weights);
+        assert_eq!(contract.escrow_count(), 1);
+    }
+
+    #[test]
+    fn release_retry_does_not_pay_twice_or_emit_another_release() {
+        use soroban_sdk::testutils::Events as _;
+        let (env, admin, contract_id, contract, buyer, freelancer, token_id) = setup();
+        let id = create(&env, &contract, &buyer, &freelancer, &token_id,
+            &policy(&env, &[], &[], 0), &None);
+        let first = contract.add_milestone(
+            &buyer, &id, &String::from_str(&env, "First"),
+            &BytesN::from_array(&env, &[72; 32]), &400,
+        );
+        contract.add_milestone(
+            &buyer, &id, &String::from_str(&env, "Second"),
+            &BytesN::from_array(&env, &[73; 32]), &600,
+        );
+        // Model an approved-but-not-yet-released milestone (admin fallback path).
+        env.as_contract(&contract_id, || {
+            let mut milestone = ContractStorage::load_milestone(&env, id, first).unwrap();
+            milestone.status = MS_APPROVED;
+            ContractStorage::save_milestone(&env, id, &milestone);
+        });
+        let token_client = token::Client::new(&env, &token_id);
+        contract.release_funds(&admin, &id, &first);
+        assert_eq!(token_client.balance(&freelancer), 400);
+        assert_eq!(contract.get_milestone(&id, &first).status, MS_RELEASED);
+        let balance_after_first = contract.get_escrow(&id).remaining_balance;
+        let event_count = env.events().all().len();
+
+        assert_eq!(contract.try_release_funds(&admin, &id, &first), Err(Ok(EscrowError::E14)));
+        assert_eq!(token_client.balance(&freelancer), 400);
+        assert_eq!(contract.get_escrow(&id).remaining_balance, balance_after_first);
+        assert_eq!(contract.get_milestone(&id, &first).status, MS_RELEASED);
+        assert_eq!(env.events().all().len(), event_count);
+    }
+
+    #[test]
+    fn conservation_when_all_milestones_are_released() {
+        let (env, admin, _contract_id, contract, buyer, freelancer, token_id) = setup();
+        let id = create(&env, &contract, &buyer, &freelancer, &token_id,
+            &policy(&env, &[], &[], 0), &None);
+        let token_client = token::Client::new(&env, &token_id);
+        let baseline = (token_client.balance(&buyer), token_client.balance(&freelancer),
+            token_client.balance(&admin));
+        let mid = contract.add_milestone(&buyer, &id, &String::from_str(&env, "Complete"),
+            &BytesN::from_array(&env, &[74; 32]), &1_000);
+        contract.submit_milestone(&freelancer, &id, &mid);
+        contract.approve_milestone(&buyer, &id, &mid);
+        assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Completed);
+        assert_conserved(&contract, &token_client, id, &buyer, &freelancer, &admin, baseline);
+    }
+
+    #[test]
+    fn conservation_after_partial_release_then_cancellation() {
+        let (env, admin, _contract_id, contract, buyer, freelancer, token_id) = setup();
+        let id = create(&env, &contract, &buyer, &freelancer, &token_id,
+            &policy(&env, &[], &[], 0), &None);
+        let token_client = token::Client::new(&env, &token_id);
+        let baseline = (token_client.balance(&buyer), token_client.balance(&freelancer),
+            token_client.balance(&admin));
+        let first = contract.add_milestone(&buyer, &id, &String::from_str(&env, "First"),
+            &BytesN::from_array(&env, &[75; 32]), &400);
+        contract.add_milestone(&buyer, &id, &String::from_str(&env, "Second"),
+            &BytesN::from_array(&env, &[76; 32]), &600);
+        contract.submit_milestone(&freelancer, &id, &first);
+        contract.approve_milestone(&buyer, &id, &first);
+        assert_conserved(&contract, &token_client, id, &buyer, &freelancer, &admin, baseline);
+        contract.cancel_escrow(&buyer, &id);
+        assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Cancelled);
+        assert_conserved(&contract, &token_client, id, &buyer, &freelancer, &admin, baseline);
+    }
+
+    #[test]
+    fn conservation_after_dispute_resolution() {
+        let (env, admin, _contract_id, contract, buyer, freelancer, token_id) = setup();
+        let arbiter = Address::generate(&env);
+        contract.register_arbiter(&admin, &arbiter);
+        let id = create(&env, &contract, &buyer, &freelancer, &token_id,
+            &policy(&env, &[], &[], 0), &Some(arbiter.clone()));
+        let token_client = token::Client::new(&env, &token_id);
+        let baseline = (token_client.balance(&buyer), token_client.balance(&freelancer),
+            token_client.balance(&admin));
+        let mid = contract.add_milestone(&buyer, &id, &String::from_str(&env, "Disputed"),
+            &BytesN::from_array(&env, &[77; 32]), &1_000);
+        contract.submit_milestone(&freelancer, &id, &mid);
+        contract.raise_dispute(&buyer, &id, &Some(mid));
+        assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Disputed);
+        assert_conserved(&contract, &token_client, id, &buyer, &freelancer, &admin, baseline);
+        contract.resolve_dispute(&arbiter, &id, &350, &650);
+        assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Completed);
+        assert_conserved(&contract, &token_client, id, &buyer, &freelancer, &admin, baseline);
+    }
+}
+// END REGRESSION TESTS FOR #855 #856 #857 #861
