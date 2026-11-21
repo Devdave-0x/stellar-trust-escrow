@@ -1,0 +1,51 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  migration-smoke:
+    name: Migration & Rollback Smoke Check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smoke_db
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smoke_db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Forward migration
+        run: npm run db:migrate:up -w backend
+      - name: Snapshot schema
+        run: pg_dump -s "$DATABASE_URL" > /tmp/schema-up.sql
+      - name: Rollback and re-apply
+        run: |
+          npm run db:migrate:down -w backend
+          npm run db:migrate:up -w backend
+      - name: Fail on schema drift
+        run: |
+          pg_dump -s "$DATABASE_URL" > /tmp/schema-reup.sql
+          diff -u /tmp/schema-up.sql /tmp/schema-reup.sql
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel backend/database/schema.prisma --exit-code
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: migration-smoke
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: bash scripts/deploy.sh

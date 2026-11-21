@@ -1,0 +1,42 @@
+name: Release Contract Artifacts
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-artifacts:
+    name: Build WASM with checksums
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup show
+      - name: Build WASM
+        working-directory: contracts
+        run: cargo build --workspace --release --target wasm32-unknown-unknown
+      - name: Generate checksums and release metadata
+        run: |
+          mkdir -p dist
+          cp contracts/target/wasm32-unknown-unknown/release/*.wasm dist/
+          cd dist
+          sha256sum *.wasm > SHA256SUMS
+          {
+            echo "commit_sha=${GITHUB_SHA}"
+            echo "rustc=$(rustc --version)"
+            echo "cargo=$(cargo --version)"
+          } > release-metadata.txt
+          cat SHA256SUMS release-metadata.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: contract-artifacts-${{ github.sha }}
+          path: dist/
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
