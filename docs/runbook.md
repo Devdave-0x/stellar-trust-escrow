@@ -557,3 +557,39 @@ redis-cli lrange bull:webhookQueue:failed 0 -1  # inspect
 ---
 
 *This runbook covers the Node.js API, BullMQ workers, PostgreSQL, Redis, and the Soroban smart contract layer. For contract-specific emergency procedures see `docs/EMERGENCY_PAUSE.md`. For backup and restore procedures see `scripts/backup.sh --help`.*
+
+---
+
+## 8. Incident Drill: suspected unauthorized escrow administration
+
+Run this drill quarterly. Never paste secret keys, seeds or API tokens into tickets,
+chat or the incident doc — reference them by name only (e.g. "admin key in vault slot X").
+
+### 8.1 Classify
+
+- **Alert** — an anomaly (unexpected admin event, monitoring alert, user report) not yet
+  tied to a non-authorized signer. Proceed to inspect; do not notify users yet.
+- **Confirmed compromise** — an admin action was signed by a key or party not in the
+  approved admin list, or an authorized holder denies performing it. Proceed to pause.
+
+### 8.2 Pause
+
+On confirmed compromise (or an alert with funds at risk), call the contract `pause`
+entry point from a trusted admin signer and confirm the paused state on-chain.
+
+### 8.3 Inspect admin events
+
+Query indexed admin events (admin changes, pause/unpause, fee or arbiter updates) for
+the incident window; compare each signer against the approved admin list.
+
+### 8.4 Preserve evidence
+
+Export the event list, transaction hashes, ledger numbers and relevant logs to the
+incident folder (`docs/incidents/`), with hashes of exported files. Do not rotate or
+delete logs until export is complete.
+
+### 8.5 Notify affected users
+
+For confirmed compromise only: identify affected escrows from step 3 and notify their
+parties with the scope, actions taken and next steps. Alerts that are closed as false
+positives are recorded internally without user notification.
