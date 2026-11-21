@@ -54,3 +54,18 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  contract-auth-matrix:
+    name: Contract Authorization Matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run unauthorized caller tests per role
+        working-directory: contracts
+        run: |
+          for role in client freelancer arbiter admin unrelated; do
+            echo "::group::$role"
+            cargo test --workspace -- unauthorized "$role"
+            echo "::endgroup::"
+          done
