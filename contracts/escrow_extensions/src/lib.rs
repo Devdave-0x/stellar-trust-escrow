@@ -327,20 +327,27 @@ impl EscrowExtensions {
             .get(&DataKey::FeeRecipients)
             .unwrap_or_else(|| Vec::new(&env));
 
+        if recipients.is_empty() {
+            return Err(ExtError::InvalidRecipient);
+        }
         let token_client = token::Client::new(&env, &token);
         let mut distributed: i128 = 0;
-
-        for r in recipients.iter() {
-            let share = balance.checked_mul(i128::from(r.share_bps)).unwrap_or(0) / 10_000;
+        for (i, r) in recipients.iter().enumerate() {
+            // #867: All earlier shares are floored; the final recipient
+            // receives the deterministic remainder (no rounding dust).
+            let share = if (i as u32) + 1 == recipients.len() {
+                balance - distributed
+            } else {
+                balance.checked_mul(i128::from(r.share_bps))
+                    .ok_or(ExtError::InvalidFeeBps)? / 10_000
+            };
             if share > 0 {
                 token_client.transfer(&env.current_contract_address(), &r.address, &share);
                 distributed += share;
             }
         }
-
-        // Clear balance (any dust stays due to integer division)
-        let dust = balance - distributed;
-        env.storage().persistent().set(&key, &dust);
+        // All fee units were paid, including integer-division remainder.
+        env.storage().persistent().set(&key, &0_i128);
         bump_persistent(&env, &key);
 
         events::emit_fee_distributed(&env, &token, distributed);
@@ -797,3 +804,66 @@ mod tests;
 
 #[cfg(test)]
 mod finality_tests;
+
+// Drips issue #867 integer remainder coverage
+#[cfg(test)]
+mod fee_remainder_boundary_tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, token, Env, Vec};
+
+    #[test]
+    fn uneven_shares_assign_all_rounding_remainder_to_last_recipient() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let contract = env.register_contract(None, EscrowExtensions);
+        let client = EscrowExtensionsClient::new(&env, &contract);
+        client.initialize(&admin, &100_u32);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let mut recipients = Vec::new(&env);
+        let a = Address::generate(&env);
+        let b = Address::generate(&env);
+        let c = Address::generate(&env);
+        recipients.push_back(FeeRecipient { address: a.clone(), share_bps: 5_000 });
+        recipients.push_back(FeeRecipient { address: b.clone(), share_bps: 3_000 });
+        recipients.push_back(FeeRecipient { address: c.clone(), share_bps: 2_000 });
+        client.set_fee_recipients(&admin, &recipients);
+        // One percent of 1,100 yields 11 token units, an uneven split.
+        let (_net, fee) = client.collect_fee(&1_u64, &token_id, &1_100_i128);
+        assert_eq!(fee, 11);
+        token::StellarAssetClient::new(&env, &token_id).mint(&contract, &fee);
+        let distributed = client.distribute_fees(&token_id);
+        let token_client = token::Client::new(&env, &token_id);
+        // 11*50% = 5, 11*30% = 3, final recipient gets 2 + 1 remainder.
+        assert_eq!(token_client.balance(&a), 5);
+        assert_eq!(token_client.balance(&b), 3);
+        assert_eq!(token_client.balance(&c), 3);
+        assert_eq!(token_client.balance(&a) + token_client.balance(&b) + token_client.balance(&c), fee);
+        assert_eq!(distributed, fee);
+        assert_eq!(client.get_fee_balance(&token_id), 0);
+    }
+
+    #[test]
+    fn tiny_fee_is_not_lost_to_truncation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let contract = env.register_contract(None, EscrowExtensions);
+        let client = EscrowExtensionsClient::new(&env, &contract);
+        client.initialize(&admin, &100_u32);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let a = Address::generate(&env);
+        let b = Address::generate(&env);
+        let mut recipients = Vec::new(&env);
+        recipients.push_back(FeeRecipient { address: a.clone(), share_bps: 7_000 });
+        recipients.push_back(FeeRecipient { address: b.clone(), share_bps: 3_000 });
+        client.set_fee_recipients(&admin, &recipients);
+        client.collect_fee(&1_u64, &token_id, &100_i128); // 1 unit total fee
+        token::StellarAssetClient::new(&env, &token_id).mint(&contract, &1);
+        assert_eq!(client.distribute_fees(&token_id), 1);
+        let token_client = token::Client::new(&env, &token_id);
+        assert_eq!(token_client.balance(&a), 0);
+        assert_eq!(token_client.balance(&b), 1);
+        assert_eq!(client.get_fee_balance(&token_id), 0);
+    }
+}
