@@ -69,3 +69,16 @@ StellarTrustEscrow operates as a data controller for off-chain user data (email,
 - Data Protection Officer: dpo@stellartrustescrow.example.com
 - Privacy inquiries: privacy@stellartrustescrow.example.com
 - Supervisory authority: [Your local DPA]
+
+## Data-flow map: KYC and dispute evidence retention
+
+| Layer | KYC identity data | Dispute evidence | Access | Deletion |
+| --- | --- | --- | --- | --- |
+| **Browser** | Entered in forms and sent directly to the KYC provider; not persisted in local storage | Files held in memory only until upload | The user | Cleared on page unload |
+| **API** | Receives provider verification status/reference only, never raw documents | Streams uploads to storage; stores metadata (hash, uploader, escrow id) | Authenticated parties; admins via audited endpoints | Metadata deleted with the record per retention schedule |
+| **Storage provider** | Raw documents held by the KYC provider under its own retention terms | Encrypted evidence objects | Escrow parties and assigned arbiter | Removed after dispute resolution plus retention period, or on valid erasure request |
+| **Logs** | Must not contain PII; IDs and status only | Object keys/hashes only, never content | Operators | Rotated per log retention policy |
+| **Backups** | Contain status/reference fields only | Encrypted copies of metadata/objects | Restricted ops staff | Expire with backup rotation; erased data is not restored to live systems |
+
+Deletion requests are applied to live systems immediately and propagate to
+backups as they age out.
