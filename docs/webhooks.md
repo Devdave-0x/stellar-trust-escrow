@@ -486,3 +486,30 @@ Pagination accepts `?page=<n>&limit=<n>` (max `limit` is 100, default 30).
 | View delivery history  | `GET /api/webhooks/:id/deliveries`   | Paginated; shows all attempts and outcomes   |
 
 All endpoints require a `Bearer` token in the `Authorization` header.
+
+## Operator checklist: rotating signing secrets
+
+The service holds exactly **one secret per subscription** and never re-issues
+it. Rotation is therefore staged: create a second subscription, let receivers
+accept both secrets during an overlap window, then delete the old one.
+
+1. **Prepare receiver.** Deploy receivers that verify `X-Webhook-Signature`
+   against a list of accepted secrets (old first, new second). Use
+   `crypto.timingSafeEqual` for every comparison.
+2. **Create new subscription** for the same URL and events. Store the returned
+   `secret` in your secret manager immediately — it is shown once.
+3. **Add new secret** to the receiver's accepted list and redeploy.
+4. **Verify the overlap window.** Each event is now delivered twice (once per
+   subscription). Confirm in receiver logs that deliveries signed with *both*
+   secrets verify, and that dedupe on `X-Webhook-Delivery`/event id is working.
+   Keep the overlap until at least one delivery per subscribed event type has
+   verified with the new secret.
+5. **Delete old subscription.** Then remove the old secret from receivers.
+6. **Confirm** only one subscription remains and new deliveries verify.
+
+**Rollback** (any verification failure during steps 3–5):
+
+- Do not delete the old subscription; if already deleted, re-create it and
+  redistribute that new secret.
+- Delete the new subscription and remove its secret from receivers.
+- Revoke the new secret in your secret manager and record the incident.

@@ -159,3 +159,32 @@ it starts from `INDEXER_START_LEDGER` in `.env`.
 | #27   | Implement `startIndexer`, `fetchAndProcessEvents`, `dispatchEvent`, and all event handlers |
 | #43   | Implement `stellarService.getContractEvents`                                               |
 | #42   | This documentation file (you're reading it!)                                               |
+
+## Runbook: indexer lag recovery and cursor reset
+
+### 1. Diagnose
+
+| Symptom | Classification |
+| --- | --- |
+| Indexed ledger trails network tip but is advancing; projections consistent | **Transient lag** |
+| Cursor stuck or advancing while rows are missing, duplicated, or contradict on-chain state | **Corrupted projection** |
+
+Compare the stored cursor with the latest ledger from Horizon/RPC, and spot-check
+a few escrows against contract state.
+
+### 2. Transient lag (non-destructive)
+
+- Check RPC health, rate limits, and DB latency; scale or switch RPC endpoint.
+- Let the indexer catch up from its current cursor. **Do not reset the cursor.**
+
+### 3. Corrupted projection (destructive)
+
+1. **Pause** the indexer (scale to zero / stop the worker) so no writes race the reset.
+2. **Back up first — mandatory.** Take a database snapshot (`pg_dump`) of the
+   projection tables and the cursor row, and verify the backup is restorable.
+   Never proceed with a reset without a verified backup.
+3. **Reset** the cursor to the last ledger known to be consistent (or the
+   contract deployment ledger) and truncate/delete projection rows after it.
+4. **Replay** from the reset cursor; handlers must be idempotent.
+5. **Resume** normal operation, then re-verify spot-checked escrows and lag metrics.
+   If verification fails, restore from the backup and escalate.

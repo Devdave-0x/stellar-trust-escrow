@@ -157,3 +157,21 @@ soroban contract invoke \
   --id $CONTRACT_ADDRESS \
   -- get_admin
 ```
+
+## Wallet transaction recovery (end users)
+
+Status terms below match the UI. **Never share your secret key or recovery
+phrase** — TrustChain staff and support will never ask for them.
+
+| UI status | What happened | What to do |
+| --- | --- | --- |
+| **Rejected** | You declined the request in your wallet. Nothing was submitted. | Retry the action and approve it in the wallet. |
+| **Timed out** | The wallet did not respond before the request expired. | Unlock the wallet, check the network (Testnet/Mainnet) matches, and retry. |
+| **Pending** | The transaction was submitted and awaits ledger confirmation. | Wait; do not resubmit. Check the transaction hash on a Stellar explorer. |
+| **Confirmed** | Included in a ledger. | No action needed. |
+| **Failed** | Submitted but rejected by the network. | Read the error shown, fix (e.g. balance/fees), then retry. |
+
+**Lost browser session** (tab closed or refreshed mid-transaction): reconnect
+your wallet, open the escrow, and check its current status before retrying. If
+a hash was shown, look it up on an explorer — if it confirmed, do not submit
+again.
