@@ -1968,9 +1968,17 @@ components:
   schemas:
     ErrorResponse:
       type: object
+      description: |
+        Error envelope returned by the global error handler (`backend/server.js`).
+        Retryability is determined by HTTP status: 429, 502, 503 and 504 are
+        retryable with backoff (honour `Retry-After` when present); 400, 401,
+        403, 404, 409 and 422 are not retryable without changing the request;
+        500 may be retried once and should be reported with `errorId`.
+      required: [error]
       properties:
         error:
           type: string
+          description: Human-readable error message (`err.message`, or `Internal server error`).
           example: Something went wrong
         errorId:
           type: string
