@@ -9,6 +9,7 @@
 #   bash scripts/start-sandbox.sh           # start + deploy + fund wallets
 #   bash scripts/start-sandbox.sh --reset   # tear down volumes first
 #   bash scripts/start-sandbox.sh --stop    # stop all containers
+#   bash scripts/start-sandbox.sh --smoke   # clean start, verify ledger, tear down
 #
 # Prerequisites:
 #   docker, docker compose, soroban-cli (cargo install soroban-cli)
@@ -27,9 +28,11 @@ FRONTEND_ENV="$REPO_ROOT/frontend/.env.local"
 
 RESET=false
 STOP=false
+SMOKE=false
 for arg in "$@"; do
   [[ "$arg" == "--reset" ]] && RESET=true
   [[ "$arg" == "--stop"  ]] && STOP=true
+  [[ "$arg" == "--smoke" ]] && { SMOKE=true; RESET=true; }
 done
 
 # ── Stop ──────────────────────────────────────────────────────────────────────
@@ -63,6 +66,16 @@ for i in $(seq 1 60); do
   [[ $i -eq 60 ]] && { echo "❌  Horizon did not start in time."; exit 1; }
   sleep 2
 done
+
+# ── Smoke mode: verify known ledger state, then tear down ─────────────────────
+
+if [[ "$SMOKE" == "true" ]]; then
+  trap '(cd "$REPO_ROOT" && docker compose rm -sf stellar) >/dev/null 2>&1; docker volume rm "$(basename "$REPO_ROOT")_stellar_data" >/dev/null 2>&1 || true' EXIT
+  LEDGER=$(curl -sf "$HORIZON_URL/" | python3 -c "import json,sys; print(json.load(sys.stdin).get('history_latest_ledger', 0))")
+  [[ "$LEDGER" -ge 1 ]] || { echo "❌  Ledger not advancing (latest=$LEDGER)"; exit 1; }
+  echo "✅  Smoke check passed: ledger $LEDGER reached. Tearing down…"
+  exit 0
+fi
 
 # ── Configure soroban-cli network ─────────────────────────────────────────────
 
