@@ -24,6 +24,12 @@ const forceReseed = args.includes('--force');
 const countIdx = args.indexOf('--count');
 const extraCount = countIdx !== -1 ? Math.max(0, parseInt(args[countIdx + 1] ?? '0', 10)) : 0;
 
+const runtimeEnvironment = String(process.env.NODE_ENV || process.env.APP_ENV || '').toLowerCase();
+if (runtimeEnvironment === 'production') {
+  console.error('Seed refused: scripts/seed.js is for non-production environments only.');
+  process.exit(1);
+}
+
 if (isDryRun) console.log('🔍  Dry-run mode — no writes will occur\n');
 
 const SEED_DATA = {

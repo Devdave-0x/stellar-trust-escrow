@@ -25,6 +25,15 @@ npm run ios        # iOS simulator
 npm run android    # Android emulator
 ```
 
+## Supported networks and wallets
+
+| Client | Network | Wallet/signing path | Minimum version |
+| --- | --- | --- | --- |
+| Web | Stellar testnet | Freighter | Current supported browser |
+| Mobile | Stellar testnet | LOBSTR or Solar Wallet via copied XDR | Expo SDK 52 |
+
+The app must reject an unsupported network before signing or broadcasting. Mainnet use requires explicit deployment configuration and a separately reviewed wallet flow.
+
 ## Building for Production
 
 Requires [EAS CLI](https://docs.expo.dev/eas/):
