@@ -27,6 +27,28 @@ export const ALLOWED_MIME_TYPES = [
 
 export const ENTITY_TYPES = ['escrow', 'milestone', 'dispute', 'note'];
 
+const SIGNATURE_MIME = [
+  { mime: 'application/pdf', magic: [0x25, 0x50, 0x44, 0x46] },
+  { mime: 'image/jpeg', magic: [0xff, 0xd8, 0xff] },
+  { mime: 'image/png', magic: [0x89, 0x50, 0x4e, 0x47] },
+  { mime: 'application/zip', magic: [0x50, 0x4b, 0x03, 0x04] },
+];
+
+export function detectMimeFromBytes(buffer) {
+  if (!buffer?.length) return null;
+  const hit = SIGNATURE_MIME.find(({ magic }) => magic.every((b, i) => buffer[i] === b));
+  return hit?.mime ?? null;
+}
+
+export function enforceAttachmentRequestLimits(req, res) {
+  const rawLen = req.headers['content-length'];
+  if (rawLen && Number(rawLen) > MAX_ATTACHMENT_SIZE_BYTES) {
+    res.status(413).json({ error: 'Attachment exceeds maximum upload size.' });
+    return false;
+  }
+  return true;
+}
+
 const DOWNLOAD_URL_TTL_SECONDS = 15 * 60;
 
 /** Strips path-traversal and other unsafe characters from an uploaded filename. */
@@ -42,11 +64,15 @@ const sanitizeFilename = (filename) => {
  */
 const uploadAttachment = async (req, res) => {
   try {
+    if (!enforceAttachmentRequestLimits(req, res)) return;
     if (!req.file) {
       return res.status(400).json({ error: 'A file is required.' });
     }
     if (req.file.size === 0) {
       return res.status(422).json({ error: 'The uploaded file is empty.' });
+    }
+    if (req.file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+      return res.status(413).json({ error: 'Attachment exceeds maximum upload size.' });
     }
 
     const { entityType, entityId } = req.body;
@@ -59,6 +85,17 @@ const uploadAttachment = async (req, res) => {
       return res.status(400).json({ error: 'entityId is required.' });
     }
 
+    const sniffedMime = detectMimeFromBytes(req.file.buffer);
+    if (!sniffedMime || !ALLOWED_MIME_TYPES.includes(sniffedMime)) {
+      return res.status(415).json({ error: 'Unsupported attachment content type.' });
+    }
+    if (req.file.mimetype && req.file.mimetype !== sniffedMime) {
+      return res.status(415).json({
+        error: 'Client MIME header does not match file contents.',
+        detectedType: sniffedMime,
+      });
+    }
+
     const safeFilename = sanitizeFilename(req.file.originalname);
     const key = `attachments/${entityType}/${entityId}/${crypto.randomUUID()}-${safeFilename}`;
 
@@ -67,7 +104,7 @@ const uploadAttachment = async (req, res) => {
         Bucket: ATTACHMENTS_BUCKET,
         Key: key,
         Body: req.file.buffer,
-        ContentType: req.file.mimetype,
+        ContentType: sniffedMime,
       }),
     );
 
