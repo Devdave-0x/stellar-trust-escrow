@@ -99,60 +99,37 @@ export default function MilestoneList({
             </div>
           </div>
 
-          <div className="relative">
-            <div className="space-y-3">
-              {milestones.map((milestone, index) => (
-                <MilestoneItem
-                  key={milestone.id}
-                  milestone={milestone}
-                  index={index}
-                  role={role}
-                  onApprove={onApprove}
-                  onReject={onReject}
-                  onSubmit={onSubmit}
-                  isLast={index === milestones.length - 1}
-                />
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {showAdd ? (
-        <form onSubmit={handleAdd} className="card space-y-3" data-testid="add-milestone-form">
-          <h3 className="text-sm font-semibold text-white">Create next milestone</h3>
-          <input
-            aria-label="Milestone title"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-            placeholder="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={isAdding}
-          />
-          <input
-            aria-label="Description hash"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white font-mono"
-            placeholder="Description hash (64-hex)"
-            value={descriptionHash}
-            onChange={(e) => setDescriptionHash(e.target.value)}
-            disabled={isAdding}
-          />
-          <input
-            aria-label="Milestone amount"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-            placeholder="Amount (stroops)"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            disabled={isAdding}
-          />
-          {formError && <p className="text-xs text-red-400">{formError}</p>}
-          <Button type="submit" variant="primary" size="sm" disabled={isAdding}>
-            {isAdding ? 'Adding…' : 'Add milestone'}
-          </Button>
-        </form>
-      ) : role !== 'client' ? (
-        <p className="text-xs text-gray-600">Only the client can add milestones.</p>
-      ) : null}
+      {/* Milestone Items */}
+      <div className="relative">
+        {/* Vertical connector line */}
+        {/*
+          TODO (contributor — Issue #40):
+          Add an absolute positioned ::before line connecting items,
+          with color indicating overall progress
+        */}
+        <div className="space-y-3">
+          {milestones.map((milestone, index) => {
+            const milestoneLabel = `milestone ${index + 1}: ${milestone.title}`;
+            return (
+              <MilestoneItem
+                key={milestone.id}
+                milestone={milestone}
+                index={index}
+                role={role}
+                onApprove={onApprove}
+                onReject={onReject}
+                onSubmit={onSubmit}
+                isLast={index === milestones.length - 1}
+                actionLabels={{
+                  approve: `Approve ${milestoneLabel}`,
+                  reject: `Reject ${milestoneLabel}`,
+                  submit: `Submit ${milestoneLabel}`,
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
