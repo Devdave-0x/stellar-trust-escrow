@@ -411,6 +411,73 @@ export async function broadcastTransaction(signedXdr) {
 }
 
 /**
+ * User-facing label and allowed actions for every escrow contract status.
+ *
+ * Keys must match the contract `EscrowStatus` enum exactly. Unknown or
+ * future status values fall back to `UNKNOWN_STATUS` so the UI never
+ * renders an undefined label or offers actions it cannot perform.
+ *
+ * @type {Record<string, { label: string, actions: string[] }>}
+ */
+export const ESCROW_STATUS_MAP = Object.freeze({
+  Pending: { label: 'Pending', actions: ['fund', 'cancel'] },
+  Active: { label: 'Active', actions: ['add_milestone', 'raise_dispute', 'cancel'] },
+  Submitted: { label: 'Submitted', actions: ['approve_milestone', 'raise_dispute'] },
+  Approved: { label: 'Approved', actions: ['release_funds'] },
+  Rejected: { label: 'Rejected', actions: ['raise_dispute'] },
+  Disputed: { label: 'Disputed', actions: ['resolve_dispute'] },
+  Completed: { label: 'Completed', actions: [] },
+  Cancelled: { label: 'Cancelled', actions: [] },
+  Expired: { label: 'Expired', actions: [] },
+});
+
+/**
+ * Safe fallback for unknown or future contract status values.
+ *
+ * @type {{ label: string, actions: string[] }}
+ */
+export const UNKNOWN_STATUS = Object.freeze({
+  label: 'Unknown status',
+  actions: Object.freeze([]),
+});
+
+/**
+ * Returns the user-facing label for an escrow status.
+ *
+ * @param {string|null|undefined} status
+ * @returns {string}
+ */
+export function getEscrowStatusLabel(status) {
+  const entry = _getEscrowStatusEntry(status);
+  return entry.label;
+}
+
+/**
+ * Returns the allowed actions for an escrow status.
+ * Unknown or future values yield an empty array.
+ *
+ * @param {string|null|undefined} status
+ * @returns {string[]}
+ */
+export function getEscrowStatusActions(status) {
+  const entry = _getEscrowStatusEntry(status);
+  return Array.isArray(entry.actions) ? [...entry.actions] : [];
+}
+
+/**
+ * Resolves a status to its mapping entry, falling back safely.
+ *
+ * @param {string|null|undefined} status
+ * @returns {{ label: string, actions: string[] }}
+ */
+function _getEscrowStatusEntry(status) {
+  if (typeof status !== 'string') return UNKNOWN_STATUS;
+  return Object.prototype.hasOwnProperty.call(ESCROW_STATUS_MAP, status)
+    ? ESCROW_STATUS_MAP[status]
+    : UNKNOWN_STATUS;
+}
+
+/**
  * Truncates a Stellar public key for display.
  * e.g. "GABCD...XYZ1"
  *
