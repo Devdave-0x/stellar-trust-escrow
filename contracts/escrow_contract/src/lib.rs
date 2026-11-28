@@ -2037,48 +2037,13 @@ impl EscrowContract {
     /// 1. `total_amount` must be positive and within `MAX_ESCROW_AMOUNT` (`InvalidEscrowAmount`)
     /// 2. `deadline`, if provided, must be in the future (`InvalidDeadline`)
     /// 3. `lock_time`, if provided, must be in the future (`InvalidLockTime`)
-    /// Require an exact increase in contract-held token balance before recording
-    /// a deposit. Soroban token transfers do not report the amount received.
-    /// Fee-on-transfer, no-op, and inconsistent balance implementations are rejected
-    /// with E20, and the failed transaction atomically rolls back its state.
-    /// Once a dispute has opened, escalation and resolution are permitted only
-    /// before start + timeout (exclusive). The deadline ledger belongs to the
-    /// timeout-claim path; None means there is no configured ledger cutoff.
-    fn require_dispute_window(
-        env: &Env,
-        started: u32,
-        timeout: Option<u32>,
-    ) -> Result<(), EscrowError> {
-        if let Some(duration) = timeout {
-            let deadline = started.checked_add(duration).ok_or(EscrowError::E20)?;
-            if env.ledger().sequence() >= deadline {
-                return Err(EscrowError::E36);
+    /// #858: Escrow expiry is an exclusive UTC ledger-timestamp cutoff.
+    /// At timestamp == deadline the milestone action is already too late.
+    fn require_before_escrow_deadline(env: &Env, deadline: Option<u64>) -> Result<(), EscrowError> {
+        if let Some(deadline) = deadline {
+            if env.ledger().timestamp() >= deadline {
+                return Err(EscrowError::E9);
             }
-        }
-        Ok(())
-    }
-
-    fn require_active_dispute_window(env: &Env, meta: &EscrowMeta) -> Result<(), EscrowError> {
-        if let Some(duration) = meta.dispute_timeout_ledger {
-            let started = meta.dispute_started_ledger.ok_or(EscrowError::E23)?;
-            Self::require_dispute_window(env, started, Some(duration))?;
-        }
-        Ok(())
-    }
-
-    fn transfer_exact_deposit(
-        env: &Env,
-        token_address: &Address,
-        depositor: &Address,
-        amount: i128,
-    ) -> Result<(), EscrowError> {
-        let token_client = token::Client::new(env, token_address);
-        let recipient = env.current_contract_address();
-        let before = token_client.balance(&recipient);
-        token_client.transfer(depositor, &recipient, &amount);
-        let after = token_client.balance(&recipient);
-        if after.checked_sub(before) != Some(amount) {
-            return Err(EscrowError::E20);
         }
         Ok(())
     }
@@ -2893,6 +2858,7 @@ impl EscrowContract {
             if meta.status != EscrowStatus::Active {
                 return Err(EscrowError::E9);
             }
+            Self::require_before_escrow_deadline(&env, meta.deadline)?;
             ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
             if caller != meta.client && !meta.buyer_signers.contains(&caller) {
                 return Err(EscrowError::E3);
@@ -2996,6 +2962,7 @@ impl EscrowContract {
             }
 
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            Self::require_before_escrow_deadline(&env, meta.deadline)?;
             ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
             let mut total_amount: i128 = 0;
@@ -3210,6 +3177,7 @@ impl EscrowContract {
         if meta.status != EscrowStatus::Active {
             return Err(EscrowError::E9);
         }
+        Self::require_before_escrow_deadline(&env, meta.deadline)?;
 
         // Auto-extend deadline if submitted near expiry
         if let Some(deadline) = meta.deadline {
@@ -3269,6 +3237,7 @@ impl EscrowContract {
             if meta.status != EscrowStatus::Active {
                 return Err(EscrowError::E9);
             }
+            Self::require_before_escrow_deadline(&env, meta.deadline)?;
 
             ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
@@ -3563,6 +3532,7 @@ impl EscrowContract {
             Self::require_dependency_satisfied(&env, escrow_id, &milestone)?;
 
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
+            Self::require_before_escrow_deadline(&env, meta.deadline)?;
 
             let is_admin = caller == admin;
             let timelock_ok =
@@ -9570,4 +9540,255 @@ mod tests {
         ));
     }
 
+}
+
+// Drips issues #858, #868, #870 regression coverage
+#[cfg(test)]
+mod milestone_atomicity_boundary_tests {
+    use super::*;
+    use soroban_sdk::{
+        testutils::{Address as _, Events as _, Ledger as _},
+        token, BytesN, Env, String, Vec,
+    };
+
+    fn multisig(env: &Env) -> MultisigConfig {
+        MultisigConfig { approvers: Vec::new(env), weights: Vec::new(env), threshold: 0 }
+    }
+
+    fn fixture(deadline: Option<u64>, count: u32) -> (
+        Env, Address, Address, Address, Address, Address,
+        EscrowContractClient<'static>, u64,
+    ) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let contract = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract);
+        client.initialize(&admin);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        token::StellarAssetClient::new(&env, &token_id).mint(
+            &payer, &(1_000_i128 + ContractStorage::reserve_for_entries(32)),
+        );
+        let escrow_id = client.create_escrow(
+            &payer, &freelancer, &token_id, &1_000_i128,
+            &BytesN::from_array(&env, &[123u8; 32]),
+            &None, &deadline, &None, &None, &multisig(&env),
+        );
+        for i in 0..count {
+            client.add_milestone(
+                &payer, &escrow_id,
+                &String::from_str(&env, "Work"),
+                &BytesN::from_array(&env, &[i as u8 + 1; 32]),
+                &100_i128,
+            );
+        }
+        (env, admin, payer, freelancer, token_id, contract, client, escrow_id)
+    }
+
+    fn status(env: &Env, contract: &Address, escrow_id: u64, milestone: u32) -> MilestoneStatus {
+        env.as_contract(contract, || {
+            ContractStorage::load_milestone(env, escrow_id, milestone).unwrap().status
+        })
+    }
+
+    fn set_status(env: &Env, contract: &Address, escrow_id: u64, mid: u32, value: MilestoneStatus) {
+        env.as_contract(contract, || {
+            let mut m = ContractStorage::load_milestone(env, escrow_id, mid).unwrap();
+            m.status = value;
+            ContractStorage::save_milestone(env, escrow_id, &m);
+        });
+    }
+
+    fn meta(env: &Env, contract: &Address, escrow_id: u64) -> EscrowMeta {
+        env.as_contract(contract, || ContractStorage::load_escrow_meta_with_rent(env, escrow_id).unwrap())
+    }
+
+    /// #858: The deadline is an exclusive cutoff. Timestamp T-1 is valid,
+    /// T is expired, and T+1 is expired, for all three milestone actions.
+    #[test]
+    fn exact_deadline_blocks_submit_approve_and_release() {
+        for action in 0..3_u32 {
+            for delta in [-1_i64, 0, 1] {
+                let initial_timestamp = 100_u64;
+                let cutoff = 1_000_000_u64;
+                let (env, admin, payer, freelancer, _token_id, contract, client, escrow_id) =
+                    fixture(Some(cutoff), 1);
+                env.ledger().with_mut(|l| l.timestamp = initial_timestamp);
+                if action == 1 {
+                    client.submit_milestone(&freelancer, &escrow_id, &0);
+                } else if action == 2 {
+                    set_status(&env, &contract, escrow_id, 0, MS_APPROVED);
+                }
+                // Model consecutive ledgers around the expiry timestamp (5 seconds apart).
+                env.ledger().with_mut(|l| {
+                    l.timestamp = (cutoff as i64 + 5 * delta) as u64;
+                    l.sequence_number = (250_i64 + delta) as u32;
+                });
+                let before = meta(&env, &contract, escrow_id);
+                let before_status = status(&env, &contract, escrow_id, 0);
+                let events_before = env.events().all().len();
+                let result = match action {
+                    0 => client.try_submit_milestone(&freelancer, &escrow_id, &0).map(|_| ()),
+                    1 => client.try_approve_milestone(&payer, &escrow_id, &0).map(|_| ()),
+                    _ => client.try_release_funds(&admin, &escrow_id, &0).map(|_| ()),
+                };
+                if delta == -1 {
+                    assert!(result.is_ok(), "action {} should succeed before expiry", action);
+                } else {
+                    assert!(matches!(result, Err(Ok(EscrowError::E9))),
+                        "action {} should reject at/after expiry", action);
+                    let after = meta(&env, &contract, escrow_id);
+                    assert_eq!(status(&env, &contract, escrow_id, 0), before_status);
+                    assert_eq!(after.remaining_balance, before.remaining_balance);
+                    assert_eq!(env.events().all().len(), events_before);
+                }
+            }
+        }
+    }
+
+    /// #870: A valid first milestone and invalid second milestone must not
+    /// partially commit either approval or release, including token balances.
+    #[test]
+    fn late_invalid_batch_item_keeps_milestones_and_balances_unchanged() {
+        let (env, admin, payer, freelancer, token_id, contract, client, id) = fixture(None, 2);
+        let token_client = token::Client::new(&env, &token_id);
+        let mut ids = Vec::new(&env);
+        ids.push_back(0);
+        ids.push_back(1);
+        client.submit_milestone(&freelancer, &id, &0); // second remains pending
+        let before = meta(&env, &contract, id);
+        let before_balance = token_client.balance(&contract);
+        let before_recipient = token_client.balance(&freelancer);
+        let before_events = env.events().all().len();
+        assert!(matches!(
+            client.try_batch_approve_milestones(&payer, &id, &ids),
+            Err(Ok(EscrowError::E14))
+        ));
+        assert_eq!(status(&env, &contract, id, 0), MS_SUBMITTED);
+        assert_eq!(status(&env, &contract, id, 1), MS_PENDING);
+        assert_eq!(meta(&env, &contract, id).remaining_balance, before.remaining_balance);
+        assert_eq!(meta(&env, &contract, id).approved_count, before.approved_count);
+        assert_eq!(token_client.balance(&contract), before_balance);
+        assert_eq!(token_client.balance(&freelancer), before_recipient);
+        assert_eq!(env.events().all().len(), before_events);
+
+        // The same late-invalid test applies to an approved/invalid release batch.
+        set_status(&env, &contract, id, 0, MS_APPROVED);
+        let before_events = env.events().all().len();
+        assert!(matches!(
+            client.try_batch_release_funds(&admin, &id, &ids),
+            Err(Ok(EscrowError::E14))
+        ));
+        assert_eq!(status(&env, &contract, id, 0), MS_APPROVED);
+        assert_eq!(status(&env, &contract, id, 1), MS_PENDING);
+        assert_eq!(meta(&env, &contract, id).remaining_balance, before.remaining_balance);
+        assert_eq!(token_client.balance(&contract), before_balance);
+        assert_eq!(token_client.balance(&freelancer), before_recipient);
+        assert_eq!(env.events().all().len(), before_events);
+    }
+
+    #[test]
+    fn valid_batch_approval_and_release_complete_in_full() {
+        let (env, _admin, payer, freelancer, token_id, contract, client, id) = fixture(None, 2);
+        let mut ids = Vec::new(&env);
+        ids.push_back(0);
+        ids.push_back(1);
+        client.submit_milestone(&freelancer, &id, &0);
+        client.submit_milestone(&freelancer, &id, &1);
+        let released = client.batch_approve_milestones(&payer, &id, &ids);
+        assert_eq!(released, 200);
+        assert_eq!(meta(&env, &contract, id).approved_count, 2);
+        assert_eq!(status(&env, &contract, id, 0), status(&env, &contract, id, 1));
+        // If the configured timelock is already satisfied, both are released;
+        // otherwise both are approved and await release.
+        let first = status(&env, &contract, id, 0);
+        assert!(first == MS_RELEASED || first == MS_APPROVED);
+        if first == MS_RELEASED {
+            assert_eq!(token::Client::new(&env, &token_id).balance(&freelancer), 200);
+        }
+    }
+
+    /// #868: Deposit transfer succeeds but rent-reserve transfer fails. The
+    /// entire invocation must revert, including storage, token balance and events.
+    #[test]
+    fn failed_rent_token_transfer_rolls_back_deposit() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let contract = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract);
+        client.initialize(&admin);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let token_admin = token::StellarAssetClient::new(&env, &token_id);
+        let token_client = token::Client::new(&env, &token_id);
+        token_admin.mint(&payer, &1_000_i128); // enough for escrow, not rent
+        let events_before = env.events().all().len();
+        assert!(client.try_create_escrow(
+            &payer, &freelancer, &token_id, &1_000_i128,
+            &BytesN::from_array(&env, &[22; 32]),
+            &None, &None, &None, &None, &multisig(&env),
+        ).is_err());
+        assert_eq!(token_client.balance(&payer), 1_000);
+        assert_eq!(token_client.balance(&contract), 0);
+        assert_eq!(client.get_total_value_locked(), 0);
+        assert_eq!(client.get_escrow_count(&payer), 0);
+        assert_eq!(env.events().all().len(), events_before);
+    }
+
+    /// #868: Approval changes milestone state before its external transfer.
+    /// A token failure must roll those writes and their events back.
+    #[test]
+    fn failed_release_transfer_rolls_back_approval() {
+        let (env, _admin, payer, freelancer, token_id, contract, client, id) = fixture(None, 1);
+        client.submit_milestone(&freelancer, &id, &0);
+        let token_client = token::Client::new(&env, &token_id);
+        let sink = Address::generate(&env);
+        let all = token_client.balance(&contract);
+        token_client.transfer(&contract, &sink, &all); // inject transfer failure
+        let balance = meta(&env, &contract, id).remaining_balance;
+        let events_before = env.events().all().len();
+        assert!(client.try_approve_milestone(&payer, &id, &0).is_err());
+        assert_eq!(status(&env, &contract, id, 0), MS_SUBMITTED);
+        assert_eq!(meta(&env, &contract, id).remaining_balance, balance);
+        assert_eq!(meta(&env, &contract, id).approved_count, 0);
+        assert_eq!(token_client.balance(&freelancer), 0);
+        assert_eq!(env.events().all().len(), events_before);
+    }
+
+    /// #868: Expiry refund transfer occurs before the final status write.
+    /// If the token rejects it, the escrow remains Active and no refund event survives.
+    #[test]
+    fn failed_expiry_refund_rolls_back_status_and_events() {
+        let (env, _admin, payer, _freelancer, token_id, contract, client, id) =
+            fixture(Some(500), 0);
+        let token_client = token::Client::new(&env, &token_id);
+        let sink = Address::generate(&env);
+        let all = token_client.balance(&contract);
+        token_client.transfer(&contract, &sink, &all);
+        env.ledger().with_mut(|l| l.timestamp = 500);
+        let payer_before = token_client.balance(&payer);
+        let events_before = env.events().all().len();
+        assert!(client.try_expire_escrow(&id).is_err());
+        assert_eq!(meta(&env, &contract, id).status, EscrowStatus::Active);
+        assert_eq!(meta(&env, &contract, id).remaining_balance, 1_000);
+        assert_eq!(token_client.balance(&payer), payer_before);
+        assert_eq!(env.events().all().len(), events_before);
+    }
+
+    #[test]
+    fn successful_expiry_refund_transfers_exact_remaining_balance() {
+        let (env, _admin, payer, _freelancer, token_id, contract, client, id) =
+            fixture(Some(500), 0);
+        let token_client = token::Client::new(&env, &token_id);
+        let before = token_client.balance(&payer);
+        env.ledger().with_mut(|l| l.timestamp = 500);
+        client.expire_escrow(&id);
+        assert_eq!(meta(&env, &contract, id).status, EscrowStatus::Expired);
+        assert_eq!(meta(&env, &contract, id).remaining_balance, 0);
+        assert_eq!(token_client.balance(&payer), before + 1_000);
+    }
 }
