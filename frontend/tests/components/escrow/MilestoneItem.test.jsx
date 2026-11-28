@@ -155,3 +155,42 @@ describe('MilestoneItem', () => {
     expect(container.querySelector('.w-px')).not.toBeInTheDocument();
   });
 });
+
+jest.mock('../../../lib/verifyDescriptionHash', () => {
+  const actual = jest.requireActual('../../../lib/verifyDescriptionHash');
+  return {
+    ...actual,
+    resolveVerifiedDescription: jest.fn(),
+  };
+});
+
+const { resolveVerifiedDescription } = require('../../../lib/verifyDescriptionHash');
+
+describe('MilestoneItem description verification', () => {
+  beforeEach(() => {
+    resolveVerifiedDescription.mockReset();
+  });
+
+  it('rejects mismatched off-chain description', async () => {
+    resolveVerifiedDescription.mockResolvedValue({ status: 'mismatch', hash: 'abc' });
+    renderWithAppProviders(
+      <MilestoneItem
+        {...defaultProps}
+        milestone={{ ...baseMilestone, descriptionHash: 'a'.repeat(64) }}
+      />,
+    );
+    expect(await screen.findByText(/Description hash mismatch/)).toBeInTheDocument();
+  });
+
+  it('stays usable when gateway times out', async () => {
+    resolveVerifiedDescription.mockResolvedValue({ status: 'timeout', hash: 'abc' });
+    renderWithAppProviders(
+      <MilestoneItem
+        {...defaultProps}
+        milestone={{ ...baseMilestone, descriptionHash: 'b'.repeat(64) }}
+      />,
+    );
+    expect(await screen.findByText(/gateway timed out/)).toBeInTheDocument();
+    expect(screen.getByText('Design Mockups')).toBeInTheDocument();
+  });
+});

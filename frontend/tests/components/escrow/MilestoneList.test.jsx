@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import MilestoneList from '../../../components/escrow/MilestoneList';
 import { renderWithAppProviders } from '../../test-utils';
 
@@ -87,5 +87,60 @@ describe('MilestoneList', () => {
       />,
     );
     expect(screen.getByText('33%')).toBeInTheDocument();
+  });
+});
+
+describe('MilestoneList create next milestone', () => {
+  it('shows add form for client when canAdd', () => {
+    renderWithAppProviders(
+      <MilestoneList
+        milestones={milestones}
+        role="client"
+        canAdd
+        onAddMilestone={jest.fn()}
+        onApprove={jest.fn()}
+        onReject={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+    expect(screen.getByTestId('add-milestone-form')).toBeInTheDocument();
+  });
+
+  it('hides add form for freelancer', () => {
+    renderWithAppProviders(
+      <MilestoneList
+        milestones={milestones}
+        role="freelancer"
+        canAdd
+        onAddMilestone={jest.fn()}
+        onApprove={jest.fn()}
+        onReject={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('add-milestone-form')).not.toBeInTheDocument();
+    expect(screen.getByText(/Only the client can add milestones/)).toBeInTheDocument();
+  });
+
+  it('preserves entered values when add fails', async () => {
+    const onAdd = jest.fn().mockRejectedValue(new Error('contract rejected'));
+    renderWithAppProviders(
+      <MilestoneList
+        milestones={milestones}
+        role="client"
+        canAdd
+        onAddMilestone={onAdd}
+        onApprove={jest.fn()}
+        onReject={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Milestone title'), { target: { value: 'Next' } });
+    fireEvent.change(screen.getByLabelText('Description hash'), { target: { value: 'c'.repeat(64) } });
+    fireEvent.change(screen.getByLabelText('Milestone amount'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add milestone/ }));
+    await waitFor(() => expect(onAdd).toHaveBeenCalled());
+    expect(screen.getByLabelText('Milestone title')).toHaveValue('Next');
+    expect(screen.getByText(/contract rejected/)).toBeInTheDocument();
   });
 });
