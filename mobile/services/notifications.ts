@@ -14,9 +14,76 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import { storage, STORAGE_KEYS } from '../lib/storage';
 import { api } from '../lib/api';
+
+/**
+ * Result of a push-notification permission request.
+ * - `granted`: whether the OS currently allows notifications.
+ * - `canAskAgain`: whether the platform prompt can still be shown.
+ * - `unavailable`: true when push is unsupported (e.g. simulator / web).
+ */
+export interface PushPermissionResult {
+  granted: boolean;
+  canAskAgain: boolean;
+  unavailable: boolean;
+}
+
+/**
+ * Presents the rationale for notifications and, only if the user agrees,
+ * triggers the platform permission prompt. This must be called from an
+ * explicit user action (e.g. tapping an "Enable notifications" button) —
+ * never implicitly at startup.
+ *
+ * @param confirm Rationale UI hook. Resolves to true if the user accepts.
+ */
+export async function requestPushPermissionWithRationale(
+  confirm: () => Promise<boolean> | boolean,
+): Promise<PushPermissionResult> {
+  if (!Device.isDevice) {
+    console.warn('[Notifications] Push notifications require a physical device.');
+    return { granted: false, canAskAgain: false, unavailable: true };
+  }
+
+  const { status: existingStatus, canAskAgain: existingCanAskAgain } =
+    await Notifications.getPermissionsAsync();
+
+  if (existingStatus === 'granted') {
+    return { granted: true, canAskAgain: existingCanAskAgain ?? true, unavailable: false };
+  }
+
+  // Only prompt after the user has explicitly acknowledged the rationale.
+  const accepted = await confirm();
+  if (!accepted) {
+    return {
+      granted: false,
+      canAskAgain: existingCanAskAgain ?? true,
+      unavailable: false,
+    };
+  }
+
+  const { status, canAskAgain } = await Notifications.requestPermissionsAsync();
+  return {
+    granted: status === 'granted',
+    canAskAgain: canAskAgain ?? false,
+    unavailable: false,
+  };
+}
+
+/**
+ * Opens the OS notification settings so the user can revisit a denied
+ * permission. Returns whether the settings screen could be opened.
+ */
+export async function openNotificationSettings(): Promise<boolean> {
+  try {
+    await Linking.openSettings();
+    return true;
+  } catch (err) {
+    console.warn('[Notifications] Failed to open settings:', err);
+    return false;
+  }
+}
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -30,6 +97,10 @@ Notifications.setNotificationHandler({
 /**
  * Registers the device for push notifications and stores the Expo push token.
  * Must be called after the user connects their wallet.
+ *
+ * This never triggers the platform permission prompt. If permission has not
+ * already been granted (via `requestPushPermissionWithRationale`), it returns
+ * null so the app stays usable and the user can enable it later.
  */
 export async function registerForPushNotifications(stellarAddress: string): Promise<string | null> {
   if (!Device.isDevice) {
@@ -38,15 +109,8 @@ export async function registerForPushNotifications(stellarAddress: string): Prom
   }
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
   if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    console.warn('[Notifications] Permission not granted.');
+    console.warn('[Notifications] Permission not granted; skipping registration.');
     return null;
   }
 
