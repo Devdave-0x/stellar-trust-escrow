@@ -112,3 +112,10 @@ Anything reviewers should know:
 - [ ] PR targets `develop` (or `main` for a release/hotfix — confirm intentional)
 - [ ] Breaking change labelled in the PR title with `!` and described above
 - [ ] No `.env` files or secrets committed
+
+### Contract storage changes
+
+- [ ] No persistent storage key changed
+- [ ] TTL impact reviewed
+- [ ] Migration compatibility reviewed
+- [ ] Ledger entry growth considered
