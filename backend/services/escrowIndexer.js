@@ -31,6 +31,8 @@ const POLL_INTERVAL_MS = parseInt(process.env.INDEXER_POLL_INTERVAL_MS || '5000'
 const START_LEDGER = parseInt(process.env.INDEXER_START_LEDGER || '0', 10);
 const MAX_RETRIES = 3;
 const DLQ_KEY = 'indexer:dlq';
+const QUARANTINE_KEY = 'indexer:quarantine:unknown';
+const KNOWN_EVENT_VERSION = parseInt(process.env.INDEXER_KNOWN_EVENT_SCHEMA || '1', 10);
 
 const getEscrowId = (event) => parseBigInt(event.topic?.[1]);
 const getMilestoneIndex = (value) => Number(parseBigInt(value));
@@ -76,77 +78,45 @@ async function persistCursor(ledger, txClient = prisma) {
   });
 }
 
-/**
- * Advance the indexer cursor only when every event in the batch projected successfully.
- */
-export async function commitIndexerCheckpoint(ledger, processedCount) {
-  if (processedCount <= 0) return;
-  await prisma.$transaction([
-    prisma.indexerState.update({
-      where: { id: 1 },
-      data: { lastProcessedLedger: BigInt(ledger) },
-    }),
-  ]);
+export function validateResumeCursor(cursor, latestLedger) {
+  const n = Number(cursor);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error('Invalid indexer cursor');
+  }
+  if (latestLedger != null && n > Number(latestLedger)) {
+    throw new Error('Indexer cursor is ahead of chain tip');
+  }
+  return n;
 }
 
-const RECONCILE_MAX = parseInt(process.env.INDEXER_RECONCILE_MAX || '50', 10);
-
-/**
- * Bounded reconciliation when on-chain status disagrees with the DB projection.
- */
-export async function reconcileIndexedEscrowState(escrowId, chainStatus, { ledger, txHash } = {}) {
-  const existing = await prisma.escrow.findUnique({
-    where: { id: escrowId },
-    select: { status: true, createdLedger: true },
+export async function loadResumableCursor(fallbackLedger = START_LEDGER) {
+  const state = await prisma.indexerState.upsert({
+    where: { id: 1 },
+    create: { id: 1, lastProcessedLedger: BigInt(fallbackLedger) },
+    update: {},
   });
-  if (!existing) {
-    return { repaired: false, reason: 'not_indexed', escrowId: String(escrowId), ledger, txHash };
-  }
-  if (existing.status === chainStatus) {
-    return { repaired: false, reason: 'match', escrowId: String(escrowId), ledger, txHash };
-  }
-  if (
-    existing.createdLedger != null &&
-    ledger != null &&
-    BigInt(ledger) < existing.createdLedger
-  ) {
-    return {
-      repaired: false,
-      reason: 'stale_chain_read',
-      escrowId: String(escrowId),
-      ledger,
-      indexedLedger: Number(existing.createdLedger),
-      txHash,
-    };
-  }
-  await prisma.escrow.updateMany({
-    where: { id: escrowId },
-    data: { status: chainStatus },
-  });
-  return {
-    repaired: true,
-    escrowId: String(escrowId),
-    from: existing.status,
-    to: chainStatus,
-    ledger,
-    txHash,
-  };
+  const latest = await getLatestLedger();
+  return validateResumeCursor(Number(state.lastProcessedLedger), latest) + 1;
 }
 
-export async function reconcileIndexedEscrows(readChainStatus, escrowIds = []) {
-  const ids = escrowIds.slice(0, RECONCILE_MAX);
-  const results = [];
-  for (const escrowId of ids) {
-    const chain = await readChainStatus(escrowId);
-    if (!chain) continue;
-    results.push(
-      await reconcileIndexedEscrowState(escrowId, chain.status, {
-        ledger: chain.ledger,
-        txHash: chain.txHash,
+async function quarantineUnknownEvent(event, reason) {
+  try {
+    const redis = getRedis();
+    await redis.rpush(
+      QUARANTINE_KEY,
+      JSON.stringify({
+        reason,
+        contractId: CONTRACT_ID,
+        ledger: event.ledger ?? null,
+        topic: event.topic?.[0] ?? null,
+        txHash: event.txHash ?? null,
+        eventVersion: event.schema ?? event.version ?? null,
+        recordedAt: new Date().toISOString(),
       }),
     );
+  } catch (err) {
+    log.warn({ message: 'indexer_quarantine_failed', error: err.message });
   }
-  return results;
 }
 
 // ── ScVal helpers (raw JSON values from eventIndexer shape) ───────────────────
@@ -380,8 +350,14 @@ const HANDLERS = {
 export async function dispatchEvent(event) {
   const topic =
     typeof event.topic?.[0] === 'string' ? event.topic[0] : String(event.topic?.[0] ?? '');
+  const version = Number(event.schema ?? event.version ?? KNOWN_EVENT_VERSION);
+  if (Number.isFinite(version) && version > KNOWN_EVENT_VERSION) {
+    await quarantineUnknownEvent(event, 'unsupported_event_version');
+    return;
+  }
   const handler = HANDLERS[topic];
   if (!handler) {
+    await quarantineUnknownEvent(event, 'unknown_event_topic');
     log.warn({ message: 'indexer_unknown_event_type', topic });
     return;
   }
@@ -465,13 +441,14 @@ export async function fetchAndProcessEvents(fromLedger) {
  */
 export async function startIndexer() {
   // Load cursor
-  const state = await prisma.indexerState.upsert({
-    where: { id: 1 },
-    create: { id: 1, lastProcessedLedger: BigInt(START_LEDGER) },
-    update: {},
-  });
-
-  let cursor = Number(state.lastProcessedLedger);
+  let cursor;
+  try {
+    cursor = await loadResumableCursor(START_LEDGER);
+    cursor = Math.max(0, cursor - 1);
+  } catch (err) {
+    log.error({ message: 'indexer_cursor_invalid', error: err.message });
+    throw err;
+  }
   let backoff = 1000;
 
   log.info({ message: 'indexer_starting', fromLedger: cursor });

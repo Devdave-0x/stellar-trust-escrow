@@ -51,6 +51,19 @@ const ESCROW_SUMMARY_SELECT = {
 const VALID_SORT_FIELDS = ['createdAt', 'totalAmount', 'status'];
 const VALID_SORT_ORDERS = ['asc', 'desc'];
 const VALID_ESCROW_STATUSES = new Set(['Draft', 'Active', 'Completed', 'Disputed', 'Cancelled']);
+const CHAIN_FINAL_STATUSES = new Set(['Completed', 'Cancelled']);
+
+export function buildChainStatusConflictResponse(currentStatus) {
+  return {
+    code: 'CHAIN_STATE_CONFLICT',
+    error: 'Escrow status is finalized on chain and cannot be overridden by API mutation.',
+    currentStatus,
+  };
+}
+
+function statusUpdateConflictsWithChain(currentStatus, requestedStatus) {
+  return CHAIN_FINAL_STATUSES.has(currentStatus) && currentStatus !== requestedStatus;
+}
 
 export function buildStaleEscrowMutationError(currentStatus, expectedVersion) {
   return {
@@ -969,10 +982,57 @@ const getMilestoneHistory = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/escrows/batch-status
+ * Rejects updates that would contradict finalized on-chain escrow state.
+ */
+const batchStatus = async (req, res) => {
+  try {
+    const { ids, status } = req.body ?? {};
+    if (!Array.isArray(ids) || ids.length === 0 || !status) {
+      return res.status(400).json({ error: 'ids (array) and status are required.' });
+    }
+    if (!VALID_ESCROW_STATUSES.has(status)) {
+      return res.status(400).json({ error: 'Invalid escrow status.' });
+    }
+
+    const conflicts = [];
+    for (const rawId of ids) {
+      let escrowId;
+      try {
+        escrowId = BigInt(rawId);
+      } catch {
+        return res.status(400).json({ error: `Invalid escrow id: ${rawId}` });
+      }
+      const escrow = await prisma.escrow.findUnique({
+        where: { id: escrowId },
+        select: { status: true },
+      });
+      if (!escrow) {
+        conflicts.push({ id: String(rawId), code: 'NOT_FOUND', error: 'Escrow not found' });
+        continue;
+      }
+      if (statusUpdateConflictsWithChain(escrow.status, status)) {
+        conflicts.push({ id: String(rawId), ...buildChainStatusConflictResponse(escrow.status) });
+      }
+    }
+
+    if (conflicts.length > 0) {
+      return res.status(409).json({ conflicts });
+    }
+
+    res.json({ ok: true, checked: ids.length, status });
+  } catch (err) {
+    logControllerError('escrow.batchStatus', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export default {
   listEscrows,
   exportEscrowsCsv,
   getEscrow,
+  batchStatus,
   broadcastCreateEscrow,
   cloneEscrow,
   deleteEscrow,

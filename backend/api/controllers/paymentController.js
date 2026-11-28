@@ -5,15 +5,7 @@ import kycService from '../../services/kycService.js';
 import { submitTransaction } from '../../services/stellarService.js';
 import { getAuthenticatedWalletAddress } from '../middleware/authorization.js';
 
-const txLifecycleByHash = new Map();
-
-export function mapSubmissionLifecycle(submission) {
-  if (!submission) return 'unknown';
-  if (submission.status === 'SUCCESS') return 'confirmed';
-  if (submission.status === 'FAILED') return 'failed';
-  if (submission.status === 'TIMEOUT') return 'pending';
-  return 'submitted';
-}
+const submissionsBySignedHash = new Map();
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
@@ -131,46 +123,55 @@ const refund = async (req, res) => {
   }
 };
 
-/** GET /api/payments/transactions/:txHash — lifecycle (pending → confirmed/failed). */
+/** POST /api/payments/transactions — submit signed XDR; idempotent by payload hash. */
+const submitSignedTransaction = async (req, res) => {
+  try {
+    const walletAddress = requireOwnedWallet(req, res);
+    if (!walletAddress) return;
+
+    const { signedXdr } = req.body ?? {};
+    if (!signedXdr || typeof signedXdr !== 'string') {
+      return res.status(400).json({ error: 'signedXdr is required' });
+    }
+
+    const signedHash = crypto.createHash('sha256').update(signedXdr).digest('hex');
+    const cached = submissionsBySignedHash.get(signedHash);
+    if (cached) {
+      return res.json({ ...cached, replayed: true });
+    }
+
+    const result = await submitTransaction(signedXdr);
+    const payload = {
+      txHash: result.hash,
+      status: result.status,
+      lifecycle:
+        result.status === 'SUCCESS' ? 'confirmed' : result.status === 'FAILED' ? 'failed' : 'pending',
+      finalLedger: result.ledger ?? null,
+      signedHash,
+    };
+    submissionsBySignedHash.set(signedHash, payload);
+    res.json(payload);
+  } catch (err) {
+    logControllerError('payment.submitSignedTransaction', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/** GET /api/payments/transactions/:txHash — lifecycle lookup */
 const getTransactionLifecycle = async (req, res) => {
   try {
     const walletAddress = requireOwnedWallet(req, res);
     if (!walletAddress) return;
-    const record = txLifecycleByHash.get(req.params.txHash);
+
+    const record = [...submissionsBySignedHash.values()].find(
+      (entry) => entry.txHash === req.params.txHash || entry.signedHash === req.params.txHash,
+    );
     if (!record) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
     res.json(record);
   } catch (err) {
     logControllerError('payment.getTransactionLifecycle', err, req);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-/** POST /api/payments/transactions — submit signed XDR, track lifecycle by tx hash. */
-const submitSignedTransaction = async (req, res) => {
-  try {
-    const walletAddress = requireOwnedWallet(req, res);
-    if (!walletAddress) return;
-    const { signedXdr } = req.body ?? {};
-    if (!signedXdr) return res.status(400).json({ error: 'signedXdr is required' });
-
-    const signedHash = crypto.createHash('sha256').update(signedXdr).digest('hex');
-  const cached = [...txLifecycleByHash.values()].find((r) => r.signedHash === signedHash);
-    if (cached) return res.json({ ...cached, replayed: true });
-
-    const result = await submitTransaction(signedXdr);
-    const payload = {
-      txHash: result.hash,
-      signedHash,
-      status: result.status,
-      lifecycle: mapSubmissionLifecycle(result),
-      finalLedger: result.ledger ?? null,
-    };
-    txLifecycleByHash.set(result.hash, payload);
-    res.json(payload);
-  } catch (err) {
-    logControllerError('payment.submitSignedTransaction', err, req);
     res.status(500).json({ error: err.message });
   }
 };
