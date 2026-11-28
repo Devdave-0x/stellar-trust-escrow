@@ -516,6 +516,12 @@ GET /health/ready     readiness probe — 503 when the database is unavailable
 | `EXPO_PUBLIC_API_URL`              | `http://localhost:4000` | Mobile app backend URL                                    |
 | `EXPO_PUBLIC_OFFLINE_CACHE_TTL_MS` | `300000`                | SQLite offline cache TTL (5 min)                          |
 
+> No contract ID is published yet. Docs and `.env.example` files use explicit
+> placeholders such as `<ESCROW_CONTRACT_ID>` — never copy an ID from an example.
+> Before using an ID, confirm it is a 56-character `C...` strkey and that it
+> exists on the intended network, e.g.
+> `stellar contract info interface --id <ESCROW_CONTRACT_ID> --network testnet`.
+
 ---
 
 ## Smart Contract Reference
