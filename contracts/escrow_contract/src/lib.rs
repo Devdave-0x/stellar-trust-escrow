@@ -3133,7 +3133,10 @@ impl EscrowContract {
                     }
                     m_total = m_total.checked_add(m_init.amount).ok_or(EscrowError::E15)?;
                 }
-                if m_total > req.amount {
+                // If milestones are supplied at creation, their total must exactly
+                // account for the funded amount. Empty milestones remain valid
+                // for the existing add-milestones-after-creation workflow.
+                if m_total != req.amount {
                     return Err(EscrowError::E15);
                 }
             }
@@ -3371,7 +3374,9 @@ impl EscrowContract {
             }
 
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
-            Self::require_before_escrow_deadline(&env, meta.deadline)?;
+            if meta.status != EscrowStatus::Active {
+                return Err(EscrowError::E9);
+            }
             ContractStorage::check_lock_time_expired(&env, escrow_id, meta.lock_time)?;
 
             let mut total_amount: i128 = 0;
@@ -3588,6 +3593,9 @@ impl EscrowContract {
         }
         Self::require_before_escrow_deadline(&env, meta.deadline)?;
 
+        if meta.status != EscrowStatus::Active {
+            return Err(EscrowError::E9);
+        }
         // Auto-extend deadline if submitted near expiry
         if let Some(deadline) = meta.deadline {
             let now = env.ledger().timestamp();
@@ -3610,6 +3618,9 @@ impl EscrowContract {
 
         Self::require_dependency_satisfied(&env, escrow_id, &milestone)?;
 
+        // MS_REJECTED -> MS_SUBMITTED is an explicit retry. Keep the last
+        // rejection_reason and resolved_at so the earlier decision remains
+        // available on chain for audit; only refresh submitted_at.
         milestone.status = MS_SUBMITTED;
         milestone.submitted_at = Some(env.ledger().timestamp());
         ContractStorage::save_milestone(&env, escrow_id, &milestone);
@@ -4182,6 +4193,9 @@ impl EscrowContract {
             let mut meta = ContractStorage::load_escrow_meta_with_rent(&env, escrow_id)?;
             Self::require_before_escrow_deadline(&env, meta.deadline)?;
 
+            if meta.status != EscrowStatus::Active {
+                return Err(EscrowError::E9);
+            }
             let is_admin = caller == admin;
             let timelock_ok =
                 ContractStorage::check_timelock_expired(&env, escrow_id, meta.timelock.clone())
@@ -11041,6 +11055,205 @@ mod tests {
         // Second attempt fails
         let result = client.try_claim_expiry_refund(&escrow_id);
         assert_eq!(result, Err(Ok(EscrowError::EscrowAlreadyExpired)));
+    }
+
+
+    // Regression tests for #859, #860, #862, and #863.
+    // These remain in lib.rs to match the issue's requested file scope.
+    #[cfg(test)]
+    mod issue_859_860_862_863_tests {
+        use super::*;
+
+        fn funded(
+            amount: i128,
+            deadline: Option<u64>,
+        ) -> (Env, Address, Address, Address, Address, u64, EscrowContractClient<'static>) {
+            let (env, admin, _contract_id, contract) = setup();
+            contract.initialize(&admin);
+            let buyer = Address::generate(&env);
+            let worker = Address::generate(&env);
+            let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+            let reserve = ContractStorage::reserve_for_entries(10);
+            token::StellarAssetClient::new(&env, &token_id)
+                .mint(&buyer, &(amount + reserve));
+            let id = contract.create_escrow(
+                &buyer,
+                &worker,
+                &token_id,
+                &amount,
+                &BytesN::from_array(&env, &[1; 32]),
+                &None,
+                &deadline,
+                &None,
+                &None,
+                &no_multisig(&env),
+            );
+            (env, admin, buyer, worker, token_id, id, contract)
+        }
+
+        fn milestone(env: &Env, contract: &EscrowContractClient<'static>, buyer: &Address, id: u64, amount: i128) -> u32 {
+            contract.add_milestone(
+                buyer,
+                &id,
+                &String::from_str(env, "Stage"),
+                &BytesN::from_array(env, &[2; 32]),
+                &amount,
+            )
+        }
+
+        #[test]
+        fn issue_863_rejected_work_can_be_resubmitted_once_with_audit_intact() {
+            let (env, _admin, buyer, worker, _token, id, contract) = funded(500, None);
+            let mid = milestone(&env, &contract, &buyer, id, 500);
+            contract.submit_milestone(&worker, &id, &mid);
+            let reason = BytesN::from_array(&env, &[7; 32]);
+            contract.reject_milestone_with_reason(&buyer, &id, &mid, &reason);
+            let rejected = contract.get_milestone(&id, &mid);
+            assert_eq!(rejected.status, MS_REJECTED);
+            assert_eq!(rejected.rejection_reason, OptionalBytesN32::Some(reason.clone()));
+            let decided_at = rejected.resolved_at;
+
+            assert_eq!(contract.try_submit_milestone(&buyer, &id, &mid), Err(Ok(EscrowError::E3)));
+            assert_eq!(contract.get_milestone(&id, &mid).status, MS_REJECTED);
+            advance(&env, 1);
+            contract.submit_milestone(&worker, &id, &mid);
+            let updated = contract.get_milestone(&id, &mid);
+            assert_eq!(updated.status, MS_SUBMITTED);
+            // Retain the previous decision's timestamp and reason for on-chain audit.
+            assert_eq!(updated.resolved_at, decided_at);
+            assert_eq!(updated.rejection_reason, OptionalBytesN32::Some(reason));
+            assert_eq!(contract.try_submit_milestone(&worker, &id, &mid), Err(Ok(EscrowError::E14)));
+            assert_eq!(contract.get_milestone(&id, &mid).status, MS_SUBMITTED);
+        }
+
+        fn request(
+            env: &Env,
+            worker: &Address,
+            token_id: &Address,
+            total: i128,
+            parts: &[i128],
+        ) -> CreateEscrowRequest {
+            let mut milestones = soroban_sdk::Vec::new(env);
+            for part in parts {
+                milestones.push_back(MilestoneInit {
+                    title: String::from_str(env, "Stage"),
+                    amount: *part,
+                });
+            }
+            CreateEscrowRequest {
+                freelancer: worker.clone(),
+                token: token_id.clone(),
+                amount: total,
+                deadline: None,
+                brief_hash: BytesN::from_array(env, &[3; 32]),
+                milestones,
+            }
+        }
+
+        #[test]
+        fn issue_860_batch_creation_accepts_exact_milestone_total() {
+            let (env, admin, _unused, contract) = setup();
+            contract.initialize(&admin);
+            let buyer = Address::generate(&env);
+            let worker = Address::generate(&env);
+            let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+            token::StellarAssetClient::new(&env, &token_id)
+                .mint(&buyer, &(500_i128 + ContractStorage::reserve_for_entries(10)));
+            let mut requests = soroban_sdk::Vec::new(&env);
+            requests.push_back(request(&env, &worker, &token_id, 500, &[200, 300]));
+            let ids = contract.batch_create_escrows(&buyer, &requests);
+            let id = ids.get(0).unwrap();
+            let state = contract.get_escrow(&id);
+            assert_eq!(state.allocated_amount, 500);
+            assert_eq!(state.remaining_balance, 500);
+            assert_eq!(contract.get_milestone(&id, &0).amount, 200);
+            assert_eq!(contract.get_milestone(&id, &1).amount, 300);
+        }
+
+        #[test]
+        fn issue_860_invalid_batch_totals_never_debit_buyer() {
+            // Short, excessive, zero, and overflow-sized allocations.
+            for parts in [
+                &[200_i128, 299][..],
+                &[200_i128, 301][..],
+                &[0_i128, 500][..],
+                &[i128::MAX, 1][..],
+            ] {
+                let (env, admin, _unused, contract) = setup();
+                contract.initialize(&admin);
+                let buyer = Address::generate(&env);
+                let worker = Address::generate(&env);
+                let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+                token::StellarAssetClient::new(&env, &token_id)
+                    .mint(&buyer, &(500_i128 + ContractStorage::reserve_for_entries(10)));
+                let token_client = token::Client::new(&env, &token_id);
+                let before = token_client.balance(&buyer);
+                let mut requests = soroban_sdk::Vec::new(&env);
+                requests.push_back(request(&env, &worker, &token_id, 500, parts));
+                assert!(contract.try_batch_create_escrows(&buyer, &requests).is_err());
+                assert_eq!(token_client.balance(&buyer), before);
+            }
+        }
+
+        #[test]
+        fn issue_862_cancellation_after_release_only_refunds_remaining_principal() {
+            let (env, admin, buyer, worker, token_id, id, contract) = funded(500, None);
+            let treasury = Address::generate(&env);
+            contract.set_platform_treasury(&admin, &treasury);
+            let first = milestone(&env, &contract, &buyer, id, 200);
+            let second = milestone(&env, &contract, &buyer, id, 300);
+            contract.submit_milestone(&worker, &id, &first);
+            contract.approve_milestone(&buyer, &id, &first);
+            let token_client = token::Client::new(&env, &token_id);
+            let worker_before = token_client.balance(&worker);
+            assert_eq!(worker_before, 200);
+            assert_eq!(contract.get_escrow(&id).remaining_balance, 300);
+            let buyer_before = token_client.balance(&buyer);
+            let treasury_before = token_client.balance(&treasury);
+            contract.cancel_escrow(&buyer, &id);
+            let refunded = token_client.balance(&buyer) - buyer_before;
+            let fee = token_client.balance(&treasury) - treasury_before;
+            assert_eq!(refunded + fee, 300);
+            assert_eq!(token_client.balance(&worker), worker_before);
+            assert_eq!(contract.get_milestone(&id, &first).status, MS_RELEASED);
+            assert_eq!(contract.get_milestone(&id, &second).status, MS_PENDING);
+            assert_eq!(contract.get_escrow(&id).remaining_balance, 0);
+            assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Cancelled);
+        }
+
+        #[test]
+        fn issue_859_terminal_escrows_cannot_be_reopened_or_released() {
+            // Completed: a second submission is rejected with the escrow-state error.
+            let (env, _admin, buyer, worker, token_id, id, contract) = funded(500, None);
+            let mid = milestone(&env, &contract, &buyer, id, 500);
+            contract.submit_milestone(&worker, &id, &mid);
+            contract.approve_milestone(&buyer, &id, &mid);
+            assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Completed);
+            let worker_funds = token::Client::new(&env, &token_id).balance(&worker);
+            assert_eq!(contract.try_submit_milestone(&worker, &id, &mid), Err(Ok(EscrowError::E9)));
+            assert_eq!(contract.try_cancel_escrow(&buyer, &id), Err(Ok(EscrowError::E9)));
+            assert_eq!(token::Client::new(&env, &token_id).balance(&worker), worker_funds);
+
+            // Cancelled: pending milestones cannot be submitted after funds are refunded.
+            let (env, admin, buyer, worker, token_id, id, contract) = funded(500, None);
+            contract.set_platform_treasury(&admin, &Address::generate(&env));
+            let mid = milestone(&env, &contract, &buyer, id, 500);
+            contract.cancel_escrow(&buyer, &id);
+            let before = token::Client::new(&env, &token_id).balance(&worker);
+            assert_eq!(contract.try_submit_milestone(&worker, &id, &mid), Err(Ok(EscrowError::E9)));
+            assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Cancelled);
+            assert_eq!(token::Client::new(&env, &token_id).balance(&worker), before);
+
+            // Expired: even an otherwise pending milestone is permanently ineligible.
+            let (env, _admin, buyer, worker, token_id, id, contract) = funded(500, Some(1_000));
+            let mid = milestone(&env, &contract, &buyer, id, 500);
+            env.ledger().with_mut(|ledger| ledger.timestamp = 1_001);
+            contract.claim_expiry_refund(&id);
+            let before = token::Client::new(&env, &token_id).balance(&worker);
+            assert_eq!(contract.try_submit_milestone(&worker, &id, &mid), Err(Ok(EscrowError::E9)));
+            assert_eq!(contract.get_escrow(&id).status, EscrowStatus::Expired);
+            assert_eq!(token::Client::new(&env, &token_id).balance(&worker), before);
+        }
     }
 
     #[cfg(test)]
