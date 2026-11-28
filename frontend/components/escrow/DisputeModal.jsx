@@ -7,13 +7,22 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../contexts/ToastContext';
 import { buildRaiseDisputeTx, broadcastTransaction } from '../../lib/stellar';
 import { uploadDisputeEvidence } from '../../lib/uploadEvidence';
 import Modal from '../ui/Modal';
 import CharCountTextarea from '../ui/CharCountTextarea';
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 export default function DisputeModal({ isOpen, onClose, escrowId, onSuccess }) {
   const [reason, setReason] = useState('');
@@ -26,11 +35,71 @@ export default function DisputeModal({ isOpen, onClose, escrowId, onSuccess }) {
   const { address, signTx } = useWallet();
   const { showToast } = useToast();
 
-  const resetUpload = () => {
-    setFile(null);
-    setUploadProgress(0);
-    setEvidenceHash('');
-  };
+  const dialogRef = useRef(null);
+  const triggerRef = useRef(null);
+
+  const getFocusableElements = useCallback(() => {
+    const root = dialogRef.current;
+    if (!root) return [];
+    return Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+      (el) => el.offsetParent !== null || el === document.activeElement
+    );
+  }, []);
+
+  // Capture the trigger, move focus into the dialog, and restore on close.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    triggerRef.current =
+      typeof document !== 'undefined' ? document.activeElement : null;
+
+    // Move focus into the dialog (first focusable element, else the container).
+    const focusTimer = setTimeout(() => {
+      const focusable = getFocusableElements();
+      if (focusable.length > 0) {
+        focusable[0].focus();
+      } else if (dialogRef.current) {
+        dialogRef.current.focus();
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(focusTimer);
+      const trigger = triggerRef.current;
+      triggerRef.current = null;
+      if (trigger && typeof trigger.focus === 'function' && trigger.isConnected) {
+        trigger.focus();
+      }
+    };
+  }, [isOpen, getFocusableElements]);
+
+  // Trap Tab / Shift+Tab focus within the dialog while open.
+  const handleKeyDown = useCallback(
+    (event) => {
+      if (event.key !== 'Tab') return;
+      const focusable = getFocusableElements();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        if (dialogRef.current) dialogRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey) {
+        if (active === first || !dialogRef.current?.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !dialogRef.current?.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+    [getFocusableElements]
+  );
 
   const handleRaise = async () => {
     setIsSubmitting(true);
@@ -83,7 +152,13 @@ export default function DisputeModal({ isOpen, onClose, escrowId, onSuccess }) {
       confirmVariant="danger"
       isLoading={isSubmitting}
     >
-      <div className="space-y-4">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className="space-y-4 focus:outline-none"
+      >
+        {/* Warning */}
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-sm text-amber-300">
           Raising a dispute will <strong>freeze all funds</strong> in this escrow until the arbiter
           or contract admin resolves it. This action cannot be undone.

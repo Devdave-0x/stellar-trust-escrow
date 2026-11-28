@@ -49,7 +49,7 @@
 
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Networks } from '@stellar/stellar-sdk';
 import {
   isConnected as freighterIsConnected,
@@ -62,36 +62,55 @@ import { useWalletStore } from '../store/app-store';
 
 const FREIGHTER_INSTALL_URL = 'https://www.freighter.app/';
 
-/**
- * Error thrown when the user intentionally rejects/cancels a wallet action.
- * Callers can check `err.isCancellation === true` (or `instanceof`) to
- * preserve form state and avoid showing a misleading chain-failure alert.
- */
-export class WalletCancellationError extends Error {
-  constructor(message = 'Transaction signing was cancelled.') {
-    super(message);
-    this.name = 'WalletCancellationError';
-    this.isCancellation = true;
+// Stable key used to persist a pending transaction across page reloads.
+export const PENDING_TX_STORAGE_KEY = 'stellar-pending-tx';
+
+// A stored pending transaction older than this is considered stale and discarded.
+const PENDING_TX_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const HASH_REGEX = /^[0-9a-fA-F]{64}$/;
+
+function isValidStoredTx(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (typeof value.hash !== 'string' || !HASH_REGEX.test(value.hash)) return false;
+  if (typeof value.timestamp !== 'number' || !Number.isFinite(value.timestamp)) return false;
+  if (Date.now() - value.timestamp > PENDING_TX_MAX_AGE_MS) return false;
+  return true;
+}
+
+function readPendingTx() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_TX_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!isValidStoredTx(parsed)) {
+      window.localStorage.removeItem(PENDING_TX_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    try {
+      window.localStorage.removeItem(PENDING_TX_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    return null;
   }
 }
 
-/**
- * Detects whether an error from Freighter represents an intentional user
- * rejection/cancellation rather than a genuine signing failure.
- */
-export function isUserRejection(err) {
-  if (!err) return false;
-  if (err.isCancellation === true) return true;
-
-  const code = err.code ?? err.error?.code ?? err.status;
-  if (code === 4001 || code === '4001') return true;
-
-  const message = String(err.message ?? err.error?.message ?? err ?? '');
-  return /user (rejected|declined|cancell?ed)|rejected by user|request rejected|user closed/i.test(
-    message,
-  );
+function writePendingTx(pendingTx) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (pendingTx) {
+      window.localStorage.setItem(PENDING_TX_STORAGE_KEY, JSON.stringify(pendingTx));
+    } else {
+      window.localStorage.removeItem(PENDING_TX_STORAGE_KEY);
+    }
+  } catch {
+    // Storage may be unavailable (private mode, quota) — fail silently.
+  }
 }
-=======
 
 export function useWallet() {
   const {
@@ -107,6 +126,10 @@ export function useWallet() {
     setConnectError,
     disconnect,
   } = useWalletStore();
+
+  // ── Pending transaction state (persisted across reloads) ───────────────────
+  const [pendingTx, setPendingTx] = useState(null);
+  const [pendingTxStatus, setPendingTxStatus] = useState('idle'); // idle | pending | confirmed | failed
 
   // ── Detect Freighter on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -134,6 +157,85 @@ export function useWallet() {
 
     restoreConnection();
   }, [isFreighterInstalled, finishConnect]);
+
+  // ── Restore pending transaction on mount ───────────────────────────────────
+  useEffect(() => {
+    const stored = readPendingTx();
+    if (!stored) return;
+    // Restore into state and resume polling — never resubmit the signed op.
+    setPendingTx(stored);
+    setPendingTxStatus('pending');
+  }, []);
+
+  // ── Poll for confirmation of the pending transaction ───────────────────────
+  useEffect(() => {
+    if (!pendingTx || pendingTxStatus !== 'pending') return;
+
+    let cancelled = false;
+    let timer = null;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/transactions/${pendingTx.hash}`);
+        if (cancelled) return;
+
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const status = data?.status;
+          if (status === 'success' || status === 'confirmed') {
+            setPendingTxStatus('confirmed');
+            setPendingTx(null);
+            writePendingTx(null);
+            return;
+          }
+          if (status === 'failed' || status === 'error') {
+            setPendingTxStatus('failed');
+            setPendingTx(null);
+            writePendingTx(null);
+            return;
+          }
+        } else if (res.status === 404) {
+          // Unknown hash — discard without resubmitting.
+          setPendingTxStatus('failed');
+          setPendingTx(null);
+          writePendingTx(null);
+          return;
+        }
+      } catch {
+        // Transient network error — keep polling.
+      }
+
+      if (!cancelled) {
+        timer = setTimeout(poll, 5000);
+      }
+    };
+
+    poll();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pendingTx, pendingTxStatus]);
+
+  // ── Track a submitted transaction ──────────────────────────────────────────
+  const trackPendingTx = useCallback((tx) => {
+    if (!tx || typeof tx.hash !== 'string' || !HASH_REGEX.test(tx.hash)) return;
+    const entry = {
+      hash: tx.hash,
+      escrowId: tx.escrowId ?? null,
+      timestamp: Date.now(),
+    };
+    writePendingTx(entry);
+    setPendingTx(entry);
+    setPendingTxStatus('pending');
+  }, []);
+
+  const clearPendingTx = useCallback(() => {
+    writePendingTx(null);
+    setPendingTx(null);
+    setPendingTxStatus('idle');
+  }, []);
 
   // ── Connect ────────────────────────────────────────────────────────────────
   const connect = useCallback(async () => {
@@ -212,5 +314,9 @@ export function useWallet() {
     connect,
     disconnect,
     signTx,
+    pendingTx,
+    pendingTxStatus,
+    trackPendingTx,
+    clearPendingTx,
   };
 }
