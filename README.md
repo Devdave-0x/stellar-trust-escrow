@@ -700,5 +700,11 @@ _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
 <!-- handsoff-issue-779 -->
 - #779: Add event completeness checks for partial release amount rounding
 
-<!-- handsoff-issue-872 -->
-- #872: Preserve escrow access after repeated TTL extensions
+<!-- handsoff-issue-887 -->
+- #887: Bind proposal payload hashes to their declared action type
+
+<!-- handsoff-issue-888 -->
+- #888: Verify insurance claims cannot exceed the eligible contribution basis
+
+<!-- handsoff-issue-889 -->
+- #889: Make insurance payout retries idempotent after an uncertain response
