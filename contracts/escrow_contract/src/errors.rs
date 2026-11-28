@@ -63,51 +63,51 @@ pub enum EcErr {
     OracleStaleFeed = 67,
     OracleInvalidPrice = 68,
     OraclePriceConversionFailed = 69,
-    E70 = 70,
-    E71 = 71,
-    E72 = 72,
-    E73 = 73,
-    E74 = 74,
-    /// Dispute record not found for this escrow (escrow is not disputed)
-    EscrowNotDisputed = 75,
-    /// Contract has not been initialized
-    NotInitialized = 76,
-    /// Platform treasury address has not been configured
-    TreasuryNotConfigured = 77,
-    /// Recipient address is on the platform-managed release blocklist
-    RecipientBlocked = 78,
-    /// Release amount is below the minimum dust threshold
-    AmountBelowDustThreshold = 79,
-    /// Milestone duration (deadline_ledger - current_ledger) is below MIN_MILESTONE_DURATION_LEDGERS
-    MilestoneTooShort = 80,
-    /// Batch request exceeded the maximum allowed number of escrow IDs
-    BatchTooLarge = 81,
-    /// Escrow already has the maximum number of arbiters assigned
-    TooManyArbiters = 82,
-    /// This nonce has already been used and cannot be replayed
-    NonceAlreadyUsed = 83,
-    /// Escrow participant list exceeds MAX_PARTICIPANTS.
-    TooManyParticipants = 84,
-    /// Milestone title exceeds the maximum allowed length (64 bytes).
-    MilestoneTitleTooLong = 85,
-    /// A milestone with this ID already exists in the escrow's milestone map.
-    DuplicateMilestoneId = 86,
-    /// The computed creation nonce for this escrow has already been used.
-    CreationNonceAlreadyUsed = 87,
-    /// Milestone approval quorum transition rejected: not enough approvals yet.
-    MilestoneQuorumNotReached = 88,
-    /// Milestone approval quorum transition rejected: approver already approved.
-    MilestoneAlreadyApproved = 89,
-    /// Milestone approval quorum transition rejected: milestone is not in an
-    /// approval-pending state (e.g. already approved or not found).
-    MilestoneInvalidState = 90,
-    /// Milestone approval quorum transition rejected: caller is not an
-    /// authorized approver for this escrow.
-    MilestoneUnauthorizedApprover = 91,
-    /// Milestone description exceeds the maximum allowed length (MAX_MILESTONE_DESCRIPTION_LEN bytes).
-    MilestoneDescriptionTooLong = 92,
+    E70 = 70, // RbacUnauthorizedRole
+    E71 = 71, // RbacRoleAlreadySet
+    E72 = 72, // RbacInvalidRoleAssignment
+    FeeTooHigh = 73,
+    TreasuryNotConfigured = 74,
+    InvalidMultisigConfig = 75,
+    HighValueMultisigRequired = 76,
+    DuplicateMultisigApproval = 77,
+    MultisigBatchApprovalUnsupported = 78,
+    OracleStalePriceFeed = 130,
+    OracleDriftExceeded = 131,
+    OracleNotConfigured = 132,
+    ContractPaused = 133,
+    UnpauseTooEarly = 134,
+    CannotAcceptOwnProposal = 135,
+    ProposalExpired = 136,
+    InvalidEscrowState = 137,
+    NoCancellationProposal = 138,
+    EscrowNotExpired = 81,
+    EscrowAlreadyExpired = 82,
+
+    /// Caller has already cast an approval vote for this milestone.
+    AlreadyVoted = 139,
+    /// Approval threshold must be > 0 and <= number of approvers.
+    InvalidThreshold = 140,
+    UnregisteredArbiter = 141,
+    Unauthorized = 142,
+    BatchTooLarge = 143,
+    BatchInvalidMilestone = 144,
+    BatchUnauthorized = 145,
+    BatchInvalid = 146,
+}
+
+#[contracterror(export = false)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum BatchError {
+    TooLarge = 143,
+    InvalidMilestone = 144,
+    Unauthorized = 145,
+    InvalidBatch = 146,
 }
 
 /// Backward-compatible alias — existing code imports `EscrowError`; the oracle
 /// refactor renamed the enum to `EcErr` without updating call sites.
 pub type EscrowError = EcErr;
+#[allow(dead_code)]
+pub type ContractError = EcErr;

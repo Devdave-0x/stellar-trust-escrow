@@ -26,19 +26,19 @@ import Button from '../../../components/ui/Button';
 import CharCountTextarea from '../../../components/ui/CharCountTextarea';
 import FeeEstimator from '../../../components/ui/FeeEstimator';
 import TemplateSelector from '../../../components/escrow/TemplateSelector';
-import TemplateConflictModal from '../../../components/escrow/TemplateConflictModal';
-import { findTemplateConflicts, mergeTemplate } from '../../../lib/escrow/templateConflicts';
+import TemplatePickerModal from '../../../components/templates/TemplatePickerModal';
+import SaveTemplateModal from '../../../components/templates/SaveTemplateModal';
 import StellarAddressInput from '../../../components/ui/StellarAddressInput';
 import XLMAmountInput from '../../../components/ui/XLMAmountInput';
 import templatesData from '../../../data/templates.json';
 import { useToast } from '../../../contexts/ToastContext';
 import { useWallet } from '../../../hooks/useWallet';
+import { getTemplate } from '../../../hooks/useEscrowTemplates';
+import { applyBackendTemplateToForm } from '../../../lib/templates';
 import {
-  buildCreateEscrowWithTermsHashTx,
+  buildCreateEscrowTx,
   broadcastTransaction,
   isValidStellarAddress,
-  computeTermsHash,
-  validateWalletNetwork,
 } from '../../../lib/stellar';
 
 const STEPS = [
@@ -67,7 +67,7 @@ export default function CreateEscrowPage() {
   const searchParams = useSearchParams();
   const templateLibrary = templatesData.templates || [];
 
-  const { address, isConnected, signTx, network: walletNetwork } = useWallet();
+  const { address, isConnected, signTx } = useWallet();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     clientAddress: '',
@@ -90,6 +90,9 @@ export default function CreateEscrowPage() {
   // Template waiting for the user to resolve conflicts with fields they filled in.
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [appliedQueryTemplateId, setAppliedQueryTemplateId] = useState(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [showSave, setShowSave] = useState(false);
+  const [appliedBackendTemplateId, setAppliedBackendTemplateId] = useState(null);
 
   // Touched state tracks which fields the user has interacted with
   const [touched, setTouched] = useState({ totalAmount: false, briefDescription: false });
@@ -156,45 +159,40 @@ export default function CreateEscrowPage() {
     setTemplateNotice(`Applied template: ${template.name}`);
   };
 
-  const handleApplyTemplate = (template) => {
-    const conflicts = findTemplateConflicts(formData, template);
-    if (conflicts.length === 0) {
-      commitTemplate(template);
+  // Shared/template URL (?templateId=...) loads a saved template from the API.
+  useEffect(() => {
+    const templateId = searchParams.get('templateId');
+    if (!templateId || templateId === appliedBackendTemplateId) {
       return;
     }
-    setPendingTemplate({ template, conflicts });
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const template = await getTemplate(templateId);
+        if (cancelled || !template) return;
+        setFormData((previous) => applyBackendTemplateToForm(previous, template));
+        setCurrentStep(1);
+        setTemplateNotice(`Loaded from template: ${template.name}`);
+        setAppliedBackendTemplateId(templateId);
+      } catch {
+        // Template may be private or unavailable — ignore silently.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, appliedBackendTemplateId]);
+
+  const handleLoadFromBackend = (template) => {
+    setFormData((previous) => applyBackendTemplateToForm(previous, template));
+    setCurrentStep(1);
+    setTemplateNotice(`Loaded from template: ${template.name}`);
+    setShowPicker(false);
   };
 
-  const participantErrors = (() => {
-    const errors = {};
-    if (formData.clientAddress && !isValidStellarAddress(formData.clientAddress)) {
-      errors.clientAddress = 'Client address is invalid.';
-    }
-    if (formData.freelancerAddress && !isValidStellarAddress(formData.freelancerAddress)) {
-      errors.freelancerAddress = 'Freelancer address is invalid.';
-    }
-    if (formData.arbiterAddress && !isValidStellarAddress(formData.arbiterAddress)) {
-      errors.arbiterAddress = 'Arbiter address is invalid.';
-    }
-    const participants = [
-      formData.clientAddress,
-      formData.freelancerAddress,
-      formData.arbiterAddress,
-    ].filter(Boolean);
-    const unique = new Set(participants);
-    if (unique.size !== participants.length) {
-      errors.participants = 'Participant addresses must be unique.';
-    }
-    return errors;
-  })();
-
-  const canSubmit =
-    isConnected &&
-    isValidStellarAddress(formData.clientAddress) &&
-    isValidStellarAddress(formData.freelancerAddress) &&
-    isPositiveAmount(formData.totalAmount) &&
-    Object.keys(participantErrors).length === 0;
-
+  // TODO (contributor — Issue #33): implement form submission
   const handleSubmit = async () => {
     if (!canSubmit) {
       setError('Fix validation errors before submitting.');
@@ -211,36 +209,9 @@ export default function CreateEscrowPage() {
     setTxHash(null);
 
     try {
-      const check = validateWalletNetwork(walletNetwork || process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet');
-      if (!check.ok) throw new Error(check.error);
-
-      const briefHash = termsHash ?? (await computeTermsHash(formData.briefDescription || 'escrow'));
-      const unsignedXdr = await buildCreateEscrowWithTermsHashTx({
-        sourceAddress: formData.clientAddress || address,
-        freelancerAddress: formData.freelancerAddress,
-        tokenAddress: process.env.NEXT_PUBLIC_USDC_CONTRACT || formData.tokenAddress,
-        amount: String(Math.round(Number(formData.totalAmount) * 1e7)),
-        briefHash,
-        termsHash: termsHash ?? undefined,
-        arbiter: formData.arbiterAddress || null,
-        deadline: formData.deadline ? Math.floor(new Date(formData.deadline).getTime() / 1000) : null,
-      });
-
-      setTxPhase('signing');
-      const signedXdr = await signTx(unsignedXdr);
-      setTxPhase('submitting');
-      const result = await broadcastTransaction(signedXdr);
-      setTxPhase(result.status === 'SUCCESS' ? 'confirmed' : 'pending');
-      setTxHash(result.hash || result.txHash);
-      if (result.escrowId) {
-        sessionStorage.removeItem(DRAFT_STORAGE_KEY);
-        router.push(`/escrow/${result.escrowId}`);
-      }
+      throw new Error('Not implemented — see Issue #33');
     } catch (err) {
       const message = err.message || 'Failed to create escrow';
-      const rejected =
-        message.toLowerCase().includes('user') || message.toLowerCase().includes('reject');
-      setTxPhase(rejected ? 'wallet_rejected' : 'simulation_failed');
       setError(message);
     } finally {
       setIsSubmitting(false);
@@ -295,6 +266,16 @@ export default function CreateEscrowPage() {
         <p className="text-gray-400 mt-1">Lock funds and define milestones for your project.</p>
       </div>
 
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          onClick={() => setShowPicker(true)}
+          className="min-h-touch"
+        >
+          Load template
+        </Button>
+      </div>
+
       <TemplateSelector
         baseTemplates={templateLibrary}
         formData={formData}
@@ -310,7 +291,33 @@ export default function CreateEscrowPage() {
 
       {/* Step Indicator */}
       <nav aria-label="Progress">
-        <ol className="flex items-center gap-2">
+        {/* Mobile: collapse the step indicator into a single progress bar */}
+        <div className="sm:hidden mb-2">
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+            <span className="font-medium text-white">
+              Step {currentStep}: {STEPS[currentStep - 1]?.label}
+            </span>
+            <span>
+              {currentStep} / {STEPS.length}
+            </span>
+          </div>
+          <div
+            className="w-full h-2 bg-gray-800 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuemin={1}
+            aria-valuemax={STEPS.length}
+            aria-valuenow={currentStep}
+            aria-label={`Step ${currentStep} of ${STEPS.length}: ${STEPS[currentStep - 1]?.label}`}
+          >
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+              style={{ width: `${(currentStep / STEPS.length) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Desktop: full step indicator */}
+        <ol className="hidden sm:flex items-center gap-2">
           {STEPS.map((step, i) => (
             <li key={step.id} className="flex items-center gap-2">
               <div
@@ -336,17 +343,6 @@ export default function CreateEscrowPage() {
         </ol>
       </nav>
 
-      <TemplateConflictModal
-        isOpen={Boolean(pendingTemplate)}
-        templateName={pendingTemplate?.template.name ?? ''}
-        conflicts={pendingTemplate?.conflicts ?? []}
-        onApply={(choices) => {
-          commitTemplate(pendingTemplate.template, choices);
-          setPendingTemplate(null);
-        }}
-        onCancel={() => setPendingTemplate(null)}
-      />
-
       {/* Step Content */}
       <div className="card space-y-6">
         {currentStep === 1 && (
@@ -365,8 +361,17 @@ export default function CreateEscrowPage() {
             onUpdate={updateMilestone}
           />
         )}
+        {currentStep === 3 && <StepReview formData={formData} />}
         {currentStep === 3 && (
-          <StepReview formData={formData} termsHash={termsHash} network={process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet'} />
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => setShowSave(true)}
+              className="min-h-touch"
+            >
+              Save as template
+            </Button>
+          </div>
         )}
         {currentStep === 4 && (
           <StepSign
@@ -399,6 +404,13 @@ export default function CreateEscrowPage() {
           </Button>
         )}
       </div>
+
+      <TemplatePickerModal
+        isOpen={showPicker}
+        onClose={() => setShowPicker(false)}
+        onSelect={handleLoadFromBackend}
+      />
+      <SaveTemplateModal isOpen={showSave} onClose={() => setShowSave(false)} formData={formData} />
     </div>
   );
 }
@@ -571,7 +583,6 @@ function StepMilestones({ formData, onAdd, onRemove, onUpdate }) {
             rows={2}
             placeholder="Milestone description"
             aria-label={`Milestone ${index + 1} description`}
-            maxLength={1000}
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2
                        text-white placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 resize-none"
             value={milestone.description}

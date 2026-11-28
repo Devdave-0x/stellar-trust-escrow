@@ -22,10 +22,8 @@ const subscribeRateLimit = createSlidingWindowRateLimiter({
 });
 
 router.post('/subscribe', subscribeRateLimit, webhookController.subscribe);
-router.get('/', webhookController.listSubscriptions);
-router.post('/rotate-secret', webhookController.rotateSecret);
-router.post('/:id/rotate-secret', webhookController.rotateSecret);
-router.delete('/:id', webhookController.deleteSubscription);
+router.get('/', webhookController.listEndpoints);
+router.delete('/:id', webhookController.deleteEndpoint);
 router.get('/:id/deliveries', webhookController.getDeliveries);
 
 export default router;

@@ -160,11 +160,6 @@ export default function EscrowDetailScreen() {
   const router = useRouter();
   const [authed, setAuthed] = useState(!isBiometricEnabled());
 
-  const [evidence, setEvidence] = useState<EvidenceFile | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
   const { data: escrow, isLoading, refetch } = useEscrow(authed && id ? id : null);
   const { data: milestones = [], isLoading: milestonesLoading } = useMilestones(
     authed && escrow && id ? id : null,

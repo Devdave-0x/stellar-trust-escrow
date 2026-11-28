@@ -2,7 +2,7 @@
 //!
 //! All shared structs, enums, and storage keys for the escrow contract.
 
-use soroban_sdk::{contracttype, Address, BytesN, String};
+use soroban_sdk::{contracttype, Address, BytesN, String, Vec};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENUMS
@@ -22,7 +22,7 @@ pub enum EscrowStatus {
     Cancelled,
     /// Cancellation requested - pending dispute resolution or deadline.
     CancellationPending,
-    /// Escrow deadline passed without completion. Remaining funds refunded to depositor.
+    /// Escrow passed its deadline with no completion and was refunded to client.
     Expired,
 }
 
@@ -245,8 +245,8 @@ pub struct ApprovalRecord {
 // STRUCTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Multisig policy for milestone approve/reject. Empty `approvers` disables multisig
-/// (only `client` may approve/reject, legacy behaviour).
+/// Weighted multisig policy for milestone approval. Empty `approvers`, empty
+/// `weights`, and a zero `threshold` disable multisig for low-value escrows.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct MultisigConfig {
@@ -437,6 +437,9 @@ pub struct EscrowState {
 
     /// Minimum sum of weights required to approve a submitted milestone.
     pub multisig_threshold: u32,
+
+    /// Expiration timestamp (Unix timestamp) after which escrow can be refunded to client.
+    pub expires_at: u64,
 }
 
 /// On-chain reputation record for a user address.
@@ -539,24 +542,24 @@ pub struct CancellationRequest {
     pub counterparty_approved: bool,
 }
 
-/// A pending mutual-consent deadline extension request.
+/// A mutual-consent cancellation proposal requiring approval from the other party.
+///
+/// Either the client or freelancer can propose; the counterparty must accept
+/// within 24 hours. On acceptance the escrow is split per `client_refund_bps`
+/// and the agreed terms hash is anchored on-chain.
 #[contracttype]
 #[derive(Clone, Debug)]
-pub struct EscrowExtensionRequest {
-    /// The escrow ID this request belongs to.
+pub struct CancellationProposal {
+    /// The escrow ID this proposal belongs to.
     pub escrow_id: u64,
-
-    /// Address of the party that proposed the extension.
-    pub requested_by: Address,
-
-    /// The proposed new deadline (ledger timestamp).
-    pub proposed_deadline: u64,
-
-    /// When the request was created (ledger timestamp).
-    pub requested_at: u64,
-
-    /// When the request expires if not confirmed (ledger timestamp).
-    pub expires_at: u64,
+    /// Address of the party who proposed cancellation.
+    pub proposer: Address,
+    /// Client refund share in basis points (0–10000). Contractor receives the remainder.
+    pub client_refund_bps: u32,
+    /// SHA-256 hash of the cancellation terms agreed by the proposer.
+    pub terms_hash: BytesN<32>,
+    /// Ledger timestamp when the proposal was created.
+    pub proposed_at: u64,
 }
 
 /// Oracle-signed resolution payload for fallback dispute resolution.
@@ -609,29 +612,36 @@ pub struct SlashRecord {
     pub disputed: bool,
 }
 
-/// On-chain dispute record storing evidence hashes and metadata.
+/// A deadline extension request requiring mutual participant consent.
 ///
-/// Created when `raise_dispute` is called. The `evidence_hashes` list is
-/// immutable after creation — no function may modify it. Each hash is the
-/// SHA-256 digest of an off-chain evidence file (e.g., stored on IPFS or S3).
-///
-/// ## Verifying evidence against its on-chain hash
-///
-/// 1. Retrieve the evidence file from off-chain storage (IPFS, S3, etc.).
-/// 2. Compute `SHA-256(file_bytes)` to get a 32-byte digest.
-/// 3. Call `get_evidence_hashes(escrow_id)` and check that the computed
-///    digest matches one of the returned `BytesN<32>` values.
-/// 4. If the digests match, the file is authentic and unmodified since
-///    the dispute was raised.
+/// Either the client or freelancer can propose an extension.
+/// Both parties must approve for the extension to take effect.
 #[contracttype]
 #[derive(Clone, Debug)]
-pub struct DisputeRecord {
+pub struct DeadlineExtensionRequest {
+    /// The escrow ID this extension request belongs to.
     pub escrow_id: u64,
-    pub raised_by: Address,
-    pub raised_at: u64,
-    pub milestone_id: Option<u32>,
-    /// SHA-256 hashes of evidence files. Immutable after dispute creation.
-    pub evidence_hashes: soroban_sdk::Vec<BytesN<32>>,
+
+    /// Address of the party requesting the extension.
+    pub requester: Address,
+
+    /// Proposed new deadline (ledger timestamp).
+    pub new_deadline: u64,
+
+    /// Reason for the extension request.
+    pub reason: String,
+
+    /// When the extension was requested (ledger timestamp).
+    pub requested_at: u64,
+
+    /// Whether the counterparty has approved this extension.
+    pub counterparty_approved: bool,
+
+    /// Ledger timestamp when the counterparty approved (if they did).
+    pub approved_at: Option<u64>,
+
+    /// True if the request has been rejected or cancelled.
+    pub cancelled: bool,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -773,10 +783,8 @@ pub enum DataKey {
     AdminThreshold,
     /// Contract pause state — value: bool
     Paused,
-    /// Timestamp when the contract was paused — value: u64
-    PausedAt,
-    /// Reason the contract was paused — value: String
-    PauseReason,
+    /// Timestamp when pause was initiated — value: u64
+    PauseInitiatedAt,
     /// Cancellation request by escrow ID — key: u64, value: CancellationRequest
     CancellationRequest(u64),
     /// Slash record by escrow ID — key: u64, value: SlashRecord
@@ -835,79 +843,49 @@ pub enum DataKey {
     OracleResolution(u64),
     /// Trusted oracle Ed25519 public key for fallback dispute resolution — value: BytesN<32>
     TrustedOracleKey,
-    /// Configured release timelock duration in seconds for an escrow — key: u64, value: u64
-    EscrowTimelockSecs(u64),
-    /// M-of-N multisig config for escrow-level release approval — key: u64, value: MultisigConfig
-    MultisigCfg(u64),
-    /// Assigned arbiters for an escrow — key: u64, value: Vec<Address>
-    ArbiterList(u64),
-    /// Off-chain signed message nonce registry — key: BytesN<32>, value: bool
-    UsedNonce(BytesN<32>),
-    /// Number of escrows created by an address — key: Address, value: u32
-    EscrowCountByCreator(Address),
-    /// Addresses that have submitted an escrow-level release approval — key: u64, value: Vec<Address>
-    MultisigApprovals(u64),
-    /// Cumulative percentage allocated via add_milestone_pct — key: u64, value: u32
-    AllocatedPct(u64),
-    /// Count of percentage-based milestones added to an escrow — key: u64, value: u32
-    PctMilestoneCount(u64),
-    /// Evidence hash submitted when raising a dispute — key: u64, value: BytesN<32>
-    EvidenceHash(u64),
-    /// Approved arbiter allowlist entry — key: Address, value: bool
-    ApprovedArbiter(Address),
-    /// Semantic version string (e.g. "1.0.0") — value: String
-    ContractVersion,
-    /// Configurable dispute cooldown in seconds — value: u64
-    DisputeCooldownSecs,
-    /// Monotonically increasing counter incremented on every upgrade — value: u32
-    MigrationVersion,
-    /// Used creation nonces — key: BytesN<32>, value: bool
-    UsedCreationNonce(BytesN<32>),
-    /// Creation nonce stored per escrow for retrieval — key: u64, value: BytesN<32>
-    EscrowCreationNonce(u64),
+    /// Deadline extension request by escrow ID — key: u64, value: DeadlineExtensionRequest
+    DeadlineExtensionRequest(u64),
+    /// Escrow IDs with active deadline extension requests indexed by requester — key: Address, value: Vec<u64>
+    DeadlineExtensionsByRequester(Address),
+    /// Mutual-consent cancellation proposal by escrow ID — key: u64, value: CancellationProposal
+    CancellationProposal(u64),
+    /// N-of-M approval threshold for a given escrow — key: u64, value: u32
+    /// Defaults to 1 (single-approval legacy behaviour) when absent.
+    ApprovalThreshold(u64),
+    /// Pending approval votes for (escrow_id, milestone_id) — value: Vec<ApprovalRecord>
+    MilestoneVotes(u64, u32),
+    /// Approved arbiter registry — value: Map<Address, bool>
+    ArbiterRegistry,
 }
 
-/// Overflow storage keys for features added after `DataKey` reached the Soroban XDR schema limit.
+// ─────────────────────────────────────────────────────────────────────────────
+// BATCH OPERATION TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Initial milestone payload for batch escrow creation.
 #[contracttype]
-pub enum FeatDataKey {
-    /// Dispute record by escrow ID — key: u64, value: DisputeRecord
-    DisputeRecord(u64),
-    /// Pending escrow extension request — key: u64, value: EscrowExtensionRequest
-    ExtensionRequest(u64),
-    /// Minimum escrow amount — value: i128
-    MinEscrowAmount,
-    /// Maximum escrow amount — value: i128
-    MaxEscrowAmount,
-    /// Currently active (registered) arbiter addresses — value: Vec<Address>
-    ActiveArbiters,
-    /// Ledger sequence + timestamp recorded at escrow creation — key: u64, value: (u32, u64)
-    EscrowCreationInfo(u64),
-    /// Ledger timestamp of the last on-chain state-changing action on an escrow.
-    /// Updated by every entry point that mutates escrow state so off-chain systems
-    /// can calculate inactivity without replaying the full event log.
-    /// key: u64 (escrow_id), value: u64 (Unix timestamp from env.ledger().timestamp())
-    LastActivityTimestamp(u64),
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MilestoneInit {
+    pub title: String,
+    pub amount: i128,
+}
 
-    // ── Issue 1: Pending milestone counts ────────────────────────────────────
+/// Request payload for creating an escrow in a batch.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateEscrowRequest {
+    pub freelancer: Address,
+    pub token: Address,
+    pub amount: i128,
+    pub deadline: Option<u64>,
+    pub brief_hash: BytesN<32>,
+    pub milestones: Vec<MilestoneInit>,
+}
 
-    /// Number of milestones in Pending state per escrow — key: u64, value: u32
-    ///
-    /// Incremented by `add_milestone` / `create_milestone` (new milestones start Pending).
-    /// Decremented by `approve_milestone` and `reject_milestone` (both transition out of Pending).
-    PendingMilestoneCount(u64),
-
-    // ── Issue 2: Admin transfer timelock ─────────────────────────────────────
-
-    /// The ledger sequence number after which `accept_admin` becomes callable.
-    /// Set by `propose_admin`; cleared on `accept_admin` or `cancel_admin_proposal`.
-    /// value: u32
-    AdminTransferValidAfterLedger,
-
-    // ── Issue 3: Dispute counters ─────────────────────────────────────────────
-
-    /// Cumulative count of all `raise_dispute` calls across every escrow — value: u32
-    TotalDisputeCount,
-
-    /// Per-escrow count of `raise_dispute` calls — key: u64 (escrow_id), value: u32
-    DisputeCountByEscrow(u64),
+/// Cross-escrow milestone release request.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CrossEscrowRelease {
+    pub escrow_id: u64,
+    pub milestone_index: u32,
 }

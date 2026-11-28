@@ -7,130 +7,41 @@
 
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../contexts/ToastContext';
 import { buildRaiseDisputeTx, broadcastTransaction } from '../../lib/stellar';
-import { uploadDisputeEvidence } from '../../lib/uploadEvidence';
 import Modal from '../ui/Modal';
-import CharCountTextarea from '../ui/CharCountTextarea';
-
-const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'textarea:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
+import FileDropZone from '../ui/FileDropZone';
 
 export default function DisputeModal({ isOpen, onClose, escrowId, onSuccess }) {
   const [reason, setReason] = useState('');
-  const [file, setFile] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [evidenceHash, setEvidenceHash] = useState('');
+  const [evidence, setEvidence] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   const { address, signTx } = useWallet();
   const { showToast } = useToast();
 
-  const dialogRef = useRef(null);
-  const triggerRef = useRef(null);
-
-  const getFocusableElements = useCallback(() => {
-    const root = dialogRef.current;
-    if (!root) return [];
-    return Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
-      (el) => el.offsetParent !== null || el === document.activeElement
-    );
-  }, []);
-
-  // Capture the trigger, move focus into the dialog, and restore on close.
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    triggerRef.current =
-      typeof document !== 'undefined' ? document.activeElement : null;
-
-    // Move focus into the dialog (first focusable element, else the container).
-    const focusTimer = setTimeout(() => {
-      const focusable = getFocusableElements();
-      if (focusable.length > 0) {
-        focusable[0].focus();
-      } else if (dialogRef.current) {
-        dialogRef.current.focus();
-      }
-    }, 0);
-
-    return () => {
-      clearTimeout(focusTimer);
-      const trigger = triggerRef.current;
-      triggerRef.current = null;
-      if (trigger && typeof trigger.focus === 'function' && trigger.isConnected) {
-        trigger.focus();
-      }
-    };
-  }, [isOpen, getFocusableElements]);
-
-  // Trap Tab / Shift+Tab focus within the dialog while open.
-  const handleKeyDown = useCallback(
-    (event) => {
-      if (event.key !== 'Tab') return;
-      const focusable = getFocusableElements();
-      if (focusable.length === 0) {
-        event.preventDefault();
-        if (dialogRef.current) dialogRef.current.focus();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-
-      if (event.shiftKey) {
-        if (active === first || !dialogRef.current?.contains(active)) {
-          event.preventDefault();
-          last.focus();
-        }
-      } else if (active === last || !dialogRef.current?.contains(active)) {
-        event.preventDefault();
-        first.focus();
-      }
-    },
-    [getFocusableElements]
-  );
-
   const handleRaise = async () => {
     setIsSubmitting(true);
     setError(null);
     try {
       if (!address) throw new Error('Please connect your wallet first');
-      if (!file && !reason.trim()) {
-        throw new Error('Add a reason or evidence file before submitting.');
-      }
 
-      let hash = evidenceHash;
-      if (!hash) {
-        const payload = file || new Blob([reason.trim()], { type: 'text/plain' });
-        hash = await uploadDisputeEvidence(escrowId, payload, {
-          onProgress: setUploadProgress,
-        });
-        setEvidenceHash(hash);
-      }
+      // TODO: Upload reason to IPFS and get hash for better on-chain tracking
+      // For now, we'll pass null/empty
 
-      // Evidence hash is stored off-chain via the upload API; raise_dispute freezes funds.
       const unsignedXdr = await buildRaiseDisputeTx({
         sourceAddress: address,
         escrowId: BigInt(escrowId).toString(),
       });
 
       const signedXdr = await signTx(unsignedXdr);
-      const { hash: txHash } = await broadcastTransaction(signedXdr);
+      const { hash } = await broadcastTransaction(signedXdr);
 
-      showToast(`Dispute raised: ${txHash}`, 'success');
+      showToast(`Dispute raised: ${hash}`, 'success');
       setReason('');
-      resetUpload();
       onClose();
       if (onSuccess) onSuccess();
     } catch (err) {
@@ -184,30 +95,21 @@ export default function DisputeModal({ isOpen, onClose, escrowId, onSuccess }) {
           />
         </div>
 
+        {/* Evidence upload — thumb-friendly file area (Issue #1444) */}
         <div>
-          <label htmlFor="dispute-evidence" className="block text-sm text-gray-400 mb-1">
-            Evidence file <span className="text-gray-600">(PDF, PNG, JPEG, TXT · max 10MB)</span>
+          <label className="block text-sm text-gray-400 mb-1">
+            Attach evidence <span className="text-gray-600">(optional)</span>
           </label>
-          <input
-            id="dispute-evidence"
-            type="file"
-            accept=".pdf,.png,.jpeg,.jpg,.txt,application/pdf,image/png,image/jpeg,text/plain"
-            disabled={isSubmitting}
-            onChange={(e) => {
-              setFile(e.target.files?.[0] || null);
-              setEvidenceHash('');
-              setUploadProgress(0);
+          <FileDropZone
+            onFilesAccepted={(files) => setEvidence(files)}
+            maxFiles={5}
+            acceptedTypes={{
+              'application/pdf': 'PDF',
+              'image/png': 'PNG',
+              'image/jpeg': 'JPG',
+              'text/plain': 'TXT',
             }}
-            className="block w-full text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-gray-700 file:text-gray-200"
           />
-          {uploadProgress > 0 && uploadProgress < 100 && (
-            <p className="text-xs text-indigo-400 mt-1">Uploading… {uploadProgress}%</p>
-          )}
-          {evidenceHash && (
-            <p className="text-xs text-emerald-400 mt-1 font-mono break-all">
-              Verified hash: {evidenceHash}
-            </p>
-          )}
         </div>
 
         {error && (

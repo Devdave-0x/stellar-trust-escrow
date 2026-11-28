@@ -53,7 +53,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Networks } from '@stellar/stellar-sdk';
 import {
   isConnected as freighterIsConnected,
@@ -65,26 +65,6 @@ import {
 import { useWalletStore } from '../store/app-store';
 
 const FREIGHTER_INSTALL_URL = 'https://www.freighter.app/';
-
-const NO_PROVIDER_MESSAGE =
-  `No supported wallet provider was detected. Install Freighter at ${FREIGHTER_INSTALL_URL} ` +
-  'and refresh the page, or select a supported wallet in your browser to continue.';
-
-const PROVIDER_ERROR_MESSAGE =
-  'Your wallet provider returned an error. Please try again, or select a supported wallet ' +
-  `(e.g. Freighter at ${FREIGHTER_INSTALL_URL}) and reconnect.`;
-
-/**
- * Safely checks whether the Freighter provider is present on window.
- * Never throws — returns false in non-browser environments.
- */
-function detectFreighter() {
-  try {
-    return typeof window !== 'undefined' && !!window.freighter;
-  } catch {
-    return false;
-  }
-}
 
 export function useWallet() {
   const {
@@ -107,7 +87,7 @@ export function useWallet() {
 
   // ── Detect Freighter on mount ──────────────────────────────────────────────
   useEffect(() => {
-    setFreighterInstalled(detectFreighter());
+    setFreighterInstalled(typeof window !== 'undefined' && !!window.freighter);
   }, [setFreighterInstalled]);
 
   // ── Auto-restore connection on mount ───────────────────────────────────────
@@ -132,97 +112,16 @@ export function useWallet() {
     restoreConnection();
   }, [isFreighterInstalled, finishConnect]);
 
-  // ── Restore pending transaction on mount ───────────────────────────────────
-  useEffect(() => {
-    const stored = readPendingTx();
-    if (!stored) return;
-    // Restore into state and resume polling — never resubmit the signed op.
-    setPendingTx(stored);
-    setPendingTxStatus('pending');
-  }, []);
-
-  // ── Poll for confirmation of the pending transaction ───────────────────────
-  useEffect(() => {
-    if (!pendingTx || pendingTxStatus !== 'pending') return;
-
-    let cancelled = false;
-    let timer = null;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/transactions/${pendingTx.hash}`);
-        if (cancelled) return;
-
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          const status = data?.status;
-          if (status === 'success' || status === 'confirmed') {
-            setPendingTxStatus('confirmed');
-            setPendingTx(null);
-            writePendingTx(null);
-            return;
-          }
-          if (status === 'failed' || status === 'error') {
-            setPendingTxStatus('failed');
-            setPendingTx(null);
-            writePendingTx(null);
-            return;
-          }
-        } else if (res.status === 404) {
-          // Unknown hash — discard without resubmitting.
-          setPendingTxStatus('failed');
-          setPendingTx(null);
-          writePendingTx(null);
-          return;
-        }
-      } catch {
-        // Transient network error — keep polling.
-      }
-
-      if (!cancelled) {
-        timer = setTimeout(poll, 5000);
-      }
-    };
-
-    poll();
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [pendingTx, pendingTxStatus]);
-
-  // ── Track a submitted transaction ──────────────────────────────────────────
-  const trackPendingTx = useCallback((tx) => {
-    if (!tx || typeof tx.hash !== 'string' || !HASH_REGEX.test(tx.hash)) return;
-    const entry = {
-      hash: tx.hash,
-      escrowId: tx.escrowId ?? null,
-      timestamp: Date.now(),
-    };
-    writePendingTx(entry);
-    setPendingTx(entry);
-    setPendingTxStatus('pending');
-  }, []);
-
-  const clearPendingTx = useCallback(() => {
-    writePendingTx(null);
-    setPendingTx(null);
-    setPendingTxStatus('idle');
-  }, []);
-
   // ── Connect ────────────────────────────────────────────────────────────────
   const connect = useCallback(async () => {
     startConnect();
-
-    // No provider available — surface actionable copy instead of throwing.
-    if (!detectFreighter()) {
-      setFreighterInstalled(false);
-      setConnectError(NO_PROVIDER_MESSAGE);
-      return;
-    }
-
     try {
+      if (!isFreighterInstalled) {
+        throw new Error(
+          `Freighter wallet not installed. Install it here: ${FREIGHTER_INSTALL_URL}`,
+        );
+      }
+
       await requestAccess();
       const pubKey = await getPublicKey();
       const networkDetails = await getNetworkDetails();
@@ -232,24 +131,13 @@ export function useWallet() {
         network: networkDetails.network === 'PUBLIC_NETWORK' ? 'mainnet' : 'testnet',
       });
     } catch (err) {
-      const rawMessage = err && err.message ? err.message : String(err);
-
-      let message;
-      if (rawMessage === 'User rejected access') {
-        message = 'You declined wallet connection.';
-      } else if (
-        /not installed|not available|no provider|undefined is not/i.test(rawMessage)
-      ) {
-        // Provider disappeared or is unsupported — treat as no-provider case.
-        setFreighterInstalled(false);
-        message = NO_PROVIDER_MESSAGE;
-      } else {
-        message = PROVIDER_ERROR_MESSAGE;
-      }
-
+      const message =
+        err.message === 'User rejected access'
+          ? 'You declined wallet connection.'
+          : err.message;
       setConnectError(message);
     }
-  }, [setFreighterInstalled, startConnect, finishConnect, setConnectError]);
+  }, [isFreighterInstalled, startConnect, finishConnect, setConnectError]);
 
   // ── Sign Transaction ───────────────────────────────────────────────────────
   /**
@@ -282,11 +170,10 @@ export function useWallet() {
 
         return signedXdr;
       } catch (err) {
-        const rawMessage = err && err.message ? err.message : String(err);
         const message =
-          rawMessage === 'User rejected signing'
+          err.message === 'User rejected signing'
             ? 'Transaction signing was cancelled.'
-            : `Signing failed: ${rawMessage}`;
+            : `Signing failed: ${err.message}`;
         throw new Error(message);
       }
     },

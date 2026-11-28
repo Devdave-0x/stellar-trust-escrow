@@ -1,40 +1,37 @@
 'use client';
+import { useState } from 'react';
 
-import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
-import { Copy, Check } from 'lucide-react';
+export function CopyButton({ text, value, label = 'Copy', feedbackDuration = 2000 }) {
+  const [copied, setCopied] = useState(false);
+  const textToCopy = text ?? value ?? '';
 
-export default function CopyButton({ text, label = 'Copy', className = '' }) {
-  const { copy, isCopied } = useCopyToClipboard();
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), feedbackDuration);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const accessibleName = copied ? 'Copied!' : `Copy ${label}`;
 
   return (
     <button
-      onClick={() => copy(text)}
-      disabled={!text}
-      aria-label={isCopied ? 'Copied!' : `Copy ${label}`}
-      title={isCopied ? 'Copied!' : `Copy ${label}`}
-      className={`relative inline-flex items-center justify-center w-8 h-8 rounded-lg
-        bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200
-        border border-gray-700 transition-colors
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500
-        disabled:opacity-40 disabled:cursor-not-allowed
-        ${className}`}
+      type="button"
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : `Copy ${label}`}
+      aria-label={`Copy ${label ?? textToCopy}`}
+      className="ml-1 rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
     >
-      {isCopied ? (
-        <>
-          <Check size={14} aria-hidden="true" />
-          <span
-            className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap
-              bg-gray-800 text-gray-200 text-xs px-2 py-1 rounded-md border border-gray-700
-              shadow-lg animate-slide-in"
-            role="status"
-            aria-live="polite"
-          >
-            Copied!
-          </span>
-        </>
+      {copied ? (
+        <span className="text-green-500 text-xs font-medium">Copied!</span>
       ) : (
-        <Copy size={14} aria-hidden="true" />
+        <span className="text-xs font-medium">{label}</span>
       )}
     </button>
   );
 }
+
+export default CopyButton;

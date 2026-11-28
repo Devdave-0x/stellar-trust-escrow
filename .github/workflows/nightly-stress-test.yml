@@ -1,25 +1,14 @@
 name: Nightly Stress Tests
 
 on:
-  schedule:
-    - cron: '0 2 * * *' # 2:00 AM UTC daily
   workflow_dispatch:
-    inputs:
-      duration:
-        description: 'Test duration in seconds'
-        required: false
-        default: '300'
-      connections:
-        description: 'Concurrent connections'
-        required: false
-        default: '200'
-      target_url:
-        description: 'Target URL (leave empty for local server)'
-        required: false
-        default: ''
 
 concurrency:
   group: nightly-stress-test
+  cancel-in-progress: true
+
+concurrency:
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
@@ -53,17 +42,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --ignore-scripts
-      - name: Run migrations and seed
-        run: |
-          npm run db:migrate -w backend
-          npm run db:seed -w backend
-        env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/stellar_escrow_loadtest
-          NODE_ENV: test
-      - name: Generate load test data
+          node-version: '24'
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate test data
         run: npm run loadtest:generate
         env:
           DATABASE_URL: postgresql://user:password@localhost:5432/stellar_escrow_loadtest

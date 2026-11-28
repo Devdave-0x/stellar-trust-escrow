@@ -21,6 +21,8 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import Button from './Button';
+import BottomSheet from './BottomSheet';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 // Selectors for all focusable elements within a modal
 const FOCUSABLE =
@@ -44,48 +46,9 @@ export default function Modal({
   cancelLabel = 'Cancel',
   confirmVariant = 'primary',
 }) {
-  const panelRef = useRef(null);
-  const previousFocusRef = useRef(null);
+  const isMobile = useIsMobile();
 
-  // ── Focus trap: keep Tab / Shift+Tab cycling within the modal panel ─────
-  const handleKeyDown = useCallback(
-    (e) => {
-      if (e.key === 'Escape') {
-        onClose();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-
-      const panel = panelRef.current;
-      if (!panel) return;
-
-      const focusable = panel.querySelectorAll(FOCUSABLE);
-      if (focusable.length === 0) {
-        e.preventDefault();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (e.shiftKey) {
-        // Shift+Tab: if focus is on first element, wrap to last
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else {
-        // Tab: if focus is on last element, wrap to first
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    },
-    [onClose],
-  );
-
-  // ── On open: save current focus, move focus into modal ───────────────────
+  // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
 
@@ -134,6 +97,33 @@ export default function Modal({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // On mobile, render as a bottom-sheet drawer (Issue #1444).
+  if (isMobile) {
+    return (
+      <BottomSheet isOpen={isOpen} onClose={onClose} title={title}>
+        {children}
+        {isConfirmation && (
+          <div className="flex flex-col gap-3 pt-4 mt-4 border-t border-gray-800">
+            <Button
+              variant="secondary"
+              className="w-full min-h-touch"
+              onClick={onClose}
+            >
+              {cancelLabel}
+            </Button>
+            <Button
+              variant={confirmVariant}
+              className="w-full min-h-touch"
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
+        )}
+      </BottomSheet>
+    );
+  }
 
   return (
     <div

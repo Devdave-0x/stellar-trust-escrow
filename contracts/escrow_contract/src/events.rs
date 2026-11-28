@@ -244,9 +244,11 @@ pub fn emit_escrow_cancelled(env: &Env, escrow_id: u64, returned_amount: i128) {
         .publish((ev::ESCROW_CANCELLED, escrow_id), returned_amount);
 }
 
-pub fn emit_escrow_expired(env: &Env, escrow_id: u64, refund_amount: i128) {
-    env.events()
-        .publish((ev::ESCROW_EXPIRED, escrow_id), refund_amount);
+pub fn emit_escrow_expired(env: &Env, escrow_id: u64, refunded_to: &Address, amount: i128) {
+    env.events().publish(
+        (ev::ESCROW_EXPIRED, escrow_id),
+        (refunded_to.clone(), amount),
+    );
 }
 
 pub fn emit_dispute_raised(env: &Env, escrow_id: u64, raised_by: &Address) {
@@ -348,6 +350,13 @@ pub fn emit_limits_updated(env: &Env, min: i128, max: i128) {
 pub fn emit_contract_unpaused(env: &Env, admin: &Address) {
     env.events()
         .publish((ev::CONTRACT_UNPAUSED,), admin.clone());
+}
+
+pub fn emit_emergency_withdrawal(env: &Env, escrow_id: u64, recipient: &Address, amount: i128) {
+    env.events().publish(
+        (ev::EMERGENCY_WITHDRAWAL, escrow_id),
+        (recipient.clone(), amount),
+    );
 }
 
 pub fn emit_cancellation_executed(
@@ -495,19 +504,24 @@ pub fn emit_admin_changed(env: &Env, old_admin: &Address, new_admin: &Address) {
         .publish((ev::ADMIN_CHANGED,), (old_admin.clone(), new_admin.clone()));
 }
 
-/// Emitted when `propose_admin` (step 1 of the two-step admin transfer) is called.
 pub fn emit_admin_transferred(env: &Env, old_admin: &Address, new_admin: &Address) {
     env.events().publish(
-        (ev::ADMIN_TRANSFERRED,),
-        (old_admin.clone(), new_admin.clone(), env.ledger().timestamp()),
+        (soroban_sdk::Symbol::new(env, "AdminTransferred"),),
+        (old_admin.clone(), new_admin.clone()),
     );
 }
 
-/// Emitted when `accept_admin` (step 2 of the two-step admin transfer) succeeds.
-pub fn emit_admin_accepted(env: &Env, new_admin: &Address) {
+pub fn emit_arbiter_registered(env: &Env, arbiter: &Address) {
     env.events().publish(
-        (ev::ADMIN_ACCEPTED,),
-        (new_admin.clone(), env.ledger().timestamp()),
+        (soroban_sdk::Symbol::new(env, "ArbiterRegistered"),),
+        arbiter.clone(),
+    );
+}
+
+pub fn emit_arbiter_removed(env: &Env, arbiter: &Address) {
+    env.events().publish(
+        (soroban_sdk::Symbol::new(env, "ArbiterRemoved"),),
+        arbiter.clone(),
     );
 }
 
@@ -575,6 +589,56 @@ pub fn emit_deadline_extended(env: &Env, escrow_id: u64, old_deadline: u64, new_
     );
 }
 
+/// Emitted when a deadline extension is requested by one party.
+///
+/// # Arguments
+/// * `escrow_id` - The escrow ID
+/// * `requester` - The party requesting the extension
+/// * `new_deadline` - The proposed new deadline
+/// * `reason` - Reason for the extension
+pub fn emit_deadline_extension_requested(
+    env: &Env,
+    escrow_id: u64,
+    requester: &Address,
+    new_deadline: u64,
+    reason: &soroban_sdk::String,
+) {
+    env.events().publish(
+        (ev::DEADLINE_EXTENSION_REQUESTED, escrow_id),
+        (requester.clone(), new_deadline, reason.clone()),
+    );
+}
+
+/// Emitted when a deadline extension request is approved by the counterparty.
+///
+/// # Arguments
+/// * `escrow_id` - The escrow ID
+/// * `approver` - The party who approved the extension
+/// * `new_deadline` - The approved deadline
+pub fn emit_deadline_extension_approved(
+    env: &Env,
+    escrow_id: u64,
+    approver: &Address,
+    new_deadline: u64,
+) {
+    env.events().publish(
+        (ev::DEADLINE_EXTENSION_APPROVED, escrow_id),
+        (approver.clone(), new_deadline),
+    );
+}
+
+/// Emitted when a deadline extension request is cancelled.
+///
+/// # Arguments
+/// * `escrow_id` - The escrow ID
+/// * `requester` - The party who requested the extension
+pub fn emit_deadline_extension_cancelled(env: &Env, escrow_id: u64, requester: &Address) {
+    env.events().publish(
+        (ev::DEADLINE_EXTENSION_CANCELLED, escrow_id),
+        requester.clone(),
+    );
+}
+
 /// Emitted when a partial cancellation is performed.
 ///
 /// # Arguments
@@ -611,6 +675,19 @@ pub fn emit_dispute_escalated_to_governance(
 /// * `escrow_id` - The escrow ID
 /// * `referrer` - The address of the referrer
 /// * `amount` - The referral payout amount
+pub fn emit_fee_collected(
+    env: &Env,
+    escrow_id: u64,
+    milestone_id: u32,
+    fee: i128,
+    treasury: &Address,
+) {
+    env.events().publish(
+        (ev::FEE_COLLECTED, escrow_id),
+        (milestone_id, fee, treasury.clone()),
+    );
+}
+
 pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amount: i128) {
     env.events().publish(
         (symbol_short!("ref_pay"), escrow_id),
@@ -618,93 +695,41 @@ pub fn emit_referral_payout(env: &Env, escrow_id: u64, referrer: &Address, amoun
     );
 }
 
-pub fn emit_arbiter_assigned(env: &Env, escrow_id: u64, arbiter: &Address) {
-    env.events()
-        .publish((ev::ARBITER_ASSIGNED, escrow_id), arbiter.clone());
-}
-
-pub fn emit_evidence_submitted(env: &Env, escrow_id: u64, evidence_hash: &soroban_sdk::BytesN<32>) {
-    env.events()
-        .publish((ev::EVIDENCE_SUBMITTED, escrow_id), evidence_hash.clone());
-}
-
-pub fn emit_escrow_approval_submitted(
+/// Emitted when a mutual-consent cancellation proposal is created.
+pub fn emit_cancellation_proposed(
     env: &Env,
     escrow_id: u64,
-    signer: &Address,
-    approval_count: u32,
-    threshold: u32,
+    proposer: &Address,
+    client_refund_bps: u32,
+    terms_hash: &soroban_sdk::BytesN<32>,
 ) {
     env.events().publish(
-        (ev::ESCROW_APPROVAL_SUBMITTED, escrow_id),
-        (signer.clone(), approval_count, threshold),
+        (ev::CANCELLATION_PROPOSED, escrow_id),
+        (proposer.clone(), client_refund_bps, terms_hash.clone()),
     );
 }
 
-pub fn emit_escrow_approval_revoked(env: &Env, escrow_id: u64, signer: &Address) {
+/// Emitted when a mutual-consent cancellation proposal is rejected by either party.
+pub fn emit_cancellation_rejected(env: &Env, escrow_id: u64, rejector: &Address) {
     env.events()
-        .publish((ev::ESCROW_APPROVAL_REVOKED, escrow_id), signer.clone());
+        .publish((ev::CANCELLATION_REJECTED, escrow_id), rejector.clone());
 }
 
-pub fn emit_escrow_approval_threshold_met(env: &Env, escrow_id: u64, threshold: u32) {
-    env.events()
-        .publish((ev::ESCROW_APPROVAL_THRESHOLD_MET, escrow_id), threshold);
-}
-
-pub fn emit_release_pending(env: &Env, escrow_id: u64, milestone_id: u32, release_at: u64) {
-    env.events()
-        .publish((ev::RELEASE_PENDING, escrow_id), (milestone_id, release_at));
-}
-
-pub fn emit_pending_release_executed(env: &Env, escrow_id: u64, milestone_id: u32, amount: i128) {
-    env.events().publish(
-        (ev::PENDING_RELEASE_EXECUTED, escrow_id),
-        (milestone_id, amount),
-    );
-}
-
-pub fn emit_cooldown_elapsed(env: &Env, escrow_id: u64, cooldown_ended_at: u64) {
-    env.events()
-        .publish((ev::COOLDOWN_ELAPSED, escrow_id), cooldown_ended_at);
-}
-
-// ── Issue 2: Admin transfer timelock events ───────────────────────────────────
-
-/// Emitted by `propose_admin` (Issue 2 version with timelock expiry ledger).
-///
-/// Schema: topic=(ADMIN_TRANSFER_PROPOSED,), data=(current_admin, pending_admin, valid_after_ledger)
-pub fn emit_admin_transfer_proposed(
+/// Emitted when a mutual-consent cancellation is completed via acceptance.
+pub fn emit_mutual_cancellation_completed(
     env: &Env,
-    current_admin: &Address,
-    pending_admin: &Address,
-    valid_after_ledger: u32,
+    escrow_id: u64,
+    client_received: i128,
+    contractor_received: i128,
+    terms_hash: &soroban_sdk::BytesN<32>,
 ) {
     env.events().publish(
-        (ev::ADMIN_TRANSFER_PROPOSED,),
-        (current_admin.clone(), pending_admin.clone(), valid_after_ledger),
+        (ev::MUTUAL_CANCEL_DONE, escrow_id),
+        (client_received, contractor_received, terms_hash.clone()),
     );
 }
 
-/// Emitted by `accept_admin` once the timelock has elapsed and the transfer is complete.
-///
-/// Schema: topic=(ADMIN_TRANSFER_ACCEPTED,), data=(old_admin, new_admin)
-pub fn emit_admin_transfer_accepted(env: &Env, old_admin: &Address, new_admin: &Address) {
-    env.events().publish(
-        (ev::ADMIN_TRANSFER_ACCEPTED,),
-        (old_admin.clone(), new_admin.clone()),
-    );
-}
-
-/// Emitted by `cancel_admin_proposal` when the current admin cancels the pending transfer.
-///
-/// Schema: topic=(ADMIN_PROPOSAL_CANCELLED,), data=(admin, cancelled_pending_admin)
-pub fn emit_admin_proposal_cancelled(
-    env: &Env,
-    admin: &Address,
-    cancelled_pending_admin: &Address,
-) {
-    env.events().publish(
-        (ev::ADMIN_PROPOSAL_CANCELLED,),
-        (admin.clone(), cancelled_pending_admin.clone()),
-    );
+pub fn emit_batch_completed(env: &Env, count: u32, total_amount: i128) {
+    env.events()
+        .publish((ev::BATCH_COMPLETED, count), total_amount);
 }

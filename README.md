@@ -13,6 +13,11 @@ A platform where communities pool funds, contractors deliver work in verifiable 
 
 ---
 
+## Docs
+
+- Contract ABI & entry points: [docs/contract-abi.md](docs/contract-abi.md)
+
+
 ## The Problem This Solves
 
 Traditional freelance platforms hold funds in centralised escrow accounts — meaning you trust a company, not a contract. If the platform shuts down, gets hacked, or makes a unilateral decision, your money can be frozen or lost. Dispute resolution is opaque, outcomes are non-transferable, and there is no persistent track record that travels with you when you move to another platform.
@@ -235,6 +240,7 @@ Stellar-Crowd-Fund-Escrow/
 │   └── start-sandbox.sh               # Local Stellar Quickstart + contract deploy
 │
 ├── docs/                              # Architecture, security, contributing guides
+│   └── dispute-resolution-guide.md     # On-chain dispute lifecycle and backend workflow
 ├── .husky/pre-push                    # Enforces tests + branch naming before push
 ├── docker-compose.yml                 # PostgreSQL + Redis + local Stellar node
 └── package.json                       # npm workspaces root
@@ -516,12 +522,6 @@ GET /health/ready     readiness probe — 503 when the database is unavailable
 | `EXPO_PUBLIC_API_URL`              | `http://localhost:4000` | Mobile app backend URL                                    |
 | `EXPO_PUBLIC_OFFLINE_CACHE_TTL_MS` | `300000`                | SQLite offline cache TTL (5 min)                          |
 
-> No contract ID is published yet. Docs and `.env.example` files use explicit
-> placeholders such as `<ESCROW_CONTRACT_ID>` — never copy an ID from an example.
-> Before using an ID, confirm it is a 56-character `C...` strkey and that it
-> exists on the intended network, e.g.
-> `stellar contract info interface --id <ESCROW_CONTRACT_ID> --network testnet`.
-
 ---
 
 ## Smart Contract Reference
@@ -673,38 +673,3 @@ MIT — see [LICENSE](LICENSE) for the full text.
 ---
 
 _Built with Rust, Node.js, and the Stellar ecosystem. Contributions welcome._
-
-## Handsoff notes
-
-<!-- handsoff-issue-700 -->
-- #700: Add storage-growth benchmark for governance timelock execution
-
-<!-- handsoff-issue-701 -->
-- #701: Add explicit error mapping for governance timelock execution
-
-<!-- handsoff-issue-702 -->
-- #702: Document ledger constraints for governance timelock execution
-
-<!-- handsoff-issue-703 -->
-- #703: Add fuzz coverage for governance timelock execution
-
-<!-- handsoff-issue-776 -->
-- #776: Add storage-growth benchmark for partial release amount rounding
-
-<!-- handsoff-issue-777 -->
-- #777: Add explicit error mapping for partial release amount rounding
-
-<!-- handsoff-issue-778 -->
-- #778: Document ledger constraints for partial release amount rounding
-
-<!-- handsoff-issue-779 -->
-- #779: Add event completeness checks for partial release amount rounding
-
-<!-- handsoff-issue-887 -->
-- #887: Bind proposal payload hashes to their declared action type
-
-<!-- handsoff-issue-888 -->
-- #888: Verify insurance claims cannot exceed the eligible contribution basis
-
-<!-- handsoff-issue-889 -->
-- #889: Make insurance payout retries idempotent after an uncertain response

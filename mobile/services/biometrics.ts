@@ -110,14 +110,9 @@ export async function getSupportedBiometricTypes(): Promise<string[]> {
   });
 }
 
-export async function authenticate(
-  reason = 'Authenticate to continue',
-): Promise<BiometricAuthResult> {
-  const state = await getBiometricState();
-  if (state !== 'available') {
-    // fail-safe: reject if not available, but surface a safe fallback path
-    return { success: false, state, fallback: getFallbackForState(state) };
-  }
+export async function authenticate(reason = 'Authenticate to continue'): Promise<boolean> {
+  const available = await isBiometricAvailable();
+  if (!available) return false; // fail-safe: reject if not available
 
   const result = await LocalAuthentication.authenticateAsync({
     promptMessage: reason,
@@ -126,19 +121,7 @@ export async function authenticate(
     disableDeviceFallback: false,
   });
 
-  if (result.success) {
-    return { success: true, state: 'available', fallback: null };
-  }
-
-  // If the failure was due to a lockout or similar, report the derived state.
-  const errorCode = 'error' in result ? result.error : undefined;
-  const errorState = stateFromErrorCode(errorCode);
-  if (errorState) {
-    return { success: false, state: errorState, fallback: getFallbackForState(errorState) };
-  }
-
-  // User cancelled or auth simply failed: still offer a fallback that requires auth.
-  return { success: false, state: 'available', fallback: 'pin' };
+  return result.success;
 }
 
 export function isBiometricEnabled(): boolean {

@@ -1,78 +1,126 @@
-import { randomUUID } from 'crypto';
-import prisma from '../lib/prisma.js';
-import { notificationQueue } from '../queues/notificationQueue.js';
+import { Queue } from 'bullmq';
+import Handlebars from 'handlebars';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { PrismaClient } from '@prisma/client';
+import { logger } from '../config/logger.js';
 
-export const NotificationEvent = {
-  ESCROW_FUNDED: 'escrow_funded',
-  RELEASE_REQUESTED: 'release_requested',
-  DISPUTE_RAISED: 'dispute_raised',
-  DISPUTE_RESOLVED: 'dispute_resolved',
-  ESCROW_EXPIRING: 'escrow_expiring',
-  MILESTONE_COMPLETED: 'milestone_completed',
-  ESCROW_STATUS_CHANGED: 'escrow_status_changed',
-};
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const prisma = new PrismaClient();
+
+import { notificationsQueue } from '../queues/emailQueue.js';
 
 /**
- * Store an in-app notification for the user.
- * @param {number} userId
- * @param {string} tenantId
- * @param {string} event - one of NotificationEvent values
- * @param {object} data
+ * Render a template with data. Returns { subject?, body }.
  */
-async function storeInApp(userId, tenantId, event, data) {
-  return prisma.notification.create({
+export async function renderTemplate(template, channel, data, locale = 'en') {
+  try {
+    const templatesDir = path.join(__dirname, '../templates/notifications');
+    // Fallback to 'en' if specific locale doesn't exist
+    let templatePath = path.join(templatesDir, `${template}.${channel}.${locale}.hbs`);
+    
+    try {
+      await fs.access(templatePath);
+    } catch (err) {
+      // Fallback to 'en'
+      templatePath = path.join(templatesDir, `${template}.${channel}.en.hbs`);
+    }
+
+    const templateContent = await fs.readFile(templatePath, 'utf-8');
+    
+    // Split into subject and body if email
+    let subject = null;
+    let bodyTemplateContent = templateContent;
+
+    if (channel === 'email') {
+      const match = templateContent.match(/^Subject:\s*(.+)\s*\n\n([\s\S]*)$/);
+      if (match) {
+        subject = Handlebars.compile(match[1].trim())(data);
+        bodyTemplateContent = match[2];
+      }
+    }
+
+    const compiledTemplate = Handlebars.compile(bodyTemplateContent);
+    const body = compiledTemplate(data);
+
+    return { subject, body };
+  } catch (error) {
+    logger.error(`Error rendering template ${template} for ${channel}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Enqueue a notification. Returns job ID.
+ */
+export async function sendNotification({ userId, channel = 'email', template, data, locale = 'en' }) {
+  if (!['email', 'sms'].includes(channel)) {
+    throw new Error(`Invalid channel: ${channel}`);
+  }
+
+  // Check if template exists
+  try {
+    const templatesDir = path.join(__dirname, '../templates/notifications');
+    const templatePath = path.join(templatesDir, `${template}.${channel}.en.hbs`);
+    await fs.access(templatePath);
+  } catch (e) {
+    const err = new Error(`Template not found: ${template}`);
+    err.status = 400;
+    throw err;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: parseInt(userId, 10) },
+  });
+
+  if (!user) {
+    throw new Error(`User not found: ${userId}`);
+  }
+
+  // Verify preferences
+  const prefs = user.notificationPreferences || { email: true, sms: false, templates: {} };
+  
+  if (prefs[channel] === false) {
+    logger.info(`User ${userId} opted out of ${channel} notifications.`);
+    return null; // Not enqueued
+  }
+
+  if (prefs.templates && prefs.templates[template] === false) {
+    logger.info(`User ${userId} opted out of template ${template} via ${channel}.`);
+    return null; // Not enqueued
+  }
+
+  // Format validation for SMS
+  if (channel === 'sms') {
+    const phoneData = data.phone || data.phoneNumber; // Assume phone is passed in data
+    // Basic E.164 validation logic
+    if (!phoneData || !/^\+[1-9]\d{1,14}$/.test(phoneData)) {
+      const err = new Error(`Invalid phone format for SMS`);
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  // Create delivery record
+  const deliveryRecord = await prisma.notificationDelivery.create({
     data: {
-      id: randomUUID(),
-      userId,
-      tenantId,
-      event,
-      data,
+      userId: user.id,
+      channel,
+      template,
+      status: 'queued',
     },
   });
+
+  const job = await notificationsQueue.add('send-notification', {
+    deliveryId: deliveryRecord.id,
+    userId: user.id,
+    channel,
+    template,
+    data,
+    locale,
+  });
+
+  return job.id;
 }
-
-/**
- * Check whether a user has opted in for a given channel/event.
- * Defaults to enabled for all events when no preference row exists.
- * @param {number} userId
- * @param {string} event
- * @param {'email'|'inApp'} channel
- */
-async function isEnabled(userId, event, channel) {
-  const pref = await prisma.notificationPreference.findUnique({ where: { userId } });
-  if (!pref || !pref.preferences[event]) return true; // default on
-  return pref.preferences[event][channel] !== false;
-}
-
-/**
- * Primary interface: persist in-app notification and enqueue email job.
- * @param {number} userId
- * @param {string} event - one of NotificationEvent values
- * @param {object} data  - event-specific payload
- */
-async function send(userId, event, data) {
-  // Resolve tenantId and email from DB
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { tenantId: true, email: true } });
-  if (!user) throw new Error(`User ${userId} not found`);
-
-  const { tenantId, email } = user;
-  const results = { inApp: null, email: null };
-
-  if (await isEnabled(userId, event, 'inApp')) {
-    results.inApp = await storeInApp(userId, tenantId, event, data);
-  }
-
-  if (email && (await isEnabled(userId, event, 'email'))) {
-    results.email = await notificationQueue.add(`notify.${event}`, {
-      userId,
-      tenantId,
-      event,
-      email,
-      data,
-    });
-  }
-
-  return results;
-}
-
-export default { send, storeInApp, isEnabled, NotificationEvent };

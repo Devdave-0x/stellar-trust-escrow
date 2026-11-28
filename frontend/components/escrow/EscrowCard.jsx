@@ -1,3 +1,31 @@
+/**
+ * EscrowCard Component
+ *
+ * Summary card shown in list views (Dashboard, Explorer).
+ * Links to the full Escrow Details page.
+ *
+ * TOUCH AUDIT (Issue #1444):
+ * - The whole card is a single tappable <Link> (large hit area).
+ * - The inline CopyButton was given a min 44x44px hit area (see CopyButton.jsx).
+ * - The transaction-hash row uses a divider so it never overflows on 375px.
+ * - Card widths are driven by the parent grid (single column on mobile).
+ *
+ * @param {object} props
+ * @param {object} props.escrow
+ * @param {number}  props.escrow.id
+ * @param {string}  props.escrow.title
+ * @param {string}  props.escrow.status         — EscrowStatus
+ * @param {string}  props.escrow.totalAmount
+ * @param {string}  props.escrow.milestoneProgress  — e.g. "2 / 4"
+ * @param {string}  props.escrow.counterparty    — truncated address
+ * @param {'client'|'freelancer'} props.escrow.role
+ *
+ * TODO (contributor — easy, Issue #39):
+ * - Add hover animation (subtle lift)
+ * - Show milestone progress bar (filled segments)
+ * - Show time remaining if deadline is set
+ * - Add "disputed" warning banner if status === Disputed
+ */
 'use client';
 
 import Link from 'next/link';

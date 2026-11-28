@@ -1,6 +1,12 @@
 import { Worker } from 'bullmq';
+
 import prisma from '../lib/prisma.js';
 import { connection } from '../queues/index.js';
+import {
+  calculateRetryDelayMs,
+  emitWebhookDeadEvent,
+  MAX_DELIVERY_ATTEMPTS,
+} from '../services/webhookService.js';
 
 const DEFAULT_BASE_BACKOFF_MS = parseInt(process.env.WEBHOOK_BACKOFF_BASE_MS || '1000', 10);
 const DEFAULT_MAX_BACKOFF_MS = parseInt(process.env.WEBHOOK_BACKOFF_MAX_MS || String(60 * 60 * 1000), 10);
@@ -57,43 +63,49 @@ export async function processWebhookJob(job) {
       body,
     });
 
+    const responseBody = await response.text();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Webhook failed: ${response.status} ${errorText}`);
-    }
-
-    await prisma.webhookDelivery.update({
-      where: { id: deliveryId },
-      data: {
-        status: 'success',
+      throw Object.assign(new Error(`Webhook failed: ${response.status}`), {
         responseCode: response.status,
-        attempts,
-        lastAttemptAt: new Date(),
-      },
-    });
-
-    console.log(`[WebhookWorker] Delivered to ${url}: ${response.status}`);
-  } catch (err) {
-    const existing = await prisma.webhookDelivery.findUnique({
-      where: { id: deliveryId },
-      select: { createdAt: true },
-    });
-    const isTerminal =
-      attempts >= (job.opts.attempts ?? 1) ||
-      isWebhookDeliveryTerminal(attempts, existing?.createdAt?.toISOString(), backoffPolicy);
-    const retryDelayMs = computeWebhookBackoffMs(attempts, backoffPolicy);
-    if (!isTerminal) {
-      await new Promise((r) => setTimeout(r, retryDelayMs));
+        responseBody,
+      });
     }
+
     await prisma.webhookDelivery.update({
       where: { id: deliveryId },
       data: {
-        status: isTerminal ? 'failed' : 'pending',
-        errorMessage: err.message,
+        status: 'delivered',
+        responseCode: response.status,
+        responseBody,
         attempts,
-        lastAttemptAt: new Date(),
+        nextRetryAt: null,
       },
     });
+  } catch (err) {
+    const responseCode = err.responseCode ?? null;
+    const responseBody = err.responseBody ?? err.message;
+    const isTerminal = attempts >= MAX_DELIVERY_ATTEMPTS;
+    const nextRetryAt = isTerminal
+      ? null
+      : new Date(Date.now() + calculateRetryDelayMs(attempts));
+
+    const updated = await prisma.webhookDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: isTerminal ? 'dead' : 'failed',
+        responseCode,
+        responseBody,
+        attempts,
+        nextRetryAt,
+      },
+    });
+
+    if (isTerminal) {
+      emitWebhookDeadEvent(updated);
+      return;
+    }
+
     throw err;
   }
 }
@@ -101,7 +113,7 @@ export async function processWebhookJob(job) {
 const webhookWorker =
   process.env.NODE_ENV === 'test'
     ? null
-    : new Worker('webhook', processWebhookJob, {
+    : new Worker('webhook-delivery', processWebhookJob, {
         connection,
       });
 

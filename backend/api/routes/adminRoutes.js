@@ -17,9 +17,12 @@ import announcementController from '../controllers/announcementController.js';
 import disputeCategoryController from '../controllers/disputeCategoryController.js';
 import { getAuditLog, rotateSecrets } from '../../lib/secrets.js';
 import cache from '../../lib/cache.js';
+import auditRoutes from './auditRoutes.js';
 
 // Apply admin authentication to all routes in this file
 router.use(adminAuth);
+
+router.use('/audit', auditRoutes);
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 /**
@@ -38,12 +41,41 @@ router.post('/auth/login', (req, res) => {
   });
 });
 
+// ── Metrics ───────────────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/metrics
+ * @desc   Platform-wide metrics with deltas
+ */
+router.get('/metrics', adminController.getMetrics);
+
 // ── Stats ──────────────────────────────────────────────────────────────────────
 /**
  * @route  GET /api/admin/stats
  * @desc   Platform-wide statistics (total escrows, users, disputes)
  */
 router.get('/stats', adminController.getStats);
+
+// ── Arbiters ──────────────────────────────────────────────────────────────────
+/**
+ * @route  GET /api/admin/arbiters
+ * @desc   List all registered arbiters
+ */
+router.get('/arbiters', adminController.listArbiters);
+
+/**
+ * @route  POST /api/admin/arbiters
+ * @desc   Register a new arbiter
+ * @body   { address: string }
+ * @security Requires MFA verification
+ */
+router.post('/arbiters', requireMfa, adminController.registerArbiter);
+
+/**
+ * @route  DELETE /api/admin/arbiters/:address
+ * @desc   Remove an arbiter
+ * @security Requires MFA verification
+ */
+router.delete('/arbiters/:address', requireMfa, adminController.removeArbiter);
 
 // ── Users ──────────────────────────────────────────────────────────────────────
 /**
@@ -93,10 +125,15 @@ router.get('/users/:address/login-history', adminController.getUserLoginHistory)
 // ── Disputes ───────────────────────────────────────────────────────────────────
 /**
  * @route  GET /api/admin/disputes
- * @desc   List all disputes with pagination
- * @query  page, limit, resolved (true|false)
+ * @desc   List all disputes with pagination or open disputes sorted by escalation risk
+ * @query  page, limit, resolved (true|false), status, orderBy
  */
-router.get('/disputes', adminController.listDisputes);
+router.get('/disputes', (req, res, next) => {
+  if (req.query.status === 'open' && req.query.orderBy === 'escalationRisk') {
+    return adminController.getDisputeQueue(req, res, next);
+  }
+  return adminController.listDisputes(req, res, next);
+});
 
 /**
  * @route  GET /api/admin/arbiters/workload
@@ -127,6 +164,20 @@ router.get('/settings', adminController.getSettings);
  * @security Requires MFA verification
  */
 router.patch('/settings', requireMfa, adminController.updateSettings);
+
+// ── Key Management ─────────────────────────────────────────────────────────────
+/**
+ * @route  POST /api/admin/keys/rotate
+ * @desc   Trigger a manual JWT signing key rotation
+ * @security Requires MFA verification
+ */
+router.post('/keys/rotate', requireMfa, adminController.rotateKeys);
+
+/**
+ * @route  GET /api/admin/keys
+ * @desc   List active key versions with metadata (no private keys)
+ */
+router.get('/keys', adminController.listKeys);
 
 // ── Audit Logs ─────────────────────────────────────────────────────────────────
 /**

@@ -39,15 +39,9 @@ function initCacheDb(): void {
     );
   }
 
-  const cacheColumns = db.getAllSync<{ name: string }>('PRAGMA table_info(escrow_cache)');
-  if (cacheColumns.length > 0 && !cacheColumns.some((c) => c.name === 'wallet')) {
-    db.execSync(`ALTER TABLE escrow_cache ADD COLUMN wallet TEXT NOT NULL DEFAULT ''`);
-  }
-
   db.execSync(`
     CREATE TABLE IF NOT EXISTS escrow_cache (
       id TEXT PRIMARY KEY,
-      wallet TEXT NOT NULL DEFAULT '',
       data TEXT NOT NULL,
       entity_type TEXT NOT NULL DEFAULT 'escrow',
 /**
@@ -144,50 +138,46 @@ export interface Escrow {
 }
 
 export function cacheEscrow(escrow: Escrow, entityType = 'escrow'): void {
-  const wallet = requireWallet();
   db.runSync(
-    'INSERT OR REPLACE INTO escrow_cache (id, wallet, data, entity_type, cached_at) VALUES (?, ?, ?, ?, ?)',
-    [escrow.id, wallet, JSON.stringify(escrow), entityType, Date.now()]
+    'INSERT OR REPLACE INTO escrow_cache (id, data, entity_type, cached_at) VALUES (?, ?, ?, ?)',
+    [escrow.id, JSON.stringify(escrow), entityType, Date.now()]
   );
 }
 
 export function getCachedEscrow(id: string, entityType = 'escrow'): Escrow | null {
-  const wallet = requireWallet();
   const row = db.getFirstSync<{ data: string; cached_at: number }>(
-    'SELECT data, cached_at FROM escrow_cache WHERE id = ? AND wallet = ?',
-    [id, wallet]
+    'SELECT data, cached_at FROM escrow_cache WHERE id = ?',
+    [id]
   );
 
   if (!row) return null;
 
   if (Date.now() - row.cached_at > getTTL(entityType)) {
-    db.runSync('DELETE FROM escrow_cache WHERE id = ? AND wallet = ?', [id, wallet]);
+    db.runSync('DELETE FROM escrow_cache WHERE id = ?', [id]);
     return null;
   }
 
   try {
     return JSON.parse(row.data) as Escrow;
   } catch {
-    db.runSync('DELETE FROM escrow_cache WHERE id = ? AND wallet = ?', [id, wallet]);
+    db.runSync('DELETE FROM escrow_cache WHERE id = ?', [id]);
     console.warn(`Corrupted cache entry deleted: id=${id}`);
     return null;
   }
 }
 
 export function getCachedEscrows(entityType = 'escrow'): Escrow[] {
-  const wallet = requireWallet();
   const ttl = getTTL(entityType);
   const cutoff = Date.now() - ttl;
 
-  db.runSync('DELETE FROM escrow_cache WHERE wallet = ? AND entity_type = ? AND cached_at <= ?', [
-    wallet,
+  db.runSync('DELETE FROM escrow_cache WHERE entity_type = ? AND cached_at <= ?', [
     entityType,
     cutoff,
   ]);
 
   const rows = db.getAllSync<{ id: string; data: string }>(
-    'SELECT id, data FROM escrow_cache WHERE wallet = ? AND entity_type = ?',
-    [wallet, entityType]
+    'SELECT id, data FROM escrow_cache WHERE entity_type = ?',
+    [entityType]
   );
 
   const results: Escrow[] = [];
@@ -203,10 +193,7 @@ export function getCachedEscrows(entityType = 'escrow'): Escrow[] {
 
   if (corruptedIds.length > 0) {
     const placeholders = corruptedIds.map(() => '?').join(',');
-    db.runSync(
-      `DELETE FROM escrow_cache WHERE wallet = ? AND id IN (${placeholders})`,
-      [wallet, ...corruptedIds]
-    );
+    db.runSync(`DELETE FROM escrow_cache WHERE id IN (${placeholders})`, corruptedIds);
     console.warn(`Deleted ${corruptedIds.length} corrupted cache entries`);
   }
 
@@ -222,12 +209,6 @@ export function pruneStaleCache(): void {
     ]);
   }
   db.runSync('DELETE FROM escrow_cache WHERE cached_at <= ?', [now - DEFAULT_TTL_MS]);
-
-  if (activeWallet) {
-    const cutoff = now - CACHE_TTL_MS;
-    db.runSync(`DELETE FROM escrows WHERE wallet = ? AND cached_at < ?`, [activeWallet, cutoff]);
-    db.runSync(`DELETE FROM milestones WHERE wallet = ? AND cached_at < ?`, [activeWallet, cutoff]);
-  }
 }
 
 let appStateSubscription: { remove: () => void } | null = null;
@@ -252,8 +233,6 @@ export function stopCacheCleanupListener(): void {
 
 export function clearAllCache(): void {
   db.runSync('DELETE FROM escrow_cache');
-  db.runSync('DELETE FROM escrows');
-  db.runSync('DELETE FROM milestones');
 }
 
 export function invalidateCacheVersion(): void {

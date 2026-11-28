@@ -5,6 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   migration-smoke:
     name: Migration & Rollback Smoke Check
@@ -25,12 +32,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm ci
-      - name: Forward migration
-        run: npm run db:migrate:up -w backend
-      - name: Snapshot schema
-        run: pg_dump -s "$DATABASE_URL" > /tmp/schema-up.sql
-      - name: Rollback and re-apply
+      # Block the deploy if any required secret is missing, weak, or a placeholder.
+      - name: Validate environment secrets
+        working-directory: backend
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          MFA_JWT_SECRET: ${{ secrets.MFA_JWT_SECRET }}
+          ADMIN_JWT_SECRET: ${{ secrets.ADMIN_JWT_SECRET }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: node scripts/check-env.js
+      - name: Deploying to Staging
         run: |
           npm run db:migrate:down -w backend
           npm run db:migrate:up -w backend

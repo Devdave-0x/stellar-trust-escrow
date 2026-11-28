@@ -11,7 +11,6 @@ import {
 } from 'react';
 import { appReducer, createInitialAppState, loadPersistedState, persistState } from './state';
 import { getToken, setToken as persistToken, clearToken as clearPersistedToken } from '../lib/auth/token';
-import { broadcastSessionEnded, subscribeToSessionEnd } from '../lib/auth/sessionSync';
 
 const defaultState = createInitialAppState();
 
@@ -138,6 +137,14 @@ export function AppStoreProvider({ children }) {
           clearPersistedToken();
           dispatchWithDevtools({ type: 'WALLET/CLEAR_TOKEN' });
           broadcastSessionEnded('token-cleared');
+        },
+        setToken: (token) => {
+          persistToken(token);
+          dispatchWithDevtools({ type: 'WALLET/SET_TOKEN', payload: token });
+        },
+        clearToken: () => {
+          clearPersistedToken();
+          dispatchWithDevtools({ type: 'WALLET/CLEAR_TOKEN' });
         },
       },
       admin: {

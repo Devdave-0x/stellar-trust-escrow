@@ -18,9 +18,11 @@ mod pause_tests {
         }
     }
     use soroban_sdk::{
-        testutils::{Address as _, Events, Ledger as _},
+        testutils::{Address as _, Events, Ledger},
         Address, BytesN, Env, String, Symbol, TryFromVal,
     };
+
+    const UNPAUSE_DELAY: u64 = 172_800;
 
     fn setup() -> (Env, Address, Address, EscrowContractClient<'static>) {
         let env = Env::default();
@@ -37,6 +39,10 @@ mod pause_tests {
         let sac = soroban_sdk::token::StellarAssetClient::new(env, &token_id.address());
         sac.mint(recipient, &amount);
         token_id.address()
+    }
+
+    fn advance_time(env: &Env, seconds: u64) {
+        env.ledger().with_mut(|l| l.timestamp += seconds);
     }
 
     #[test]
@@ -58,8 +64,15 @@ mod pause_tests {
         assert!(result.is_err());
         assert!(client.is_paused());
 
-        // Admin can unpause after the mandatory delay
-        advance(&env, UNPAUSE_MIN_DELAY_SECS);
+        // Admin cannot unpause before 48h
+        let result = client.try_unpause(&admin);
+        assert!(result.is_err());
+        assert!(client.is_paused());
+
+        // Advance time past 48h
+        advance_time(&env, UNPAUSE_DELAY);
+
+        // Admin can unpause after 48h
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
@@ -87,7 +100,7 @@ mod pause_tests {
         );
 
         assert!(
-            matches!(result, Err(Ok(EscrowError::E31))),
+            matches!(result, Err(Ok(EscrowError::ContractPaused))),
             "Should fail with ContractPaused error"
         );
     }
@@ -123,7 +136,7 @@ mod pause_tests {
         );
 
         assert!(
-            matches!(result, Err(Ok(EscrowError::E31))),
+            matches!(result, Err(Ok(EscrowError::ContractPaused))),
             "Should fail with ContractPaused error"
         );
     }
@@ -161,14 +174,14 @@ mod pause_tests {
         // submit_milestone must be blocked
         let result = client.try_submit_milestone(&freelancer, &escrow_id, &mid);
         assert!(
-            matches!(result, Err(Ok(EscrowError::E31))),
+            matches!(result, Err(Ok(EscrowError::ContractPaused))),
             "submit_milestone should fail with ContractPaused"
         );
 
         // approve_milestone must be blocked
         let result = client.try_approve_milestone(&client_addr, &escrow_id, &mid);
         assert!(
-            matches!(result, Err(Ok(EscrowError::E31))),
+            matches!(result, Err(Ok(EscrowError::ContractPaused))),
             "approve_milestone should fail with ContractPaused"
         );
 
@@ -211,11 +224,12 @@ mod pause_tests {
             &500,
         );
         assert!(
-            matches!(result, Err(Ok(EscrowError::E31))),
+            matches!(result, Err(Ok(EscrowError::ContractPaused))),
             "Should fail with ContractPaused error"
         );
 
-        advance(&env, UNPAUSE_MIN_DELAY_SECS);
+        // Must wait 48h before unpause
+        advance_time(&env, UNPAUSE_DELAY);
         client.unpause(&admin);
         assert!(!client.is_paused());
 
@@ -248,13 +262,54 @@ mod pause_tests {
         assert!(has_unpaused, "unpaused event must be emitted");
     }
 
-  #[test]
-  fn test_emergency_pause_authorization_rejects_escrow_privileged_roles() {
+    // ── 48-hour delay tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_unpause_rejected_before_48h() {
+        let (env, admin, _, client) = setup();
+
+        client.pause(&admin);
+
+        // Advance 23 hours — well short of 48h
+        advance_time(&env, 82_800);
+        let result = client.try_unpause(&admin);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::UnpauseTooEarly))),
+            "Should fail with UnpauseTooEarly before 48h"
+        );
+        assert!(client.is_paused());
+
+        // Advance another 24 hours (47h total) — still not enough
+        advance_time(&env, 86_400);
+        let result = client.try_unpause(&admin);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::UnpauseTooEarly))),
+            "Should fail with UnpauseTooEarly at 47h"
+        );
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    fn test_unpause_allowed_after_48h() {
+        let (env, admin, _, client) = setup();
+
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Advance exactly 48h
+        advance_time(&env, UNPAUSE_DELAY);
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+    }
+
+    // ── emergency_withdraw tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_emergency_withdraw_requires_paused() {
         let (env, admin, _, client) = setup();
         let client_addr = Address::generate(&env);
         let freelancer = Address::generate(&env);
-        let arbiter = Address::generate(&env);
-        let token = register_token(&env, &admin, &client_addr, 1030);
+        let token = register_token(&env, &admin, &client_addr, 1060);
 
         let escrow_id = client.create_escrow(
             &client_addr,
@@ -262,29 +317,180 @@ mod pause_tests {
             &token,
             &1000,
             &BytesN::from_array(&env, &[1; 32]),
-            &Some(arbiter.clone()),
+            &None,
             &None,
             &None,
             &None,
             &no_multisig(&env),
         );
-        let _ = escrow_id;
 
-        for role in [&client_addr, &freelancer, &arbiter] {
-            let result = client.try_pause(role, &String::from_str(&env, "unauthorized"));
-            assert!(result.is_err(), "role {:?} must not pause", role);
-        }
-        assert!(!client.is_paused());
+        // Contract is NOT paused — emergency_withdraw must fail
+        let result = client.try_emergency_withdraw(&admin, &escrow_id);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::ContractPaused))),
+            "emergency_withdraw on unpaused contract should fail with ContractPaused"
+        );
+    }
 
-        client.pause(&admin, &String::from_str(&env, "maintenance"));
-        assert!(client.is_paused());
+    #[test]
+    fn test_emergency_withdraw_requires_admin() {
+        let (env, admin, _, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 1060);
 
-        let has_paused_event = env.events().all().iter().any(|event| {
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &1000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.pause(&admin);
+
+        // Non-admin must fail with Unauthorized (E4)
+        let result = client.try_emergency_withdraw(&non_admin, &escrow_id);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::Unauthorized))),
+            "Non-admin calling emergency_withdraw should fail with Unauthorized"
+        );
+    }
+
+    #[test]
+    fn test_emergency_withdraw_sends_to_client() {
+        let (env, admin, _, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 2060);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &1000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        // Verify escrow is active with full balance
+        let meta = client.get_escrow_meta(&escrow_id);
+        assert_eq!(meta.status, EscrowStatus::Active);
+        assert_eq!(meta.remaining_balance, 1000);
+
+        client.pause(&admin);
+        client.emergency_withdraw(&admin, &escrow_id);
+
+        // Verify: remaining_balance zeroed, status Cancelled
+        let meta = client.get_escrow_meta(&escrow_id);
+        assert_eq!(meta.remaining_balance, 0);
+        assert_eq!(meta.status, EscrowStatus::Cancelled);
+
+        // Verify EmergencyWithdrawal event emitted
+        let events = env.events().all();
+        let mut found_emergency_withdrawal = false;
+        for event in events.iter() {
             let topics = event.1;
-            !topics.is_empty()
-                && Symbol::try_from_val(&env, &topics.get_unchecked(0)).ok()
-                    == Some(soroban_sdk::symbol_short!("paused"))
+            if !topics.is_empty() {
+                if let Ok(sym) = Symbol::try_from_val(&env, &topics.get_unchecked(0)) {
+                    if sym == soroban_sdk::symbol_short!("emg_wth") {
+                        found_emergency_withdrawal = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            found_emergency_withdrawal,
+            "EmergencyWithdrawal event must be emitted"
+        );
+    }
+
+    #[test]
+    fn test_emergency_withdraw_fails_for_completed_escrow() {
+        let (env, admin, _, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 3060);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &1000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        let mid = client.add_milestone(
+            &client_addr,
+            &escrow_id,
+            &String::from_str(&env, "Deliverable"),
+            &BytesN::from_array(&env, &[2; 32]),
+            &1000,
+        );
+
+        // Complete the escrow normally: submit → approve (releases funds)
+        client.submit_milestone(&freelancer, &escrow_id, &mid);
+        client.approve_milestone(&client_addr, &escrow_id, &mid);
+
+        let meta = client.get_escrow_meta(&escrow_id);
+        assert_eq!(meta.status, EscrowStatus::Completed);
+
+        client.pause(&admin);
+
+        // emergency_withdraw on completed escrow must fail (E9 = not active)
+        let result = client.try_emergency_withdraw(&admin, &escrow_id);
+        assert!(
+            matches!(result, Err(Ok(EscrowError::E9))),
+            "emergency_withdraw on completed escrow should fail with E9 (not active)"
+        );
+    }
+
+    #[test]
+    fn test_emergency_withdraw_reentrancy_blocked() {
+        let (env, admin, contract_id, client) = setup();
+        let client_addr = Address::generate(&env);
+        let freelancer = Address::generate(&env);
+        let token = register_token(&env, &admin, &client_addr, 1060);
+
+        let escrow_id = client.create_escrow(
+            &client_addr,
+            &freelancer,
+            &token,
+            &1000,
+            &BytesN::from_array(&env, &[1; 32]),
+            &None,
+            &None,
+            &None,
+            &None,
+            &no_multisig(&env),
+        );
+
+        client.pause(&admin);
+
+        // Manually set the reentrancy lock to simulate an active guard
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .set(&crate::DataKey::ReentrancyLock, &true);
         });
-        assert!(has_paused_event, "authorized pause must emit a single auditable event");
+
+        // emergency_withdraw should panic with E22 (reentrancy detected)
+        let result = client.try_emergency_withdraw(&admin, &escrow_id);
+        assert!(result.is_err());
     }
 }

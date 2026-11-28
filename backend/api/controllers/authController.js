@@ -9,11 +9,8 @@ import crypto, { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import sessionService from '../../services/sessionService.js';
-import prisma from '../../lib/prisma.js';
-import mfaService from '../../services/mfaService.js';
-import { deviceNameFromUserAgent } from '../../lib/deviceName.js';
-import { JWT_SECRET, JWT_ALGORITHM } from '../../config/secrets.js';
-import emailService from '../../services/emailService.js';
+import keyRotationService from '../../services/keyRotationService.js';
+import { JWT_ALGORITHM } from '../../config/secrets.js';
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 const NONCE_TTL_MS = 5 * 60 * 1000;
@@ -215,8 +212,10 @@ export const verifySignatureAndLogin = async (req, res) => {
   }
 
   const jti = await createSessionJti(address, req);
-  const token = jwt.sign({ address, jti, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, {
-    algorithm: JWT_ALGORITHM,
+  const { privateKey, kid } = await keyRotationService.getCurrentSigningKey();
+  const token = jwt.sign({ address, jti, iat: Math.floor(Date.now() / 1000) }, privateKey, {
+    algorithm: 'RS256',
+    keyid: kid,
     expiresIn: JWT_EXPIRES_IN,
   });
 
@@ -250,25 +249,41 @@ export const refreshToken = async (req, res) => {
   }
 
   try {
-    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
+    const tokenStr = authHeader.slice(7);
+    const decoded = jwt.decode(tokenStr, { complete: true });
+    if (!decoded) throw new Error('Invalid token');
 
-    if (payload.jti) {
-      if (typeof sessionService?.isSessionValid === 'function') {
-        const valid = await sessionService.isSessionValid(payload.jti);
-        if (!valid) {
-          return res
-            .status(401)
-            .json({ error: 'Session revoked or expired. Please log in again.' });
-        }
+    const validKeys = await keyRotationService.getValidPublicKeys();
+    let payload = null;
+    let lastErr = null;
+    
+    if (decoded.header.kid) {
+      const matched = validKeys.find(k => k.kid === decoded.header.kid);
+      if (matched) {
+        try { payload = jwt.verify(tokenStr, matched.publicKey, { algorithms: ['RS256'] }); } catch(e) { lastErr = e; }
       }
-      if (typeof sessionService?.revokeSessionByJti === 'function') {
-        await sessionService.revokeSessionByJti(payload.jti);
+    }
+    
+    if (!payload) {
+      for (const k of validKeys) {
+        try {
+          payload = jwt.verify(tokenStr, k.publicKey, { algorithms: ['RS256'] });
+          break;
+        } catch(e) { lastErr = e; }
       }
+    }
+    
+    if (!payload) throw lastErr || new Error('Invalid token');
+    
+    if (payload.jti && typeof sessionService?.revokeSession === 'function') {
+      await sessionService.revokeSession(payload.jti);
     }
 
     const jti = await createSessionJti(payload.address, req);
-    const token = jwt.sign({ address: payload.address, jti }, JWT_SECRET, {
-      algorithm: JWT_ALGORITHM,
+    const { privateKey, kid } = await keyRotationService.getCurrentSigningKey();
+    const token = jwt.sign({ address: payload.address, jti }, privateKey, {
+      algorithm: 'RS256',
+      keyid: kid,
       expiresIn: JWT_EXPIRES_IN,
     });
 
@@ -283,9 +298,31 @@ export const logout = async (req, res) => {
 
   if (authHeader?.startsWith('Bearer ')) {
     try {
-      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
-      if (payload.jti && typeof sessionService?.revokeSessionByJti === 'function') {
-        await sessionService.revokeSessionByJti(payload.jti);
+      const tokenStr = authHeader.slice(7);
+      const decoded = jwt.decode(tokenStr, { complete: true });
+      if (decoded) {
+        const validKeys = await keyRotationService.getValidPublicKeys();
+        let payload = null;
+        
+        if (decoded.header.kid) {
+          const matched = validKeys.find(k => k.kid === decoded.header.kid);
+          if (matched) {
+            try { payload = jwt.verify(tokenStr, matched.publicKey, { algorithms: ['RS256'] }); } catch(e) {}
+          }
+        }
+        
+        if (!payload) {
+          for (const k of validKeys) {
+            try {
+              payload = jwt.verify(tokenStr, k.publicKey, { algorithms: ['RS256'] });
+              break;
+            } catch(e) {}
+          }
+        }
+        
+        if (payload && payload.jti && typeof sessionService?.revokeSession === 'function') {
+          await sessionService.revokeSession(payload.jti);
+        }
       }
     } catch {
       // Logout is idempotent; invalid tokens are treated as already logged out.

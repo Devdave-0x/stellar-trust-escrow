@@ -1,16 +1,14 @@
 import express from 'express';
+import thresholdRoutes from './thresholdRoutes.js';
 import escrowController, {
   validateBroadcast,
   validateEscrowId,
   validatePagination,
 } from '../controllers/escrowController.js';
-import escrowMessageController, {
-  validateSendMessage,
-} from '../controllers/escrowMessageController.js';
+import ownershipRoutes from './ownershipRoutes.js';
 import { cacheResponse, invalidateOn, TTL } from '../middleware/cache.js';
 import { conditionalGet } from '../middleware/conditionalGet.js';
 import authMiddleware from '../middleware/auth.js';
-import { auditTransitionMiddleware } from '../../services/escrowAuditService.js';
 import {
   createNote,
   listNotes,
@@ -18,9 +16,6 @@ import {
   deleteNote,
 } from '../controllers/escrowNoteController.js';
 import { exportBundle } from '../controllers/auditController.js';
-import { addBookmark, removeBookmark } from '../controllers/bookmarkController.js';
-import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
-import { createShareLink, revokeShareLink } from '../controllers/shareLinkController.js';
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -209,68 +204,24 @@ router.get(
 );
 
 /**
- * @route  DELETE /api/escrows/:id
- * @desc   Soft-delete an escrow (sets deletedAt). Only allowed while the
- *         escrow is in Draft or Cancelled status.
+ * @route  GET /api/escrows/:id/audit/export
  */
-router.delete(
-  '/:id',
-  validateEscrowId,
-  invalidateOn({ tags: (req) => ['escrows', `escrow:${req.params.id}`] }),
-  escrowController.deleteEscrow,
-);
+router.get('/:id/audit/export', validateEscrowId, exportBundle);
+router.use('/:id/approvals', thresholdRoutes);
+router.use('/:id/ownership', ownershipRoutes);
 
 /**
- * @route  GET /api/escrows/stats/volume
- * @desc   Total escrow volume. Cached 30s.
+ * @route  GET  /api/escrows/:id/notes
+ * @route  POST /api/escrows/:id/notes
  */
-router.get(
-  '/stats/volume',
-  cacheResponse({
-    ttl: TTL.STATS,
-    tags: ['stats:volume'],
-  }),
-  escrowController.getTotalVolume,
-);
+router.get('/:id/notes', validateEscrowId, listNotes);
+router.post('/:id/notes', validateEscrowId, createNote);
 
 /**
- * @route  GET /api/escrows/stats/active
- * @desc   Count of active escrows. Cached 30s.
+ * @route  PATCH  /api/escrows/:id/notes/:noteId
+ * @route  DELETE /api/escrows/:id/notes/:noteId
  */
-router.get(
-  '/stats/active',
-  cacheResponse({
-    ttl: TTL.STATS,
-    tags: ['stats:active'],
-  }),
-  escrowController.getActiveEscrows,
-);
-
-/**
- * @route  GET /api/escrows/stats/success-rate
- * @desc   Escrow success rate. Cached 30s.
- */
-router.get(
-  '/stats/success-rate',
-  cacheResponse({
-    ttl: TTL.STATS,
-    tags: ['stats:success'],
-  }),
-  escrowController.getSuccessRate,
-);
-
-/**
- * @route  POST   /api/escrows/:id/bookmark
- * @route  DELETE /api/escrows/:id/bookmark
- */
-router.post('/:id/bookmark', validateEscrowId, addBookmark);
-router.delete('/:id/bookmark', validateEscrowId, removeBookmark);
-
-/**
- * @route  POST   /api/escrows/:id/share
- * @route  DELETE /api/escrows/:id/share/:token
- */
-router.post('/:id/share', validateEscrowId, createShareLink);
-router.delete('/:id/share/:token', validateEscrowId, revokeShareLink);
+router.patch('/:id/notes/:noteId', validateEscrowId, updateNote);
+router.delete('/:id/notes/:noteId', validateEscrowId, deleteNote);
 
 export default router;

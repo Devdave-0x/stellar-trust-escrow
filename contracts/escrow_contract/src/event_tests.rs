@@ -564,8 +564,8 @@ mod event_tests {
         let emitted_admin: Address = soroban_sdk::FromVal::from_val(&env, &data);
         assert_eq!(emitted_admin, admin);
 
-        env.ledger()
-            .with_mut(|l| l.timestamp += UNPAUSE_MIN_DELAY_SECS);
+        env.ledger().with_mut(|l| l.timestamp += 172_800);
+
         client.unpause(&admin);
         let events = contract_events(&env, &contract_id);
         let (_, _, data) = events

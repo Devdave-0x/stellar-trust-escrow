@@ -259,6 +259,7 @@ function createClient() {
   const models = new Map();
 
   const getModel = (name) => {
+    if (!db[name]) db[name] = [];
     if (!models.has(name)) {
       if (!db[name]) db[name] = [];
       models.set(name, createModel(name, db));
@@ -266,10 +267,14 @@ function createClient() {
     return models.get(name);
   };
 
+  // Declared with `let` so the closure below can reference the Proxy once it is
+  // assigned. Callbacks run after construction, so there is no TDZ risk.
+  let proxy;
+
   const client = {
     $connect: jest.fn().mockResolvedValue(undefined),
     $disconnect: jest.fn().mockResolvedValue(undefined),
-    $transaction: jest.fn(async (ops) => (Array.isArray(ops) ? Promise.all(ops) : ops(client))),
+    $transaction: jest.fn(async (ops) => (Array.isArray(ops) ? Promise.all(ops) : ops(proxy))),
     $queryRaw: jest.fn().mockResolvedValue([]),
     $executeRaw: jest.fn().mockResolvedValue(0),
     $on: jest.fn(),
@@ -301,7 +306,7 @@ function createClient() {
     }),
   };
 
-  return new Proxy(client, {
+  proxy = new Proxy(client, {
     get(target, prop) {
       if (prop in target) return target[prop];
       if (prop === '__esModule') return true;
@@ -309,6 +314,8 @@ function createClient() {
       return getModel(prop);
     },
   });
+
+  return proxy;
 }
 
 export class PrismaClient {

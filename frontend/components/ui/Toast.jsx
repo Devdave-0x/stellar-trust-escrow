@@ -1,85 +1,58 @@
-/**
- * Toast Component
- *
- * A notification toast that appears to inform users of success or error states.
- * Auto-dismisses after a timeout and can be manually closed.
- * Supports 4 variants: success, error, warning, info.
- * Includes a visible progress bar showing time until auto-dismiss.
- *
- * @param {object} props
- * @param {string} props.message - The message to display
- * @param {'success' | 'error' | 'warning' | 'info'} props.type - Type of toast
- * @param {Function} props.onClose - Callback when toast is closed
- * @param {number} [props.duration=5000] - Auto-dismiss duration in ms
- */
+'use client';
+import { useState, useEffect, useCallback } from 'react';
 
-import { useEffect, useState } from 'react';
-import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
+const ICONS = {
+  success: '✓',
+  error: '✕',
+  info: 'ℹ',
+  warning: '⚠',
+};
 
-export default function Toast({ message, type = 'success', onClose, duration = 5000 }) {
-  const [remainingTime, setRemainingTime] = useState(duration);
+const STYLES = {
+  success: 'bg-green-50 border-green-400 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  error: 'bg-red-50 border-red-400 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  info: 'bg-blue-50 border-blue-400 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  warning:
+    'bg-yellow-50 border-yellow-400 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
+};
 
+export function Toast({ message, type = 'info', duration = 4000, onClose }) {
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onClose();
-    }, duration);
-
-    const interval = setInterval(() => {
-      setRemainingTime((prev) => Math.max(prev - 50, 0));
-    }, 50);
-
-    return () => {
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
+    const t = setTimeout(onClose, duration);
+    return () => clearTimeout(t);
   }, [duration, onClose]);
-
-  const icons = {
-    success: <CheckCircle className="w-5 h-5 text-green-500" />,
-    error: <XCircle className="w-5 h-5 text-red-500" />,
-    warning: <AlertCircle className="w-5 h-5 text-yellow-500" />,
-    info: <Info className="w-5 h-5 text-blue-500" />,
-  };
-
-  const bgColors = {
-    success: 'bg-gray-900 border-green-500',
-    error: 'bg-gray-900 border-red-500',
-    warning: 'bg-gray-900 border-yellow-500',
-    info: 'bg-gray-900 border-blue-500',
-  };
-
-  const progressColors = {
-    success: 'bg-green-500',
-    error: 'bg-red-500',
-    warning: 'bg-yellow-500',
-    info: 'bg-blue-500',
-  };
-
-  const progressPercent = (remainingTime / duration) * 100;
 
   return (
     <div
-      className={`flex flex-col gap-2 px-4 py-3 rounded-lg border-l-4 shadow-lg ${bgColors[type]} animate-slide-in`}
-      role="alert"
-      aria-live="assertive"
+      className={`flex items-start gap-3 rounded-lg border px-4 py-3 shadow-md text-sm ${STYLES[type]}`}
     >
-      <div className="flex items-center gap-3">
-        {icons[type]}
-        <p className="text-white text-sm font-medium flex-1">{message}</p>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-white transition-colors flex-shrink-0"
-          aria-label="Close notification"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
-        <div
-          className={`h-full ${progressColors[type]} transition-all`}
-          style={{ width: `${progressPercent}%` }}
-        />
-      </div>
+      <span className="font-bold">{ICONS[type]}</span>
+      <span className="flex-1">{message}</span>
+      <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100">
+        ✕
+      </button>
     </div>
   );
 }
+
+export function ToastContainer({ toasts, onRemove }) {
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 w-80">
+      {toasts.map((t) => (
+        <Toast key={t.id} {...t} onClose={() => onRemove(t.id)} />
+      ))}
+    </div>
+  );
+}
+
+export function useToast() {
+  const [toasts, setToasts] = useState([]);
+  const add = useCallback((message, type = 'info') => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+  }, []);
+  const remove = useCallback((id) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
+  return { toasts, toast: add, removeToast: remove };
+}
+
+export default Toast;

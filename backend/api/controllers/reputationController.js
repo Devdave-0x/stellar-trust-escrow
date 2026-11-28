@@ -136,7 +136,7 @@ const recalculate = async (req, res) => {
     const userRole = user.role || 'user';
 
     // Admin-only check
-    if (!REPUTATION_ADMIN_ROLES.has(userRole)) {
+    if (userRole !== 'admin' && userRole !== 'superadmin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
@@ -149,9 +149,8 @@ const recalculate = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    const errorMessage = formatControllerError('Failed to recalculate reputation scores', err);
     logControllerError('reputation.recalculate', err, req);
-    res.status(500).json({ error: errorMessage });
+    res.status(500).json({ error: err.message });
   }
 };
 

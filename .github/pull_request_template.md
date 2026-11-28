@@ -101,6 +101,21 @@ Anything reviewers should know:
 
 ---
 
+### Migration checklist
+
+Required for any PR that changes `backend/database/migrations/**` or `prisma/migrations/**`.
+The Migration Safety CI (`.github/workflows/migration-safety.yml`) enforces these automatically.
+
+- [ ] Migration is backward-compatible with the previous version of the app code
+- [ ] New NOT NULL columns have a DEFAULT or are added in a separate migration after backfill
+- [ ] No table locks held for more than 100ms at expected table sizes
+- [ ] Rollback plan documented below (a `ROLLBACK.md` ships with the migration)
+
+#### Rollback plan
+
+Describe how to undo this migration safely (e.g. run `node backend/database/migrations/migrate.js down`,
+or the inverse SQL). The `Migration safety` CI verifies that `down()` is a true inverse of `up()`.
+
 ## Checklist
 
 <!-- Complete every item before converting from Draft to Ready for Review. -->

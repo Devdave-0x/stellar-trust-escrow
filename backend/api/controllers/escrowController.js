@@ -11,13 +11,11 @@
 import { stringify } from 'csv-stringify';
 import prisma from '../../lib/prisma.js';
 import cache from '../../lib/cache.js';
-import { recordEscrowStateTransition } from '../../lib/metrics.js';
 import {
   buildPaginatedResponse,
+  paginate,
+  PaginationError,
   parsePagination,
-  parseCursorPagination,
-  buildPrismaFindArgs,
-  buildCursorResponse,
 } from '../../lib/pagination.js';
 import { logControllerError } from '../../config/logger.js';
 import { submitTransaction } from '../../services/stellarService.js';
@@ -37,54 +35,7 @@ import {
   formatStatusChange,
 } from '../../services/milestoneHistoryService.js';
 
-const ESCROW_SUMMARY_SELECT = {
-  id: true,
-  clientAddress: true,
-  freelancerAddress: true,
-  status: true,
-  totalAmount: true,
-  remainingBalance: true,
-  deadline: true,
-  createdAt: true,
-};
-
-const VALID_SORT_FIELDS = ['createdAt', 'totalAmount', 'status'];
-const VALID_SORT_ORDERS = ['asc', 'desc'];
-const VALID_ESCROW_STATUSES = new Set(['Draft', 'Active', 'Completed', 'Disputed', 'Cancelled']);
-const CHAIN_FINAL_STATUSES = new Set(['Completed', 'Cancelled']);
-
-export function buildChainStatusConflictResponse(currentStatus) {
-  return {
-    code: 'CHAIN_STATE_CONFLICT',
-    error: 'Escrow status is finalized on chain and cannot be overridden by API mutation.',
-    currentStatus,
-  };
-}
-
-function statusUpdateConflictsWithChain(currentStatus, requestedStatus) {
-  return CHAIN_FINAL_STATUSES.has(currentStatus) && currentStatus !== requestedStatus;
-}
-
-export function buildStaleEscrowMutationError(currentStatus, expectedVersion) {
-  return {
-    code: 'ESCROW_CONFLICT',
-    error: 'Escrow state changed on chain; refresh before retrying.',
-    currentStatus,
-    expectedVersion,
-  };
-}
-
-const CSV_EXPORT_COLUMNS = [
-  'id',
-  'title',
-  'amount',
-  'currency',
-  'status',
-  'counterparty',
-  'created_at',
-  'completed_at',
-];
-const CSV_EXPORT_BATCH_SIZE = 500;
+const VALID_ESCROW_STATUSES = new Set(['Active', 'Completed', 'Disputed', 'Cancelled']);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -119,8 +70,26 @@ async function onEscrowStatusChange(id) {
 
 const listEscrows = async (req, res) => {
   try {
-    const { status, client, freelancer, search, minAmount, maxAmount, dateFrom, dateTo } =
-      req.query;
+    const limit = Number(req.query.limit ?? 20);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return res.status(400).json({
+        error: 'limit must be an integer between 1 and 100',
+        code: 'INVALID_LIMIT',
+      });
+    }
+
+    const {
+      status,
+      client,
+      freelancer,
+      search,
+      minAmount,
+      maxAmount,
+      dateFrom,
+      dateTo,
+      cursor,
+      include_total: includeTotal,
+    } = req.query;
 
     // ── Cursor-based pagination ────────────────────────────────────────────
     const { take, parsedCursor, sortField, sortDir } = parseCursorPagination(
@@ -175,33 +144,23 @@ const listEscrows = async (req, res) => {
       }
     }
 
-    // metadata[key]=value query filter, e.g. ?metadata[propertyType]=condo
-    if (req.query.metadata && typeof req.query.metadata === 'object') {
-      const metadataFilters = Object.entries(req.query.metadata).map(([key, value]) => ({
-        metadata: { path: [key], equals: value },
-      }));
-      if (metadataFilters.length) {
-        where.AND = [...(where.AND ?? []), ...metadataFilters];
-      }
+    const result = await paginate(
+      prisma.escrow,
+      where,
+      [{ createdAt: 'desc' }, { id: 'desc' }],
+      cursor,
+      limit,
+    );
+
+    if (includeTotal === 'true' || includeTotal === true) {
+      result.pagination.total = await prisma.escrow.count({ where });
     }
 
-    // Escrow id is a BigInt — cursor id needs BigInt conversion
-    const findArgs = buildPrismaFindArgs({
-      parsedCursor: parsedCursor ? { ...parsedCursor, id: BigInt(parsedCursor.id) } : null,
-      take,
-      sortField: resolvedSortBy,
-      sortDir: resolvedSortOrder,
-      idField: 'id',
-    });
-
-    const data = await prisma.escrow.findMany({
-      where,
-      select: ESCROW_SUMMARY_SELECT,
-      ...findArgs,
-    });
-
-    res.json(buildCursorResponse(data, take, 'id', resolvedSortBy, resolvedSortOrder));
+    res.json(result);
   } catch (err) {
+    if (err instanceof PaginationError) {
+      return res.status(err.statusCode).json({ error: err.message, code: err.code });
+    }
     logControllerError('escrow.listEscrows', err, req);
     res.status(500).json({ error: err.message });
   }
@@ -393,22 +352,6 @@ const broadcastCreateEscrow = async (req, res) => {
       return res.status(400).json({ error: 'signedXdr is required' });
     }
 
-    let parsedFundingDeadline;
-    if (fundingDeadline !== undefined) {
-      parsedFundingDeadline = new Date(fundingDeadline);
-      if (Number.isNaN(parsedFundingDeadline.getTime())) {
-        return res.status(400).json({ error: 'fundingDeadline must be a valid date' });
-      }
-      if (parsedFundingDeadline.getTime() <= Date.now()) {
-        return res.status(400).json({ error: 'fundingDeadline must be in the future' });
-      }
-    }
-
-    const metadataValidation = validateEscrowMetadata(metadata);
-    if (!metadataValidation.valid) {
-      return res.status(400).json({ error: metadataValidation.error });
-    }
-
     const result = await submitTransaction(signedXdr);
 
     if (result.status !== 'SUCCESS') {
@@ -446,19 +389,12 @@ const broadcastCreateEscrow = async (req, res) => {
           briefHash: '',
           createdAt: new Date(),
           createdLedger: BigInt(0),
-          metadata: metadata ?? undefined,
-          fundingDeadline: parsedFundingDeadline ?? undefined,
         },
         update: {}, // indexer will fill in the details on next tick
       });
-
-      recordEscrowStateTransition('null', 'Active');
     }
 
-    return res.status(200).json({
-      hash: result.hash,
-      escrowId: escrowId ? String(escrowId) : null,
-    });
+    return res.status(200).json({ hash: result.hash, escrowId: escrowId ? String(escrowId) : null });
   } catch (err) {
     logControllerError('escrow.broadcastCreateEscrow', err, req);
     res.status(500).json({ error: err.message });

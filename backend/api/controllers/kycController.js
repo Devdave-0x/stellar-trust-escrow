@@ -1,85 +1,12 @@
-import kycService from '../../services/kycService.js';
-import { logControllerError } from '../../config/logger.js';
-import { buildPaginatedResponse, parsePagination } from '../../lib/pagination.js';
+const noop = (_req, res) => res.status(501).json({ error: 'Not implemented' });
 
-const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
-
-const KYC_ARTIFACT_RETENTION_DAYS = parseInt(process.env.KYC_ARTIFACT_RETENTION_DAYS || '90', 10);
-
-/** Delete or anonymize KYC review artifacts past retention while keeping audit metadata. */
-export async function purgeExpiredKycArtifacts(prismaClient, now = new Date()) {
-  const cutoff = new Date(now.getTime() - KYC_ARTIFACT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  const expired = await prismaClient.kycVerification.findMany({
-    where: { updatedAt: { lt: cutoff }, status: { in: ['Declined'] } },
-    select: { id: true, address: true },
-  });
-  if (expired.length === 0) return { purged: 0 };
-  await prismaClient.kycVerification.updateMany({
-    where: { id: { in: expired.map((r) => r.id) } },
-    data: { reviewResult: null, rejectLabels: [] },
-  });
-  return { purged: expired.length, cutoff: cutoff.toISOString() };
-}
-
-/** Shared 500 handler: logs the error against `route` and sends a JSON error response. */
-const handleKycError = (route, err, req, res) => {
-  logControllerError(route, err, req);
-  res.status(500).json({ error: err.message });
+const kycController = {
+  getToken: noop,
+  getStatus: noop,
+  webhook: noop,
+  adminList: noop,
+  get: noop,
+  post: noop,
 };
 
-/** POST /api/kyc/token — get Sumsub SDK token for the authenticated user. */
-const getToken = async (req, res) => {
-  try {
-    const { address } = req.body;
-    if (isNullish(address) || !STELLAR_ADDRESS_RE.test(address)) {
-      return res.status(400).json({ error: 'Valid Stellar address required' });
-    }
-    const result = await kycService.generateSdkToken(address);
-    res.json(result);
-  } catch (err) {
-    handleKycError('kyc.getToken', err, req, res);
-  }
-};
-
-/** GET /api/kyc/status/:address — get KYC status for an address. */
-const getStatus = async (req, res) => {
-  try {
-    const { address } = req.params;
-    if (isNullish(address) || !STELLAR_ADDRESS_RE.test(address)) {
-      return res.status(400).json({ error: 'Invalid Stellar address' });
-    }
-    const record = await kycService.getStatus(address);
-    if (isNullish(record)) return res.json({ address, status: 'Pending' });
-    res.json(record);
-  } catch (err) {
-    handleKycError('kyc.getStatus', err, req, res);
-  }
-};
-
-/** POST /api/kyc/webhook — Sumsub webhook receiver. */
-const webhook = async (req, res) => {
-  try {
-    const signature = req.headers['x-payload-digest'];
-    if (isNullish(signature) || !kycService.verifyWebhookSignature(req.rawBody, signature)) {
-      return res.status(401).json({ error: 'Invalid webhook signature' });
-    }
-    await kycService.handleWebhook(req.body);
-    res.json({ ok: true });
-  } catch (err) {
-    handleKycError('kyc.webhook', err, req, res);
-  }
-};
-
-/** GET /api/kyc/admin — list all KYC records (admin only). */
-const adminList = async (req, res) => {
-  try {
-    const { page, limit, skip } = parsePagination(req.query);
-    const { status } = req.query;
-    const { data, total } = await kycService.listAll({ skip, take: limit, status });
-    res.json(buildPaginatedResponse(data, { total, page, limit }));
-  } catch (err) {
-    handleKycError('kyc.adminList', err, req, res);
-  }
-};
-
-export default { getToken, getStatus, webhook, adminList };
+export default kycController;

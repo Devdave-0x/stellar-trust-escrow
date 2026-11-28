@@ -12,10 +12,6 @@ import authMiddleware from '../middleware/auth.js';
 import { authorizeParamAddress } from '../middleware/authorization.js';
 import adminAuth, { optionalAdminAuth } from '../middleware/adminAuth.js';
 import { createSlidingWindowRateLimiter } from '../middleware/rateLimiter.js';
-import { conditionalGet } from '../middleware/conditionalGet.js';
-import { validatePasswordStrength } from '../middleware/passwordStrength.js';
-import { listBookmarks } from '../controllers/bookmarkController.js';
-import sessionController from '../controllers/sessionController.js';
 
 const router = express.Router();
 router.use(optionalAdminAuth, authMiddleware);

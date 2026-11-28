@@ -72,7 +72,7 @@ beforeEach(() => {
 });
 
 describe('EscrowDetailPage', () => {
-  it('renders escrow title from API data', () => {
+  it('renders escrow title', () => {
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     expect(screen.getByText('Smart Contract Audit')).toBeInTheDocument();
   });
@@ -132,7 +132,8 @@ describe('EscrowDetailPage', () => {
   it('closes dispute modal when Cancel is clicked', () => {
     renderWithAppProviders(<EscrowDetailPage params={params} />);
     fireEvent.click(screen.getByRole('button', { name: /Raise Dispute/ }));
-    fireEvent.click(screen.getByText('Cancel'));
+    fireEvent.click(screen.getAllByText('Cancel')[0]);
+    // Modal should close - the backdrop should be gone
     expect(screen.queryByText(/freeze all funds/)).not.toBeInTheDocument();
   });
 
@@ -175,6 +176,7 @@ describe('EscrowDetailPage', () => {
 
     it('updates the last updated timestamp after a manual refresh', async () => {
       renderWithAppProviders(<EscrowDetailPage params={params} />);
+
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Refresh escrow data/ }));
       });

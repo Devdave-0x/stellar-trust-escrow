@@ -1,4 +1,5 @@
 require('@testing-library/jest-dom');
+const { TextEncoder } = require('util');
 const { configureAxe } = require('jest-axe');
 const { TextEncoder, TextDecoder } = require('util');
 global.TextEncoder = TextEncoder;
@@ -7,6 +8,18 @@ global.TextDecoder = TextDecoder;
 // Polyfill Web Crypto API for jsdom (needed by computeTermsHash → crypto.subtle.digest)
 const { webcrypto } = require('crypto');
 Object.defineProperty(global, 'crypto', { value: webcrypto, configurable: true });
+
+global.TextEncoder = TextEncoder;
+
+if (typeof Uint8Array.prototype.toJSON === 'undefined') {
+  Object.defineProperty(Uint8Array.prototype, 'toJSON', {
+    configurable: true,
+    writable: true,
+    value() {
+      return { type: 'Buffer', data: Array.from(this) };
+    },
+  });
+}
 
 // Mock window.matchMedia (not implemented in jsdom)
 Object.defineProperty(window, 'matchMedia', {
@@ -70,4 +83,14 @@ if (typeof global.fetch === 'undefined') {
     ok: true,
     json: async () => ({ rates: { USD: 1 } }),
   }));
+}
+
+// jsdom does not implement the async Clipboard API; provide a mock so components
+// and tests that call navigator.clipboard.writeText() behave consistently.
+if (typeof navigator !== 'undefined' && !navigator.clipboard) {
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText: jest.fn(async () => {}) },
+    configurable: true,
+    writable: true,
+  });
 }

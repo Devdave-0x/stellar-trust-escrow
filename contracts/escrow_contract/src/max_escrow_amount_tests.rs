@@ -48,6 +48,17 @@ mod max_escrow_amount_tests {
         }
     }
 
+    fn high_value_multisig(env: &Env, client: &Address) -> MultisigConfig {
+        MultisigConfig {
+            approvers: soroban_sdk::vec![env, client.clone(), Address::generate(env)],
+            weights: soroban_sdk::vec![env, 1_u32, 1_u32],
+            threshold: 2,
+        }
+    }
+
+    // ── create_escrow boundary tests ──────────────────────────────────────────
+
+    /// `total_amount == MAX_ESCROW_AMOUNT` must be accepted.
     #[test]
     fn test_create_escrow_at_max_amount_accepted() {
         let (env, admin, client_addr, freelancer, contract) = setup();
@@ -63,7 +74,7 @@ mod max_escrow_amount_tests {
             &None,
             &None,
             &None,
-            &no_multisig(&env),
+            &high_value_multisig(&env, &client_addr),
         );
         assert!(
             result.is_ok(),
