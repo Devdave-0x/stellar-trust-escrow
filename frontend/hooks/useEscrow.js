@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 
@@ -15,24 +15,35 @@ const DEFAULT_PAGE_LIMIT = 20;
 const USER_ESCROWS_LIMIT = 50;
 
 /**
- * Build a stable key identifying a single wallet action so that repeated
- * invocations (double-clicks, re-renders, refreshes) can be deduplicated.
- *
- * @param {{ escrowId?: number|string, action?: string, milestoneId?: number|string }} parts
- * @returns {string}
+ * Extract the ledger/sequence marker from an escrow payload, if present.
+ * Different endpoints expose this under slightly different names, so we
+ * probe the common ones and fall back to null when nothing is available.
  */
-export function walletActionKey({ escrowId, action, milestoneId } = {}) {
-  return [escrowId ?? '', action ?? '', milestoneId ?? ''].join(':');
+function getLedgerMarker(escrow) {
+  if (!escrow || typeof escrow !== 'object') return null;
+  const candidates = [
+    escrow.ledger,
+    escrow.ledger_sequence,
+    escrow.ledgerSequence,
+    escrow.last_ledger,
+    escrow.lastLedger,
+  ];
+  for (const value of candidates) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return null;
 }
 
 /**
  * Fetch a single escrow by ID.
  * Polls every 30 seconds; pauses automatically when the page is hidden.
  *
- * Also exposes `submitWalletAction`, a wrapper that locks the given action
- * while its transaction is pending so double-clicks and refreshes cannot
- * submit the same wallet action twice. The lock is cleared and the escrow is
- * refreshed (via `mutate`) once the transaction confirms or fails.
+ * After a transaction reaches a final ledger, call `refreshAfterConfirmation`
+ * to invalidate/refetch the escrow query so the UI never shows stale indexed
+ * state. Indexer lag (the indexed escrow trailing the latest confirmed ledger)
+ * is surfaced separately via `isIndexerLagging` so the UI can render it
+ * distinctly. Out-of-order responses are guarded against: an older ledger is
+ * never allowed to overwrite a newer one.
  *
  * @param {number|string} id — escrow_id
  * @returns {{
@@ -40,9 +51,10 @@ export function walletActionKey({ escrowId, action, milestoneId } = {}) {
  *   isLoading: boolean,
  *   error: Error|null,
  *   mutate: Function,
- *   pendingActions: Set<string>,
- *   isActionPending: (parts: object) => boolean,
- *   submitWalletAction: (parts: object, submit: Function) => Promise<any>,
+ *   refreshAfterConfirmation: Function,
+ *   isIndexerLagging: boolean,
+ *   confirmedLedger: number|null,
+ *   indexedLedger: number|null,
  * }}
  */
 export function useEscrow(id) {
@@ -55,53 +67,80 @@ export function useEscrow(id) {
     },
   );
 
-  // In-flight wallet actions keyed by walletActionKey(). A ref backs the
-  // synchronous guard (state updates are async and would let a fast
-  // double-click slip through), while state drives re-renders for the UI.
-  const inFlightRef = useRef(new Set());
-  const [pendingActions, setPendingActions] = useState(() => new Set());
+  // Latest confirmed ledger observed for this escrow (set after a tx confirms).
+  const [confirmedLedger, setConfirmedLedger] = useState(null);
+  // The most recent escrow snapshot we've accepted, guarded by ledger order.
+  const [escrow, setEscrow] = useState(null);
+  const lastAcceptedLedgerRef = useRef(null);
 
-  const isActionPending = useCallback(
-    (parts) => inFlightRef.current.has(walletActionKey(parts)),
-    [],
-  );
+  // Apply incoming SWR data, but never let an older ledger overwrite a newer
+  // one (out-of-order responses / stale caches).
+  useEffect(() => {
+    if (!data) return;
+    const incomingLedger = getLedgerMarker(data);
+    const lastAccepted = lastAcceptedLedgerRef.current;
 
-  const submitWalletAction = useCallback(
-    async (parts, submit) => {
-      const key = walletActionKey(parts);
-      // Already pending (e.g. double-click or a refresh that re-triggers the
-      // action): ignore the duplicate and do not submit another transaction.
-      if (inFlightRef.current.has(key)) return undefined;
+    if (
+      incomingLedger !== null &&
+      lastAccepted !== null &&
+      incomingLedger < lastAccepted
+    ) {
+      // Stale update — ignore it so the status doesn't revert.
+      return;
+    }
 
-      inFlightRef.current.add(key);
-      setPendingActions(new Set(inFlightRef.current));
+    if (incomingLedger !== null) {
+      lastAcceptedLedgerRef.current = incomingLedger;
+    }
+    setEscrow(data);
+  }, [data]);
 
-      try {
-        const result = await submit();
-        return result;
-      } finally {
-        // Reconcile after confirmation or failure: release the lock and
-        // refresh the escrow so the UI settles on a clear final state.
-        inFlightRef.current.delete(key);
-        setPendingActions(new Set(inFlightRef.current));
-        try {
-          await mutate();
-        } catch {
-          // Refresh failures must not mask the original submit outcome.
-        }
+  // Reset guards when the escrow id changes.
+  useEffect(() => {
+    lastAcceptedLedgerRef.current = null;
+    setEscrow(null);
+    setConfirmedLedger(null);
+  }, [id]);
+
+  const indexedLedger = getLedgerMarker(escrow);
+
+  const isIndexerLagging =
+    confirmedLedger !== null &&
+    (indexedLedger === null || indexedLedger < confirmedLedger);
+
+  /**
+   * Invalidate and refetch the escrow query after a transaction reaches a
+   * final ledger. Optionally records the confirmed ledger so indexer lag can
+   * be detected until the indexer catches up.
+   *
+   * @param {{ ledger?: number, ledgerSequence?: number }} [confirmation]
+   */
+  const refreshAfterConfirmation = useCallback(
+    async (confirmation) => {
+      const ledger =
+        typeof confirmation === 'number'
+          ? confirmation
+          : confirmation?.ledger ?? confirmation?.ledgerSequence ?? null;
+
+      if (typeof ledger === 'number' && Number.isFinite(ledger)) {
+        setConfirmedLedger((prev) => (prev === null || ledger > prev ? ledger : prev));
       }
+
+      // Invalidate the cache entry and force a fresh fetch.
+      return mutate(undefined, { revalidate: true });
     },
     [mutate],
   );
 
   return {
-    escrow: data,
+    escrow,
     isLoading,
     error,
     mutate,
-    pendingActions,
-    isActionPending,
-    submitWalletAction,
+    refreshAfterConfirmation,
+    isIndexerLagging,
+    confirmedLedger,
+    indexedLedger,
   };
 }
 

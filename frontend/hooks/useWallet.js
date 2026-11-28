@@ -13,6 +13,10 @@
  *   disconnect:   () => void
  *   signTx:       (xdr: string) => Promise<string>  — returns signed XDR
  *   isFreighterInstalled: boolean
+ *   error:        string | null
+ *   recoveryMessage: string | null    — actionable recovery copy for the user
+ *   recoveryAction:  'install' | 'retry' | null
+ *   recoveryUrl:     string | null    — install URL when a provider is missing
  * }
  *
  * TODO (contributor — hard, Issue #35):
@@ -49,7 +53,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Networks } from '@stellar/stellar-sdk';
 import {
   isConnected as freighterIsConnected,
@@ -62,53 +66,23 @@ import { useWalletStore } from '../store/app-store';
 
 const FREIGHTER_INSTALL_URL = 'https://www.freighter.app/';
 
-// Stable key used to persist a pending transaction across page reloads.
-export const PENDING_TX_STORAGE_KEY = 'stellar-pending-tx';
+const NO_PROVIDER_MESSAGE =
+  `No supported wallet provider was detected. Install Freighter at ${FREIGHTER_INSTALL_URL} ` +
+  'and refresh the page, or select a supported wallet in your browser to continue.';
 
-// A stored pending transaction older than this is considered stale and discarded.
-const PENDING_TX_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const PROVIDER_ERROR_MESSAGE =
+  'Your wallet provider returned an error. Please try again, or select a supported wallet ' +
+  `(e.g. Freighter at ${FREIGHTER_INSTALL_URL}) and reconnect.`;
 
-const HASH_REGEX = /^[0-9a-fA-F]{64}$/;
-
-function isValidStoredTx(value) {
-  if (!value || typeof value !== 'object') return false;
-  if (typeof value.hash !== 'string' || !HASH_REGEX.test(value.hash)) return false;
-  if (typeof value.timestamp !== 'number' || !Number.isFinite(value.timestamp)) return false;
-  if (Date.now() - value.timestamp > PENDING_TX_MAX_AGE_MS) return false;
-  return true;
-}
-
-function readPendingTx() {
-  if (typeof window === 'undefined') return null;
+/**
+ * Safely checks whether the Freighter provider is present on window.
+ * Never throws — returns false in non-browser environments.
+ */
+function detectFreighter() {
   try {
-    const raw = window.localStorage.getItem(PENDING_TX_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!isValidStoredTx(parsed)) {
-      window.localStorage.removeItem(PENDING_TX_STORAGE_KEY);
-      return null;
-    }
-    return parsed;
+    return typeof window !== 'undefined' && !!window.freighter;
   } catch {
-    try {
-      window.localStorage.removeItem(PENDING_TX_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-    return null;
-  }
-}
-
-function writePendingTx(pendingTx) {
-  if (typeof window === 'undefined') return;
-  try {
-    if (pendingTx) {
-      window.localStorage.setItem(PENDING_TX_STORAGE_KEY, JSON.stringify(pendingTx));
-    } else {
-      window.localStorage.removeItem(PENDING_TX_STORAGE_KEY);
-    }
-  } catch {
-    // Storage may be unavailable (private mode, quota) — fail silently.
+    return false;
   }
 }
 
@@ -133,7 +107,7 @@ export function useWallet() {
 
   // ── Detect Freighter on mount ──────────────────────────────────────────────
   useEffect(() => {
-    setFreighterInstalled(typeof window !== 'undefined' && !!window.freighter);
+    setFreighterInstalled(detectFreighter());
   }, [setFreighterInstalled]);
 
   // ── Auto-restore connection on mount ───────────────────────────────────────
@@ -240,13 +214,15 @@ export function useWallet() {
   // ── Connect ────────────────────────────────────────────────────────────────
   const connect = useCallback(async () => {
     startConnect();
-    try {
-      if (!isFreighterInstalled) {
-        throw new Error(
-          `Freighter wallet not installed. Install it here: ${FREIGHTER_INSTALL_URL}`,
-        );
-      }
 
+    // No provider available — surface actionable copy instead of throwing.
+    if (!detectFreighter()) {
+      setFreighterInstalled(false);
+      setConnectError(NO_PROVIDER_MESSAGE);
+      return;
+    }
+
+    try {
       await requestAccess();
       const pubKey = await getPublicKey();
       const networkDetails = await getNetworkDetails();
@@ -256,13 +232,24 @@ export function useWallet() {
         network: networkDetails.network === 'PUBLIC_NETWORK' ? 'mainnet' : 'testnet',
       });
     } catch (err) {
-      const message =
-        err.message === 'User rejected access'
-          ? 'You declined wallet connection.'
-          : err.message;
+      const rawMessage = err && err.message ? err.message : String(err);
+
+      let message;
+      if (rawMessage === 'User rejected access') {
+        message = 'You declined wallet connection.';
+      } else if (
+        /not installed|not available|no provider|undefined is not/i.test(rawMessage)
+      ) {
+        // Provider disappeared or is unsupported — treat as no-provider case.
+        setFreighterInstalled(false);
+        message = NO_PROVIDER_MESSAGE;
+      } else {
+        message = PROVIDER_ERROR_MESSAGE;
+      }
+
       setConnectError(message);
     }
-  }, [isFreighterInstalled, startConnect, finishConnect, setConnectError]);
+  }, [setFreighterInstalled, startConnect, finishConnect, setConnectError]);
 
   // ── Sign Transaction ───────────────────────────────────────────────────────
   /**
@@ -295,14 +282,39 @@ export function useWallet() {
 
         return signedXdr;
       } catch (err) {
-        if (isUserRejection(err)) {
-          throw new WalletCancellationError();
-        }
-        throw new Error(`Signing failed: ${err.message}`);
+        const rawMessage = err && err.message ? err.message : String(err);
+        const message =
+          rawMessage === 'User rejected signing'
+            ? 'Transaction signing was cancelled.'
+            : `Signing failed: ${rawMessage}`;
+        throw new Error(message);
       }
     },
     [isConnected, network, address],
   );
+
+  // ── Recovery copy ──────────────────────────────────────────────────────────
+  // Derived (never thrown) so render is safe in no-provider / error states.
+  const { recoveryMessage, recoveryAction, recoveryUrl } = useMemo(() => {
+    if (error) {
+      const isNoProvider = !isFreighterInstalled || error === NO_PROVIDER_MESSAGE;
+      return {
+        recoveryMessage: error,
+        recoveryAction: isNoProvider ? 'install' : 'retry',
+        recoveryUrl: isNoProvider ? FREIGHTER_INSTALL_URL : null,
+      };
+    }
+
+    if (!isFreighterInstalled) {
+      return {
+        recoveryMessage: NO_PROVIDER_MESSAGE,
+        recoveryAction: 'install',
+        recoveryUrl: FREIGHTER_INSTALL_URL,
+      };
+    }
+
+    return { recoveryMessage: null, recoveryAction: null, recoveryUrl: null };
+  }, [error, isFreighterInstalled]);
 
   return {
     address,
@@ -311,6 +323,9 @@ export function useWallet() {
     isFreighterInstalled,
     isConnecting,
     error,
+    recoveryMessage,
+    recoveryAction,
+    recoveryUrl,
     connect,
     disconnect,
     signTx,
@@ -320,3 +335,6 @@ export function useWallet() {
     clearPendingTx,
   };
 }
+</｜｜DSML｜｜ parameter>
+</｜｜DSML｜｜ invoke>
+</｜｜DSML｜｜ calls>
