@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+RESTORE_START=$(date +%s)
+
 BASEBACKUP_FILE="${1:-}"
 RECOVERY_TARGET_TIME="${2:-}"
 TARGET_PGDATA="${TARGET_PGDATA:-/var/lib/postgresql/pitr_data}"
@@ -82,3 +84,14 @@ Monitor logs for recovery progress in pg_wal/recovery.done.
 EOF
 
 echo "PITR setup complete. PostgreSQL can be started from $TARGET_PGDATA"
+
+# Optional verification: when VERIFY_DATABASE_URL is set, confirm the restored
+# schema is usable and record restore duration (for scheduled recovery jobs).
+if [[ -n "${VERIFY_DATABASE_URL:-}" ]]; then
+  if ! psql "$VERIFY_DATABASE_URL" -tAc 'SELECT count(*) FROM "_prisma_migrations"' >/dev/null 2>&1; then
+    echo "ERROR: restored schema is unusable (cannot read _prisma_migrations)"
+    exit 1
+  fi
+  echo "Restored schema verified"
+fi
+echo "restore_duration_seconds=$(( $(date +%s) - RESTORE_START ))"

@@ -15,6 +15,8 @@
 
 import 'dotenv/config';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 
 const REQUIRED_NODE_MAJOR = 18;
 
@@ -89,6 +91,44 @@ if (process.env.NODE_ENV === 'production') {
     }
   } catch {
     ok('git not available — skipping dirty-tree check');
+  }
+}
+
+// ── Contract ids / network ────────────────────────────────────────────────────
+
+console.log('\n🔍  Checking contract ids and network…');
+const CONTRACT_ID_RE = /^C[A-Z2-7]{55}$/;
+const network = process.env.STELLAR_NETWORK ?? '';
+const contractId = process.env.ESCROW_CONTRACT_ID ?? '';
+if (!contractId) {
+  fail('ESCROW_CONTRACT_ID is not set');
+} else if (!CONTRACT_ID_RE.test(contractId)) {
+  fail(`ESCROW_CONTRACT_ID "${contractId}" is not a valid Soroban contract id`);
+} else {
+  ok('ESCROW_CONTRACT_ID is set and well-formed');
+}
+const contractNetwork = process.env.ESCROW_CONTRACT_NETWORK;
+if (contractNetwork && contractNetwork !== network) {
+  fail(`ESCROW_CONTRACT_ID belongs to "${contractNetwork}" but STELLAR_NETWORK is "${network}"`);
+}
+
+// ── Generated bindings vs ABI ─────────────────────────────────────────────────
+
+const abiManifest = process.env.ABI_MANIFEST ?? 'contracts/abi-manifest.json';
+if (existsSync(abiManifest)) {
+  console.log('\n🔍  Checking generated bindings match the published ABI…');
+  const manifest = JSON.parse(readFileSync(abiManifest, 'utf8'));
+  const stale = Object.entries(manifest).filter(
+    ([file, hash]) =>
+      !existsSync(file) || createHash('sha256').update(readFileSync(file)).digest('hex') !== hash,
+  );
+  if (stale.length) {
+    fail(
+      `Generated bindings differ from ABI: ${stale.map(([f]) => f).join(', ')}\n` +
+        '      Regenerate with: soroban contract bindings typescript --wasm <contract.wasm> --output-dir <bindings dir>',
+    );
+  } else {
+    ok('Generated bindings match ABI manifest');
   }
 }
 
