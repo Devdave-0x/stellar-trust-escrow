@@ -61,6 +61,7 @@ import {
   registerCleanup,
   initGracefulShutdown,
 } from './lib/gracefulShutdown.js';
+import { closeQueues, drainActiveQueueJobs } from './lib/queueConfig.js';
 import { errorsTotal } from './lib/metrics.js';
 import { TimeoutError } from './lib/timeout.js';
 import { leaderboardRateLimit } from './middleware/rateLimit.js';
@@ -353,6 +354,10 @@ async function startServer() {
 
         registerCleanup('compliance-scheduler', async () => {
           complianceService.stopScheduler();
+        });
+        registerCleanup('queue-drain', async () => {
+          await drainActiveQueueJobs();
+          await closeQueues();
         });
         registerCleanup('prisma', async () => {
           await prisma.$disconnect();
