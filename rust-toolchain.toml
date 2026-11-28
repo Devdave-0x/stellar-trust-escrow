@@ -1,0 +1,7 @@
+# Pinned toolchain for reproducible contract builds (#963).
+# Release metadata (commit SHA, rustc, cargo) is reported by .github/workflows/release.yml.
+[toolchain]
+channel = "1.81.0"
+targets = ["wasm32-unknown-unknown"]
+components = ["rustfmt", "clippy"]
+profile = "minimal"
