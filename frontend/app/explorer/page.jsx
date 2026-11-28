@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import Spinner from '../../components/ui/Spinner';
 import EscrowCard from '../../components/escrow/EscrowCard';
@@ -23,6 +24,35 @@ const DEFAULT_FILTERS = {
   dateTo: '',
   sort: '',
 };
+
+// Only these public keys are ever serialized to / hydrated from the URL.
+// Anything else (e.g. private params) is ignored so links never leak data.
+const URL_FILTER_KEYS = ['status', 'minAmount', 'maxAmount', 'dateFrom', 'dateTo', 'sort'];
+const URL_SEARCH_KEY = 'search';
+const URL_CURSOR_KEY = 'cursor';
+const URL_SUPPORTED_KEYS = new Set([...URL_FILTER_KEYS, URL_SEARCH_KEY, URL_CURSOR_KEY]);
+
+export function readExplorerStateFromParams(searchParams) {
+  const filters = { ...DEFAULT_FILTERS };
+  for (const key of URL_FILTER_KEYS) {
+    const value = searchParams?.get?.(key);
+    if (typeof value === 'string' && value !== '') filters[key] = value;
+  }
+  const search = searchParams?.get?.(URL_SEARCH_KEY) || '';
+  const cursor = searchParams?.get?.(URL_CURSOR_KEY) || null;
+  return { filters, search, cursor };
+}
+
+export function buildExplorerQueryString({ filters, search, cursor }) {
+  const params = new URLSearchParams();
+  for (const key of URL_FILTER_KEYS) {
+    const value = filters?.[key];
+    if (typeof value === 'string' && value !== '') params.set(key, value);
+  }
+  if (search) params.set(URL_SEARCH_KEY, search);
+  if (cursor) params.set(URL_CURSOR_KEY, cursor);
+  return params.toString();
+}
 
 export function buildPaginationTelemetry(outcome, loadedCount) {
   return {
@@ -47,15 +77,17 @@ function normaliseEscrow(e) {
   };
 }
 
-function useInfiniteEscrows({ search, filters }) {
+function useInfiniteEscrows({ search, filters, initialCursor = null, onCursorChange }) {
   const [escrows, setEscrows] = useState([]);
-  const [cursor, setCursor] = useState(null);
+  const [cursor, setCursor] = useState(initialCursor);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
   const requestVersionRef = useRef(0);
+  const onCursorChangeRef = useRef(onCursorChange);
+  onCursorChangeRef.current = onCursorChange;
 
   const buildUrl = useCallback(
     (cur) => {
@@ -141,6 +173,7 @@ function useInfiniteEscrows({ search, filters }) {
         setEscrows((prev) => [...prev, ...(data || []).map(normaliseEscrow)]);
         setCursor(next_cursor ?? null);
         setHasMore(more);
+        onCursorChangeRef.current?.(next_cursor ?? null);
         trackCustomMetric('explorer-cursor-pagination', performance.now() - startedAt, {
           ...buildPaginationTelemetry('success', (data || []).length),
         });
@@ -166,14 +199,27 @@ function useInfiniteEscrows({ search, filters }) {
 }
 
 function ExplorerContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Hydrate initial state from the URL once on mount so reloads and shared
+  // links reproduce the same public result set.
+  const initialRef = useRef(null);
+  if (initialRef.current === null) {
+    initialRef.current = readExplorerStateFromParams(searchParams);
+  }
+  const initial = initialRef.current;
+
   const { filters, setFilter, setFilters, resetFilters } = useFilterState({
     defaults: DEFAULT_FILTERS,
     pageParam: 'page',
+    initialFilters: initial.filters,
   });
 
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState(initial.search);
+  const [debouncedSearch, setDebouncedSearch] = useState(initial.search);
   const [showFilters, setShowFilters] = useState(false);
+  const [cursorParam, setCursorParam] = useState(initial.cursor);
 
   const debounceTimer = useRef(null);
   useEffect(() => {
@@ -185,7 +231,22 @@ function ExplorerContent() {
   const { escrows, hasMore, loading, loadingMore, error, loadMore } = useInfiniteEscrows({
     search: debouncedSearch,
     filters,
+    initialCursor: initial.cursor,
+    onCursorChange: setCursorParam,
   });
+
+  // Keep the URL in sync with the current public filter/search/cursor state.
+  const lastQueryRef = useRef(null);
+  useEffect(() => {
+    const qs = buildExplorerQueryString({
+      filters,
+      search: debouncedSearch,
+      cursor: cursorParam,
+    });
+    if (qs === lastQueryRef.current) return;
+    lastQueryRef.current = qs;
+    router.replace(qs ? `?${qs}` : '?', { scroll: false });
+  }, [router, filters, debouncedSearch, cursorParam]);
 
   // IntersectionObserver sentinel for auto-loading next page
   const sentinelRef = useRef(null);
@@ -233,6 +294,7 @@ function ExplorerContent() {
     resetFilters();
     setSearch('');
     setDebouncedSearch('');
+    setCursorParam(null);
   }, [resetFilters]);
 
   const filtersForPanel = {
