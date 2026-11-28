@@ -1,5 +1,6 @@
 import webhookService from '../../services/webhookService.js';
 import respond from '../../lib/respond.js';
+import { validateWebhookDestination } from '../../lib/webhookUrl.js';
 
 const MAX_EVENT_TYPES = 20;
 const ALLOWED_SCHEMES = ['https:'];
@@ -19,6 +20,11 @@ const subscribe = async (req, res) => {
 
     if (!url || !isValidWebhookUrl(url)) {
       return respond.error(res, 400, 'VALIDATION_ERROR', 'url must be a valid HTTPS URL');
+    }
+
+    const destination = await validateWebhookDestination(url);
+    if (!destination.valid) {
+      return respond.error(res, 400, 'VALIDATION_ERROR', `url rejected: ${destination.reason}`);
     }
 
     if (!Array.isArray(eventTypes) || eventTypes.length === 0) {

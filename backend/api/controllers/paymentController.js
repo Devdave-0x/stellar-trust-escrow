@@ -1,7 +1,19 @@
+import crypto from 'crypto';
 import { getLogger, logControllerError } from '../../config/logger.js';
 import paymentService from '../../services/paymentService.js';
 import kycService from '../../services/kycService.js';
+import { submitTransaction } from '../../services/stellarService.js';
 import { getAuthenticatedWalletAddress } from '../middleware/authorization.js';
+
+const txLifecycleByHash = new Map();
+
+export function mapSubmissionLifecycle(submission) {
+  if (!submission) return 'unknown';
+  if (submission.status === 'SUCCESS') return 'confirmed';
+  if (submission.status === 'FAILED') return 'failed';
+  if (submission.status === 'TIMEOUT') return 'pending';
+  return 'submitted';
+}
 
 const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 
@@ -119,6 +131,50 @@ const refund = async (req, res) => {
   }
 };
 
+/** GET /api/payments/transactions/:txHash — lifecycle (pending → confirmed/failed). */
+const getTransactionLifecycle = async (req, res) => {
+  try {
+    const walletAddress = requireOwnedWallet(req, res);
+    if (!walletAddress) return;
+    const record = txLifecycleByHash.get(req.params.txHash);
+    if (!record) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json(record);
+  } catch (err) {
+    logControllerError('payment.getTransactionLifecycle', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/** POST /api/payments/transactions — submit signed XDR, track lifecycle by tx hash. */
+const submitSignedTransaction = async (req, res) => {
+  try {
+    const walletAddress = requireOwnedWallet(req, res);
+    if (!walletAddress) return;
+    const { signedXdr } = req.body ?? {};
+    if (!signedXdr) return res.status(400).json({ error: 'signedXdr is required' });
+
+    const signedHash = crypto.createHash('sha256').update(signedXdr).digest('hex');
+  const cached = [...txLifecycleByHash.values()].find((r) => r.signedHash === signedHash);
+    if (cached) return res.json({ ...cached, replayed: true });
+
+    const result = await submitTransaction(signedXdr);
+    const payload = {
+      txHash: result.hash,
+      signedHash,
+      status: result.status,
+      lifecycle: mapSubmissionLifecycle(result),
+      finalLedger: result.ledger ?? null,
+    };
+    txLifecycleByHash.set(result.hash, payload);
+    res.json(payload);
+  } catch (err) {
+    logControllerError('payment.submitSignedTransaction', err, req);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 /** POST /api/payments/webhook — Stripe webhook receiver. */
 const webhook = async (req, res) => {
   try {
@@ -135,4 +191,12 @@ const webhook = async (req, res) => {
   }
 };
 
-export default { createCheckout, getStatus, listByAddress, refund, webhook };
+export default {
+  createCheckout,
+  getStatus,
+  listByAddress,
+  refund,
+  submitSignedTransaction,
+  getTransactionLifecycle,
+  webhook,
+};

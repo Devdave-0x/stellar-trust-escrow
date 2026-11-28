@@ -10,6 +10,8 @@ const DELIVERY_ID_HEADER = 'X-Webhook-Delivery-Id';
 const EVENT_TYPE_HEADER = 'X-Webhook-Event-Type';
 const DEFAULT_RETRY_ATTEMPTS = 5;
 const DEFAULT_BACKOFF_DELAY_MS = 5000;
+const SECRET_OVERLAP_MS = parseInt(process.env.WEBHOOK_SECRET_OVERLAP_MS || String(24 * 60 * 60 * 1000), 10);
+const rotatedSecretOverlap = new Map();
 
 function selectSubscriptionFields(includeActive = false) {
   return {
@@ -39,10 +41,19 @@ function isNil(value) {
   return value === null || value === undefined;
 }
 
+export function serializeTransmittedBody(payload) {
+  return typeof payload === 'string' ? payload : JSON.stringify(payload);
+}
+
 function signPayload(secret, timestamp, body) {
-  const normalizedBody = typeof body === 'string' ? body : JSON.stringify(body);
+  const normalizedBody = serializeTransmittedBody(body);
   const signingInput = `${timestamp}.${normalizedBody}`;
-  return `sha256=${crypto.createHmac('sha256', secret).update(signingInput).digest('hex')}`;
+  return `sha256=${crypto.createHmac('sha256', secret).update(signingInput, 'utf8').digest('hex')}`;
+}
+
+export function signTransmittedBytes(secret, timestamp, bodyBytes) {
+  const signingInput = `${timestamp}.${bodyBytes}`;
+  return `sha256=${crypto.createHmac('sha256', secret).update(signingInput, 'utf8').digest('hex')}`;
 }
 
 /**
@@ -113,16 +124,32 @@ async function deleteSubscription({ id, createdBy }) {
   return deleted.count > 0;
 }
 
-async function rotateSecret({ id, createdBy }) {
+async function rotateSecret({ id, createdBy, overlapMs = SECRET_OVERLAP_MS }) {
+  const existing = await prisma.webhookSubscription.findFirst({
+    where: { id, createdBy },
+    select: { secret: true },
+  });
   const newSecret = generateSecret();
+  if (existing?.secret) {
+    rotatedSecretOverlap.set(id, {
+      secret: existing.secret,
+      until: Date.now() + overlapMs,
+    });
+  }
   return prisma.webhookSubscription.update({
     where: { id, createdBy },
     data: { secret: newSecret },
-    select: {
-      id: true,
-      secret: true,
-    },
+    select: { id: true, secret: true },
   });
+}
+
+export function selectActiveSigningSecrets(subscription, now = Date.now()) {
+  const secrets = [subscription.secret];
+  const overlap = rotatedSecretOverlap.get(subscription.id);
+  if (overlap?.secret && overlap.until > now) {
+    secrets.push(overlap.secret);
+  }
+  return secrets;
 }
 
 async function getDeliveryHistory({ subscriptionId, createdBy, page = 1, limit = 30 }) {
@@ -174,7 +201,8 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
     delivery.id,
     new Date().toISOString(),
   );
-  const signature = signPayload(subscription.secret, timestamp, signedPayload);
+  const bodyBytes = serializeTransmittedBody(signedPayload);
+  const signature = signTransmittedBytes(subscription.secret, timestamp, bodyBytes);
   const headers = {
     'Content-Type': 'application/json',
     [SIGNATURE_HEADER]: signature,
@@ -188,7 +216,7 @@ async function queueSubscriptionWebhook(subscription, payload, eventType) {
     data: { payload: signedPayload },
   });
 
-  await enqueueWebhookDelivery(delivery.id, subscription.url, signedPayload, headers, {
+  await enqueueWebhookDelivery(delivery.id, subscription.url, bodyBytes, headers, {
     attempts: DEFAULT_RETRY_ATTEMPTS,
     backoff: { type: 'exponential', delay: DEFAULT_BACKOFF_DELAY_MS },
   });
