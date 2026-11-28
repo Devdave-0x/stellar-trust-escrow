@@ -3,6 +3,7 @@
  */
 
 import React, { useEffect } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -11,6 +12,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useWalletStore } from '../store/useWalletStore';
 import { initOfflineDb } from '../services/offlineCache';
 import { setupNotificationListeners } from '../services/notifications';
+import { api } from '../services/api';
+import { useTransactionStore } from '../store/useTransactionStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +31,37 @@ function resolveDeepLinkEscrowId(raw: unknown): string | null {
   const n = Number(s);
   if (!Number.isInteger(n) || n < 1 || n > MAX_SAFE_ESCROW_ID) return null;
   return s;
+}
+
+// Guard against overlapping foreground refreshes (module-level so it survives re-renders).
+let foregroundRefreshInFlight = false;
+
+/**
+ * Refresh the status of tracked pending transactions after the app returns to
+ * the foreground. Read-only: never re-submits a transaction.
+ */
+export async function refreshPendingTransactionsOnForeground(): Promise<void> {
+  if (foregroundRefreshInFlight) return;
+  foregroundRefreshInFlight = true;
+  try {
+    const { pendingTransactionIds, updateTransactionStatus } = useTransactionStore.getState();
+    const ids = Array.from(pendingTransactionIds);
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const result = await api.get(`/transactions/${id}/status`);
+          const status = result?.status;
+          if (status === 'confirmed' || status === 'pending' || status === 'expired') {
+            updateTransactionStatus(id, status);
+          }
+        } catch (err) {
+          console.warn(`[Foreground] Failed to refresh transaction ${id}:`, err);
+        }
+      }),
+    );
+  } finally {
+    foregroundRefreshInFlight = false;
+  }
 }
 
 export default function RootLayout() {
@@ -56,6 +90,22 @@ export default function RootLayout() {
 
     return cleanup;
   }, [hydrate, router]);
+
+  useEffect(() => {
+    let previousState: AppStateStatus = AppState.currentState;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const wasBackgrounded =
+        previousState === 'background' || previousState === 'inactive';
+      previousState = nextState;
+
+      if (nextState === 'active' && wasBackgrounded) {
+        void refreshPendingTransactionsOnForeground();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

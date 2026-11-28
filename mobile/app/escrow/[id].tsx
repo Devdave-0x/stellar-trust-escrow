@@ -103,48 +103,55 @@ import EmptyState from '../../components/ui/EmptyState';
 import { truncateAddress, stroopsToXlm, explorerUrl } from '../../lib/stellar';
 import { authenticate, isBiometricEnabled } from '../../services/biometrics';
 
-/** Allowed MIME types for dispute evidence uploads. */
-export const ALLOWED_EVIDENCE_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/pdf',
-] as const;
+const DUE_SOON_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
-/** Maximum allowed evidence file size (10 MB). */
-export const MAX_EVIDENCE_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+export type DeadlineStatus = 'expired' | 'due-soon' | 'upcoming';
 
-export interface EvidenceFile {
-  uri: string;
-  name: string;
-  mimeType: string;
-  size: number;
+export interface DeadlineLabel {
+  status: DeadlineStatus;
+  label: string;
 }
 
-export type EvidenceValidationResult =
-  | { ok: true }
-  | { ok: false; reason: 'unsupported-type' | 'too-large'; message: string };
+/**
+ * Convert a contract ledger timestamp to a Date.
+ * Contract timestamps are seconds since epoch (UTC); values already in
+ * milliseconds are passed through unchanged.
+ */
+export function ledgerTimestampToDate(timestamp: number | string): Date {
+  const value = typeof timestamp === 'string' ? Number(timestamp) : timestamp;
+  // Values below 1e12 are seconds since epoch; larger values are milliseconds.
+  const ms = value < 1e12 ? value * 1000 : value;
+  return new Date(ms);
+}
 
 /**
- * Validate a candidate evidence file locally, before any network transfer.
+ * Format a contract deadline for display, classifying it as expired,
+ * due soon (within 24h), or upcoming. Formatting uses the device timezone.
  */
-export function validateEvidenceFile(file: EvidenceFile): EvidenceValidationResult {
-  if (!ALLOWED_EVIDENCE_MIME_TYPES.includes(file.mimeType as (typeof ALLOWED_EVIDENCE_MIME_TYPES)[number])) {
-    return {
-      ok: false,
-      reason: 'unsupported-type',
-      message: `Unsupported file type "${file.mimeType || 'unknown'}". Allowed: JPEG, PNG, WebP, PDF.`,
-    };
+export function formatDeadlineLabel(
+  timestamp: number | string,
+  now: number = Date.now(),
+): DeadlineLabel {
+  const date = ledgerTimestampToDate(timestamp);
+  const diff = date.getTime() - now;
+
+  if (diff <= 0) {
+    return { status: 'expired', label: 'Expired' };
   }
-  if (file.size > MAX_EVIDENCE_FILE_SIZE_BYTES) {
-    const maxMb = MAX_EVIDENCE_FILE_SIZE_BYTES / (1024 * 1024);
-    return {
-      ok: false,
-      reason: 'too-large',
-      message: `File is too large. Maximum size is ${maxMb} MB.`,
-    };
+
+  const formatted = date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  if (diff <= DUE_SOON_THRESHOLD_MS) {
+    return { status: 'due-soon', label: `Due soon — ${formatted}` };
   }
-  return { ok: true };
+
+  return { status: 'upcoming', label: formatted };
 }
 
 export default function EscrowDetailScreen() {
@@ -329,8 +336,14 @@ export default function EscrowDetailScreen() {
             Remaining: {stroopsToXlm(escrow.remainingBalance)} XLM
           </Text>
           {escrow.deadline && (
-            <Text style={styles.deadline}>
-              Deadline: {new Date(escrow.deadline).toLocaleDateString()}
+            <Text
+              style={[
+                styles.deadline,
+                formatDeadlineLabel(escrow.deadline).status === 'expired' && styles.deadlineExpired,
+                formatDeadlineLabel(escrow.deadline).status === 'due-soon' && styles.deadlineDueSoon,
+              ]}
+            >
+              Deadline: {formatDeadlineLabel(escrow.deadline).label}
             </Text>
           )}
         </Card>
@@ -508,6 +521,8 @@ const styles = StyleSheet.create({
   amount: { fontSize: 32, fontWeight: '800', color: '#f9fafb', marginBottom: 4 },
   remaining: { fontSize: 13, color: '#6b7280' },
   deadline: { fontSize: 13, color: '#f59e0b', marginTop: 4 },
+  deadlineExpired: { color: '#ef4444' },
+  deadlineDueSoon: { color: '#f59e0b' },
   partiesCard: { marginBottom: 20 },
   partyRow: {
     flexDirection: 'row',

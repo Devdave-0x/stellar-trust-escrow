@@ -18,72 +18,8 @@ import { Platform, Linking } from 'react-native';
 import { storage, STORAGE_KEYS } from '../lib/storage';
 import { api } from '../lib/api';
 
-/**
- * Result of a push-notification permission request.
- * - `granted`: whether the OS currently allows notifications.
- * - `canAskAgain`: whether the platform prompt can still be shown.
- * - `unavailable`: true when push is unsupported (e.g. simulator / web).
- */
-export interface PushPermissionResult {
-  granted: boolean;
-  canAskAgain: boolean;
-  unavailable: boolean;
-}
-
-/**
- * Presents the rationale for notifications and, only if the user agrees,
- * triggers the platform permission prompt. This must be called from an
- * explicit user action (e.g. tapping an "Enable notifications" button) —
- * never implicitly at startup.
- *
- * @param confirm Rationale UI hook. Resolves to true if the user accepts.
- */
-export async function requestPushPermissionWithRationale(
-  confirm: () => Promise<boolean> | boolean,
-): Promise<PushPermissionResult> {
-  if (!Device.isDevice) {
-    console.warn('[Notifications] Push notifications require a physical device.');
-    return { granted: false, canAskAgain: false, unavailable: true };
-  }
-
-  const { status: existingStatus, canAskAgain: existingCanAskAgain } =
-    await Notifications.getPermissionsAsync();
-
-  if (existingStatus === 'granted') {
-    return { granted: true, canAskAgain: existingCanAskAgain ?? true, unavailable: false };
-  }
-
-  // Only prompt after the user has explicitly acknowledged the rationale.
-  const accepted = await confirm();
-  if (!accepted) {
-    return {
-      granted: false,
-      canAskAgain: existingCanAskAgain ?? true,
-      unavailable: false,
-    };
-  }
-
-  const { status, canAskAgain } = await Notifications.requestPermissionsAsync();
-  return {
-    granted: status === 'granted',
-    canAskAgain: canAskAgain ?? false,
-    unavailable: false,
-  };
-}
-
-/**
- * Opens the OS notification settings so the user can revisit a denied
- * permission. Returns whether the settings screen could be opened.
- */
-export async function openNotificationSettings(): Promise<boolean> {
-  try {
-    await Linking.openSettings();
-    return true;
-  } catch (err) {
-    console.warn('[Notifications] Failed to open settings:', err);
-    return false;
-  }
-}
+// Storage key tracking which account the current push token is associated with.
+const PUSH_TOKEN_ACCOUNT_KEY = 'PUSH_TOKEN_ACCOUNT';
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -127,6 +63,28 @@ export async function registerForPushNotifications(stellarAddress: string): Prom
   const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 
   const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+
+  const storedToken = storage.get(STORAGE_KEYS.PUSH_TOKEN);
+  const storedAccount = storage.get(PUSH_TOKEN_ACCOUNT_KEY);
+
+  // Idempotent: same token already registered for this account — skip backend call.
+  if (storedToken === token && storedAccount === stellarAddress) {
+    return token;
+  }
+
+  // Account switch or reinstall: remove the stale association before re-registering.
+  if (storedToken && storedAccount && storedAccount !== stellarAddress) {
+    try {
+      await api.delete('/api/notifications/push-token', {
+        address: storedAccount,
+        token: storedToken,
+      });
+    } catch (err) {
+      // Non-fatal — best-effort cleanup of the previous account's registration
+      console.warn('[Notifications] Failed to unregister previous token:', err);
+    }
+  }
+
   storage.set(STORAGE_KEYS.PUSH_TOKEN, token);
 
   // Register token with backend so it can send targeted pushes
@@ -136,12 +94,37 @@ export async function registerForPushNotifications(stellarAddress: string): Prom
       token,
       platform: Platform.OS,
     });
+    storage.set(PUSH_TOKEN_ACCOUNT_KEY, stellarAddress);
   } catch (err) {
     // Non-fatal — token stored locally, backend registration is best-effort
     console.warn('[Notifications] Failed to register token with backend:', err);
   }
 
   return token;
+}
+
+/**
+ * Unregisters the device's push token for the given account and clears the
+ * local token-to-account association. Call on logout.
+ */
+export async function unregisterForPushNotifications(stellarAddress: string): Promise<void> {
+  const token = storage.get(STORAGE_KEYS.PUSH_TOKEN);
+  const storedAccount = storage.get(PUSH_TOKEN_ACCOUNT_KEY);
+
+  if (token && storedAccount === stellarAddress) {
+    try {
+      await api.delete('/api/notifications/push-token', {
+        address: stellarAddress,
+        token,
+      });
+    } catch (err) {
+      // Non-fatal — local association is still cleared below
+      console.warn('[Notifications] Failed to unregister token with backend:', err);
+    }
+  }
+
+  storage.remove(STORAGE_KEYS.PUSH_TOKEN);
+  storage.remove(PUSH_TOKEN_ACCOUNT_KEY);
 }
 
 /**
