@@ -643,10 +643,26 @@ const updateSettings = async (req, res) => {
       }
     }
 
-    // TODO: Persist to DB
+    const actor = req.user?.address || 'admin';
+  const sanitizedBody = { ...req.body };
+    delete sanitizedBody.secret;
+    delete sanitizedBody.webhookSecret;
+
+    await prisma.$transaction([
+      prisma.adminAuditLog.create({
+        data: {
+          action: 'ADMIN_SETTINGS_UPDATE',
+          targetAddress: 'platform',
+          reason: JSON.stringify(sanitizedBody),
+          performedBy: actor,
+        },
+      }),
+    ]);
+
     res.json({
-      message: 'Settings updated (note: changes are not persisted until DB support is added).',
-      received: req.body,
+      message: 'Settings updated.',
+      received: sanitizedBody,
+      audited: true,
     });
   } catch (err) {
     logControllerError('admin.updateSettings', err, req);

@@ -176,6 +176,22 @@ export function buildPrismaFindArgs({ parsedCursor, take, sortField, sortDir, id
  * @param {string} sortDir    — 'asc' | 'desc'
  * @returns {{ data: T[], next_cursor: string|null, has_more: boolean }}
  */
+/**
+ * Builds a stable composite cursor filter (sort field + id tie-breaker).
+ */
+export function buildStableCursorWhere(parsedCursor, sortField, sortDir, idField = 'id') {
+  if (!parsedCursor) return {};
+  const sortValue = parsedCursor.sortValue;
+  const op = sortDir === 'desc' ? 'lt' : 'gt';
+  const idOp = sortDir === 'desc' ? 'lt' : 'gt';
+  return {
+    OR: [
+      { [sortField]: { [op]: sortValue } },
+      { [sortField]: sortValue, [idField]: { [idOp]: parsedCursor.id } },
+    ],
+  };
+}
+
 export function buildCursorResponse(data, take, idField, sortField, sortDir) {
   const has_more = data.length === take;
   let next_cursor = null;

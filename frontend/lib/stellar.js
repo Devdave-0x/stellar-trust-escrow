@@ -32,6 +32,28 @@ const _NETWORK_PASSPHRASE =
     : 'Test SDF Network ; September 2015';
 
 /**
+ * Validates the connected wallet network before building contract transactions.
+ * @param {string} walletNetwork — e.g. "testnet" | "mainnet"
+ * @returns {{ ok: true } | { ok: false, expected: string, actual: string }}
+ */
+export function validateWalletNetwork(walletNetwork) {
+  const expected = _NETWORK;
+  const actual = String(walletNetwork || '').toLowerCase();
+  if (!actual) {
+    return { ok: false, expected, actual: 'unknown', error: 'Wallet network unavailable' };
+  }
+  if (actual !== expected) {
+    return {
+      ok: false,
+      expected,
+      actual,
+      error: `Wallet network (${actual}) does not match configured contract network (${expected})`,
+    };
+  }
+  return { ok: true, network: expected };
+}
+
+/**
  * Builds an unsigned `create_escrow` Soroban transaction XDR.
  *
  * @param {object} params
@@ -60,9 +82,14 @@ export async function buildCreateEscrowTx({
   briefHash,
   arbiter = null,
   deadline = null,
+  walletNetwork = null,
 }) {
   if (!_CONTRACT_ADDRESS) {
     throw new Error('Contract address not configured. Set NEXT_PUBLIC_CONTRACT_ADDRESS.');
+  }
+  if (walletNetwork) {
+    const net = validateWalletNetwork(walletNetwork);
+    if (!net.ok) throw new Error(net.error);
   }
 
   _validateInputs({
